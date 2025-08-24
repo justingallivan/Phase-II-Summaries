@@ -166,11 +166,13 @@ Please provide a clear, professional summary that captures the essence of this p
 
 async function extractStructuredData(text, filename, summary, apiKey) {
   try {
-    const extractionPrompt = `Based on this research proposal, please extract the following information and return it as a JSON object:
+    const extractionPrompt = `Based on this research proposal, please extract the following information and return it as a JSON object.
+
+IMPORTANT: The filename "${filename}" may contain hints about the institution name. Use this information to help identify the correct institution.
 
 {
   "filename": "${filename}",
-  "institution": "Primary institution name",
+  "institution": "Primary institution name (check filename for hints)",
   "principal_investigator": "Name of PI",
   "investigators": ["List", "of", "investigators"],
   "research_area": "Main research domain",
@@ -247,7 +249,7 @@ function enhanceFormatting(summary, filename) {
 function createStructuredDataFallback(text, filename) {
   return {
     filename,
-    institution: extractInstitution(text),
+    institution: extractInstitution(text, filename), // Pass filename to extraction
     principal_investigator: extractPrincipalInvestigator(text),
     investigators: extractInvestigators(text),
     research_area: extractResearchArea(text),
@@ -260,18 +262,75 @@ function createStructuredDataFallback(text, filename) {
   };
 }
 
-function extractInstitution(text) {
-  // Look for common institution patterns
+function extractInstitution(text, filename = '') {
+  // First, try to extract institution from filename
+  const filenameInstitution = extractInstitutionFromFilename(filename);
+  if (filenameInstitution !== 'Not specified') {
+    return filenameInstitution;
+  }
+
+  // If filename doesn't work, look for common institution patterns in text
   const patterns = [
-    /University of [^,\n\.]*/i,
+    /California Institute of Technology|Caltech/i,
+    /Massachusetts Institute of Technology|MIT/i,
+    /University of [^,\n\.\;]*/i,
     /[A-Z][a-z]+ University/i,
     /[A-Z][a-z]+ Institute of Technology/i,
-    /[A-Z][a-z]+ College/i
+    /[A-Z][a-z]+ College/i,
+    /[A-Z][a-z]+ State University/i,
+    /[A-Z][a-z]+ Medical Center/i
   ];
   
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (match) return match[0];
+  }
+  
+  return 'Not specified';
+}
+
+function extractInstitutionFromFilename(filename) {
+  if (!filename) return 'Not specified';
+  
+  // Remove file extension and common suffixes
+  const cleanName = filename
+    .replace(/\.(pdf|PDF)$/, '')
+    .replace(/_SE_Phase_II_Staff_Version$/, '')
+    .replace(/_Phase_II.*$/, '')
+    .replace(/_Staff_Version$/, '')
+    .replace(/_Final$/, '')
+    .replace(/_Draft$/, '');
+  
+  // Look for institution patterns in filename
+  const patterns = [
+    // Specific institutions first (more precise)
+    /California Institute of Technology/i,
+    /Massachusetts Institute of Technology/i,
+    /University of California[^_]*/i,
+    /University of [A-Za-z\s]+/i,
+    /[A-Za-z\s]+ University/i,
+    /[A-Za-z\s]+ Institute of Technology/i,
+    /[A-Za-z\s]+ College/i,
+    /[A-Za-z\s]+ State University/i,
+    /[A-Za-z\s]+ Medical Center/i,
+    /[A-Za-z\s]+ Research Institute/i
+  ];
+  
+  for (const pattern of patterns) {
+    const match = cleanName.match(pattern);
+    if (match) {
+      return match[0].trim();
+    }
+  }
+  
+  // If no pattern matches, try to extract the first part before underscore
+  const parts = cleanName.split('_');
+  if (parts.length > 1) {
+    const firstPart = parts[0].replace(/([a-z])([A-Z])/g, '$1 $2'); // Add spaces between camelCase
+    // Check if it looks like an institution name (has multiple words)
+    if (firstPart.includes(' ') || firstPart.length > 15) {
+      return firstPart;
+    }
   }
   
   return 'Not specified';
