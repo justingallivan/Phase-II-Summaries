@@ -34,3 +34,5 @@ Add this to your Vercel environment variables:
 ## Deployment
 
 This app is designed for deployment on Vercel with zero configuration needed.
+
+Sunday August 24 12:30 pm
