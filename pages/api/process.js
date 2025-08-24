@@ -84,50 +84,22 @@ export default async function handler(req, res) {
 }
 
 async function generateSummary(text, filename, apiKey) {
-  const maxLength = 15000;
-  const truncatedText = text.length > maxLength ? 
-    text.substring(0, maxLength) + '\n\n[Text truncated]' : text;
-
-  const prompt = `Summarize this research proposal using measured, precise language. Avoid hyperbolic terms.
-
-**Executive Summary** (exactly 5 bullets, conversational tone for educated laypersons):
-- Background/field overview - Explain the research area in accessible terms
-- Why research is important - Describe the significance in plain language  
-- Team and approach - Who's doing the work (refer to "the team", "researchers", "the investigator", etc.) and how, explained conversationally. Do NOT mention specific PI names here. Use "team" not "research team".
-- Expected outcomes - What they hope to achieve, in understandable terms
-- WMKF funding justification - Why they need this specific funding, conversationally
-
-**Background & Impact** (formal tone)
-[Paragraph - can mention PI names if relevant]
-
-**Methodology** (formal tone)
-[Paragraph - can mention PI names if relevant]
-
-**Personnel** (formal tone)
-[Paragraph - should include specific PI names and their qualifications/expertise]
-
-**Necessity for WMKF Support** (formal tone)
-[Paragraph - can mention PI names if relevant]
-
-Proposal text:
-${truncatedText}`;
-
   try {
-    console.log('Making Claude API request...');
+    console.log('Testing API key with simple request...');
     
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey.trim(),
-        'anthropic-version': '2023-06-01',
+        'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241204',
-        max_tokens: 2000,
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 100,
         messages: [{
           role: 'user',
-          content: prompt
+          content: 'Hello, please respond with just "API working"'
         }]
       })
     });
@@ -141,24 +113,19 @@ ${truncatedText}`;
     }
 
     const data = await response.json();
-    console.log('API response received successfully');
-    
-    if (!data.content || !data.content[0] || !data.content[0].text) {
-      throw new Error('Invalid response format from Claude API');
-    }
-
-    const analysis = data.content[0].text;
+    console.log('API test successful');
 
     return {
-      formatted: enhanceFormatting(analysis, filename),
-      structured: createStructuredData(analysis, filename)
+      formatted: `API Test Successful!\n\nResponse: ${data.content[0].text}\n\nYour API key works. Now we can fix the model name.`,
+      structured: { filename, test: 'success', timestamp: new Date().toISOString() }
     };
 
   } catch (error) {
-    console.error('Summary generation error:', error);
-    throw new Error(`Summary generation failed: ${error.message}`);
+    console.error('API test error:', error);
+    throw new Error(`API test failed: ${error.message}`);
   }
 }
+
 
 
 function enhanceFormatting(summary, filename) {
