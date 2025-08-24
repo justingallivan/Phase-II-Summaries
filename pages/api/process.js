@@ -113,12 +113,15 @@ Proposal text:
 ${truncatedText}`;
 
   try {
+    console.log('Making Claude API request...');
+    
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
+        'x-api-key': apiKey.trim(),
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'messages-2023-12-15'
       },
       body: JSON.stringify({
         model: 'claude-3-5-sonnet-20241022',
@@ -130,11 +133,21 @@ ${truncatedText}`;
       })
     });
 
+    console.log('API response status:', response.status);
+    
     if (!response.ok) {
-      throw new Error(`Claude API error: ${response.status}`);
+      const errorText = await response.text();
+      console.log('API error response:', errorText);
+      throw new Error(`Claude API error ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
+    console.log('API response received successfully');
+    
+    if (!data.content || !data.content[0] || !data.content[0].text) {
+      throw new Error('Invalid response format from Claude API');
+    }
+
     const analysis = data.content[0].text;
 
     return {
@@ -143,9 +156,11 @@ ${truncatedText}`;
     };
 
   } catch (error) {
+    console.error('Summary generation error:', error);
     throw new Error(`Summary generation failed: ${error.message}`);
   }
 }
+
 
 function enhanceFormatting(summary, filename) {
   let formatted = `# Research Proposal Summary\n`;
