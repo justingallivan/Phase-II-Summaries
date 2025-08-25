@@ -8,6 +8,9 @@ export default function Home() {
   const [results, setResults] = useState(null);
   const [apiKey, setApiKey] = useState('');
   const [showApiModal, setShowApiModal] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [isRefining, setIsRefining] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
 
@@ -103,6 +106,78 @@ export default function Home() {
       alert('Error processing files: ' + error.message);
     } finally {
       setProcessing(false);
+    }
+  };
+
+  const refineResults = async () => {
+    if (!feedbackText.trim()) {
+      alert('Please provide feedback for refinement');
+      return;
+    }
+
+    setIsRefining(true);
+    setProgress(0);
+    setProgressText('Refining summaries...');
+    setShowFeedbackModal(false);
+
+    try {
+      const response = await fetch('/api/refine', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          currentResults: results,
+          feedback: feedbackText,
+          apiKey: apiKey
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalResults = {};
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.progress !== undefined) {
+                setProgress(data.progress);
+                setProgressText(data.message || '');
+              }
+              if (data.results) {
+                finalResults = data.results;
+              }
+            } catch (e) {
+              console.error('Error parsing progress:', e);
+            }
+          }
+        }
+      }
+
+      setResults(finalResults);
+      setProgress(100);
+      setProgressText('Refinement complete!');
+      setFeedbackText('');
+
+    } catch (error) {
+      console.error('Refinement error:', error);
+      alert('Error refining summaries: ' + error.message);
+    } finally {
+      setIsRefining(false);
     }
   };
 
@@ -259,6 +334,13 @@ export default function Home() {
             <button onClick={() => exportData('structured')} className={styles.exportBtn}>
               Export as JSON
             </button>
+            <button 
+              onClick={() => setShowFeedbackModal(true)} 
+              className={styles.refineBtn}
+              disabled={isRefining}
+            >
+              {isRefining ? 'Refining...' : 'Refine Summary'}
+            </button>
           </div>
           
           <div className={styles.resultsPreview}>
@@ -269,6 +351,40 @@ export default function Home() {
                   __html: convertMarkdownToHTML(Object.values(results).map(r => r.formatted).join('\n\n---\n\n'))
                 }}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFeedbackModal && (
+        <div className={styles.modal}>
+          <div className={styles.modalContent}>
+            <h3>Refine Summary</h3>
+            <p>Provide feedback to improve the summary. For example:</p>
+            <ul className={styles.feedbackExamples}>
+              <li>• "Expand the Methodology section with more technical details"</li>
+              <li>• "The Personnel section is missing information about co-investigators"</li>
+              <li>• "Add more details about the potential impact of this research"</li>
+              <li>• "Make the Executive Summary more concise"</li>
+            </ul>
+            <textarea
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              placeholder="Enter your feedback here..."
+              className={styles.feedbackTextarea}
+              rows={6}
+            />
+            <div className={styles.modalButtons}>
+              <button onClick={() => setShowFeedbackModal(false)} className={styles.cancelBtn}>
+                Cancel
+              </button>
+              <button 
+                onClick={refineResults}
+                className={styles.saveBtn}
+                disabled={!feedbackText.trim()}
+              >
+                Refine Summary
+              </button>
             </div>
           </div>
         </div>
