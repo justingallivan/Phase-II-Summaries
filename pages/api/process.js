@@ -142,6 +142,13 @@ async function generateSummary(text, filename, apiKey) {
 function createSummarizationPrompt(text) {
   return `Please analyze this research proposal and create a comprehensive summary following the exact format and style of the examples below. Use clear, professional language with bullet points for the Executive Summary section and paragraphs for other sections.
 
+**TONE AND LANGUAGE RULES:**
+- Use neutral, matter-of-fact language - avoid promotional or effusive terms
+- Avoid unnecessary adjectives like "technical", "deep", "rigorous", "proper", "comprehensive", "excellent", "outstanding"
+- Write in a straightforward, academic tone similar to scientific review documents
+- State facts and qualifications directly without embellishment
+- Focus on what the researchers do/study rather than how well they do it
+
 **FORMATTING RULES:**
 - Principal Investigator names should be underlined in markdown using <u>Name</u> tags
 - Academic titles should be lowercase (professor, associate professor, assistant professor)
@@ -164,7 +171,7 @@ function createSummarizationPrompt(text) {
 [Paragraph describing the research approach, techniques, and experimental design. Be specific about methods and technical approaches.]
 
 **Personnel**
-[Paragraph identifying principal investigators, their expertise, and why they are qualified for this work. Include institutional affiliations. Format as: "The principal investigator is <u>[Name]</u>, a [lowercase title] at [institution]. Co-PI <u>[Name]</u> is an [lowercase title]..." etc.]
+[Paragraph identifying principal investigators, their expertise, and why they are qualified for this work. Include institutional affiliations. Format as: "The principal investigator is <u>[Name]</u>, a [lowercase title] at [institution]. Co-PI <u>[Name]</u> is an [lowercase title]..." State their areas of study and experience directly without promotional language.]
 
 **Justification for Keck Funding**
 [Paragraph explaining why traditional funding sources would not support this work, emphasizing risk, innovation, or speculative nature. Focus on the scientific rationale for foundation support rather than financial details.]
@@ -173,7 +180,7 @@ Research Proposal Text:
 ---
 ${text.substring(0, 15000)} ${text.length > 15000 ? '...' : ''}
 
-Write in a professional, academic tone similar to grant review documents. Focus on scientific rigor, methodology, and funding justification. Do not use flowery language or excessive enthusiasm.`;
+Write in a neutral, factual tone. Avoid promotional language or unnecessary adjectives. State information directly and let the science speak for itself.`;
 }
 
 async function extractStructuredData(text, filename, summary, apiKey) {
