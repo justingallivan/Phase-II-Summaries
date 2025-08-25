@@ -140,28 +140,40 @@ async function generateSummary(text, filename, apiKey) {
 }
 
 function createSummarizationPrompt(text) {
-  return `Please analyze this research proposal and create a comprehensive summary in the following format:
+  return `Please analyze this research proposal and create a comprehensive summary following the exact format and style of the examples below. Use clear, professional language with bullet points for the Executive Summary section and paragraphs for other sections.
 
-**Executive Summary**
-[2-3 sentences describing the core research question and approach]
+**FORMATTING RULES:**
+- Principal Investigator names should be underlined in markdown using <u>Name</u> tags
+- Academic titles should be lowercase (professor, associate professor, assistant professor)
+- Use format: "The principal investigator is <u>John Smith</u>, a professor of biology at [institution]..."
+- Co-investigators should also be underlined when mentioned by name
+
+**EXECUTIVE SUMMARY FORMAT (use bullet points):**
+• [Key scientific problem or question being addressed]
+• [Main hypothesis, approach, or research objective]
+• [Who is conducting the research and their key qualifications]
+• [Expected impact or significance of the results]
+• [Why this research needs foundation support rather than traditional funding]
+
+**OTHER SECTIONS FORMAT (use paragraphs):**
 
 **Background & Impact**
-[Brief overview of the problem being addressed and potential impact]
+[Paragraph explaining the scientific problem, current state of knowledge, and potential impact. Include specific technical details and context.]
 
-**Methodology**
-[Key research methods and approaches to be used]
+**Methodology** 
+[Paragraph describing the research approach, techniques, and experimental design. Be specific about methods and technical approaches.]
 
 **Personnel**
-[Principal investigators and key team members mentioned]
+[Paragraph identifying principal investigators, their expertise, and why they are qualified for this work. Include institutional affiliations. Format as: "The principal investigator is <u>[Name]</u>, a [lowercase title] at [institution]. Co-PI <u>[Name]</u> is an [lowercase title]..." etc.]
 
-**Necessity for WMKF Support**
-[Why this research requires WMKF funding specifically]
+**Justification for Keck Funding**
+[Paragraph explaining why traditional funding sources would not support this work, emphasizing risk, innovation, or speculative nature. Focus on the scientific rationale for foundation support rather than financial details.]
 
 Research Proposal Text:
 ---
 ${text.substring(0, 15000)} ${text.length > 15000 ? '...' : ''}
 
-Please provide a clear, professional summary that captures the essence of this proposal. Focus on the scientific merit, methodology, and funding justification.`;
+Write in a professional, academic tone similar to grant review documents. Focus on scientific rigor, methodology, and funding justification. Do not use flowery language or excessive enthusiasm.`;
 }
 
 async function extractStructuredData(text, filename, summary, apiKey) {
@@ -230,18 +242,22 @@ Return only the JSON object, no other text.`;
 }
 
 function enhanceFormatting(summary, filename) {
-  let formatted = `# Research Proposal Summary\n`;
+  const institution = extractInstitutionFromFilename(filename) || 'Research Institution';
+  const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+  
+  let formatted = `# ${institution}\n`;
+  formatted += `Phase II Review: ${date}\n\n`;
   formatted += `**Filename:** ${filename}\n`;
   formatted += `**Date Processed:** ${new Date().toLocaleDateString()}\n\n`;
   formatted += '---\n\n';
   
-  // Clean up the summary formatting
+  // Process the summary with proper section headers
   let processedSummary = summary
     .replace(/\*\*Executive Summary\*\*/g, '## Executive Summary')
     .replace(/\*\*Background & Impact\*\*/g, '## Background & Impact')
     .replace(/\*\*Methodology\*\*/g, '## Methodology') 
     .replace(/\*\*Personnel\*\*/g, '## Personnel')
-    .replace(/\*\*Necessity for WMKF Support\*\*/g, '## Necessity for WMKF Support');
+    .replace(/\*\*Justification for Keck Funding\*\*/g, '## Justification for Keck Funding');
   
   return formatted + processedSummary;
 }
