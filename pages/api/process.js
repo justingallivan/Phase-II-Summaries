@@ -1,7 +1,7 @@
 import multer from 'multer';
 import pdf from 'pdf-parse';
 import { promisify } from 'util';
-import { CONFIG } from '../../lib/config';
+import { CONFIG, PROMPTS } from '../../lib/config';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -94,7 +94,7 @@ export default async function handler(req, res) {
 
 async function generateSummary(text, filename, apiKey) {
   try {
-    const prompt = createSummarizationPrompt(text);
+    const prompt = PROMPTS.SUMMARIZATION(text);
     
     const response = await fetch(CONFIG.CLAUDE_API_URL, {
       method: 'POST',
@@ -186,26 +186,7 @@ Write in a neutral, factual tone. Avoid promotional language or unnecessary adje
 
 async function extractStructuredData(text, filename, summary, apiKey) {
   try {
-    const extractionPrompt = `Based on this research proposal, please extract the following information and return it as a JSON object.
-
-IMPORTANT: The filename "${filename}" may contain hints about the institution name. Use this information to help identify the correct institution.
-
-{
-  "filename": "${filename}",
-  "institution": "Primary institution name (check filename for hints)",
-  "principal_investigator": "Name of PI",
-  "investigators": ["List", "of", "investigators"],
-  "research_area": "Main research domain",
-  "methods": ["List", "of", "key", "methods"],
-  "funding_amount": "Amount requested if mentioned",
-  "duration": "Project duration if mentioned",
-  "keywords": ["Key", "research", "terms"]
-}
-
-Research text:
-${text.substring(0, CONFIG.QA_TEXT_TRUNCATE_LIMIT)} ${text.length > CONFIG.QA_TEXT_TRUNCATE_LIMIT ? '...' : ''}
-
-Return only the JSON object, no other text.`;
+    const extractionPrompt = PROMPTS.STRUCTURED_DATA_EXTRACTION(text, filename);
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
