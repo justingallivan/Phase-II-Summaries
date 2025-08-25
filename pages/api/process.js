@@ -1,11 +1,12 @@
 import multer from 'multer';
 import pdf from 'pdf-parse';
 import { promisify } from 'util';
+import { CONFIG } from '../../lib/config';
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB limit
+    fileSize: CONFIG.PDF_SIZE_LIMIT,
   },
 });
 
@@ -95,17 +96,17 @@ async function generateSummary(text, filename, apiKey) {
   try {
     const prompt = createSummarizationPrompt(text);
     
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch(CONFIG.CLAUDE_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey.trim(),
-        'anthropic-version': '2023-06-01'
+        'anthropic-version': CONFIG.ANTHROPIC_VERSION
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514', // Current Claude Sonnet 4 model
-        max_tokens: 2000,
-        temperature: 0.3,
+        model: CONFIG.CLAUDE_MODEL,
+        max_tokens: CONFIG.DEFAULT_MAX_TOKENS,
+        temperature: CONFIG.SUMMARIZATION_TEMPERATURE,
         messages: [{
           role: 'user',
           content: prompt
@@ -178,7 +179,7 @@ function createSummarizationPrompt(text) {
 
 Research Proposal Text:
 ---
-${text.substring(0, 15000)} ${text.length > 15000 ? '...' : ''}
+${text.substring(0, CONFIG.TEXT_TRUNCATE_LIMIT)} ${text.length > CONFIG.TEXT_TRUNCATE_LIMIT ? '...' : ''}
 
 Write in a neutral, factual tone. Avoid promotional language or unnecessary adjectives. State information directly and let the science speak for itself.`;
 }
@@ -202,7 +203,7 @@ IMPORTANT: The filename "${filename}" may contain hints about the institution na
 }
 
 Research text:
-${text.substring(0, 10000)} ${text.length > 10000 ? '...' : ''}
+${text.substring(0, CONFIG.QA_TEXT_TRUNCATE_LIMIT)} ${text.length > CONFIG.QA_TEXT_TRUNCATE_LIMIT ? '...' : ''}
 
 Return only the JSON object, no other text.`;
 
