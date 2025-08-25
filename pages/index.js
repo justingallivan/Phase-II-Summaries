@@ -9,7 +9,11 @@ export default function Home() {
   const [apiKey, setApiKey] = useState('');
   const [showApiModal, setShowApiModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [showQAModal, setShowQAModal] = useState(false);
   const [feedbackText, setFeedbackText] = useState('');
+  const [qaMessages, setQAMessages] = useState([]);
+  const [currentQuestion, setCurrentQuestion] = useState('');
+  const [isQAProcessing, setIsQAProcessing] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
@@ -107,6 +111,95 @@ export default function Home() {
     } finally {
       setProcessing(false);
     }
+  };
+
+  const askQuestion = async () => {
+    if (!currentQuestion.trim()) return;
+
+    const question = currentQuestion.trim();
+    setCurrentQuestion('');
+    setIsQAProcessing(true);
+
+    // Add user question to messages
+    const newMessages = [...qaMessages, { type: 'user', content: question }];
+    setQAMessages(newMessages);
+
+    try {
+      const response = await fetch('/api/qa', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          question: question,
+          conversationHistory: newMessages,
+          proposalData: results,
+          apiKey: apiKey
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Add AI response to messages
+      setQAMessages(prev => [...prev, { type: 'assistant', content: data.answer }]);
+
+    } catch (error) {
+      console.error('Q&A error:', error);
+      setQAMessages(prev => [...prev, { type: 'error', content: `Error: ${error.message}` }]);
+    } finally {
+      setIsQAProcessing(false);
+    }
+  };
+
+  const exportQA = () => {
+    if (qaMessages.length === 0) {
+      alert('No Q&A conversation to export');
+      return;
+    }
+
+    const institutions = Object.values(results || {})
+      .map(r => r.structured?.institution)
+      .filter(inst => inst && inst !== 'Not specified');
+    
+    const institutionName = institutions.length === 1 
+      ? institutions[0].replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, '_').substring(0, 30)
+      : 'Research_Proposal';
+
+    const filename = `${institutionName}_QA_Session.md`;
+    
+    let content = `# Q&A Session: Research Proposal Analysis\n\n`;
+    content += `**Date:** ${new Date().toLocaleDateString()}\n`;
+    content += `**Time:** ${new Date().toLocaleTimeString()}\n\n`;
+    content += `---\n\n`;
+
+    qaMessages.forEach((message, index) => {
+      if (message.type === 'user') {
+        content += `## Question ${Math.floor(index/2) + 1}\n\n`;
+        content += `**You:** ${message.content}\n\n`;
+      } else if (message.type === 'assistant') {
+        content += `**Claude:** ${message.content}\n\n`;
+        content += `---\n\n`;
+      } else if (message.type === 'error') {
+        content += `**Error:** ${message.content}\n\n`;
+        content += `---\n\n`;
+      }
+    });
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const clearQA = () => {
+    setQAMessages([]);
   };
 
   const refineResults = async () => {
@@ -341,6 +434,12 @@ export default function Home() {
             >
               {isRefining ? 'Refining...' : 'Refine Summary'}
             </button>
+            <button 
+              onClick={() => setShowQAModal(true)} 
+              className={styles.qaBtn}
+            >
+              Q&A
+            </button>
           </div>
           
           <div className={styles.resultsPreview}>
@@ -351,6 +450,84 @@ export default function Home() {
                   __html: convertMarkdownToHTML(Object.values(results).map(r => r.formatted).join('\n\n---\n\n'))
                 }}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showQAModal && (
+        <div className={styles.modal}>
+          <div className={styles.qaModalContent}>
+            <div className={styles.qaHeader}>
+              <h3>Q&A about Research Proposal</h3>
+              <div className={styles.qaControls}>
+                <button onClick={exportQA} className={styles.qaExportBtn} disabled={qaMessages.length === 0}>
+                  Export Q&A
+                </button>
+                <button onClick={clearQA} className={styles.qaClearBtn} disabled={qaMessages.length === 0}>
+                  Clear
+                </button>
+                <button onClick={() => setShowQAModal(false)} className={styles.qaCloseBtn}>
+                  ×
+                </button>
+              </div>
+            </div>
+            
+            <div className={styles.qaMessages}>
+              {qaMessages.length === 0 ? (
+                <div className={styles.qaWelcome}>
+                  <p>Ask questions about the research proposal. I can:</p>
+                  <ul>
+                    <li>• Explain technical concepts mentioned in the proposal</li>
+                    <li>• Compare this research to other work in the field</li>
+                    <li>• Assess the feasibility of the proposed methodology</li>
+                    <li>• Search for related research or background information</li>
+                    <li>• Evaluate the significance of the research question</li>
+                  </ul>
+                </div>
+              ) : (
+                qaMessages.map((message, index) => (
+                  <div key={index} className={`${styles.qaMessage} ${styles[message.type]}`}>
+                    <div className={styles.qaMessageHeader}>
+                      {message.type === 'user' ? 'You' : message.type === 'assistant' ? 'Claude' : 'Error'}
+                    </div>
+                    <div className={styles.qaMessageContent}>
+                      {message.content}
+                    </div>
+                  </div>
+                ))
+              )}
+              {isQAProcessing && (
+                <div className={`${styles.qaMessage} ${styles.assistant}`}>
+                  <div className={styles.qaMessageHeader}>Claude</div>
+                  <div className={styles.qaMessageContent}>
+                    <div className={styles.qaTyping}>Thinking...</div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className={styles.qaInput}>
+              <input
+                type="text"
+                value={currentQuestion}
+                onChange={(e) => setCurrentQuestion(e.target.value)}
+                placeholder="Ask a question about the proposal..."
+                className={styles.qaTextInput}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !isQAProcessing) {
+                    askQuestion();
+                  }
+                }}
+                disabled={isQAProcessing}
+              />
+              <button 
+                onClick={askQuestion}
+                className={styles.qaAskBtn}
+                disabled={!currentQuestion.trim() || isQAProcessing}
+              >
+                {isQAProcessing ? '...' : 'Ask'}
+              </button>
             </div>
           </div>
         </div>
