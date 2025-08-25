@@ -1,4 +1,4 @@
-import { CONFIG } from '../../lib/config';
+import { CONFIG, PROMPTS } from '../../lib/config';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -64,24 +64,7 @@ export default async function handler(req, res) {
 
 async function refineWithFeedback(currentSummary, feedback, filename, apiKey) {
   try {
-    const refinementPrompt = `You are reviewing and improving a research proposal summary based on user feedback. 
-
-**Current Summary:**
-${currentSummary}
-
-**User Feedback:**
-${feedback}
-
-**Instructions:**
-- Carefully review the current summary and the user's feedback
-- Make specific improvements based on the feedback provided
-- Maintain the same professional tone and format structure
-- Keep the same sections: Executive Summary (with bullet points), Background & Impact, Methodology, Personnel, Justification for Keck Funding
-- Use the same formatting rules: underline investigator names with <u>Name</u> tags, lowercase titles
-- Do not add fictional information - only reorganize, expand, or refine existing content
-- If the feedback asks for information not present in the original, note that it would require the original proposal text
-
-Please provide the refined summary maintaining the exact same format and structure.`;
+    const refinementPrompt = PROMPTS.REFINEMENT(currentSummary, feedback);
 
     const response = await fetch(CONFIG.CLAUDE_API_URL, {
       method: 'POST',
