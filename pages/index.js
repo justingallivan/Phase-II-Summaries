@@ -106,6 +106,43 @@ export default function Home() {
     }
   };
 
+  const convertMarkdownToHTML = (markdown) => {
+    let html = markdown
+      // Headers
+      .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+      .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+      .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+      // Bold text
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      // Underlined text
+      .replace(/<u>(.*?)<\/u>/g, '<u>$1</u>')
+      // Horizontal rules (before line breaks)
+      .replace(/^---$/gm, '<hr>')
+      // Bullet points - convert to list items first
+      .replace(/^• (.*$)/gm, '<li>$1</li>');
+
+    // Wrap consecutive list items in ul tags
+    html = html.replace(/(<li>.*?<\/li>(\n<li>.*?<\/li>)*)/g, '<ul>$1</ul>');
+    
+    // Convert double line breaks to paragraphs
+    html = html.replace(/\n\n+/g, '</p><p>');
+    
+    // Single line breaks to <br>
+    html = html.replace(/\n/g, '<br>');
+    
+    // Wrap everything in paragraphs (except headers, lists, hrs)
+    html = '<p>' + html + '</p>';
+    
+    // Clean up empty paragraphs and fix paragraph wrapping around block elements
+    html = html
+      .replace(/<p>(<h[1-3]>.*?<\/h[1-3]>)<\/p>/g, '$1')
+      .replace(/<p>(<ul>.*?<\/ul>)<\/p>/g, '$1')
+      .replace(/<p>(<hr>)<\/p>/g, '$1')
+      .replace(/<p><\/p>/g, '');
+    
+    return html;
+  };
+
   const exportData = (type) => {
     if (!results) return;
 
@@ -226,9 +263,13 @@ export default function Home() {
           
           <div className={styles.resultsPreview}>
             <h4>Preview:</h4>
-            <pre className={styles.previewText}>
-              {Object.values(results).map(r => r.formatted).join('\n\n---\n\n').substring(0, 1000)}...
-            </pre>
+            <div className={styles.markdownPreview}>
+              <div 
+                dangerouslySetInnerHTML={{
+                  __html: convertMarkdownToHTML(Object.values(results).map(r => r.formatted).join('\n\n---\n\n'))
+                }}
+              />
+            </div>
           </div>
         </div>
       )}
