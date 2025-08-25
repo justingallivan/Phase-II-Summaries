@@ -1,4 +1,4 @@
-import { CONFIG } from '../../lib/config';
+import { CONFIG, PROMPTS } from '../../lib/config';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -39,26 +39,7 @@ async function generateQAResponse(question, conversationHistory, proposalData, a
       .map(msg => `${msg.type === 'user' ? 'Human' : 'Assistant'}: ${msg.content}`)
       .join('\n\n');
 
-    const qaPrompt = `You are an AI research assistant helping analyze a research proposal. You have access to web search capabilities and should use them when needed to provide comprehensive, accurate answers.
-
-**Research Proposal Context:**
-${proposalContext}
-
-**Previous Conversation:**
-${conversationContext}
-
-**Current Question:** ${question}
-
-**Instructions:**
-- Answer the question thoroughly and accurately
-- Reference specific details from the proposal when relevant
-- If the question requires current information, recent research, or context not in the proposal, mention that you would need to search for additional information
-- Provide balanced, objective analysis
-- If you're uncertain about technical details, acknowledge the limitations
-- Keep responses conversational but informative
-- Cite specific sections of the proposal when referencing them
-
-Please provide a comprehensive answer to the question.`;
+    const qaPrompt = PROMPTS.QA_SYSTEM(proposalContext, conversationContext, question);
 
     const response = await fetch(CONFIG.CLAUDE_API_URL, {
       method: 'POST',
