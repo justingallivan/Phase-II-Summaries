@@ -1,3 +1,5 @@
+import { CONFIG } from '../../lib/config';
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -81,17 +83,17 @@ ${feedback}
 
 Please provide the refined summary maintaining the exact same format and structure.`;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch(CONFIG.CLAUDE_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey.trim(),
-        'anthropic-version': '2023-06-01'
+        'anthropic-version': CONFIG.ANTHROPIC_VERSION
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2500,
-        temperature: 0.3,
+        model: CONFIG.CLAUDE_MODEL,
+        max_tokens: CONFIG.REFINEMENT_MAX_TOKENS,
+        temperature: CONFIG.REFINEMENT_TEMPERATURE,
         messages: [{
           role: 'user',
           content: refinementPrompt
