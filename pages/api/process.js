@@ -62,18 +62,7 @@ export default async function handler(req, res) {
 
       } catch (fileError) {
         console.error(`Error processing ${file.originalname}:`, fileError);
-        results[file.originalname] = {
-          formatted: `# Error Processing ${file.originalname}\n\n**Error:** ${fileError.message}\n\n**Timestamp:** ${new Date().toISOString()}`,
-          structured: {
-            filename: file.originalname,
-            institution: 'Error',
-            investigators: ['Error processing'],
-            methods: ['N/A'],
-            error: fileError.message,
-            timestamp: new Date().toISOString(),
-            wordCount: 0
-          }
-        };
+        results[file.originalname] = createErrorResult(file.originalname, fileError.message);
       }
     }
 
@@ -140,63 +129,19 @@ async function generateSummary(text, filename, apiKey) {
   }
 }
 
-function createSummarizationPrompt(text) {
-  return `Please analyze this research proposal and create a comprehensive summary following the exact format and style of the examples below. Use clear, professional language with bullet points for the Executive Summary section and paragraphs for other sections.
-
-**TONE AND LANGUAGE RULES:**
-- Use neutral, matter-of-fact language - avoid promotional or effusive terms
-- Avoid unnecessary adjectives like "technical", "deep", "rigorous", "proper", "comprehensive", "excellent", "outstanding"
-- Write in a straightforward, academic tone similar to scientific review documents
-- State facts and qualifications directly without embellishment
-- Focus on what the researchers do/study rather than how well they do it
-
-**FORMATTING RULES:**
-- Principal Investigator names should be underlined in markdown using <u>Name</u> tags
-- Academic titles should be lowercase (professor, associate professor, assistant professor)
-- Use format: "The principal investigator is <u>John Smith</u>, a professor of biology at [institution]..."
-- Co-investigators should also be underlined when mentioned by name
-
-**EXECUTIVE SUMMARY FORMAT (use bullet points):**
-• [Key scientific problem or question being addressed]
-• [Main hypothesis, approach, or research objective]
-• [Who is conducting the research and their key qualifications]
-• [Expected impact or significance of the results]
-• [Why this research needs foundation support rather than traditional funding]
-
-**OTHER SECTIONS FORMAT (use paragraphs):**
-
-**Background & Impact**
-[Paragraph explaining the scientific problem, current state of knowledge, and potential impact. Include specific technical details and context.]
-
-**Methodology** 
-[Paragraph describing the research approach, techniques, and experimental design. Be specific about methods and technical approaches.]
-
-**Personnel**
-[Paragraph identifying principal investigators, their expertise, and why they are qualified for this work. Include institutional affiliations. Format as: "The principal investigator is <u>[Name]</u>, a [lowercase title] at [institution]. Co-PI <u>[Name]</u> is an [lowercase title]..." State their areas of study and experience directly without promotional language.]
-
-**Justification for Keck Funding**
-[Paragraph explaining why traditional funding sources would not support this work, emphasizing risk, innovation, or speculative nature. Focus on the scientific rationale for foundation support rather than financial details.]
-
-Research Proposal Text:
----
-${text.substring(0, CONFIG.TEXT_TRUNCATE_LIMIT)} ${text.length > CONFIG.TEXT_TRUNCATE_LIMIT ? '...' : ''}
-
-Write in a neutral, factual tone. Avoid promotional language or unnecessary adjectives. State information directly and let the science speak for itself.`;
-}
-
 async function extractStructuredData(text, filename, summary, apiKey) {
   try {
     const extractionPrompt = PROMPTS.STRUCTURED_DATA_EXTRACTION(text, filename);
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch(CONFIG.CLAUDE_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey.trim(),
-        'anthropic-version': '2023-06-01'
+        'anthropic-version': CONFIG.ANTHROPIC_VERSION
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514', // Current Claude Sonnet 4 model
+        model: CONFIG.CLAUDE_MODEL,
         max_tokens: 1000,
         temperature: 0.1,
         messages: [{
@@ -211,7 +156,6 @@ async function extractStructuredData(text, filename, summary, apiKey) {
       const jsonText = data.content[0].text;
       
       try {
-        // Try to parse the JSON response
         const parsed = JSON.parse(jsonText);
         return {
           ...parsed,
@@ -251,10 +195,25 @@ function enhanceFormatting(summary, filename) {
   return formatted + processedSummary;
 }
 
+function createErrorResult(filename, errorMessage) {
+  return {
+    formatted: `# Error Processing ${filename}\n\n**Error:** ${errorMessage}\n\n**Timestamp:** ${new Date().toISOString()}`,
+    structured: {
+      filename,
+      institution: 'Error',
+      investigators: ['Error processing'],
+      methods: ['N/A'],
+      error: errorMessage,
+      timestamp: new Date().toISOString(),
+      wordCount: 0
+    }
+  };
+}
+
 function createStructuredDataFallback(text, filename) {
   return {
     filename,
-    institution: extractInstitution(text, filename), // Pass filename to extraction
+    institution: extractInstitutionFromFilename(filename) || 'Not specified',
     principal_investigator: extractPrincipalInvestigator(text),
     investigators: extractInvestigators(text),
     research_area: extractResearchArea(text),
@@ -267,37 +226,10 @@ function createStructuredDataFallback(text, filename) {
   };
 }
 
-function extractInstitution(text, filename = '') {
-  // First, try to extract institution from filename
-  const filenameInstitution = extractInstitutionFromFilename(filename);
-  if (filenameInstitution !== 'Not specified') {
-    return filenameInstitution;
-  }
-
-  // If filename doesn't work, look for common institution patterns in text
-  const patterns = [
-    /California Institute of Technology|Caltech/i,
-    /Massachusetts Institute of Technology|MIT/i,
-    /University of [^,\n\.\;]*/i,
-    /[A-Z][a-z]+ University/i,
-    /[A-Z][a-z]+ Institute of Technology/i,
-    /[A-Z][a-z]+ College/i,
-    /[A-Z][a-z]+ State University/i,
-    /[A-Z][a-z]+ Medical Center/i
-  ];
-  
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match) return match[0];
-  }
-  
-  return 'Not specified';
-}
-
+// Utility functions (unchanged from original)
 function extractInstitutionFromFilename(filename) {
   if (!filename) return 'Not specified';
   
-  // Remove file extension and common suffixes
   const cleanName = filename
     .replace(/\.(pdf|PDF)$/, '')
     .replace(/_SE_Phase_II_Staff_Version$/, '')
@@ -306,9 +238,7 @@ function extractInstitutionFromFilename(filename) {
     .replace(/_Final$/, '')
     .replace(/_Draft$/, '');
   
-  // Look for institution patterns in filename
   const patterns = [
-    // Specific institutions first (more precise)
     /California Institute of Technology/i,
     /Massachusetts Institute of Technology/i,
     /University of California[^_]*/i,
@@ -323,16 +253,12 @@ function extractInstitutionFromFilename(filename) {
   
   for (const pattern of patterns) {
     const match = cleanName.match(pattern);
-    if (match) {
-      return match[0].trim();
-    }
+    if (match) return match[0].trim();
   }
   
-  // If no pattern matches, try to extract the first part before underscore
   const parts = cleanName.split('_');
   if (parts.length > 1) {
-    const firstPart = parts[0].replace(/([a-z])([A-Z])/g, '$1 $2'); // Add spaces between camelCase
-    // Check if it looks like an institution name (has multiple words)
+    const firstPart = parts[0].replace(/([a-z])([A-Z])/g, '$1 $2');
     if (firstPart.includes(' ') || firstPart.length > 15) {
       return firstPart;
     }
@@ -342,11 +268,9 @@ function extractInstitutionFromFilename(filename) {
 }
 
 function extractPrincipalInvestigator(text) {
-  // Look for PI patterns
   const piMatch = text.match(/(?:Principal Investigator|PI)[:]\s*([A-Z][a-z]+ [A-Z][a-z]+)/i);
   if (piMatch) return piMatch[1];
   
-  // Fallback to first name-like pattern
   const nameMatch = text.match(/(?:Dr\.?\s+)?([A-Z][a-z]+ [A-Z][a-z]+)/);
   return nameMatch ? nameMatch[1] : 'Not specified';
 }
@@ -397,7 +321,6 @@ function extractDuration(text) {
 }
 
 function extractKeywords(text) {
-  // Simple keyword extraction - could be enhanced
   const commonWords = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'];
   const words = text.toLowerCase().match(/\b[a-z]{4,}\b/g) || [];
   const wordCount = {};
