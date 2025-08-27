@@ -110,7 +110,7 @@ export default function Home() {
       }
 
       setUploadedFiles(uploaded);
-      alert('All files uploaded successfully!');
+      // alert('All files uploaded successfully!'); // Commented out for cleaner UI - uncomment for debugging
 
     } catch (error) {
       console.error('Direct upload error:', error);

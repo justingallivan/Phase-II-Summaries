@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import Head from 'next/head';
+import Link from 'next/link';
 import styles from '../styles/Home.module.css';
 
-export default function BlobUploader() {
+export default function BatchProposalSummaries() {
   const [files, setFiles] = useState([]);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -13,6 +14,7 @@ export default function BlobUploader() {
   const [uploadProgress, setUploadProgress] = useState({});
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
+  const [summaryLength, setSummaryLength] = useState(2); // Default to 2 pages
 
   const handleFileSelect = (e) => {
     const selectedFiles = Array.from(e.target.files).filter(
@@ -48,36 +50,51 @@ export default function BlobUploader() {
     const uploaded = [];
 
     try {
+      // Get blob token for direct uploads
+      const tokenResponse = await fetch('/api/blob-token', {
+        method: 'POST',
+      });
+
+      if (!tokenResponse.ok) {
+        throw new Error('Failed to get upload token');
+      }
+
+      const { token } = await tokenResponse.json();
+
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         
-        // Update progress for this file
         setUploadProgress(prev => ({
           ...prev,
           [file.name]: { status: 'uploading', progress: 0 }
         }));
 
-        // Upload to Vercel Blob using FormData
-        const formData = new FormData();
-        formData.append('file', file);
+        // Direct upload to Vercel Blob Storage
+        const filename = `${Date.now()}-${file.name}`;
         
-        const uploadResponse = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
+        const directUploadResponse = await fetch(`https://blob.vercel-storage.com/${filename}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': file.type,
+            'x-content-type': file.type,
+          },
+          body: file,
         });
 
-        if (!uploadResponse.ok) {
-          throw new Error(`Upload failed for ${file.name}: ${uploadResponse.status}`);
+        if (!directUploadResponse.ok) {
+          const errorText = await directUploadResponse.text();
+          throw new Error(`Direct upload failed for ${file.name}: ${directUploadResponse.status} - ${errorText}`);
         }
 
-        const uploadData = await uploadResponse.json();
+        const uploadData = await directUploadResponse.json();
         
         uploaded.push({
           filename: file.name,
           originalSize: file.size,
           url: uploadData.url,
-          downloadUrl: uploadData.downloadUrl,
-          blobSize: uploadData.size
+          downloadUrl: uploadData.downloadUrl || uploadData.url,
+          blobSize: file.size
         });
 
         setUploadProgress(prev => ({
@@ -87,10 +104,10 @@ export default function BlobUploader() {
       }
 
       setUploadedFiles(uploaded);
-      // alert('All files uploaded successfully!'); // Commented out for cleaner UI - uncomment for debugging
+      // alert('All files uploaded successfully!'); // Commented out for cleaner UI
 
     } catch (error) {
-      console.error('Upload error:', error);
+      console.error('Direct upload error:', error);
       alert('Error uploading files: ' + error.message);
     } finally {
       setUploading(false);
@@ -110,17 +127,18 @@ export default function BlobUploader() {
 
     setProcessing(true);
     setProgress(0);
-    setProgressText('Starting processing...');
+    setProgressText('Starting batch processing...');
 
     try {
-      const response = await fetch('/api/process-blob', {
+      const response = await fetch('/api/process-batch', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           files: uploadedFiles,
-          apiKey: apiKey
+          apiKey: apiKey,
+          summaryLength: summaryLength
         }),
       });
 
@@ -161,7 +179,7 @@ export default function BlobUploader() {
 
       setResults(finalResults);
       setProgress(100);
-      setProgressText('Complete!');
+      setProgressText('Batch processing complete!');
 
     } catch (error) {
       console.error('Processing error:', error);
@@ -169,41 +187,6 @@ export default function BlobUploader() {
     } finally {
       setProcessing(false);
     }
-  };
-
-  const exportData = (type) => {
-    if (!results) return;
-
-    let content, filename;
-    
-    if (type === 'formatted') {
-      content = Object.values(results).map(r => r.formatted).join('\n\n---\n\n');
-      
-      const institutions = Object.values(results)
-        .map(r => r.structured?.institution)
-        .filter(inst => inst && inst !== 'Not specified');
-      
-      if (institutions.length === 1) {
-        const institutionName = institutions[0]
-          .replace(/[^a-zA-Z0-9\s]/g, '')
-          .replace(/\s+/g, '_')
-          .substring(0, 50);
-        filename = `${institutionName}_proposal_summary.md`;
-      } else {
-        filename = institutions.length > 1 ? 'multiple_institutions_summary.md' : 'proposal_summaries.md';
-      }
-    } else {
-      content = JSON.stringify(Object.values(results).map(r => r.structured), null, 2);
-      filename = 'proposal_data.json';
-    }
-
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   const convertMarkdownToHTML = (markdown) => {
@@ -217,8 +200,11 @@ export default function BlobUploader() {
       .replace(/^• (.*$)/gm, '<li>$1</li>');
 
     html = html.replace(/(<li>.*?<\/li>(\n<li>.*?<\/li>)*)/g, '<ul>$1</ul>');
+    
     html = html.replace(/\n\n+/g, '</p><p>');
+    
     html = html.replace(/\n/g, '<br>');
+    
     html = '<p>' + html + '</p>';
     
     html = html
@@ -230,23 +216,68 @@ export default function BlobUploader() {
     return html;
   };
 
+  const exportData = (type) => {
+    if (!results) return;
+
+    let content, filename;
+    
+    if (type === 'formatted') {
+      content = Object.values(results).map(r => r.formatted).join('\n\n---\n\n');
+      filename = `batch_summaries_${summaryLength}pages_${new Date().toISOString().split('T')[0]}.md`;
+    } else {
+      content = JSON.stringify(Object.values(results).map(r => r.structured), null, 2);
+      filename = `batch_summaries_data_${new Date().toISOString().split('T')[0]}.json`;
+    }
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className={styles.container}>
       <Head>
-        <title>Blob Storage Research Proposal Summarizer</title>
-        <meta name="description" content="Generate standardized summaries from PDF research proposals using Vercel Blob storage" />
+        <title>Batch Proposal Summaries</title>
+        <meta name="description" content="Generate batch summaries of multiple research proposals with customizable length" />
       </Head>
 
+      <div className={styles.navigation}>
+        <Link href="/" className={styles.backLink}>
+          ← Back to Apps
+        </Link>
+      </div>
+
       <div className={styles.header}>
-        <h1>🔬 Research Proposal Summarizer (Blob Storage)</h1>
-        <p>Upload PDF proposals to Vercel Blob, then generate standardized summaries with structured data extraction</p>
+        <h1>📚 Batch Proposal Summaries</h1>
+        <p>Process multiple PDF proposals at once with customizable summary length</p>
       </div>
 
       <div className={styles.uploadSection}>
+        <div className={styles.lengthSelector}>
+          <label className={styles.lengthLabel}>
+            How many pages would you like the summaries to be?
+            <select 
+              value={summaryLength} 
+              onChange={(e) => setSummaryLength(Number(e.target.value))}
+              className={styles.lengthDropdown}
+            >
+              <option value={1}>1 page</option>
+              <option value={2}>2 pages</option>
+              <option value={3}>3 pages</option>
+              <option value={4}>4 pages</option>
+              <option value={5}>5 pages</option>
+            </select>
+          </label>
+        </div>
+
         <div className={styles.uploadArea}>
           <div className={styles.uploadIcon}>📄</div>
-          <div className={styles.uploadText}>Select PDF files to upload</div>
-          <div className={styles.uploadSubtext}>Files will be stored in Vercel Blob • Up to 500MB per file</div>
+          <div className={styles.uploadText}>Select multiple PDF files to process</div>
+          <div className={styles.uploadSubtext}>Batch processing • PDF format only • Up to 500MB per file</div>
           <input
             type="file"
             accept=".pdf"
@@ -267,7 +298,7 @@ export default function BlobUploader() {
                     <div className={styles.fileSize}>{formatFileSize(file.size)}</div>
                     {uploadProgress[file.name] && (
                       <div className={styles.uploadStatus}>
-                        {uploadProgress[file.name].status === 'uploading' ? 'Uploading...' : 
+                        {uploadProgress[file.name].status === 'uploading' ? '⬆️ Uploading...' : 
                          uploadProgress[file.name].status === 'completed' ? '✅ Uploaded' : ''}
                       </div>
                     )}
@@ -293,7 +324,7 @@ export default function BlobUploader() {
               className={`${styles.processBtn} ${uploading ? styles.processing : ''}`}
             >
               {uploading ? 'Uploading...' : 
-               uploadedFiles.length === files.length ? '✅ Files Uploaded' : 'Upload to Blob Storage'}
+               uploadedFiles.length === files.length ? '✅ Files Uploaded' : 'Upload Files'}
             </button>
           </div>
         )}
@@ -306,7 +337,7 @@ export default function BlobUploader() {
             disabled={processing}
             className={`${styles.processBtn} ${processing ? styles.processing : ''}`}
           >
-            {processing ? 'Processing...' : 'Process Uploaded Files'}
+            {processing ? 'Processing Batch...' : `Generate ${summaryLength}-Page Summaries`}
           </button>
 
           {processing && (
@@ -325,13 +356,13 @@ export default function BlobUploader() {
 
       {results && (
         <div className={styles.resultsSection}>
-          <h3>Results</h3>
+          <h3>Batch Results ({summaryLength}-page summaries)</h3>
           <div className={styles.exportButtons}>
             <button onClick={() => exportData('formatted')} className={styles.exportBtn}>
-              Export as Markdown
+              Export All as Markdown
             </button>
             <button onClick={() => exportData('structured')} className={styles.exportBtn}>
-              Export as JSON
+              Export All as JSON
             </button>
           </div>
           

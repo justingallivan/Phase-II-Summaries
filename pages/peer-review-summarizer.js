@@ -106,7 +106,7 @@ export default function PeerReviewSummarizer() {
       }
 
       setUploadedFiles(uploaded);
-      alert('All peer review files uploaded successfully!');
+      // alert('All peer review files uploaded successfully!'); // Commented out for cleaner UI - uncomment for debugging
 
     } catch (error) {
       console.error('Direct upload error:', error);

@@ -14,6 +14,15 @@ const apps = [
     path: '/proposal-summarizer'
   },
   {
+    id: 'batch-proposal-summaries',
+    title: 'Batch Proposal Summaries',
+    description: 'Process multiple proposals at once with customizable summary length (1-5 pages)',
+    icon: '📚',
+    status: 'active',
+    features: ['Batch Processing', 'Custom Length', 'Multi-File Upload', 'Bulk Export'],
+    path: '/batch-proposal-summaries'
+  },
+  {
     id: 'grant-reviewer',
     title: 'Grant Reviewer',
     description: 'Automated scoring and evaluation of grant proposals with detailed feedback',
@@ -26,7 +35,7 @@ const apps = [
     id: 'literature-analyzer',
     title: 'Literature Analyzer',
     description: 'Comprehensive analysis and synthesis of research papers and academic literature',
-    icon: '📚',
+    icon: '📖',
     status: 'coming-soon',
     features: ['Paper Synthesis', 'Citation Analysis', 'Theme Extraction', 'Knowledge Mapping'],
     path: '/literature-analyzer'
