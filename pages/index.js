@@ -44,14 +44,21 @@ export default function Home() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const uploadFilesDirect = async () => {
+  const uploadAndProcessFiles = async () => {
     if (files.length === 0) {
       alert('Please select PDF files first');
       return;
     }
 
+    if (!apiKey) {
+      setShowApiModal(true);
+      return;
+    }
+
     setUploading(true);
     setUploadProgress({});
+    setProgress(0);
+    setProgressText('Starting upload...');
     const uploaded = [];
 
     try {
@@ -66,8 +73,13 @@ export default function Home() {
 
       const { token } = await tokenResponse.json();
 
+      // Upload all files first
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        const uploadProgress = Math.round((i / files.length) * 50); // First 50% for upload
+        
+        setProgress(uploadProgress);
+        setProgressText(`Uploading ${file.name}...`);
         
         setUploadProgress(prev => ({
           ...prev,
@@ -109,16 +121,86 @@ export default function Home() {
       }
 
       setUploadedFiles(uploaded);
-      alert('All files uploaded successfully!');
+      setProgress(50);
+      setProgressText('Upload complete! Starting processing...');
+
+      // Automatically start processing after upload
+      await processUploadedFiles(uploaded);
 
     } catch (error) {
-      console.error('Direct upload error:', error);
+      console.error('Upload error:', error);
       alert('Error uploading files: ' + error.message);
     } finally {
       setUploading(false);
+      setProcessing(false);
     }
   };
 
+  const processUploadedFiles = async (uploadedFiles) => {
+    setProcessing(true);
+    setProgressText('Processing with Claude AI...');
+
+    try {
+      const response = await fetch('/api/process-blob', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          files: uploadedFiles,
+          apiKey: apiKey
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalResults = {};
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.progress !== undefined) {
+                // Map processing progress to 50-100% range
+                const adjustedProgress = 50 + Math.round((data.progress * 50) / 100);
+                setProgress(adjustedProgress);
+                setProgressText(data.message || '');
+              }
+              if (data.results) {
+                finalResults = data.results;
+              }
+            } catch (e) {
+              console.error('Error parsing progress:', e);
+            }
+          }
+        }
+      }
+
+      setResults(finalResults);
+      setProgress(100);
+      setProgressText('Complete!');
+
+    } catch (error) {
+      console.error('Processing error:', error);
+      alert('Error processing files: ' + error.message);
+    }
+  };
+
+  // Original processFiles function - commented out for debugging if needed
+  /*
   const processFiles = async () => {
     if (!apiKey) {
       setShowApiModal(true);
@@ -192,6 +274,7 @@ export default function Home() {
       setProcessing(false);
     }
   };
+  */
 
   const askQuestion = async () => {
     if (!currentQuestion.trim()) return;
@@ -472,17 +555,31 @@ export default function Home() {
         {files.length > 0 && (
           <div className={styles.processSection}>
             <button
-              onClick={uploadFilesDirect}
-              disabled={uploading || uploadedFiles.length === files.length}
-              className={`${styles.processBtn} ${uploading ? styles.processing : ''}`}
+              onClick={uploadAndProcessFiles}
+              disabled={uploading || processing || results}
+              className={`${styles.processBtn} ${(uploading || processing) ? styles.processing : ''}`}
             >
               {uploading ? 'Uploading...' : 
-               uploadedFiles.length === files.length ? '✅ Files Uploaded' : 'Upload Files'}
+               processing ? 'Processing...' :
+               results ? '✅ Complete' : 'Process Proposals'}
             </button>
+            
+            {(uploading || processing) && (
+              <div className={styles.progressSection}>
+                <div className={styles.progressBar}>
+                  <div 
+                    className={styles.progressFill}
+                    style={{ width: `${progress}%` }}
+                  ></div>
+                </div>
+                <div className={styles.progressText}>{progressText}</div>
+              </div>
+            )}
           </div>
         )}
       </div>
 
+      {/* Separate process button commented out - now handled automatically after upload
       {uploadedFiles.length > 0 && (
         <div className={styles.processSection}>
           <button
@@ -506,6 +603,7 @@ export default function Home() {
           )}
         </div>
       )}
+      */}
 
       {results && (
         <div className={styles.resultsSection}>
@@ -677,7 +775,7 @@ export default function Home() {
                 onClick={() => {
                   if (apiKey) {
                     setShowApiModal(false);
-                    processFiles();
+                    uploadAndProcessFiles();
                   }
                 }}
                 className={styles.saveBtn}
