@@ -1,4 +1,15 @@
 import { put } from '@vercel/blob';
+import multer from 'multer';
+import { promisify } from 'util';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 500 * 1024 * 1024, // 500MB limit for Vercel Blob
+  },
+});
+
+const uploadMiddleware = promisify(upload.single('file'));
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -6,17 +17,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
-    const filename = searchParams.get('filename');
-
-    if (!filename) {
-      return res.status(400).json({ error: 'Filename is required' });
+    // Handle file upload with multer
+    await uploadMiddleware(req, res);
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    const filename = req.file.originalname;
+    
     // Upload to Vercel Blob
-    const blob = await put(filename, req, {
+    const blob = await put(filename, req.file.buffer, {
       access: 'public',
-      // Add timestamp to make filename unique
       addRandomSuffix: true,
     });
 
@@ -24,19 +36,23 @@ export default async function handler(req, res) {
       url: blob.url,
       downloadUrl: blob.downloadUrl,
       pathname: blob.pathname,
-      size: blob.size
+      size: blob.size,
+      originalName: filename
     });
 
   } catch (error) {
     console.error('Upload error:', error);
+    
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ error: 'File too large. Maximum size is 500MB.' });
+    }
+    
     res.status(500).json({ error: 'Upload failed: ' + error.message });
   }
 }
 
 export const config = {
   api: {
-    bodyParser: {
-      sizeLimit: '500mb', // Vercel Blob supports up to 500MB
-    },
+    bodyParser: false, // Disable Next.js body parser for multer
   },
 };

@@ -57,10 +57,13 @@ export default function BlobUploader() {
           [file.name]: { status: 'uploading', progress: 0 }
         }));
 
-        // Upload to Vercel Blob
-        const uploadResponse = await fetch(`/api/upload?filename=${encodeURIComponent(file.name)}`, {
+        // Upload to Vercel Blob using FormData
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const uploadResponse = await fetch('/api/upload', {
           method: 'POST',
-          body: file,
+          body: formData,
         });
 
         if (!uploadResponse.ok) {
