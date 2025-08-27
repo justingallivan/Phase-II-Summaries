@@ -6,7 +6,7 @@ import styles from '../styles/Landing.module.css';
 const apps = [
   {
     id: 'proposal-summarizer',
-    title: 'Proposal Summarizer',
+    title: 'Phase II Proposal Summarizer',
     description: 'Generate standardized summaries from PDF research proposals using Claude AI',
     icon: '🔬',
     status: 'active',
@@ -32,13 +32,13 @@ const apps = [
     path: '/literature-analyzer'
   },
   {
-    id: 'contract-analyzer',
-    title: 'Contract Analyzer',
-    description: 'Legal document analysis with risk assessment and key term extraction',
-    icon: '📋',
-    status: 'coming-soon',
-    features: ['Risk Assessment', 'Key Terms', 'Compliance Check', 'Summary Reports'],
-    path: '/contract-analyzer'
+    id: 'peer-review-summarizer',
+    title: 'Summarize Peer Reviews',
+    description: 'Synthesize and analyze peer review feedback with actionable insights and recommendations',
+    icon: '📝',
+    status: 'active',
+    features: ['Review Analysis', 'Common Themes', 'Action Items', 'Response Templates'],
+    path: '/peer-review-summarizer'
   }
 ];
 
