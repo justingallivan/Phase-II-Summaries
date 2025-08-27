@@ -93,6 +93,10 @@ export default async function handler(req, res) {
     // Generate comprehensive analysis
     const analysisResult = await analyzePeerReviews(reviewTexts, apiKey);
 
+    // Log the results for debugging
+    console.log('Analysis completed, summary length:', analysisResult?.summary?.length || 0);
+    console.log('Questions length:', analysisResult?.questions?.length || 0);
+
     // Send final results
     res.write(`data: ${JSON.stringify({
       progress: 100,
@@ -104,7 +108,21 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('API error:', error);
-    res.status(500).json({ error: error.message });
+    // Try to send error via SSE if headers were already sent
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({
+        progress: 100,
+        message: 'An error occurred during processing',
+        results: {
+          summary: `### Processing Error\n\nAn error occurred: ${error.message}`,
+          questions: '',
+          metadata: { error: true, errorMessage: error.message }
+        }
+      })}\n\n`);
+      res.end();
+    } else {
+      res.status(500).json({ error: error.message });
+    }
   }
 }
 
@@ -148,14 +166,40 @@ async function analyzePeerReviews(reviewTexts, apiKey) {
 
     const data = await response.json();
     const analysisText = data.content[0].text;
+    console.log('Raw Claude response length:', analysisText.length);
+    console.log('First 500 chars:', analysisText.substring(0, 500));
 
-    // Split the analysis into summary and questions
-    const parts = analysisText.split('**OUTPUT 2 - QUESTIONS:**');
-    let summary = parts[0]?.replace('**OUTPUT 1 - SUMMARY:**', '').trim() || analysisText;
-    let questions = parts[1]?.trim() || '';
+    // More flexible parsing of the analysis
+    let summary = analysisText;
+    let questions = '';
 
-    // If the questions section is empty, try to extract questions separately
+    // Try to split by various possible markers
+    const possibleMarkers = [
+      '**OUTPUT 2 - QUESTIONS:**',
+      '**OUTPUT 2:**',
+      '**QUESTIONS:**',
+      '## Questions',
+      '# Questions',
+      '**Questions:**'
+    ];
+
+    for (const marker of possibleMarkers) {
+      if (analysisText.includes(marker)) {
+        const parts = analysisText.split(marker);
+        summary = parts[0]
+          .replace('**OUTPUT 1 - SUMMARY:**', '')
+          .replace('**OUTPUT 1:**', '')
+          .replace('**SUMMARY:**', '')
+          .trim();
+        questions = parts[1]?.trim() || '';
+        console.log(`Found marker: ${marker}, Questions length: ${questions.length}`);
+        break;
+      }
+    }
+
+    // If we didn't find questions in the main response, or they're too short
     if (!questions || questions.length < 50) {
+      console.log('Questions not found or too short, making separate request...');
       try {
         const questionsPrompt = PROMPTS.PEER_REVIEW_QUESTIONS(validTexts);
         
@@ -180,12 +224,21 @@ async function analyzePeerReviews(reviewTexts, apiKey) {
         if (questionsResponse.ok) {
           const questionsData = await questionsResponse.json();
           questions = questionsData.content[0].text;
+          console.log('Got questions from separate request, length:', questions.length);
         }
       } catch (questionsError) {
         console.warn('Failed to extract questions separately:', questionsError);
-        questions = 'Unable to extract questions from the peer reviews.';
+        questions = '### Questions and Concerns\n\nNo specific questions could be extracted from the peer reviews. Please review the summary above for the main points raised by reviewers.';
       }
     }
+
+    // Ensure we have some content for both outputs
+    if (!summary || summary.trim().length === 0) {
+      summary = analysisText; // Fallback to full response
+    }
+    
+    console.log('Final summary length:', summary.length);
+    console.log('Final questions length:', questions.length);
 
     return {
       summary: summary,
@@ -199,7 +252,18 @@ async function analyzePeerReviews(reviewTexts, apiKey) {
 
   } catch (error) {
     console.error('Peer review analysis error:', error);
-    throw new Error(`Failed to analyze peer reviews: ${error.message}`);
+    // Return a fallback result instead of throwing
+    return {
+      summary: `### Error During Analysis\n\nAn error occurred while analyzing the peer reviews: ${error.message}\n\n### Files Processed\n\n${reviewTexts.map(r => `- ${r.filename}`).join('\n')}\n\nPlease try again or contact support if the issue persists.`,
+      questions: '### Unable to Extract Questions\n\nDue to the processing error, questions could not be extracted from the peer reviews.',
+      metadata: {
+        reviewCount: reviewTexts.length,
+        processedFiles: reviewTexts.map(r => r.filename),
+        timestamp: new Date().toISOString(),
+        error: true,
+        errorMessage: error.message
+      }
+    };
   }
 }
 
