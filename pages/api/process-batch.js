@@ -7,7 +7,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { files, apiKey, summaryLength } = req.body;
+    const { files, apiKey, summaryLength, summaryLevel } = req.body;
 
     if (!apiKey) {
       return res.status(400).json({ error: 'API key required' });
@@ -18,6 +18,7 @@ export default async function handler(req, res) {
     }
 
     const pageLength = summaryLength || 2; // Default to 2 pages if not specified
+    const techLevel = summaryLevel || 'technical-non-expert'; // Default to technical for non-expert
 
     // Set headers for streaming response
     res.setHeader('Content-Type', 'text/event-stream');
@@ -52,8 +53,8 @@ export default async function handler(req, res) {
           throw new Error('PDF appears to be empty or contains insufficient text');
         }
 
-        // Generate batch summary with custom length
-        const batchPrompt = getBatchPrompt(data.text, pageLength, fileInfo.filename);
+        // Generate batch summary with custom length and technical level
+        const batchPrompt = getBatchPrompt(data.text, pageLength, techLevel, fileInfo.filename);
         
         const summaryResponse = await fetch(CONFIG.CLAUDE_API_URL, {
           method: 'POST',
@@ -138,7 +139,7 @@ function getMaxTokensForPages(pageLength) {
   return tokenMap[pageLength] || 1600;
 }
 
-function getBatchPrompt(text, pageLength, filename) {
+function getBatchPrompt(text, pageLength, techLevel, filename) {
   const lengthGuidance = {
     1: 'Create a CONCISE 1-page summary (approximately 500 words). Focus only on the most critical information.',
     2: 'Create a 2-page summary (approximately 1000 words). Include key details while maintaining brevity.',
@@ -147,18 +148,48 @@ function getBatchPrompt(text, pageLength, filename) {
     5: 'Create a DETAILED 5-page summary (approximately 2500 words). Provide thorough coverage with full context.'
   };
 
+  const technicalGuidance = {
+    'non-technical': `
+**TECHNICAL LEVEL: Non-Technical**
+- Write for a general audience with no scientific background
+- Avoid jargon and technical terminology
+- Use simple analogies and everyday language
+- Explain scientific concepts in accessible terms
+- Focus on practical implications and real-world impact
+- Define any necessary technical terms in plain language`,
+    'technical-non-expert': `
+**TECHNICAL LEVEL: Technical for Non-Expert**
+- Write for an educated reader who is not a specialist in this field
+- Use technical terms but provide brief explanations
+- Include scientific concepts with appropriate context
+- Balance accuracy with accessibility
+- Assume familiarity with general scientific principles
+- Explain field-specific terminology and methods`,
+    'expert': `
+**TECHNICAL LEVEL: Expert**
+- Write for specialists in the field
+- Use full technical terminology without simplification
+- Include detailed methodological descriptions
+- Discuss complex theoretical frameworks
+- Reference specific techniques and protocols
+- Assume deep knowledge of the subject area`
+  };
+
   return `Please analyze this research proposal and create a ${pageLength}-page summary.
 
 **LENGTH REQUIREMENT:** ${lengthGuidance[pageLength]}
 
+${technicalGuidance[techLevel]}
+
 **SUMMARY FORMAT:**
 - Use clear section headings (##)
 - Include: Executive Summary, Background, Methodology, Expected Outcomes, Research Team, and Budget/Timeline
-- Adjust detail level based on the requested page length
-- For shorter summaries (1-2 pages), focus on essential information only
-- For longer summaries (4-5 pages), include more technical details and context
+- Adjust detail level based on both the requested page length and technical level
+- For non-technical: emphasize goals, impact, and practical applications
+- For technical non-expert: balance technical accuracy with clarity
+- For expert: include full technical depth and specialized details
 
-**TONE:** Professional, objective, and factual
+**TONE:** Professional, objective, and factual - adapted to the audience level
 
 **FILENAME:** ${filename}
 
@@ -166,7 +197,7 @@ Research Proposal Text:
 ---
 ${text.substring(0, CONFIG.TEXT_TRUNCATE_LIMIT * 2)} ${text.length > CONFIG.TEXT_TRUNCATE_LIMIT * 2 ? '...' : ''}
 
-Generate a ${pageLength}-page summary following the guidelines above.`;
+Generate a ${pageLength}-page summary at the ${techLevel.replace('-', ' ')} level following the guidelines above.`;
 }
 
 export const config = {

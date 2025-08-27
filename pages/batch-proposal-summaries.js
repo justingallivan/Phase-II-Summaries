@@ -15,6 +15,7 @@ export default function BatchProposalSummaries() {
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
   const [summaryLength, setSummaryLength] = useState(2); // Default to 2 pages
+  const [summaryLevel, setSummaryLevel] = useState('technical-non-expert'); // Default to technical for non-expert
 
   const handleFileSelect = (e) => {
     const selectedFiles = Array.from(e.target.files).filter(
@@ -138,7 +139,8 @@ export default function BatchProposalSummaries() {
         body: JSON.stringify({
           files: uploadedFiles,
           apiKey: apiKey,
-          summaryLength: summaryLength
+          summaryLength: summaryLength,
+          summaryLevel: summaryLevel
         }),
       });
 
@@ -222,7 +224,8 @@ export default function BatchProposalSummaries() {
     let content, filename;
     
     if (type === 'formatted') {
-      content = Object.values(results).map(r => r.formatted).join('\n\n---\n\n');
+      // Join summaries with pagebreak markers for markdown
+      content = Object.values(results).map(r => r.formatted).join('\n\n<div style="page-break-after: always;"></div>\n\n---\n\n');
       filename = `batch_summaries_${summaryLength}pages_${new Date().toISOString().split('T')[0]}.md`;
     } else {
       content = JSON.stringify(Object.values(results).map(r => r.structured), null, 2);
@@ -270,6 +273,21 @@ export default function BatchProposalSummaries() {
               <option value={3}>3 pages</option>
               <option value={4}>4 pages</option>
               <option value={5}>5 pages</option>
+            </select>
+          </label>
+        </div>
+
+        <div className={styles.lengthSelector}>
+          <label className={styles.lengthLabel}>
+            What level would you like the summary to be written?
+            <select 
+              value={summaryLevel} 
+              onChange={(e) => setSummaryLevel(e.target.value)}
+              className={styles.lengthDropdown}
+            >
+              <option value="non-technical">Non-technical</option>
+              <option value="technical-non-expert">Technical for a non-expert</option>
+              <option value="expert">Expert</option>
             </select>
           </label>
         </div>
@@ -371,7 +389,7 @@ export default function BatchProposalSummaries() {
             <div className={styles.markdownPreview}>
               <div 
                 dangerouslySetInnerHTML={{
-                  __html: convertMarkdownToHTML(Object.values(results).map(r => r.formatted).join('\n\n---\n\n'))
+                  __html: convertMarkdownToHTML(Object.values(results).map(r => r.formatted).join('\n\n<hr style="border: 2px dashed #ccc; margin: 40px 0; page-break-after: always;" />\n\n'))
                 }}
               />
             </div>
