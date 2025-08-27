@@ -2,10 +2,15 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  experimental: {
+    // Enable edge runtime for better performance with large files
+    runtime: 'nodejs',
+  },
   api: {
     bodyParser: {
-      sizeLimit: '50mb', // Increase the body size limit for large PDFs
+      sizeLimit: '500mb', // Much larger limit for PDFs
     },
+    responseLimit: false,
   },
 }
 

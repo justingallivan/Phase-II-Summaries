@@ -6,7 +6,8 @@ import { CONFIG, PROMPTS } from '../../lib/config';
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: CONFIG.PDF_SIZE_LIMIT,
+    fileSize: 500 * 1024 * 1024, // 500MB - much larger limit
+    fieldSize: 500 * 1024 * 1024,
   },
 });
 
@@ -340,5 +341,8 @@ function extractKeywords(text) {
 export const config = {
   api: {
     bodyParser: false,
+    responseLimit: false,
+    externalResolver: true,
   },
+  maxDuration: 300, // 5 minutes timeout for large files
 };
