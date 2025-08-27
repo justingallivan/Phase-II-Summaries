@@ -4,8 +4,6 @@ import styles from '../styles/Home.module.css';
 
 export default function Home() {
   const [files, setFiles] = useState([]);
-  const [uploadedFiles, setUploadedFiles] = useState([]);
-  const [uploading, setUploading] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
   const [apiKey, setApiKey] = useState('');
@@ -17,7 +15,6 @@ export default function Home() {
   const [currentQuestion, setCurrentQuestion] = useState('');
   const [isQAProcessing, setIsQAProcessing] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState({});
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
 
@@ -27,12 +24,10 @@ export default function Home() {
     );
     setFiles(selectedFiles);
     setResults(null);
-    setUploadedFiles([]);
   };
 
   const removeFile = (fileName) => {
     setFiles(files.filter(f => f.name !== fileName));
-    setUploadedFiles(uploadedFiles.filter(f => f.filename !== fileName));
     setResults(null);
   };
 
@@ -44,106 +39,31 @@ export default function Home() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const uploadFilesDirect = async () => {
-    if (files.length === 0) {
-      alert('Please select PDF files first');
-      return;
-    }
-
-    setUploading(true);
-    setUploadProgress({});
-    const uploaded = [];
-
-    try {
-      // Get blob token for direct uploads
-      const tokenResponse = await fetch('/api/blob-token', {
-        method: 'POST',
-      });
-
-      if (!tokenResponse.ok) {
-        throw new Error('Failed to get upload token');
-      }
-
-      const { token } = await tokenResponse.json();
-
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        
-        setUploadProgress(prev => ({
-          ...prev,
-          [file.name]: { status: 'uploading', progress: 0 }
-        }));
-
-        // Direct upload to Vercel Blob Storage
-        const filename = `${Date.now()}-${file.name}`;
-        
-        const directUploadResponse = await fetch(`https://blob.vercel-storage.com/${filename}`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': file.type,
-            'x-content-type': file.type,
-          },
-          body: file,
-        });
-
-        if (!directUploadResponse.ok) {
-          const errorText = await directUploadResponse.text();
-          throw new Error(`Direct upload failed for ${file.name}: ${directUploadResponse.status} - ${errorText}`);
-        }
-
-        const uploadData = await directUploadResponse.json();
-        
-        uploaded.push({
-          filename: file.name,
-          originalSize: file.size,
-          url: uploadData.url,
-          downloadUrl: uploadData.downloadUrl || uploadData.url,
-          blobSize: file.size
-        });
-
-        setUploadProgress(prev => ({
-          ...prev,
-          [file.name]: { status: 'completed', progress: 100 }
-        }));
-      }
-
-      setUploadedFiles(uploaded);
-      alert('All files uploaded successfully!');
-
-    } catch (error) {
-      console.error('Direct upload error:', error);
-      alert('Error uploading files: ' + error.message);
-    } finally {
-      setUploading(false);
-    }
-  };
-
   const processFiles = async () => {
     if (!apiKey) {
       setShowApiModal(true);
       return;
     }
 
-    if (uploadedFiles.length === 0) {
-      alert('Please upload files first');
+    if (files.length === 0) {
+      alert('Please select PDF files first');
       return;
     }
 
     setProcessing(true);
     setProgress(0);
-    setProgressText('Starting processing...');
+    setProgressText('Starting...');
 
     try {
-      const response = await fetch('/api/process-blob', {
+      const formData = new FormData();
+      files.forEach(file => {
+        formData.append('files', file);
+      });
+      formData.append('apiKey', apiKey);
+
+      const response = await fetch('/api/process', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          files: uploadedFiles,
-          apiKey: apiKey
-        }),
+        body: formData,
       });
 
       if (!response.ok) {
@@ -200,6 +120,7 @@ export default function Home() {
     setCurrentQuestion('');
     setIsQAProcessing(true);
 
+    // Add user question to messages
     const newMessages = [...qaMessages, { type: 'user', content: question }];
     setQAMessages(newMessages);
 
@@ -223,6 +144,7 @@ export default function Home() {
 
       const data = await response.json();
       
+      // Add AI response to messages
       setQAMessages(prev => [...prev, { type: 'assistant', content: data.answer }]);
 
     } catch (error) {
@@ -354,22 +276,32 @@ export default function Home() {
 
   const convertMarkdownToHTML = (markdown) => {
     let html = markdown
+      // Headers
       .replace(/^### (.*$)/gim, '<h3>$1</h3>')
       .replace(/^## (.*$)/gim, '<h2>$1</h2>')
       .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+      // Bold text
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      // Underlined text
       .replace(/<u>(.*?)<\/u>/g, '<u>$1</u>')
+      // Horizontal rules (before line breaks)
       .replace(/^---$/gm, '<hr>')
+      // Bullet points - convert to list items first
       .replace(/^• (.*$)/gm, '<li>$1</li>');
 
+    // Wrap consecutive list items in ul tags
     html = html.replace(/(<li>.*?<\/li>(\n<li>.*?<\/li>)*)/g, '<ul>$1</ul>');
     
+    // Convert double line breaks to paragraphs
     html = html.replace(/\n\n+/g, '</p><p>');
     
+    // Single line breaks to <br>
     html = html.replace(/\n/g, '<br>');
     
+    // Wrap everything in paragraphs (except headers, lists, hrs)
     html = '<p>' + html + '</p>';
     
+    // Clean up empty paragraphs and fix paragraph wrapping around block elements
     html = html
       .replace(/<p>(<h[1-3]>.*?<\/h[1-3]>)<\/p>/g, '$1')
       .replace(/<p>(<ul>.*?<\/ul>)<\/p>/g, '$1')
@@ -418,7 +350,7 @@ export default function Home() {
     <div className={styles.container}>
       <Head>
         <title>Research Proposal Summarizer</title>
-        <meta name="description" content="Generate standardized summaries from PDF research proposals using Claude AI" />
+        <meta name="description" content="Generate standardized summaries from PDF research proposals" />
       </Head>
 
       <div className={styles.header}>
@@ -430,7 +362,7 @@ export default function Home() {
         <div className={styles.uploadArea}>
           <div className={styles.uploadIcon}>📄</div>
           <div className={styles.uploadText}>Select PDF files to analyze</div>
-          <div className={styles.uploadSubtext}>Multiple files supported • PDF format only • Up to 500MB per file</div>
+          <div className={styles.uploadSubtext}>Multiple files supported • PDF format only</div>
           <input
             type="file"
             accept=".pdf"
@@ -449,18 +381,11 @@ export default function Home() {
                   <div>
                     <div className={styles.fileName}>{file.name}</div>
                     <div className={styles.fileSize}>{formatFileSize(file.size)}</div>
-                    {uploadProgress[file.name] && (
-                      <div className={styles.uploadStatus}>
-                        {uploadProgress[file.name].status === 'uploading' ? '⬆️ Uploading...' : 
-                         uploadProgress[file.name].status === 'completed' ? '✅ Uploaded' : ''}
-                      </div>
-                    )}
                   </div>
                 </div>
                 <button
                   onClick={() => removeFile(file.name)}
                   className={styles.removeBtn}
-                  disabled={uploading}
                 >
                   Remove
                 </button>
@@ -468,44 +393,29 @@ export default function Home() {
             ))}
           </div>
         )}
+      </div>
 
-        {files.length > 0 && (
-          <div className={styles.processSection}>
-            <button
-              onClick={uploadFilesDirect}
-              disabled={uploading || uploadedFiles.length === files.length}
-              className={`${styles.processBtn} ${uploading ? styles.processing : ''}`}
-            >
-              {uploading ? 'Uploading...' : 
-               uploadedFiles.length === files.length ? '✅ Files Uploaded' : 'Upload Files'}
-            </button>
+      <div className={styles.processSection}>
+        <button
+          onClick={processFiles}
+          disabled={files.length === 0 || processing}
+          className={`${styles.processBtn} ${processing ? styles.processing : ''}`}
+        >
+          {processing ? 'Processing...' : 'Process Proposals'}
+        </button>
+
+        {processing && (
+          <div className={styles.progressSection}>
+            <div className={styles.progressBar}>
+              <div 
+                className={styles.progressFill}
+                style={{ width: `${progress}%` }}
+              ></div>
+            </div>
+            <div className={styles.progressText}>{progressText}</div>
           </div>
         )}
       </div>
-
-      {uploadedFiles.length > 0 && (
-        <div className={styles.processSection}>
-          <button
-            onClick={processFiles}
-            disabled={processing}
-            className={`${styles.processBtn} ${processing ? styles.processing : ''}`}
-          >
-            {processing ? 'Processing...' : 'Process Proposals'}
-          </button>
-
-          {processing && (
-            <div className={styles.progressSection}>
-              <div className={styles.progressBar}>
-                <div 
-                  className={styles.progressFill}
-                  style={{ width: `${progress}%` }}
-                ></div>
-              </div>
-              <div className={styles.progressText}>{progressText}</div>
-            </div>
-          )}
-        </div>
-      )}
 
       {results && (
         <div className={styles.resultsSection}>
