@@ -40,7 +40,7 @@ This is a multi-application document processing system designed to handle variou
 ## Current Status
 
 ### ✅ Completed
-- Original proposal-summarizer app fully functional
+- Original Phase II writeup draft app fully functional
 - Shared directory structure created
 - Core shared utilities extracted:
   - `claudeClient.js` - Standardized Claude API client
@@ -51,7 +51,7 @@ This is a multi-application document processing system designed to handle variou
 
 ### 🚧 In Progress
 - Extracting reusable React components
-- Refactoring proposal-summarizer to use shared code
+- Refactoring Phase II writeup draft app to use shared code
 
 ### 📋 To Do
 - Create shared React components
@@ -141,7 +141,7 @@ npm run lint
 - Streaming responses
 
 ### App-Specific Features
-- **proposal-summarizer**: Research proposal summaries, Q&A, refinement
+- **Phase II writeup draft**: Research proposal writeup drafts, Q&A, refinement
 - **grant-reviewer**: Automated grant review scoring (planned)
 - **literature-analyzer**: Literature review synthesis (planned)
 

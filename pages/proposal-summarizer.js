@@ -419,8 +419,8 @@ export default function Home() {
   return (
     <div className={styles.container}>
       <Head>
-        <title>Phase II Research Proposal Summarizer</title>
-        <meta name="description" content="Generate standardized summaries from PDF research proposals using Claude AI" />
+        <title>Create Phase II Writeup Draft</title>
+        <meta name="description" content="Generate standardized writeup drafts from PDF research proposals using Claude AI" />
       </Head>
 
       <div className={styles.navigation}>
@@ -430,8 +430,8 @@ export default function Home() {
       </div>
 
       <div className={styles.header}>
-        <h1>🔬 Phase II Research Proposal Summarizer</h1>
-        <p>Upload PDF proposals to generate standardized summaries with structured data extraction</p>
+        <h1>🔬 Create Phase II Writeup Draft</h1>
+        <p>Upload PDF proposals to generate standardized writeup drafts with structured data extraction</p>
       </div>
 
       <div className={styles.uploadSection}>

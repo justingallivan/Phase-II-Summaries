@@ -1,6 +1,6 @@
-# Research Proposal Summarizer
+# Create Phase II Writeup Draft
 
-A Next.js application that automatically generates standardized summaries from PDF research proposals using Claude AI.
+A Next.js application that automatically generates standardized writeup drafts from PDF research proposals using Claude AI.
 
 ## Features
 
@@ -29,7 +29,7 @@ Add this to your Vercel environment variables:
 1. Upload PDF research proposals
 2. Enter your Claude API key when prompted
 3. Click "Process Proposals"
-4. Download formatted summaries and structured data
+4. Download formatted writeup drafts and structured data
 
 ## Deployment
 
