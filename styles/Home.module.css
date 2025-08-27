@@ -5,6 +5,29 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+.navigation {
+  margin-bottom: 20px;
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  padding: 12px 20px;
+  background: #f8fafc;
+  color: #475569;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border: 1px solid #e2e8f0;
+}
+
+.backLink:hover {
+  background: #e2e8f0;
+  color: #334155;
+  transform: translateX(-2px);
+}
+
 .header {
   text-align: center;
   margin-bottom: 40px;

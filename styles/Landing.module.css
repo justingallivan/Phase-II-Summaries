@@ -1,0 +1,297 @@
+.container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.header {
+  padding: 4rem 2rem 3rem;
+  text-align: center;
+  color: white;
+}
+
+.headerContent {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.title {
+  font-size: 3.5rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.subtitle {
+  font-size: 1.25rem;
+  opacity: 0.95;
+  line-height: 1.6;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.filterSection {
+  padding: 0 2rem 2rem;
+  display: flex;
+  justify-content: center;
+}
+
+.filterButtons {
+  display: flex;
+  gap: 0.5rem;
+  background: rgba(255,255,255,0.1);
+  padding: 0.5rem;
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+}
+
+.filterBtn {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  background: transparent;
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.filterBtn:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+.filterBtn.active {
+  background: white;
+  color: #667eea;
+  font-weight: 600;
+}
+
+.appsGrid {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 2rem 4rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 2rem;
+}
+
+.cardLink {
+  text-decoration: none;
+  color: inherit;
+}
+
+.appCard {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+  transition: all 0.3s ease;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.appCard.active:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.15);
+}
+
+.appCard.disabled {
+  opacity: 0.7;
+  position: relative;
+}
+
+.appCard.disabled::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 49%, rgba(255,255,255,0.8) 50%, transparent 51%);
+  background-size: 20px 20px;
+  pointer-events: none;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.appIcon {
+  font-size: 2.5rem;
+  flex-shrink: 0;
+}
+
+.cardHeaderText {
+  flex: 1;
+}
+
+.appTitle {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem 0;
+  color: #1a1a1a;
+}
+
+.statusBadge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.statusBadge.active {
+  background: #10b981;
+  color: white;
+}
+
+.statusBadge.coming-soon {
+  background: #f59e0b;
+  color: white;
+}
+
+.appDescription {
+  color: #666;
+  line-height: 1.6;
+  margin-bottom: 1.5rem;
+  flex-grow: 1;
+}
+
+.featureList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.feature {
+  background: #f3f4f6;
+  color: #374151;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.cardFooter {
+  margin-top: auto;
+}
+
+.launchButton {
+  background: #667eea;
+  color: white;
+  padding: 0.875rem 1.5rem;
+  border-radius: 8px;
+  text-align: center;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.launchButton:hover {
+  background: #5a67d8;
+}
+
+.comingSoonButton {
+  background: #f3f4f6;
+  color: #9ca3af;
+  padding: 0.875rem 1.5rem;
+  border-radius: 8px;
+  text-align: center;
+  font-weight: 600;
+  cursor: not-allowed;
+}
+
+.footer {
+  background: rgba(0,0,0,0.1);
+  color: white;
+  padding: 2rem;
+  text-align: center;
+  margin-top: auto;
+}
+
+.footerContent {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.footerContent p {
+  margin-bottom: 1rem;
+  opacity: 0.8;
+}
+
+.footerLinks {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+}
+
+.footerLinks a {
+  color: white;
+  text-decoration: none;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.footerLinks a:hover {
+  opacity: 1;
+}
+
+.footerLinks span {
+  opacity: 0.5;
+}
+
+@media (max-width: 768px) {
+  .title {
+    font-size: 2.5rem;
+  }
+  
+  .subtitle {
+    font-size: 1.1rem;
+  }
+  
+  .header {
+    padding: 3rem 1rem 2rem;
+  }
+  
+  .appsGrid {
+    padding: 0 1rem 3rem;
+    grid-template-columns: 1fr;
+  }
+  
+  .filterButtons {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .filterBtn {
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .appCard {
+    padding: 1.5rem;
+  }
+  
+  .cardHeader {
+    flex-direction: column;
+    text-align: center;
+    gap: 0.5rem;
+  }
+  
+  .appIcon {
+    align-self: center;
+  }
+}
