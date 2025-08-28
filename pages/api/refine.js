@@ -1,4 +1,27 @@
-import { CONFIG, PROMPTS } from '../../lib/config';
+import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
+import { BASE_CONFIG } from '../../shared/config/baseConfig';
+import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
+import { applySecurityMiddleware } from '../../shared/api/middleware/security';
+import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
+
+// Refinement prompt template
+const REFINEMENT_PROMPT = (currentSummary, feedback) => `Please refine the following research proposal summary based on the specific feedback provided. Maintain the same structure and level of detail, but improve the content according to the feedback.
+
+**Original Summary:**
+${currentSummary}
+
+**Feedback for improvement:**
+${feedback}
+
+**Instructions:**
+- Keep the same overall structure and formatting
+- Use proper markdown formatting: <u>underlines</u> for names, **bold** for emphasis, *italics* for secondary emphasis
+- Incorporate the feedback to improve clarity, accuracy, or completeness
+- Maintain the professional tone and technical accuracy
+- If the feedback requests specific changes, implement them while keeping the rest of the summary intact
+- If the feedback is unclear or contradictory, make reasonable improvements based on your best interpretation
+
+Please provide the refined summary:`;
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -6,153 +29,69 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { currentResults, feedback, apiKey } = req.body;
-
-    if (!apiKey) {
-      return res.status(400).json({ error: 'API key required' });
+    // Apply security middleware
+    const securityCheck = await applySecurityMiddleware(req, res);
+    if (!securityCheck) {
+      return;
     }
 
-    if (!currentResults || !feedback) {
-      return res.status(400).json({ error: 'Current results and feedback required' });
+    // Apply rate limiting
+    const rateLimitCheck = await nextRateLimiter({ 
+      max: 30, 
+      windowMs: 60000 
+    })(req, res);
+    if (!rateLimitCheck) {
+      return;
     }
 
-    // Set headers for streaming response
-    res.setHeader('Content-Type', 'text/plain');
-    res.setHeader('Transfer-Encoding', 'chunked');
+    const { currentSummary, feedback, apiKey: clientApiKey } = req.body;
 
-    const refinedResults = {};
-    const resultEntries = Object.entries(currentResults);
+    if (!currentSummary || !feedback) {
+      return res.status(400).json({ 
+        error: 'Current summary and feedback required',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Get API key (prefer server-side, fall back to client)
+    const apiKeyManager = getApiKeyManager();
+    let apiKey;
     
-    for (let i = 0; i < resultEntries.length; i++) {
-      const [filename, result] = resultEntries[i];
-      const progress = Math.round((i / resultEntries.length) * 90);
-      
-      // Send progress update
-      res.write(`data: ${JSON.stringify({
-        progress,
-        message: `Refining ${filename}...`
-      })}\n\n`);
-
-      try {
-        // Generate refined summary
-        const refined = await refineWithFeedback(result.formatted, feedback, filename, apiKey);
-        refinedResults[filename] = {
-          formatted: refined.formatted,
-          structured: result.structured // Keep the same structured data
-        };
-
-      } catch (error) {
-        console.error(`Error refining ${filename}:`, error);
-        refinedResults[filename] = result; // Keep original if refinement fails
-      }
+    try {
+      apiKey = apiKeyManager.selectApiKey(clientApiKey || req.apiKey);
+    } catch (error) {
+      return res.status(401).json({ 
+        error: BASE_CONFIG.ERROR_MESSAGES.NO_API_KEY,
+        timestamp: new Date().toISOString()
+      });
     }
 
-    // Send final results
-    res.write(`data: ${JSON.stringify({
-      progress: 100,
-      message: 'Refinement complete!',
-      results: refinedResults
-    })}\n\n`);
+    // Initialize Claude client
+    const claudeClient = createClaudeClient(apiKey, {
+      model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+      defaultMaxTokens: 3000,
+      defaultTemperature: 0.3,
+    });
 
-    res.end();
+    // Generate refined summary
+    const prompt = REFINEMENT_PROMPT(currentSummary, feedback);
+    const refinedSummary = await claudeClient.sendMessage(prompt, {
+      maxTokens: 3000,
+      temperature: 0.3
+    });
+    
+    res.status(200).json({ 
+      refinedSummary,
+      timestamp: new Date().toISOString()
+    });
 
   } catch (error) {
     console.error('Refinement API error:', error);
-    res.status(500).json({ error: error.message });
-  }
-}
-
-async function refineWithFeedback(currentSummary, feedback, filename, apiKey) {
-  try {
-    const refinementPrompt = PROMPTS.REFINEMENT(currentSummary, feedback);
-
-    const response = await fetch(CONFIG.CLAUDE_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey.trim(),
-        'anthropic-version': CONFIG.ANTHROPIC_VERSION
-      },
-      body: JSON.stringify({
-        model: CONFIG.CLAUDE_MODEL,
-        max_tokens: CONFIG.REFINEMENT_MAX_TOKENS,
-        temperature: CONFIG.REFINEMENT_TEMPERATURE,
-        messages: [{
-          role: 'user',
-          content: refinementPrompt
-        }]
-      })
+    res.status(500).json({ 
+      error: BASE_CONFIG.ERROR_MESSAGES.PROCESSING_FAILED,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Claude API error ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    const refinedText = data.content[0].text;
-
-    // Enhance formatting
-    const institution = extractInstitutionFromFilename(filename) || 'Research Institution';
-    const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
-    
-    let formatted = `# ${institution}\n`;
-    formatted += `Phase II Review: ${date}\n\n`;
-    formatted += `**Filename:** ${filename}\n`;
-    formatted += `**Date Processed:** ${new Date().toLocaleDateString()}\n\n`;
-    formatted += '---\n\n';
-    
-    // Process the summary with proper section headers
-    let processedSummary = refinedText
-      .replace(/\*\*Executive Summary\*\*/g, '## Executive Summary')
-      .replace(/\*\*Background & Impact\*\*/g, '## Background & Impact')
-      .replace(/\*\*Methodology\*\*/g, '## Methodology') 
-      .replace(/\*\*Personnel\*\*/g, '## Personnel')
-      .replace(/\*\*Justification for Keck Funding\*\*/g, '## Justification for Keck Funding');
-    
-    return {
-      formatted: formatted + processedSummary
-    };
-
-  } catch (error) {
-    console.error('Refinement error:', error);
-    throw new Error(`Failed to refine summary: ${error.message}`);
   }
 }
 
-function extractInstitutionFromFilename(filename) {
-  if (!filename) return 'Research Institution';
-  
-  // Remove file extension and common suffixes
-  const cleanName = filename
-    .replace(/\.(pdf|PDF)$/, '')
-    .replace(/_SE_Phase_II_Staff_Version$/, '')
-    .replace(/_Phase_II.*$/, '')
-    .replace(/_Staff_Version$/, '')
-    .replace(/_Final$/, '')
-    .replace(/_Draft$/, '');
-  
-  // Look for institution patterns in filename
-  const patterns = [
-    // Specific institutions first (more precise)
-    /California Institute of Technology/i,
-    /Massachusetts Institute of Technology/i,
-    /University of California[^_]*/i,
-    /University of [A-Za-z\s]+/i,
-    /[A-Za-z\s]+ University/i,
-    /[A-Za-z\s]+ Institute of Technology/i,
-    /[A-Za-z\s]+ College/i,
-    /[A-Za-z\s]+ State University/i,
-    /[A-Za-z\s]+ Medical Center/i,
-    /[A-Za-z\s]+ Research Institute/i
-  ];
-  
-  for (const pattern of patterns) {
-    const match = cleanName.match(pattern);
-    if (match) {
-      return match[0].trim();
-    }
-  }
-  
-  return 'Research Institution';
-}

@@ -1,242 +1,162 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import FileUploaderSimple from '../shared/components/FileUploaderSimple';
+import ApiKeyManager from '../shared/components/ApiKeyManager';
 import styles from '../styles/Home.module.css';
 
 export default function BatchProposalSummaries() {
-  const [files, setFiles] = useState([]);
-  const [uploadedFiles, setUploadedFiles] = useState([]);
-  const [uploading, setUploading] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
   const [apiKey, setApiKey] = useState('');
-  const [showApiModal, setShowApiModal] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState({});
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
-  const [summaryLength, setSummaryLength] = useState(2); // Default to 2 pages
-  const [summaryLevel, setSummaryLevel] = useState('technical-non-expert'); // Default to technical for non-expert
+  const [summaryLength, setSummaryLength] = useState(2);
+  const [summaryLevel, setSummaryLevel] = useState('technical-non-expert');
+  const [error, setError] = useState(null);
 
-  const handleFileSelect = (e) => {
-    const selectedFiles = Array.from(e.target.files).filter(
-      file => file.type === 'application/pdf'
-    );
-    setFiles(selectedFiles);
+  const handleApiKeySet = useCallback((key) => {
+    setApiKey(key);
+    setError(null);
+  }, []);
+
+  const handleFilesSelected = useCallback((files) => {
+    setSelectedFiles(files);
+    setError(null);
     setResults(null);
-    setUploadedFiles([]);
-  };
+  }, []);
 
-  const removeFile = (fileName) => {
-    setFiles(files.filter(f => f.name !== fileName));
-    setUploadedFiles(uploadedFiles.filter(f => f.filename !== fileName));
-    setResults(null);
-  };
-
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const uploadFiles = async () => {
-    if (files.length === 0) {
-      alert('Please select PDF files first');
-      return;
-    }
-
-    setUploading(true);
-    setUploadProgress({});
-    const uploaded = [];
-
-    try {
-      // Get blob token for direct uploads
-      const tokenResponse = await fetch('/api/blob-token', {
-        method: 'POST',
-      });
-
-      if (!tokenResponse.ok) {
-        throw new Error('Failed to get upload token');
-      }
-
-      const { token } = await tokenResponse.json();
-
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        
-        setUploadProgress(prev => ({
-          ...prev,
-          [file.name]: { status: 'uploading', progress: 0 }
-        }));
-
-        // Direct upload to Vercel Blob Storage
-        const filename = `${Date.now()}-${file.name}`;
-        
-        const directUploadResponse = await fetch(`https://blob.vercel-storage.com/${filename}`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': file.type,
-            'x-content-type': file.type,
-          },
-          body: file,
-        });
-
-        if (!directUploadResponse.ok) {
-          const errorText = await directUploadResponse.text();
-          throw new Error(`Direct upload failed for ${file.name}: ${directUploadResponse.status} - ${errorText}`);
-        }
-
-        const uploadData = await directUploadResponse.json();
-        
-        uploaded.push({
-          filename: file.name,
-          originalSize: file.size,
-          url: uploadData.url,
-          downloadUrl: uploadData.downloadUrl || uploadData.url,
-          blobSize: file.size
-        });
-
-        setUploadProgress(prev => ({
-          ...prev,
-          [file.name]: { status: 'completed', progress: 100 }
-        }));
-      }
-
-      setUploadedFiles(uploaded);
-      // alert('All files uploaded successfully!'); // Commented out for cleaner UI
-
-    } catch (error) {
-      console.error('Direct upload error:', error);
-      alert('Error uploading files: ' + error.message);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const processFiles = async () => {
+  const processBatch = async () => {
     if (!apiKey) {
-      setShowApiModal(true);
+      setError('Please provide an API key');
       return;
     }
 
-    if (uploadedFiles.length === 0) {
-      alert('Please upload files first');
+    if (selectedFiles.length === 0) {
+      setError('Please select PDF files first');
       return;
     }
 
     setProcessing(true);
     setProgress(0);
     setProgressText('Starting batch processing...');
+    setError(null);
 
     try {
-      const response = await fetch('/api/process-batch', {
+      // Convert files to base64
+      const filesWithContent = await Promise.all(
+        selectedFiles.map(async (file) => {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve({
+                filename: file.name,
+                content: reader.result.split(',')[1],
+                size: file.size,
+                type: file.type
+              });
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+        })
+      );
+
+      const response = await fetch('/api/process-batch-simple', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-API-Key': apiKey
         },
         body: JSON.stringify({
-          files: uploadedFiles,
-          apiKey: apiKey,
-          summaryLength: summaryLength,
-          summaryLevel: summaryLevel
-        }),
+          files: filesWithContent,
+          summaryLength,
+          summaryLevel,
+          apiKey
+        })
       });
 
       if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
+      // Handle streaming response
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let finalResults = {};
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
+        const lines = buffer.split('\n\n');
         buffer = lines.pop();
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              const data = JSON.parse(line.slice(6));
+              const data = JSON.parse(line.substring(6));
+              
               if (data.progress !== undefined) {
                 setProgress(data.progress);
-                setProgressText(data.message || '');
               }
+              
+              if (data.message) {
+                setProgressText(data.message);
+              }
+              
               if (data.results) {
-                finalResults = data.results;
+                setResults(data.results);
               }
             } catch (e) {
-              console.error('Error parsing progress:', e);
+              console.error('Failed to parse streaming data:', e);
             }
           }
         }
       }
 
-      setResults(finalResults);
-      setProgress(100);
       setProgressText('Batch processing complete!');
+      setSelectedFiles([]);
 
     } catch (error) {
       console.error('Processing error:', error);
-      alert('Error processing files: ' + error.message);
+      setError(error.message || 'Failed to process batch');
     } finally {
       setProcessing(false);
     }
   };
 
-  const convertMarkdownToHTML = (markdown) => {
-    let html = markdown
-      .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-      .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-      .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/<u>(.*?)<\/u>/g, '<u>$1</u>')
-      .replace(/^---$/gm, '<hr>')
-      .replace(/^• (.*$)/gm, '<li>$1</li>');
+  const exportAllAsMarkdown = () => {
+    if (!results || Object.keys(results).length === 0) return;
 
-    html = html.replace(/(<li>.*?<\/li>(\n<li>.*?<\/li>)*)/g, '<ul>$1</ul>');
-    
-    html = html.replace(/\n\n+/g, '</p><p>');
-    
-    html = html.replace(/\n/g, '<br>');
-    
-    html = '<p>' + html + '</p>';
-    
-    html = html
-      .replace(/<p>(<h[1-3]>.*?<\/h[1-3]>)<\/p>/g, '$1')
-      .replace(/<p>(<ul>.*?<\/ul>)<\/p>/g, '$1')
-      .replace(/<p>(<hr>)<\/p>/g, '$1')
-      .replace(/<p><\/p>/g, '');
-    
-    return html;
-  };
+    let content = `# Batch Proposal Summaries\n\n`;
+    content += `Generated on: ${new Date().toLocaleDateString()}\n`;
+    content += `Summary Length: ${summaryLength} pages\n`;
+    content += `Technical Level: ${summaryLevel}\n`;
+    content += `Documents Processed: ${Object.keys(results).length}\n\n`;
+    content += `---\n\n`;
 
-  const exportData = (type) => {
-    if (!results) return;
+    Object.entries(results).forEach(([filename, result], index) => {
+      content += `# ${index + 1}. ${filename}\n\n`;
+      if (result.metadata?.error) {
+        content += `❌ **Error**: ${result.metadata.errorMessage}\n\n`;
+      } else {
+        content += `${result.summary}\n\n`;
+        if (result.metadata) {
+          content += `**Document Info**: ${result.metadata.pages || 'N/A'} pages, ${result.metadata.wordCount || 'N/A'} words\n\n`;
+        }
+      }
+      content += `---\n\n`;
+    });
 
-    let content, filename;
-    
-    if (type === 'formatted') {
-      // Join summaries with pagebreak markers for markdown
-      content = Object.values(results).map(r => r.formatted).join('\n\n<div style="page-break-after: always;"></div>\n\n---\n\n');
-      filename = `batch_summaries_${summaryLength}pages_${new Date().toISOString().split('T')[0]}.md`;
-    } else {
-      content = JSON.stringify(Object.values(results).map(r => r.structured), null, 2);
-      filename = `batch_summaries_data_${new Date().toISOString().split('T')[0]}.json`;
-    }
-
-    const blob = new Blob([content], { type: 'text/plain' });
+    const blob = new Blob([content], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = filename;
+    a.download = `batch_summaries_${new Date().toISOString().split('T')[0]}.md`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -245,189 +165,418 @@ export default function BatchProposalSummaries() {
     <div className={styles.container}>
       <Head>
         <title>Batch Proposal Summaries</title>
-        <meta name="description" content="Generate batch summaries of multiple research proposals with customizable length" />
+        <meta name="description" content="Process multiple proposals at once with customizable summary length" />
+        <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      <div className={styles.navigation}>
-        <Link href="/" className={styles.backLink}>
-          ← Back to Apps
-        </Link>
-      </div>
-
-      <div className={styles.header}>
-        <h1>📚 Batch Proposal Summaries</h1>
-        <p>Process multiple PDF proposals at once with customizable summary length</p>
-      </div>
-
-      <div className={styles.uploadSection}>
-        <div className={styles.lengthSelector}>
-          <label className={styles.lengthLabel}>
-            How many pages would you like the summaries to be?
-            <select 
-              value={summaryLength} 
-              onChange={(e) => setSummaryLength(Number(e.target.value))}
-              className={styles.lengthDropdown}
-            >
-              <option value={1}>1 page</option>
-              <option value={2}>2 pages</option>
-              <option value={3}>3 pages</option>
-              <option value={4}>4 pages</option>
-              <option value={5}>5 pages</option>
-            </select>
-          </label>
+      <main className={styles.main}>
+        <div className={styles.header}>
+          <Link href="/" className={styles.backButton}>
+            ← Back to Apps
+          </Link>
+          <h1 className={styles.title}>
+            📚 Batch Proposal Summaries
+          </h1>
+          <p className={styles.description}>
+            Process multiple research proposals simultaneously with customizable summary length and technical level
+          </p>
         </div>
 
-        <div className={styles.lengthSelector}>
-          <label className={styles.lengthLabel}>
-            What level would you like the summary to be written?
-            <select 
-              value={summaryLevel} 
-              onChange={(e) => setSummaryLevel(e.target.value)}
-              className={styles.lengthDropdown}
-            >
-              <option value="non-technical">Non-technical</option>
-              <option value="technical-non-expert">Technical for a non-expert</option>
-              <option value="expert">Expert</option>
-            </select>
-          </label>
-        </div>
-
-        <div className={styles.uploadArea}>
-          <div className={styles.uploadIcon}>📄</div>
-          <div className={styles.uploadText}>Select multiple PDF files to process</div>
-          <div className={styles.uploadSubtext}>Batch processing • PDF format only • Up to 500MB per file</div>
-          <input
-            type="file"
-            accept=".pdf"
-            multiple
-            onChange={handleFileSelect}
-            className={styles.fileInput}
+        <div className={styles.content}>
+          <ApiKeyManager 
+            onApiKeySet={handleApiKeySet}
+            required={true}
           />
-        </div>
 
-        {files.length > 0 && (
-          <div className={styles.fileList}>
-            {files.map((file, index) => (
-              <div key={index} className={styles.fileItem}>
-                <div className={styles.fileInfo}>
-                  <span className={styles.fileIcon}>📄</span>
-                  <div>
-                    <div className={styles.fileName}>{file.name}</div>
-                    <div className={styles.fileSize}>{formatFileSize(file.size)}</div>
-                    {uploadProgress[file.name] && (
-                      <div className={styles.uploadStatus}>
-                        {uploadProgress[file.name].status === 'uploading' ? '⬆️ Uploading...' : 
-                         uploadProgress[file.name].status === 'completed' ? '✅ Uploaded' : ''}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={() => removeFile(file.name)}
-                  className={styles.removeBtn}
-                  disabled={uploading}
+          {error && (
+            <div className={styles.errorBox}>
+              <span className={styles.errorIcon}>⚠️</span>
+              <span className={styles.errorText}>{error}</span>
+            </div>
+          )}
+
+          <div className={styles.configSection}>
+            <h2>⚙️ Summary Configuration</h2>
+            <div className={styles.configGrid}>
+              <div className={styles.configItem}>
+                <label htmlFor="summaryLength" className={styles.configLabel}>
+                  Summary Length
+                </label>
+                <select
+                  id="summaryLength"
+                  value={summaryLength}
+                  onChange={(e) => setSummaryLength(Number(e.target.value))}
+                  className={styles.configSelect}
+                  disabled={processing}
                 >
-                  Remove
-                </button>
+                  <option value={1}>1 page (concise)</option>
+                  <option value={2}>2 pages (standard)</option>
+                  <option value={3}>3 pages (detailed)</option>
+                  <option value={4}>4 pages (comprehensive)</option>
+                  <option value={5}>5 pages (extensive)</option>
+                </select>
               </div>
-            ))}
-          </div>
-        )}
 
-        {files.length > 0 && (
-          <div className={styles.processSection}>
-            <button
-              onClick={uploadFiles}
-              disabled={uploading || uploadedFiles.length === files.length}
-              className={`${styles.processBtn} ${uploading ? styles.processing : ''}`}
-            >
-              {uploading ? 'Uploading...' : 
-               uploadedFiles.length === files.length ? '✅ Files Uploaded' : 'Upload Files'}
-            </button>
+              <div className={styles.configItem}>
+                <label htmlFor="summaryLevel" className={styles.configLabel}>
+                  Technical Level
+                </label>
+                <select
+                  id="summaryLevel"
+                  value={summaryLevel}
+                  onChange={(e) => setSummaryLevel(e.target.value)}
+                  className={styles.configSelect}
+                  disabled={processing}
+                >
+                  <option value="general-audience">General Audience</option>
+                  <option value="technical-non-expert">Technical (Non-Expert)</option>
+                  <option value="technical-expert">Technical (Expert)</option>
+                  <option value="academic">Academic/Scientific</option>
+                </select>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
 
-      {uploadedFiles.length > 0 && (
-        <div className={styles.processSection}>
-          <button
-            onClick={processFiles}
-            disabled={processing}
-            className={`${styles.processBtn} ${processing ? styles.processing : ''}`}
-          >
-            {processing ? 'Processing Batch...' : `Generate ${summaryLength}-Page Summaries`}
-          </button>
+          <div className={styles.uploadSection}>
+            <h2>📁 Upload Proposals</h2>
+            <FileUploaderSimple
+              onFilesSelected={handleFilesSelected}
+              multiple={true}
+              accept=".pdf"
+              maxSize={10 * 1024 * 1024}
+            />
+          </div>
+
+          {selectedFiles.length > 0 && !processing && !results && (
+            <div className={styles.readySection}>
+              <h3>Ready to Process</h3>
+              <p>
+                {selectedFiles.length} proposal{selectedFiles.length > 1 ? 's' : ''} ready for batch processing
+                <br />
+                Summary: {summaryLength} page{summaryLength > 1 ? 's' : ''} • Level: {summaryLevel.replace('-', ' ')}
+              </p>
+              <button
+                onClick={processBatch}
+                className={styles.processButton}
+              >
+                🚀 Process Batch
+              </button>
+            </div>
+          )}
 
           {processing && (
-            <div className={styles.progressSection}>
-              <div className={styles.progressBar}>
-                <div 
-                  className={styles.progressFill}
-                  style={{ width: `${progress}%` }}
-                ></div>
+            <div className={styles.processingSection}>
+              <div className={styles.processingHeader}>
+                <div className={styles.spinner}></div>
+                <span>{progressText}</span>
               </div>
-              <div className={styles.progressText}>{progressText}</div>
+              <div className={styles.progressBarContainer}>
+                <div 
+                  className={styles.progressBar}
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <div className={styles.progressPercent}>{progress}%</div>
+            </div>
+          )}
+
+          {results && (
+            <div className={styles.resultsSection}>
+              <div className={styles.resultsHeader}>
+                <h2>📄 Batch Results</h2>
+                <button
+                  onClick={exportAllAsMarkdown}
+                  className={styles.exportButton}
+                >
+                  📝 Export All as Markdown
+                </button>
+              </div>
+              
+              <div className={styles.resultsSummary}>
+                <p>
+                  Processed {Object.keys(results).length} document{Object.keys(results).length > 1 ? 's' : ''} • 
+                  {Object.values(results).filter(r => r.metadata?.error).length} error{Object.values(results).filter(r => r.metadata?.error).length !== 1 ? 's' : ''}
+                </p>
+              </div>
+
+              <div className={styles.resultsGrid}>
+                {Object.entries(results).map(([filename, result], index) => (
+                  <div key={filename} className={styles.resultCard}>
+                    <div className={styles.cardHeader}>
+                      <h3 className={styles.cardTitle}>
+                        {index + 1}. {filename}
+                      </h3>
+                      {result.metadata?.error && (
+                        <span className={styles.errorBadge}>❌ Error</span>
+                      )}
+                    </div>
+                    
+                    <div className={styles.cardContent}>
+                      {result.metadata?.error ? (
+                        <p className={styles.errorText}>
+                          {result.metadata.errorMessage}
+                        </p>
+                      ) : (
+                        <>
+                          <div className={styles.summaryText}>
+                            {result.summary?.split('\n').slice(0, 5).map((line, i) => (
+                              <p key={i}>{line}</p>
+                            ))}
+                            {result.summary?.split('\n').length > 5 && (
+                              <p><em>... (truncated in preview)</em></p>
+                            )}
+                          </div>
+                          
+                          {result.metadata && (
+                            <div className={styles.metadata}>
+                              <small>
+                                {result.metadata.pages && `${result.metadata.pages} pages • `}
+                                {result.metadata.wordCount && `${result.metadata.wordCount.toLocaleString()} words`}
+                              </small>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {results && !processing && (
+            <div className={styles.actionButtons}>
+              <button
+                onClick={() => {
+                  setResults(null);
+                  setProgress(0);
+                  setProgressText('');
+                }}
+                className={styles.newBatchButton}
+              >
+                📚 New Batch
+              </button>
             </div>
           )}
         </div>
-      )}
+      </main>
 
-      {results && (
-        <div className={styles.resultsSection}>
-          <h3>Batch Results ({summaryLength}-page summaries)</h3>
-          <div className={styles.exportButtons}>
-            <button onClick={() => exportData('formatted')} className={styles.exportBtn}>
-              Export All as Markdown
-            </button>
-            <button onClick={() => exportData('structured')} className={styles.exportBtn}>
-              Export All as JSON
-            </button>
-          </div>
-          
-          <div className={styles.resultsPreview}>
-            <h4>Preview:</h4>
-            <div className={styles.markdownPreview}>
-              <div 
-                dangerouslySetInnerHTML={{
-                  __html: convertMarkdownToHTML(Object.values(results).map(r => r.formatted).join('\n\n<hr style="border: 2px dashed #ccc; margin: 40px 0; page-break-after: always;" />\n\n'))
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      <style jsx>{`
+        .spinner {
+          border: 3px solid #f3f3f3;
+          border-top: 3px solid #0070f3;
+          border-radius: 50%;
+          width: 24px;
+          height: 24px;
+          animation: spin 1s linear infinite;
+        }
 
-      {showApiModal && (
-        <div className={styles.modal}>
-          <div className={styles.modalContent}>
-            <h3>Claude API Key Required</h3>
-            <p>Enter your Claude API key to process proposals:</p>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Enter Claude API key"
-              className={styles.apiInput}
-            />
-            <div className={styles.modalButtons}>
-              <button onClick={() => setShowApiModal(false)} className={styles.cancelBtn}>
-                Cancel
-              </button>
-              <button 
-                onClick={() => {
-                  if (apiKey) {
-                    setShowApiModal(false);
-                    processFiles();
-                  }
-                }}
-                className={styles.saveBtn}
-              >
-                Save & Process
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        .errorBox {
+          background-color: #fee;
+          color: #c00;
+          padding: 1rem;
+          border-radius: 8px;
+          margin: 1rem 0;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .configSection {
+          background-color: #f9f9f9;
+          border-radius: 8px;
+          padding: 1.5rem;
+          margin: 2rem 0;
+        }
+
+        .configSection h2 {
+          margin: 0 0 1rem 0;
+          font-size: 1.25rem;
+          color: #333;
+        }
+
+        .configGrid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 1rem;
+        }
+
+        .configItem {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .configLabel {
+          font-weight: 500;
+          margin-bottom: 0.5rem;
+          color: #333;
+        }
+
+        .configSelect {
+          padding: 0.75rem;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          font-size: 1rem;
+          background-color: white;
+        }
+
+        .configSelect:disabled {
+          background-color: #f5f5f5;
+          cursor: not-allowed;
+        }
+
+        .readySection, .processingSection {
+          text-align: center;
+          padding: 2rem;
+          background-color: #f9f9f9;
+          border-radius: 8px;
+          margin: 2rem 0;
+        }
+
+        .processingHeader {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 1rem;
+          margin-bottom: 1rem;
+        }
+
+        .progressBarContainer {
+          width: 100%;
+          height: 20px;
+          background-color: #e0e0e0;
+          border-radius: 10px;
+          overflow: hidden;
+          margin: 1rem 0;
+        }
+
+        .progressBar {
+          height: 100%;
+          background-color: #0070f3;
+          transition: width 0.3s ease;
+        }
+
+        .progressPercent {
+          color: #666;
+          font-size: 0.9rem;
+        }
+
+        .resultsSection {
+          margin: 2rem 0;
+        }
+
+        .resultsHeader {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 1rem;
+        }
+
+        .exportButton {
+          padding: 0.5rem 1rem;
+          background-color: #28a745;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 0.9rem;
+        }
+
+        .exportButton:hover {
+          background-color: #218838;
+        }
+
+        .resultsSummary {
+          background-color: #f0f8ff;
+          padding: 1rem;
+          border-radius: 8px;
+          margin-bottom: 1.5rem;
+          text-align: center;
+          color: #666;
+        }
+
+        .resultsGrid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+          gap: 1.5rem;
+        }
+
+        .resultCard {
+          background-color: white;
+          border: 1px solid #e0e0e0;
+          border-radius: 8px;
+          overflow: hidden;
+        }
+
+        .cardHeader {
+          background-color: #f8f9fa;
+          padding: 1rem;
+          border-bottom: 1px solid #e0e0e0;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .cardTitle {
+          margin: 0;
+          font-size: 1rem;
+          color: #333;
+        }
+
+        .errorBadge {
+          font-size: 0.8rem;
+          color: #c00;
+        }
+
+        .cardContent {
+          padding: 1rem;
+        }
+
+        .summaryText {
+          line-height: 1.5;
+          color: #333;
+        }
+
+        .summaryText p {
+          margin: 0 0 0.5rem 0;
+        }
+
+        .metadata {
+          margin-top: 1rem;
+          padding-top: 1rem;
+          border-top: 1px solid #f0f0f0;
+          color: #666;
+        }
+
+        .actionButtons {
+          display: flex;
+          justify-content: center;
+          margin: 2rem 0;
+        }
+
+        .processButton,
+        .newBatchButton {
+          padding: 1rem 2rem;
+          background-color: #0070f3;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          font-size: 1.1rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background-color 0.2s;
+        }
+
+        .processButton:hover,
+        .newBatchButton:hover {
+          background-color: #0051cc;
+        }
+      `}</style>
     </div>
   );
 }
