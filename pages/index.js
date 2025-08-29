@@ -32,13 +32,13 @@ const apps = [
     path: '/batch-proposal-summaries'
   },
   {
-    id: 'grant-reviewer',
-    title: 'Grant Reviewer',
-    description: 'Automated scoring and evaluation of grant proposals with detailed feedback',
-    icon: '📊',
+    id: 'find-reviewers',
+    title: 'Find Reviewers',
+    description: 'Identify and match expert reviewers for grant proposals based on expertise and research areas',
+    icon: '🔎',
     status: 'coming-soon',
-    features: ['Scoring System', 'Evaluation Criteria', 'Comparative Analysis', 'Review Reports'],
-    path: '/grant-reviewer'
+    features: ['Expert Matching', 'Research Area Analysis', 'Reviewer Profiles', 'Conflict Detection'],
+    path: '/find-reviewers'
   },
   {
     id: 'literature-analyzer',

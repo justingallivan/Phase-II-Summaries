@@ -90,13 +90,18 @@ export default function FileUploaderSimple({
     });
 
     if (!multiple && validFiles.length > 1) {
+      const warningMsg = `Only one file can be uploaded at a time. Using first file: ${validFiles[0].name}`;
+      setError(warningMsg);
       validFiles.splice(1);
-      setError('Only one file can be uploaded at a time');
+      // Clear warning after 3 seconds
+      setTimeout(() => setError(null), 3000);
     }
 
     setFiles(validFiles);
     if (validFiles.length > 0) {
-      setError(null);
+      if (multiple || validFiles.length === 1) {
+        setError(null);  // Only clear error if it wasn't the multiple files warning
+      }
       onFilesSelected(validFiles);
     }
   };
@@ -127,10 +132,12 @@ export default function FileUploaderSimple({
           </div>
           <div className={styles.uploadText}>
             {isDragging 
-              ? 'Drop files here...'
+              ? 'Drop file here...'
               : files.length > 0 
-                ? `${files.length} file${files.length > 1 ? 's' : ''} selected`
-                : 'Click to select files or drag and drop'
+                ? `${files[0].name} selected`
+                : multiple 
+                  ? 'Click to select files or drag and drop'
+                  : 'Click to select a file or drag and drop'
             }
           </div>
         </label>

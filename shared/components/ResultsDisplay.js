@@ -30,6 +30,12 @@ export default function ResultsDisplay({
   };
 
   const exportAsMarkdown = (filename, content) => {
+    // Ensure content is a string
+    if (!content || typeof content !== 'string') {
+      console.error('Invalid content for export:', content);
+      content = 'No content available';
+    }
+    
     // Convert HTML tags to proper markdown formatting (preserve underline tags)
     let markdownContent = content
       // Convert bold tags to markdown bold
