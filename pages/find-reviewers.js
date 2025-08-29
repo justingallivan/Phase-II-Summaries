@@ -84,7 +84,7 @@ export default function FindReviewers() {
             reviewerCount: data.metadata?.reviewerCount || 0
           },
           structuredData: data.extractedInfo || {},
-          csvData: data.csvData,
+          csvData: data.csvData || null,
           parsedReviewers: data.parsedReviewers || []
         }
       };

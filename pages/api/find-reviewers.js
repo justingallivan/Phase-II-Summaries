@@ -139,8 +139,17 @@ export default async function handler(req, res) {
     }
 
     // Parse reviewers and generate CSV
-    const parsedReviewers = parseReviewers(reviewerResponse);
-    const csvData = generateReviewerCSV(parsedReviewers);
+    let parsedReviewers = [];
+    let csvData = 'name,institution\n';
+    
+    try {
+      parsedReviewers = parseReviewers(reviewerResponse);
+      csvData = generateReviewerCSV(parsedReviewers);
+      console.log(`Successfully parsed ${parsedReviewers.length} reviewers`);
+    } catch (parseError) {
+      console.error('Error parsing reviewers:', parseError);
+      // Continue with empty data rather than failing the whole request
+    }
     
     // Clean up temporary file
     await fs.unlink(file.filepath).catch(console.error);

@@ -82,18 +82,29 @@ export default function ResultsDisplay({
   };
 
   const exportAsCSV = (filename, result) => {
-    if (!result.csvData) {
-      console.warn('No CSV data available for export');
+    if (!result.csvData || typeof result.csvData !== 'string') {
+      console.warn('No CSV data available for export', result.csvData);
       return;
     }
     
-    const blob = new Blob([result.csvData], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${filename.replace(/\.[^/.]+$/, '')}_reviewers.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([result.csvData], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      // Clean filename more safely
+      const cleanFilename = filename.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9-_]/g, '_');
+      a.download = `${cleanFilename}_reviewers.csv`;
+      
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting CSV:', error);
+      alert('Failed to export CSV file. Please try again.');
+    }
   };
 
   const exportAllAsZip = async () => {
