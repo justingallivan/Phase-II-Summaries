@@ -13,35 +13,7 @@ export const config = {
   },
 };
 
-// Document analysis prompt
-const ANALYSIS_PROMPT = (text, filename) => `Please analyze this document and provide a comprehensive analysis with the following sections:
-
-**DOCUMENT OVERVIEW**
-Provide a 2-3 sentence summary of what this document is about.
-
-**KEY POINTS**
-• List the 3-5 most important points or findings
-• Use bullet points for clarity
-• Each point should be 1-2 sentences
-
-**MAIN THEMES**
-Identify and briefly describe 2-3 main themes or topics discussed in the document.
-
-**TECHNICAL DETAILS**
-If applicable, note any important technical information, methodologies, or specifications mentioned.
-
-**RECOMMENDATIONS OR CONCLUSIONS**
-Summarize any recommendations, conclusions, or next steps mentioned in the document.
-
-**NOTABLE INSIGHTS**
-Highlight 1-2 particularly interesting or unexpected insights from the document.
-
-Document title/filename: ${filename}
-Document text:
----
-${text.substring(0, 15000)}${text.length > 15000 ? '...[truncated]' : ''}
-
-Please provide a well-structured analysis that would be valuable for someone who needs to quickly understand this document.`;
+import { createDocumentAnalysisPrompt, createMetadataExtractionPrompt } from '../../shared/config/prompts/document-analyzer';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -129,7 +101,7 @@ export default async function handler(req, res) {
         const processedFile = await fileProcessor.processFile(buffer, file.filename);
         
         // Generate analysis using Claude
-        const prompt = ANALYSIS_PROMPT(processedFile.text, file.filename);
+        const prompt = createDocumentAnalysisPrompt(processedFile.text, file.filename);
         const analysis = await claudeClient.sendMessage(prompt, {
           maxTokens: 2500,
           temperature: 0.3
@@ -138,20 +110,7 @@ export default async function handler(req, res) {
         // Try to extract structured data
         let structuredData = null;
         try {
-          const structurePrompt = `Based on this document, extract key metadata as JSON:
-{
-  "documentType": "type of document",
-  "subject": "main subject/topic",
-  "date": "date if mentioned",
-  "author": "author if mentioned",
-  "organization": "organization if mentioned",
-  "keywords": ["list", "of", "keywords"],
-  "sentiment": "positive/negative/neutral"
-}
-
-Document: ${processedFile.text.substring(0, 5000)}
-
-Return only valid JSON, no other text.`;
+          const structurePrompt = createMetadataExtractionPrompt(processedFile.text, file.filename);
           
           structuredData = await claudeClient.sendMessageForJSON(structurePrompt, {
             maxTokens: 500,

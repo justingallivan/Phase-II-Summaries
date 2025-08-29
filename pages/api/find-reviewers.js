@@ -2,7 +2,7 @@ import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
 import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
 import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
-import { createExtractionPrompt, createReviewerPrompt, parseExtractionResponse } from './prompts/reviewer-prompts';
+import { createExtractionPrompt, createReviewerPrompt, parseExtractionResponse } from '../../shared/config/prompts/find-reviewers';
 import formidable from 'formidable';
 import fs from 'fs/promises';
 

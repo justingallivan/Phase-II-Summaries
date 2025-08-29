@@ -6,10 +6,13 @@
  * Creates a prompt to extract structured information from a research proposal
  */
 export function createExtractionPrompt(proposalText, additionalNotes = '') {
+  // Handle null/undefined proposalText
+  const safeText = proposalText || 'No proposal text provided';
+  
   return `Please analyze this research proposal and extract the following information in a structured format:
 
 **PROPOSAL TEXT:**
-${proposalText.substring(0, 8000)} ${proposalText.length > 8000 ? '...[truncated]' : ''}
+${safeText.substring(0, 8000)} ${safeText.length > 8000 ? '...[truncated]' : ''}
 
 ${additionalNotes ? `**ADDITIONAL CONTEXT:**\n${additionalNotes}\n` : ''}
 
@@ -41,28 +44,32 @@ APPLICATION_DOMAINS: [domains]`;
  * Creates a prompt to find expert reviewers based on extracted proposal information
  */
 export function createReviewerPrompt(extractedInfo, suggestedReviewers = '', excludedReviewers = '', proposalText = '') {
+  // Handle null/undefined extractedInfo
+  const safeInfo = extractedInfo || {};
+  const safeProposalText = proposalText || '';
+  
   // Extract abstract or use first part of proposal
-  const abstract = extractProposalSection(proposalText, 'abstract') || 
-                   extractProposalSection(proposalText, 'summary') ||
-                   proposalText.substring(0, 1500) + '...';
+  const abstract = extractProposalSection(safeProposalText, 'abstract') || 
+                   extractProposalSection(safeProposalText, 'summary') ||
+                   (safeProposalText ? safeProposalText.substring(0, 1500) + '...' : 'No proposal text provided');
   
   return `You are helping identify expert reviewers for a scientific research proposal. Based on the information below, please identify approximately 15 potential reviewers who would be qualified to evaluate this work.
 
 **PROPOSAL INFORMATION:**
-- Title: ${extractedInfo.title || 'Not specified'}
-- Primary Research Area: ${extractedInfo.primaryResearchArea || 'Not specified'}
-- Secondary Areas: ${extractedInfo.secondaryAreas || 'Not specified'}
-- Key Methodologies: ${extractedInfo.keyMethodologies || 'Not specified'}
-- Research Scope: ${extractedInfo.researchScope || 'Not specified'}
-- Interdisciplinary: ${extractedInfo.interdisciplinary || 'Not specified'}
-- Key Innovations: ${extractedInfo.keyInnovations || 'Not specified'}
-- Application Domains: ${extractedInfo.applicationDomains || 'Not specified'}
+- Title: ${safeInfo.title || 'Not specified'}
+- Primary Research Area: ${safeInfo.primaryResearchArea || 'Not specified'}
+- Secondary Areas: ${safeInfo.secondaryAreas || 'Not specified'}
+- Key Methodologies: ${safeInfo.keyMethodologies || 'Not specified'}
+- Research Scope: ${safeInfo.researchScope || 'Not specified'}
+- Interdisciplinary: ${safeInfo.interdisciplinary || 'Not specified'}
+- Key Innovations: ${safeInfo.keyInnovations || 'Not specified'}
+- Application Domains: ${safeInfo.applicationDomains || 'Not specified'}
 
 **PROPOSAL ABSTRACT/EXCERPT:**
 ${abstract}
 
 **CONSTRAINTS:**
-- Author Institution: ${extractedInfo.authorInstitution || 'Not specified'} (avoid reviewers from this institution)
+- Author Institution: ${safeInfo.authorInstitution || 'Not specified'} (avoid reviewers from this institution)
 ${suggestedReviewers ? `- Suggested Reviewers (consider including if appropriate): ${suggestedReviewers}` : ''}
 ${excludedReviewers ? `- Excluded Reviewers (must not include): ${excludedReviewers}` : ''}
 
@@ -98,6 +105,11 @@ Please provide your recommendations as a clear, formatted list that can be easil
  * Parses the extraction response into a structured object
  */
 export function parseExtractionResponse(response) {
+  // Handle null/undefined response
+  if (!response || typeof response !== 'string') {
+    return {};
+  }
+  
   const info = {};
   const lines = response.split('\n');
   
@@ -128,11 +140,16 @@ export function parseExtractionResponse(response) {
  * Extracts a specific section from the proposal text
  */
 export function extractProposalSection(text, sectionName) {
+  // Handle null/undefined inputs
+  if (!text || !sectionName || typeof text !== 'string') {
+    return null;
+  }
+  
   // Try multiple patterns to find the section
   const patterns = [
-    new RegExp(`${sectionName}[:\\s]*([\\s\\S]*?)(?=\\n\\n[A-Z]|\\n[A-Z][^a-z]*:|$)`, 'i'),
-    new RegExp(`\\b${sectionName}\\b[\\s]*([\\s\\S]{100,2000})`, 'i'),
-    new RegExp(`^.*${sectionName}.*\\n([\\s\\S]{100,2000})`, 'mi')
+    new RegExp(`${sectionName}[:\\s]*([^\\n]*(?:\\n[^A-Z\\n][^:]*)*?)(?=\\n\\n|\\n[A-Z][^a-z]*:|$)`, 'i'),
+    new RegExp(`${sectionName}[:\\s]*([^\\n]+(?:\\n(?![A-Z][^a-z]*:)[^\\n]*)*?)`, 'i'),
+    new RegExp(`\\b${sectionName}\\b[\\s]*([\\s\\S]{50,1500}?)(?=\\n[A-Z]|$)`, 'i')
   ];
   
   for (const pattern of patterns) {
