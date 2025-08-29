@@ -80,9 +80,12 @@ export default function FindReviewers() {
             methodologies: data.extractedInfo?.keyMethodologies || 'Not specified',
             institution: data.extractedInfo?.authorInstitution || 'Not specified',
             scope: data.extractedInfo?.researchScope || 'Not specified',
-            interdisciplinary: data.extractedInfo?.interdisciplinary || 'Not specified'
+            interdisciplinary: data.extractedInfo?.interdisciplinary || 'Not specified',
+            reviewerCount: data.metadata?.reviewerCount || 0
           },
-          structuredData: data.extractedInfo || {}
+          structuredData: data.extractedInfo || {},
+          csvData: data.csvData,
+          parsedReviewers: data.parsedReviewers || []
         }
       };
 
@@ -209,7 +212,7 @@ export default function FindReviewers() {
             <ResultsDisplay 
               results={results}
               showActions={false}
-              exportFormats={['markdown', 'json']}
+              exportFormats={['markdown', 'json', 'csv']}
             />
           </div>
         )}

@@ -3,6 +3,7 @@ import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
 import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { createExtractionPrompt, createReviewerPrompt, parseExtractionResponse } from '../../shared/config/prompts/find-reviewers';
+import { parseReviewers, generateReviewerCSV } from '../../shared/utils/reviewerParser';
 import formidable from 'formidable';
 import fs from 'fs/promises';
 
@@ -137,6 +138,10 @@ export default async function handler(req, res) {
       throw claudeError;
     }
 
+    // Parse reviewers and generate CSV
+    const parsedReviewers = parseReviewers(reviewerResponse);
+    const csvData = generateReviewerCSV(parsedReviewers);
+    
     // Clean up temporary file
     await fs.unlink(file.filepath).catch(console.error);
 
@@ -145,10 +150,13 @@ export default async function handler(req, res) {
       success: true,
       extractedInfo,
       reviewers: reviewerResponse,
+      csvData,
+      parsedReviewers,
       metadata: {
         fileName: file.originalFilename,
         processingTime: new Date().toISOString(),
         proposalLength: proposalText.length,
+        reviewerCount: parsedReviewers.length,
         ...metadata
       }
     });

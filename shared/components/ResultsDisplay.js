@@ -81,6 +81,21 @@ export default function ResultsDisplay({
     URL.revokeObjectURL(url);
   };
 
+  const exportAsCSV = (filename, result) => {
+    if (!result.csvData) {
+      console.warn('No CSV data available for export');
+      return;
+    }
+    
+    const blob = new Blob([result.csvData], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${filename.replace(/\.[^/.]+$/, '')}_reviewers.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const exportAllAsZip = async () => {
     const zip = await import('jszip').then(m => new m.default());
     
@@ -183,6 +198,15 @@ export default function ResultsDisplay({
                           title="Export as JSON"
                         >
                           📊 JSON
+                        </button>
+                      )}
+                      {exportFormats.includes('csv') && result.csvData && (
+                        <button
+                          onClick={() => exportAsCSV(filename, result)}
+                          className={styles.actionButton}
+                          title="Export reviewers as CSV"
+                        >
+                          📈 CSV
                         </button>
                       )}
                     </div>
