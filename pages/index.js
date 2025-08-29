@@ -36,7 +36,7 @@ const apps = [
     title: 'Find Reviewers',
     description: 'Identify and match expert reviewers for grant proposals based on expertise and research areas',
     icon: '🔎',
-    status: 'coming-soon',
+    status: 'active',
     features: ['Expert Matching', 'Research Area Analysis', 'Reviewer Profiles', 'Conflict Detection'],
     path: '/find-reviewers'
   },
