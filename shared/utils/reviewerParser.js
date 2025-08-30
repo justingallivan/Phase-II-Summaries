@@ -16,10 +16,13 @@ export function parseReviewers(reviewerText) {
   const lines = reviewerText.split('\n');
   
   console.log('Parsing reviewer text with', lines.length, 'lines');
+  console.log('Raw reviewer text:', JSON.stringify(reviewerText.substring(0, 500)));
 
   for (const line of lines) {
     const trimmedLine = line.trim();
     if (!trimmedLine) continue;
+    
+    console.log('Processing line:', JSON.stringify(trimmedLine));
     
     // Skip lines that are clearly not reviewer entries (be more permissive)
     if (trimmedLine.length < 8 || 
@@ -29,6 +32,7 @@ export function parseReviewers(reviewerText) {
         trimmedLine.toLowerCase().includes('based on the research') ||
         /^-\s+(mix of|several|all of|many of|most of)/i.test(trimmedLine) ||
         /^(these|the|based|here|below)\s+(are|is|reviewers)/i.test(trimmedLine)) {
+      console.log('Skipping line:', JSON.stringify(trimmedLine));
       continue;
     }
 
@@ -47,6 +51,7 @@ export function parseReviewers(reviewerText) {
       /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?((?:[A-Z][a-z]+\s+)+[A-Z][a-z]+)\s+(?:at\s+|from\s+)?([A-Z][A-Za-z\s,.'&-]+)/,
     ];
 
+    let foundMatch = false;
     for (const pattern of patterns) {
       const match = trimmedLine.match(pattern);
       if (match) {
@@ -59,9 +64,14 @@ export function parseReviewers(reviewerText) {
             name: name,
             institution: institution
           });
+          foundMatch = true;
           break; // Found a match, move to next line
         }
       }
+    }
+    
+    if (!foundMatch) {
+      console.log('No pattern matched for line:', JSON.stringify(trimmedLine));
     }
   }
 
