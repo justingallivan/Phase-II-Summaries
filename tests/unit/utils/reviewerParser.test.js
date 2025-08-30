@@ -119,6 +119,29 @@ Contact information available
       expect(result[1].name).toBe('Jane Doe');
     });
 
+    test('filters out descriptive bullet points', () => {
+      const reviewerText = `
+1. Dr. John Smith (MIT)
+- Mix of seniority levels from rising mid-career to senior experts
+- Several reviewers have direct experience with the core technologies
+2. Jane Doe (Stanford University)
+- All reviewers are established in their fields
+- Many have worked with similar methodologies
+      `;
+      
+      const result = parseReviewers(reviewerText);
+      
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        name: 'John Smith',
+        institution: 'MIT'
+      });
+      expect(result[1]).toEqual({
+        name: 'Jane Doe',
+        institution: 'Stanford University'
+      });
+    });
+
     test('handles empty and invalid input', () => {
       expect(parseReviewers('')).toEqual([]);
       expect(parseReviewers(null)).toEqual([]);

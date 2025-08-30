@@ -25,20 +25,29 @@ export function parseReviewers(reviewerText) {
         trimmedLine.toLowerCase().includes('potential reviewers') ||
         trimmedLine.toLowerCase().includes('these reviewer') ||
         trimmedLine.toLowerCase().includes('based on') ||
-        /^\w+\s+(are|is|have|with)/i.test(trimmedLine)) {
+        trimmedLine.toLowerCase().includes('mix of') ||
+        trimmedLine.toLowerCase().includes('several') ||
+        trimmedLine.toLowerCase().includes('experience with') ||
+        trimmedLine.toLowerCase().includes('seniority level') ||
+        trimmedLine.toLowerCase().includes('core technolog') ||
+        /^-\s+(mix|several|all|many|most|some)/i.test(trimmedLine) ||
+        /^\w+\s+(are|is|have|with|would|should|could)/i.test(trimmedLine)) {
       continue;
     }
 
     // Try multiple patterns to extract name and institution
     const patterns = [
-      // Pattern: "1. Dr. John Smith (MIT)" or "Prof. Alice Wilson (Harvard)"
-      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Za-z\s.'-]+?)\s*\(([^)]+)\)/i,
+      // Pattern: "1. Dr. John Smith (MIT) - Expert in AI" or "Prof. Alice Wilson (Harvard)"
+      // Name and institution in parentheses, optional additional text
+      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Z][A-Za-z\s.'-]+?)\s*\(([^)]+)\)/,
       
-      // Pattern: "2. Jane Doe - Stanford University" or "Bob Chen - Microsoft"
-      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Za-z\s.'-]+?)\s*-\s*([A-Za-z\s,.'&-]+)$/i,
+      // Pattern: "4. Dr. Alice Wilson - Harvard Medical School" or "Bob Chen - Microsoft"
+      // Name followed by dash and institution, optional additional text
+      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Z][A-Za-z\s.'-]+?)\s*-\s*([A-Z][A-Za-z\s,.'&-]+?)(?:\s*-|$)/,
       
-      // Pattern: "3. Michael Johnson, UC Berkeley" or "Dr. Jane Doe, Harvard University"  
-      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Za-z\s.'-]+?),\s*([A-Za-z\s,.'&-]+)$/i,
+      // Pattern: "5. Bob Chen, Microsoft Research" or "Dr. Jane Doe, Harvard University"  
+      // Name followed by comma and institution
+      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Z][A-Za-z\s.'-]+?),\s*([A-Z][A-Za-z\s,.'&-]+)/,
     ];
 
     for (const pattern of patterns) {
