@@ -14,40 +14,37 @@ export function parseReviewers(reviewerText) {
 
   const reviewers = [];
   const lines = reviewerText.split('\n');
+  
+  console.log('Parsing reviewer text with', lines.length, 'lines');
 
   for (const line of lines) {
     const trimmedLine = line.trim();
     if (!trimmedLine) continue;
     
-    // Skip lines that are clearly not reviewer entries
-    if (trimmedLine.length < 10 || 
+    // Skip lines that are clearly not reviewer entries (be more permissive)
+    if (trimmedLine.length < 8 || 
         trimmedLine.includes(':') ||
         trimmedLine.toLowerCase().includes('potential reviewers') ||
-        trimmedLine.toLowerCase().includes('these reviewer') ||
-        trimmedLine.toLowerCase().includes('based on') ||
-        trimmedLine.toLowerCase().includes('mix of') ||
-        trimmedLine.toLowerCase().includes('several') ||
-        trimmedLine.toLowerCase().includes('experience with') ||
-        trimmedLine.toLowerCase().includes('seniority level') ||
-        trimmedLine.toLowerCase().includes('core technolog') ||
-        /^-\s+(mix|several|all|many|most|some)/i.test(trimmedLine) ||
-        /^\w+\s+(are|is|have|with|would|should|could)/i.test(trimmedLine)) {
+        trimmedLine.toLowerCase().includes('these reviewers have') ||
+        trimmedLine.toLowerCase().includes('based on the research') ||
+        /^-\s+(mix of|several|all of|many of|most of)/i.test(trimmedLine) ||
+        /^(these|the|based|here|below)\s+(are|is|reviewers)/i.test(trimmedLine)) {
       continue;
     }
 
-    // Try multiple patterns to extract name and institution
+    // Try multiple patterns to extract name and institution (more flexible)
     const patterns = [
-      // Pattern: "1. Dr. John Smith (MIT) - Expert in AI" or "Prof. Alice Wilson (Harvard)"
-      // Name and institution in parentheses, optional additional text
-      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Z][A-Za-z\s.'-]+?)\s*\(([^)]+)\)/,
+      // Pattern: "1. Dr. John Smith (MIT)" or "Prof. Alice Wilson (Harvard)"
+      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Za-z][A-Za-z\s.'-]+?)\s*\(([^)]+)\)/,
       
-      // Pattern: "4. Dr. Alice Wilson - Harvard Medical School" or "Bob Chen - Microsoft"
-      // Name followed by dash and institution, optional additional text
-      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Z][A-Za-z\s.'-]+?)\s*-\s*([A-Z][A-Za-z\s,.'&-]+?)(?:\s*-|$)/,
+      // Pattern: "Dr. Alice Wilson - Harvard Medical School" 
+      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Za-z][A-Za-z\s.'-]+?)\s*-\s*([A-Za-z][A-Za-z\s,.'&-]+)/,
       
-      // Pattern: "5. Bob Chen, Microsoft Research" or "Dr. Jane Doe, Harvard University"  
-      // Name followed by comma and institution
-      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Z][A-Za-z\s.'-]+?),\s*([A-Z][A-Za-z\s,.'&-]+)/,
+      // Pattern: "Bob Chen, Microsoft Research"
+      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Za-z][A-Za-z\s.'-]+?),\s*([A-Za-z][A-Za-z\s,.'&-]+)/,
+      
+      // Pattern: "Name at Institution" or "Name, Institution"
+      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?((?:[A-Z][a-z]+\s+)+[A-Z][a-z]+)\s+(?:at\s+|from\s+)?([A-Z][A-Za-z\s,.'&-]+)/,
     ];
 
     for (const pattern of patterns) {
@@ -57,6 +54,7 @@ export function parseReviewers(reviewerText) {
         const institution = cleanInstitution(match[2]);
         
         if (name && institution) {
+          console.log('Found reviewer:', { name, institution, originalLine: trimmedLine });
           reviewers.push({
             name: name,
             institution: institution
@@ -67,6 +65,7 @@ export function parseReviewers(reviewerText) {
     }
   }
 
+  console.log(`Parsed ${reviewers.length} reviewers total`);
   return reviewers;
 }
 
