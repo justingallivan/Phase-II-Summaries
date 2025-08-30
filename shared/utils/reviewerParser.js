@@ -15,14 +15,19 @@ export function parseReviewers(reviewerText) {
   const reviewers = [];
   const lines = reviewerText.split('\n');
   
-  console.log('Parsing reviewer text with', lines.length, 'lines');
-  console.log('Raw reviewer text:', JSON.stringify(reviewerText.substring(0, 500)));
+  // Debug logging (only in development)
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    console.log('Parsing reviewer text with', lines.length, 'lines');
+    console.log('Raw reviewer text:', JSON.stringify(reviewerText.substring(0, 500)));
+  }
 
   for (const line of lines) {
     const trimmedLine = line.trim();
     if (!trimmedLine) continue;
     
-    console.log('Processing line:', JSON.stringify(trimmedLine));
+    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+      console.log('Processing line:', JSON.stringify(trimmedLine));
+    }
     
     // Skip lines that are clearly not reviewer entries (be more permissive)
     if (trimmedLine.length < 8 || 
@@ -32,7 +37,9 @@ export function parseReviewers(reviewerText) {
         trimmedLine.toLowerCase().includes('based on the research') ||
         /^-\s+(mix of|several|all of|many of|most of)/i.test(trimmedLine) ||
         /^(these|the|based|here|below)\s+(are|is|reviewers)/i.test(trimmedLine)) {
-      console.log('Skipping line:', JSON.stringify(trimmedLine));
+      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+        console.log('Skipping line:', JSON.stringify(trimmedLine));
+      }
       continue;
     }
 
@@ -59,7 +66,9 @@ export function parseReviewers(reviewerText) {
         const institution = cleanInstitution(match[2]);
         
         if (name && institution) {
-          console.log('Found reviewer:', { name, institution, originalLine: trimmedLine });
+          if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+            console.log('Found reviewer:', { name, institution, originalLine: trimmedLine });
+          }
           reviewers.push({
             name: name,
             institution: institution
@@ -70,12 +79,14 @@ export function parseReviewers(reviewerText) {
       }
     }
     
-    if (!foundMatch) {
+    if (!foundMatch && typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
       console.log('No pattern matched for line:', JSON.stringify(trimmedLine));
     }
   }
 
-  console.log(`Parsed ${reviewers.length} reviewers total`);
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    console.log(`Parsed ${reviewers.length} reviewers total`);
+  }
   return reviewers;
 }
 
