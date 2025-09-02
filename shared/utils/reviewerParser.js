@@ -21,67 +21,125 @@ export function parseReviewers(reviewerText) {
     console.log('Raw reviewer text:', JSON.stringify(reviewerText.substring(0, 500)));
   }
 
-  for (const line of lines) {
-    const trimmedLine = line.trim();
+  let currentReviewer = null;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const trimmedLine = lines[i].trim();
     if (!trimmedLine) continue;
     
     if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
       console.log('Processing line:', JSON.stringify(trimmedLine));
     }
     
-    // Skip lines that are clearly not reviewer entries (be more permissive)
-    if (trimmedLine.length < 8 || 
-        trimmedLine.includes(':') ||
-        trimmedLine.toLowerCase().includes('potential reviewers') ||
-        trimmedLine.toLowerCase().includes('these reviewers have') ||
-        trimmedLine.toLowerCase().includes('based on the research') ||
-        /^-\s+(mix of|several|all of|many of|most of)/i.test(trimmedLine) ||
-        /^(these|the|based|here|below)\s+(are|is|reviewers)/i.test(trimmedLine)) {
+    // Look for reviewer entry lines in structured format (format: "1. **Name, Title**")
+    const structuredReviewerPattern = /^(\d+)\.\s*\*\*([^,*]+)(?:,\s*[^*]*)?\*\*/;
+    const structuredMatch = trimmedLine.match(structuredReviewerPattern);
+    
+    if (structuredMatch) {
+      // If we have a previous reviewer, save it (unless excluded)
+      if (currentReviewer && currentReviewer.name && !currentReviewer.excluded) {
+        reviewers.push({
+          name: currentReviewer.name,
+          institution: currentReviewer.institution || 'Not specified'
+        });
+      }
+      
+      // Start new reviewer entry
+      const name = cleanName(structuredMatch[2].trim());
+      
+      currentReviewer = {
+        name: name,
+        institution: null,
+        excluded: false
+      };
+      
       if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-        console.log('Skipping line:', JSON.stringify(trimmedLine));
+        console.log('Found structured reviewer entry:', name);
+      }
+      continue;
+    }
+    
+    // Look for institution line (format: "   Institution: University Name")
+    const institutionPattern = /^\s*Institution:\s*(.+)$/i;
+    const institutionMatch = trimmedLine.match(institutionPattern);
+    
+    if (institutionMatch && currentReviewer) {
+      const institution = cleanInstitution(institutionMatch[1]);
+      currentReviewer.institution = institution;
+      
+      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+        console.log('Found institution:', institution);
+      }
+      continue;
+    }
+    
+    // Look for exclusion indicators in other lines
+    if (currentReviewer && (
+      trimmedLine.toLowerCase().includes('excluded') ||
+      trimmedLine.toLowerCase().includes('same institution') ||
+      trimmedLine.toLowerCase().includes('conflict') ||
+      trimmedLine.toLowerCase().includes('retired') ||
+      trimmedLine.toLowerCase().includes('deceased')
+    )) {
+      // Mark this reviewer as excluded
+      currentReviewer.excluded = true;
+      
+      if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+        console.log('Marking reviewer as excluded:', currentReviewer.name);
       }
       continue;
     }
 
-    // Try multiple patterns to extract name and institution (more flexible)
-    const patterns = [
-      // Pattern: "1. Dr. John Smith (MIT)" or "Prof. Alice Wilson (Harvard)"
-      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Za-z][A-Za-z\s.'-]+?)\s*\(([^)]+)\)/,
-      
-      // Pattern: "Dr. Alice Wilson - Harvard Medical School" 
-      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Za-z][A-Za-z\s.'-]+?)\s*-\s*([A-Za-z][A-Za-z\s,.'&-]+)/,
-      
-      // Pattern: "Bob Chen, Microsoft Research"
-      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Za-z][A-Za-z\s.'-]+?),\s*([A-Za-z][A-Za-z\s,.'&-]+)/,
-      
-      // Pattern: "Name at Institution" or "Name, Institution"
-      /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?((?:[A-Z][a-z]+\s+)+[A-Z][a-z]+)\s+(?:at\s+|from\s+)?([A-Z][A-Za-z\s,.'&-]+)/,
-    ];
+    // Legacy patterns for simpler formats (fallback) - only if not processing structured format
+    if (!currentReviewer) {
+      // Skip lines that are clearly not reviewer entries
+      if (trimmedLine.toLowerCase().includes('potential reviewers') ||
+          trimmedLine.toLowerCase().includes('these reviewers have') ||
+          trimmedLine.toLowerCase().includes('based on the research') ||
+          /^-\s+(mix of|several|all of|many of|most of)/i.test(trimmedLine) ||
+          /^(these|the|based|here|below)\s+(are|is|reviewers)/i.test(trimmedLine)) {
+        continue;
+      }
 
-    let foundMatch = false;
-    for (const pattern of patterns) {
-      const match = trimmedLine.match(pattern);
-      if (match) {
-        const name = cleanName(match[1]);
-        const institution = cleanInstitution(match[2]);
+      const legacyPatterns = [
+        // Pattern: "1. Dr. John Smith (MIT)" or "Prof. Alice Wilson (Harvard)"
+        /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Za-z][A-Za-z\s.'-]+?)\s*\(([^)]+)\)/,
         
-        if (name && institution) {
-          if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-            console.log('Found reviewer:', { name, institution, originalLine: trimmedLine });
+        // Pattern: "Dr. Alice Wilson - Harvard Medical School" 
+        /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Za-z][A-Za-z\s.'-]+?)\s*-\s*([A-Za-z][A-Za-z\s,.'&-]+)/,
+        
+        // Pattern: "Bob Chen, Microsoft Research" - but not "Name, Title" format
+        /^(?:\d+\.\s*)?(?:Dr\.\s*|Prof\.\s*|Professor\s*)?([A-Za-z][A-Za-z\s.'-]+?),\s*([A-Za-z][A-Za-z\s,.'&-]+)(?:\s|$)/,
+      ];
+
+      for (const pattern of legacyPatterns) {
+        const match = trimmedLine.match(pattern);
+        if (match) {
+          const name = cleanName(match[1]);
+          const institution = cleanInstitution(match[2]);
+          
+          if (name && institution) {
+            reviewers.push({
+              name: name,
+              institution: institution
+            });
+            
+            if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+              console.log('Found legacy format reviewer:', { name, institution });
+            }
+            break;
           }
-          reviewers.push({
-            name: name,
-            institution: institution
-          });
-          foundMatch = true;
-          break; // Found a match, move to next line
         }
       }
     }
-    
-    if (!foundMatch && typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-      console.log('No pattern matched for line:', JSON.stringify(trimmedLine));
-    }
+  }
+  
+  // Don't forget the last reviewer (unless excluded)
+  if (currentReviewer && currentReviewer.name && !currentReviewer.excluded) {
+    reviewers.push({
+      name: currentReviewer.name,
+      institution: currentReviewer.institution || 'Not specified'
+    });
   }
 
   if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {

@@ -162,6 +162,66 @@ Contact information available
       expect(result[1].name).toBe('Jane Doe');
       expect(result[2].name).toBe('Michael Johnson');
     });
+
+    test('parses Claude structured format', () => {
+      const reviewerText = `
+1. **Dr. John Smith, Professor**
+   Institution: MIT, Department of Computer Science
+   Expertise: Machine learning, artificial intelligence
+   Why Good Match: Expert in deep learning methods
+   Seniority: Senior
+
+2. **Jane Doe, Associate Professor** 
+   Institution: Stanford University, Psychology Department
+   Expertise: Computational neuroscience, cognitive modeling
+   Why Good Match: Extensive work on neural networks
+   Seniority: Mid-Career
+      `;
+      
+      const result = parseReviewers(reviewerText);
+      
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        name: 'John Smith',
+        institution: 'MIT, Department of Computer Science'
+      });
+      expect(result[1]).toEqual({
+        name: 'Jane Doe',
+        institution: 'Stanford University, Psychology Department'
+      });
+    });
+
+    test('filters out excluded reviewers', () => {
+      const reviewerText = `
+1. **Dr. John Smith, Professor**
+   Institution: MIT, Department of Computer Science
+   Expertise: Machine learning, artificial intelligence
+   Why Good Match: Expert in deep learning methods
+   Potential Concerns: Same institution as author - EXCLUDED per constraints
+   Seniority: Senior
+
+2. **Jane Doe, Associate Professor** 
+   Institution: Stanford University, Psychology Department
+   Expertise: Computational neuroscience, cognitive modeling
+   Why Good Match: Extensive work on neural networks
+   Seniority: Mid-Career
+
+3. **Bob Wilson, Professor Emeritus**
+   Institution: Harvard University, Department of Chemistry
+   Expertise: Catalysis and reaction mechanisms
+   Why Good Match: Pioneering work in the field
+   Potential Concerns: Recently retired
+   Seniority: Senior
+      `;
+      
+      const result = parseReviewers(reviewerText);
+      
+      expect(result).toHaveLength(1); // Should exclude John Smith (excluded) and Bob Wilson (retired)
+      expect(result[0]).toEqual({
+        name: 'Jane Doe',
+        institution: 'Stanford University, Psychology Department'
+      });
+    });
   });
 
   describe('generateReviewerCSV', () => {
@@ -182,12 +242,12 @@ Contact information available
 
     test('escapes CSV fields with commas', () => {
       const reviewers = [
-        { name: 'John Smith, Jr.', institution: 'University of California, Berkeley' }
+        { name: 'John Smith, Jr.', institution: 'University of California, Santa Barbara, Department of Chemical Engineering' }
       ];
       
       const csv = generateReviewerCSV(reviewers);
       
-      expect(csv).toContain('"John Smith, Jr.","University of California, Berkeley"');
+      expect(csv).toContain('"John Smith, Jr.","University of California, Santa Barbara, Department of Chemical Engineering"');
     });
 
     test('escapes CSV fields with quotes', () => {
