@@ -6,6 +6,7 @@ export default function FileUploaderSimple({
   multiple = true, 
   accept = '.pdf',
   maxSize = 50 * 1024 * 1024,
+  hideFileList = false,
 }) {
   const [files, setFiles] = useState([]);
   const [error, setError] = useState(null);
@@ -149,7 +150,7 @@ export default function FileUploaderSimple({
         </div>
       )}
 
-      {files.length > 0 && (
+      {files.length > 0 && !hideFileList && (
         <div className={styles.fileList}>
           {files.map((file) => (
             <div key={file.name} className={styles.fileItem}>

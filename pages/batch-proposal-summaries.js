@@ -1,9 +1,7 @@
 import { useState, useCallback } from 'react';
-import Head from 'next/head';
-import Link from 'next/link';
+import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import ApiKeyManager from '../shared/components/ApiKeyManager';
-import styles from '../styles/Home.module.css';
 
 export default function BatchProposalSummaries() {
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -162,51 +160,48 @@ export default function BatchProposalSummaries() {
   };
 
   return (
-    <div className={styles.container}>
-      <Head>
-        <title>Batch Proposal Summaries</title>
-        <meta name="description" content="Process multiple proposals at once with customizable summary length" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+    <Layout 
+      title="Batch Proposal Summaries"
+      description="Process multiple proposals at once with customizable summary length"
+    >
+      <PageHeader 
+        title="Batch Proposal Summaries"
+        subtitle="Process multiple research proposals simultaneously with customizable summary length and technical level"
+        icon="📚"
+      />
 
-      <main className={styles.main}>
-        <div className={styles.header}>
-          <Link href="/" className={styles.backButton}>
-            ← Back to Apps
-          </Link>
-          <h1 className={styles.title}>
-            📚 Batch Proposal Summaries
-          </h1>
-          <p className={styles.description}>
-            Process multiple research proposals simultaneously with customizable summary length and technical level
-          </p>
-        </div>
-
-        <div className={styles.content}>
+      <Card className="mb-8">
+        <div className="text-center">
           <ApiKeyManager 
             onApiKeySet={handleApiKeySet}
             required={true}
           />
+        </div>
+      </Card>
 
-          {error && (
-            <div className={styles.errorBox}>
-              <span className={styles.errorIcon}>⚠️</span>
-              <span className={styles.errorText}>{error}</span>
-            </div>
-          )}
+      {error && (
+        <Card className="mb-6 border-red-200 bg-red-50">
+          <div className="flex items-center gap-3">
+            <span className="text-red-600 text-xl">⚠️</span>
+            <p className="text-red-800 font-medium">{error}</p>
+          </div>
+        </Card>
+      )}
 
-          <div className={styles.configSection}>
+      <div className="space-y-6">
+        <Card>
+          <div>
             <h2>⚙️ Summary Configuration</h2>
-            <div className={styles.configGrid}>
-              <div className={styles.configItem}>
-                <label htmlFor="summaryLength" className={styles.configLabel}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label htmlFor="summaryLength" className="block text-sm font-medium text-gray-700">
                   Summary Length
                 </label>
                 <select
                   id="summaryLength"
                   value={summaryLength}
                   onChange={(e) => setSummaryLength(Number(e.target.value))}
-                  className={styles.configSelect}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   disabled={processing}
                 >
                   <option value={1}>1 page (concise)</option>
@@ -217,15 +212,15 @@ export default function BatchProposalSummaries() {
                 </select>
               </div>
 
-              <div className={styles.configItem}>
-                <label htmlFor="summaryLevel" className={styles.configLabel}>
+              <div className="space-y-2">
+                <label htmlFor="summaryLevel" className="block text-sm font-medium text-gray-700">
                   Technical Level
                 </label>
                 <select
                   id="summaryLevel"
                   value={summaryLevel}
                   onChange={(e) => setSummaryLevel(e.target.value)}
-                  className={styles.configSelect}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   disabled={processing}
                 >
                   <option value="general-audience">General Audience</option>
@@ -237,102 +232,115 @@ export default function BatchProposalSummaries() {
             </div>
           </div>
 
-          <div className={styles.uploadSection}>
-            <h2>📁 Upload Proposals</h2>
-            <FileUploaderSimple
-              onFilesSelected={handleFilesSelected}
-              multiple={true}
-              accept=".pdf"
-              maxSize={10 * 1024 * 1024}
-            />
+        <Card className="mb-6">
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold text-gray-900 mb-2 flex items-center gap-2">
+              <span>📁</span>
+              <span>Upload Proposals</span>
+            </h2>
           </div>
+          <FileUploaderSimple
+            onFilesSelected={handleFilesSelected}
+            multiple={true}
+            accept=".pdf"
+            maxSize={10 * 1024 * 1024}
+          />
+        </Card>
 
-          {selectedFiles.length > 0 && !processing && !results && (
-            <div className={styles.readySection}>
-              <h3>Ready to Process</h3>
-              <p>
+        {selectedFiles.length > 0 && !processing && !results && (
+          <Card className="mb-6 bg-green-50 border-green-200">
+            <div className="text-center">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Ready to Process</h3>
+              <p className="text-gray-700 mb-4">
                 {selectedFiles.length} proposal{selectedFiles.length > 1 ? 's' : ''} ready for batch processing
                 <br />
                 Summary: {summaryLength} page{summaryLength > 1 ? 's' : ''} • Level: {summaryLevel.replace('-', ' ')}
               </p>
-              <button
+              <Button
+                variant="primary"
+                size="lg"
                 onClick={processBatch}
-                className={styles.processButton}
               >
                 🚀 Process Batch
-              </button>
+              </Button>
             </div>
-          )}
+          </Card>
+        )}
 
-          {processing && (
-            <div className={styles.processingSection}>
-              <div className={styles.processingHeader}>
-                <div className={styles.spinner}></div>
-                <span>{progressText}</span>
+        {processing && (
+          <Card className="mb-6">
+            <div className="text-center">
+              <div className="flex items-center justify-center gap-3 mb-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-400 border-t-transparent"></div>
+                <span className="text-gray-700 font-medium">{progressText}</span>
               </div>
-              <div className={styles.progressBarContainer}>
+              <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
                 <div 
-                  className={styles.progressBar}
+                  className="bg-gray-600 h-3 rounded-full transition-all duration-300"
                   style={{ width: `${progress}%` }}
                 />
               </div>
-              <div className={styles.progressPercent}>{progress}%</div>
+              <div className="text-sm text-gray-600">{progress}%</div>
             </div>
-          )}
+          </Card>
+        )}
 
           {results && (
-            <div className={styles.resultsSection}>
-              <div className={styles.resultsHeader}>
-                <h2>📄 Batch Results</h2>
-                <button
+            <Card className="mt-8">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                  <span>📄</span>
+                  <span>Batch Results</span>
+                </h2>
+                <Button
+                  variant="secondary"
                   onClick={exportAllAsMarkdown}
-                  className={styles.exportButton}
                 >
                   📝 Export All as Markdown
-                </button>
+                </Button>
               </div>
               
-              <div className={styles.resultsSummary}>
-                <p>
+              <div className="bg-blue-50 p-4 rounded-lg mb-6 text-center">
+                <p className="text-gray-700">
                   Processed {Object.keys(results).length} document{Object.keys(results).length > 1 ? 's' : ''} • 
                   {Object.values(results).filter(r => r.metadata?.error).length} error{Object.values(results).filter(r => r.metadata?.error).length !== 1 ? 's' : ''}
                 </p>
               </div>
 
-              <div className={styles.resultsGrid}>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {Object.entries(results).map(([filename, result], index) => (
-                  <div key={filename} className={styles.resultCard}>
-                    <div className={styles.cardHeader}>
-                      <h3 className={styles.cardTitle}>
+                  <div key={filename} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="bg-gray-50 p-4 border-b border-gray-200 flex justify-between items-center">
+                      <h3 className="text-base font-medium text-gray-900 truncate">
                         {index + 1}. {filename}
                       </h3>
                       {result.metadata?.error && (
-                        <span className={styles.errorBadge}>❌ Error</span>
+                        <span className="text-sm text-red-600 font-medium">❌ Error</span>
                       )}
                     </div>
                     
-                    <div className={styles.cardContent}>
+                    <div className="p-4">
                       {result.metadata?.error ? (
-                        <p className={styles.errorText}>
+                        <p className="text-red-600">
                           {result.metadata.errorMessage}
                         </p>
                       ) : (
                         <>
-                          <div className={styles.summaryText}>
+                          <div className="text-gray-700 leading-relaxed">
                             {result.summary?.split('\n').slice(0, 5).map((line, i) => (
-                              <p key={i}>{line}</p>
+                              <p key={i} className="mb-2">{line}</p>
                             ))}
                             {result.summary?.split('\n').length > 5 && (
-                              <p><em>... (truncated in preview)</em></p>
+                              <p className="mb-2"><em className="text-gray-500">... (truncated in preview)</em></p>
                             )}
                           </div>
                           
                           {result.metadata && (
-                            <div className={styles.metadata}>
-                              <small>
+                            <div className="mt-4 pt-4 border-t border-gray-200">
+                              <p className="text-sm text-gray-600">
                                 {result.metadata.pages && `${result.metadata.pages} pages • `}
                                 {result.metadata.wordCount && `${result.metadata.wordCount.toLocaleString()} words`}
-                              </small>
+                              </p>
                             </div>
                           )}
                         </>
@@ -341,242 +349,26 @@ export default function BatchProposalSummaries() {
                   </div>
                 ))}
               </div>
-            </div>
+            </Card>
           )}
 
           {results && !processing && (
-            <div className={styles.actionButtons}>
-              <button
+            <div className="flex justify-center mt-6">
+              <Button
+                variant="secondary"
                 onClick={() => {
                   setResults(null);
                   setProgress(0);
                   setProgressText('');
                 }}
-                className={styles.newBatchButton}
               >
                 📚 New Batch
-              </button>
+              </Button>
             </div>
           )}
-        </div>
-      </main>
+        </Card>
+      </div>
 
-      <style jsx>{`
-        .spinner {
-          border: 3px solid #f3f3f3;
-          border-top: 3px solid #0070f3;
-          border-radius: 50%;
-          width: 24px;
-          height: 24px;
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-
-        .errorBox {
-          background-color: #fee;
-          color: #c00;
-          padding: 1rem;
-          border-radius: 8px;
-          margin: 1rem 0;
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-
-        .configSection {
-          background-color: #f9f9f9;
-          border-radius: 8px;
-          padding: 1.5rem;
-          margin: 2rem 0;
-        }
-
-        .configSection h2 {
-          margin: 0 0 1rem 0;
-          font-size: 1.25rem;
-          color: #333;
-        }
-
-        .configGrid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 1rem;
-        }
-
-        .configItem {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .configLabel {
-          font-weight: 500;
-          margin-bottom: 0.5rem;
-          color: #333;
-        }
-
-        .configSelect {
-          padding: 0.75rem;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          font-size: 1rem;
-          background-color: white;
-        }
-
-        .configSelect:disabled {
-          background-color: #f5f5f5;
-          cursor: not-allowed;
-        }
-
-        .readySection, .processingSection {
-          text-align: center;
-          padding: 2rem;
-          background-color: #f9f9f9;
-          border-radius: 8px;
-          margin: 2rem 0;
-        }
-
-        .processingHeader {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 1rem;
-          margin-bottom: 1rem;
-        }
-
-        .progressBarContainer {
-          width: 100%;
-          height: 20px;
-          background-color: #e0e0e0;
-          border-radius: 10px;
-          overflow: hidden;
-          margin: 1rem 0;
-        }
-
-        .progressBar {
-          height: 100%;
-          background-color: #0070f3;
-          transition: width 0.3s ease;
-        }
-
-        .progressPercent {
-          color: #666;
-          font-size: 0.9rem;
-        }
-
-        .resultsSection {
-          margin: 2rem 0;
-        }
-
-        .resultsHeader {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1rem;
-        }
-
-        .exportButton {
-          padding: 0.5rem 1rem;
-          background-color: #28a745;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-          font-size: 0.9rem;
-        }
-
-        .exportButton:hover {
-          background-color: #218838;
-        }
-
-        .resultsSummary {
-          background-color: #f0f8ff;
-          padding: 1rem;
-          border-radius: 8px;
-          margin-bottom: 1.5rem;
-          text-align: center;
-          color: #666;
-        }
-
-        .resultsGrid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-          gap: 1.5rem;
-        }
-
-        .resultCard {
-          background-color: white;
-          border: 1px solid #e0e0e0;
-          border-radius: 8px;
-          overflow: hidden;
-        }
-
-        .cardHeader {
-          background-color: #f8f9fa;
-          padding: 1rem;
-          border-bottom: 1px solid #e0e0e0;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .cardTitle {
-          margin: 0;
-          font-size: 1rem;
-          color: #333;
-        }
-
-        .errorBadge {
-          font-size: 0.8rem;
-          color: #c00;
-        }
-
-        .cardContent {
-          padding: 1rem;
-        }
-
-        .summaryText {
-          line-height: 1.5;
-          color: #333;
-        }
-
-        .summaryText p {
-          margin: 0 0 0.5rem 0;
-        }
-
-        .metadata {
-          margin-top: 1rem;
-          padding-top: 1rem;
-          border-top: 1px solid #f0f0f0;
-          color: #666;
-        }
-
-        .actionButtons {
-          display: flex;
-          justify-content: center;
-          margin: 2rem 0;
-        }
-
-        .processButton,
-        .newBatchButton {
-          padding: 1rem 2rem;
-          background-color: #0070f3;
-          color: white;
-          border: none;
-          border-radius: 8px;
-          font-size: 1.1rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: background-color 0.2s;
-        }
-
-        .processButton:hover,
-        .newBatchButton:hover {
-          background-color: #0051cc;
-        }
-      `}</style>
-    </div>
+    </Layout>
   );
 }

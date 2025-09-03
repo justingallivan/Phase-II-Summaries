@@ -1,10 +1,8 @@
 import { useState, useCallback } from 'react';
-import Head from 'next/head';
-import Link from 'next/link';
+import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import ApiKeyManager from '../shared/components/ApiKeyManager';
 import ResultsDisplay from '../shared/components/ResultsDisplay';
-import styles from '../styles/Home.module.css';
 
 export default function DocumentAnalyzer() {
   const [apiKey, setApiKey] = useState('');
@@ -170,198 +168,113 @@ export default function DocumentAnalyzer() {
   };
 
   return (
-    <div className={styles.container}>
-      <Head>
-        <title>Document Analyzer - AI-Powered Analysis</title>
-        <meta name="description" content="Analyze documents with AI for insights and summaries" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+    <Layout 
+      title="Document Analyzer - AI-Powered Analysis"
+      description="Analyze documents with AI for insights and summaries"
+    >
+      <PageHeader 
+        title="Document Analyzer"
+        subtitle="Upload documents for comprehensive AI-powered analysis and insights"
+        icon="🔍"
+      />
 
-      <main className={styles.main}>
-        <div className={styles.header}>
-          <Link href="/" className={styles.backButton}>
-            ← Back to Apps
-          </Link>
-          <h1 className={styles.title}>
-            🔍 Document Analyzer
-          </h1>
-          <p className={styles.description}>
-            Upload documents for comprehensive AI-powered analysis and insights
-          </p>
-        </div>
-
-        <div className={styles.content}>
+      <Card className="mb-8">
+        <div className="text-center">
           <ApiKeyManager 
             onApiKeySet={handleApiKeySet}
             required={true}
           />
+        </div>
+      </Card>
 
-          {error && (
-            <div className={styles.errorBox}>
-              <span className={styles.errorIcon}>⚠️</span>
-              <span className={styles.errorText}>{error}</span>
+      <div className="space-y-6">
+        {error && (
+          <Card className="border-red-200 bg-red-50">
+            <div className="flex items-center gap-3">
+              <span className="text-red-600 text-xl">⚠️</span>
+              <p className="text-red-800 font-medium">{error}</p>
             </div>
-          )}
+          </Card>
+        )}
 
-          <div className={styles.uploadSection}>
-            <h2>📁 Upload Documents</h2>
-            <FileUploaderSimple
-              onFilesSelected={handleFilesSelected}
-              multiple={true}
-              accept=".pdf,.txt,.md"
-              maxSize={10 * 1024 * 1024} // 10MB limit for direct processing
-            />
+        <Card className="mb-6">
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold text-gray-900 mb-2 flex items-center gap-2">
+              <span>📁</span>
+              <span>Upload Documents</span>
+            </h2>
           </div>
+          <FileUploaderSimple
+            onFilesSelected={handleFilesSelected}
+            multiple={true}
+            accept=".pdf,.txt,.md"
+            maxSize={10 * 1024 * 1024} // 10MB limit for direct processing
+          />
+        </Card>
 
-          {selectedFiles.length > 0 && !processing && !results && (
-            <div className={styles.readySection}>
-              <h3>Ready to Process</h3>
-              <p>{selectedFiles.length} file{selectedFiles.length > 1 ? 's' : ''} ready for analysis</p>
-              <button
+        {selectedFiles.length > 0 && !processing && !results && (
+          <Card className="mb-6 bg-green-50 border-green-200">
+            <div className="text-center">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Ready to Process</h3>
+              <p className="text-gray-700 mb-4">
+                {selectedFiles.length} file{selectedFiles.length > 1 ? 's' : ''} ready for analysis
+              </p>
+              <Button
+                variant="primary"
+                size="lg"
                 onClick={processDocuments}
-                className={styles.processButton}
               >
                 🚀 Analyze Documents
-              </button>
+              </Button>
             </div>
-          )}
+          </Card>
+        )}
 
-          {processing && (
-            <div className={styles.processingSection}>
-              <div className={styles.processingHeader}>
-                <div className={styles.spinner}></div>
-                <span>{progressText}</span>
+        {processing && (
+          <Card className="mb-6">
+            <div className="text-center">
+              <div className="flex items-center justify-center gap-3 mb-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-400 border-t-transparent"></div>
+                <span className="text-gray-700 font-medium">{progressText}</span>
               </div>
-              <div className={styles.progressBarContainer}>
+              <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
                 <div 
-                  className={styles.progressBar}
+                  className="bg-gray-600 h-3 rounded-full transition-all duration-300"
                   style={{ width: `${progress}%` }}
                 />
               </div>
-              <div className={styles.progressPercent}>{progress}%</div>
+              <div className="text-sm text-gray-600">{progress}%</div>
             </div>
-          )}
+          </Card>
+        )}
 
-          {results && (
+        {results && (
+          <div className="mt-8">
             <ResultsDisplay
               results={results}
               onRefine={handleRefine}
               showActions={true}
               exportFormats={['markdown', 'json']}
             />
-          )}
+          </div>
+        )}
 
-          {results && !processing && (
-            <div className={styles.actionButtons}>
-              <button
-                onClick={() => {
-                  setResults(null);
-                  setProgress(0);
-                  setProgressText('');
-                }}
-                className={styles.newAnalysisButton}
-              >
-                📄 New Analysis
-              </button>
-            </div>
-          )}
-        </div>
-      </main>
+        {results && !processing && (
+          <div className="flex justify-center mt-6">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setResults(null);
+                setProgress(0);
+                setProgressText('');
+              }}
+            >
+              📄 New Analysis
+            </Button>
+          </div>
+        )}
+      </div>
 
-      <style jsx>{`
-        .spinner {
-          border: 3px solid #f3f3f3;
-          border-top: 3px solid #0070f3;
-          border-radius: 50%;
-          width: 24px;
-          height: 24px;
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-
-        .errorBox {
-          background-color: #fee;
-          color: #c00;
-          padding: 1rem;
-          border-radius: 8px;
-          margin: 1rem 0;
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-
-        .readySection {
-          text-align: center;
-          padding: 2rem;
-          background-color: #f9f9f9;
-          border-radius: 8px;
-          margin: 2rem 0;
-        }
-
-        .processingSection {
-          padding: 2rem;
-          background-color: #f9f9f9;
-          border-radius: 8px;
-          margin: 2rem 0;
-        }
-
-        .processingHeader {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          margin-bottom: 1rem;
-        }
-
-        .progressBarContainer {
-          width: 100%;
-          height: 20px;
-          background-color: #e0e0e0;
-          border-radius: 10px;
-          overflow: hidden;
-          margin: 1rem 0;
-        }
-
-        .progressBar {
-          height: 100%;
-          background-color: #0070f3;
-          transition: width 0.3s ease;
-        }
-
-        .progressPercent {
-          text-align: center;
-          color: #666;
-          font-size: 0.9rem;
-        }
-
-        .actionButtons {
-          display: flex;
-          justify-content: center;
-          gap: 1rem;
-          margin: 2rem 0;
-        }
-
-        .processButton,
-        .newAnalysisButton {
-          padding: 1rem 2rem;
-          background-color: #0070f3;
-          color: white;
-          border: none;
-          border-radius: 8px;
-          font-size: 1.1rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: background-color 0.2s;
-        }
-
-        .processButton:hover,
-        .newAnalysisButton:hover {
-          background-color: #0051cc;
-        }
-      `}</style>
-    </div>
+    </Layout>
   );
 }

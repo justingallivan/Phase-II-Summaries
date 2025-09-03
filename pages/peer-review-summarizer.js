@@ -1,190 +1,125 @@
-import { useState } from 'react';
-import Head from 'next/head';
-import Link from 'next/link';
-import styles from '../styles/Home.module.css';
+import { useState, useCallback } from 'react';
+import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
+import FileUploaderSimple from '../shared/components/FileUploaderSimple';
+import ApiKeyManager from '../shared/components/ApiKeyManager';
 
 export default function PeerReviewSummarizer() {
-  const [files, setFiles] = useState([]);
-  const [uploadedFiles, setUploadedFiles] = useState([]);
-  const [uploading, setUploading] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
   const [apiKey, setApiKey] = useState('');
-  const [showApiModal, setShowApiModal] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState({});
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
+  const [error, setError] = useState(null);
 
-  const handleFileSelect = (e) => {
-    const selectedFiles = Array.from(e.target.files).filter(
-      file => file.type === 'application/pdf' || 
-              file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-              file.type === 'application/msword'
-    );
-    setFiles(selectedFiles);
+  const handleApiKeySet = useCallback((key) => {
+    setApiKey(key);
+    setError(null);
+  }, []);
+
+  const handleFilesSelected = useCallback((files) => {
+    setSelectedFiles(files);
+    setError(null);
     setResults(null);
-    setUploadedFiles([]);
-  };
+  }, []);
 
-  const removeFile = (fileName) => {
-    setFiles(files.filter(f => f.name !== fileName));
-    setUploadedFiles(uploadedFiles.filter(f => f.filename !== fileName));
-    setResults(null);
-  };
 
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const uploadFiles = async () => {
-    if (files.length === 0) {
-      alert('Please select peer review files first');
-      return;
-    }
-
-    setUploading(true);
-    setUploadProgress({});
-    const uploaded = [];
-
-    try {
-      // Get blob token for direct uploads
-      const tokenResponse = await fetch('/api/blob-token', {
-        method: 'POST',
-      });
-
-      if (!tokenResponse.ok) {
-        throw new Error('Failed to get upload token');
-      }
-
-      const { token } = await tokenResponse.json();
-
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        
-        setUploadProgress(prev => ({
-          ...prev,
-          [file.name]: { status: 'uploading', progress: 0 }
-        }));
-
-        // Direct upload to Vercel Blob Storage
-        const filename = `${Date.now()}-${file.name}`;
-        
-        const directUploadResponse = await fetch(`https://blob.vercel-storage.com/${filename}`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': file.type,
-            'x-content-type': file.type,
-          },
-          body: file,
-        });
-
-        if (!directUploadResponse.ok) {
-          const errorText = await directUploadResponse.text();
-          throw new Error(`Direct upload failed for ${file.name}: ${directUploadResponse.status} - ${errorText}`);
-        }
-
-        const uploadData = await directUploadResponse.json();
-        
-        uploaded.push({
-          filename: file.name,
-          originalSize: file.size,
-          url: uploadData.url,
-          downloadUrl: uploadData.downloadUrl || uploadData.url,
-          blobSize: file.size,
-          fileType: file.type
-        });
-
-        setUploadProgress(prev => ({
-          ...prev,
-          [file.name]: { status: 'completed', progress: 100 }
-        }));
-      }
-
-      setUploadedFiles(uploaded);
-      // alert('All peer review files uploaded successfully!'); // Commented out for cleaner UI - uncomment for debugging
-
-    } catch (error) {
-      console.error('Direct upload error:', error);
-      alert('Error uploading files: ' + error.message);
-    } finally {
-      setUploading(false);
-    }
-  };
 
   const processFiles = async () => {
     if (!apiKey) {
-      setShowApiModal(true);
+      setError('Please provide an API key');
       return;
     }
 
-    if (uploadedFiles.length === 0) {
-      alert('Please upload peer review files first');
+    if (selectedFiles.length === 0) {
+      setError('Please select files first');
       return;
     }
 
     setProcessing(true);
     setProgress(0);
     setProgressText('Starting peer review analysis...');
+    setError(null);
 
     try {
+      // Convert files to base64
+      const filesWithContent = await Promise.all(
+        selectedFiles.map(async (file) => {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve({
+                filename: file.name,
+                content: reader.result.split(',')[1],
+                size: file.size,
+                type: file.type
+              });
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+        })
+      );
+
       const response = await fetch('/api/process-peer-reviews', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-API-Key': apiKey
         },
         body: JSON.stringify({
-          files: uploadedFiles,
-          apiKey: apiKey
+          files: filesWithContent,
+          apiKey
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
+      // Handle streaming response
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let finalResults = {};
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
+        const lines = buffer.split('\n\n');
         buffer = lines.pop();
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              const data = JSON.parse(line.slice(6));
+              const data = JSON.parse(line.substring(6));
+              
               if (data.progress !== undefined) {
                 setProgress(data.progress);
-                setProgressText(data.message || '');
               }
+              
+              if (data.message) {
+                setProgressText(data.message);
+              }
+              
               if (data.results) {
-                finalResults = data.results;
+                setResults(data.results);
               }
             } catch (e) {
-              console.error('Error parsing progress:', e);
+              console.error('Failed to parse streaming data:', e);
             }
           }
         }
       }
 
-      setResults(finalResults);
-      setProgress(100);
-      setProgressText('Peer review analysis complete!');
+      setProgressText('Analysis complete!');
+      setSelectedFiles([]);
 
     } catch (error) {
       console.error('Processing error:', error);
-      alert('Error processing peer reviews: ' + error.message);
+      setError(error.message || 'Failed to process peer reviews');
     } finally {
       setProcessing(false);
     }
@@ -240,177 +175,141 @@ export default function PeerReviewSummarizer() {
   };
 
   return (
-    <div className={styles.container}>
-      <Head>
-        <title>Peer Review Summarizer</title>
-        <meta name="description" content="Synthesize and analyze peer review feedback with actionable insights" />
-      </Head>
+    <Layout 
+      title="Peer Review Summarizer"
+      description="Synthesize and analyze peer review feedback with actionable insights"
+    >
+      <PageHeader 
+        title="Peer Review Summarizer"
+        subtitle="Upload peer review documents to generate comprehensive analysis and synthesis"
+        icon="📝"
+      />
 
-      <div className={styles.navigation}>
-        <Link href="/" className={styles.backLink}>
-          ← Back to Apps
-        </Link>
-      </div>
-
-      <div className={styles.header}>
-        <h1>📝 Peer Review Summarizer</h1>
-        <p>Upload peer review documents to generate comprehensive analysis and synthesis</p>
-      </div>
-
-      <div className={styles.uploadSection}>
-        <div className={styles.uploadArea}>
-          <div className={styles.uploadIcon}>📝</div>
-          <div className={styles.uploadText}>Select peer review files to analyze</div>
-          <div className={styles.uploadSubtext}>PDF and Word documents supported • Multiple files • Up to 500MB per file</div>
-          <input
-            type="file"
-            accept=".pdf,.doc,.docx"
-            multiple
-            onChange={handleFileSelect}
-            className={styles.fileInput}
+      <Card className="mb-8">
+        <div className="text-center">
+          <ApiKeyManager 
+            onApiKeySet={handleApiKeySet}
+            required={true}
           />
         </div>
+      </Card>
 
-        {files.length > 0 && (
-          <div className={styles.fileList}>
-            {files.map((file, index) => (
-              <div key={index} className={styles.fileItem}>
-                <div className={styles.fileInfo}>
-                  <span className={styles.fileIcon}>
-                    {file.type.includes('pdf') ? '📄' : '📝'}
-                  </span>
-                  <div>
-                    <div className={styles.fileName}>{file.name}</div>
-                    <div className={styles.fileSize}>{formatFileSize(file.size)}</div>
-                    {uploadProgress[file.name] && (
-                      <div className={styles.uploadStatus}>
-                        {uploadProgress[file.name].status === 'uploading' ? '⬆️ Uploading...' : 
-                         uploadProgress[file.name].status === 'completed' ? '✅ Uploaded' : ''}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={() => removeFile(file.name)}
-                  className={styles.removeBtn}
-                  disabled={uploading}
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
+      {error && (
+        <Card className="mb-6 border-red-200 bg-red-50">
+          <div className="flex items-center gap-3">
+            <span className="text-red-600 text-xl">⚠️</span>
+            <p className="text-red-800 font-medium">{error}</p>
           </div>
-        )}
+        </Card>
+      )}
 
-        {files.length > 0 && (
-          <div className={styles.processSection}>
-            <button
-              onClick={uploadFiles}
-              disabled={uploading || uploadedFiles.length === files.length}
-              className={`${styles.processBtn} ${uploading ? styles.processing : ''}`}
-            >
-              {uploading ? 'Uploading...' : 
-               uploadedFiles.length === files.length ? '✅ Files Uploaded' : 'Upload Files'}
-            </button>
-          </div>
-        )}
-      </div>
-
-      {uploadedFiles.length > 0 && (
-        <div className={styles.processSection}>
-          <button
-            onClick={processFiles}
-            disabled={processing}
-            className={`${styles.processBtn} ${processing ? styles.processing : ''}`}
-          >
-            {processing ? 'Analyzing Reviews...' : 'Analyze Peer Reviews'}
-          </button>
-
-          {processing && (
-            <div className={styles.progressSection}>
-              <div className={styles.progressBar}>
-                <div 
-                  className={styles.progressFill}
-                  style={{ width: `${progress}%` }}
-                ></div>
-              </div>
-              <div className={styles.progressText}>{progressText}</div>
-            </div>
-          )}
+      <Card className="mb-6">
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2 flex items-center gap-2">
+            <span>📁</span>
+            <span>Upload Peer Reviews</span>
+          </h2>
         </div>
+        <FileUploaderSimple
+          onFilesSelected={handleFilesSelected}
+          multiple={true}
+          accept=".pdf,.doc,.docx"
+          maxSize={500 * 1024 * 1024}
+        />
+      </Card>
+
+      {selectedFiles.length > 0 && !processing && !results && (
+        <Card className="mb-6 bg-green-50 border-green-200">
+          <div className="text-center">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Ready to Process</h3>
+            <p className="text-gray-700 mb-4">
+              {selectedFiles.length} file{selectedFiles.length > 1 ? 's' : ''} ready for peer review analysis
+            </p>
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={processFiles}
+            >
+              🚀 Analyze Reviews
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {processing && (
+        <Card className="mb-6">
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-400 border-t-transparent"></div>
+              <span className="text-gray-700 font-medium">{progressText}</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
+              <div 
+                className="bg-gray-600 h-3 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="text-sm text-gray-600">{progress}%</div>
+          </div>
+        </Card>
       )}
 
       {results && (
-        <div className={styles.resultsSection}>
-          <h3>Analysis Results</h3>
-          <div className={styles.exportButtons}>
-            <button onClick={() => exportData('summary')} className={styles.exportBtn}>
-              Export Summary
-            </button>
-            <button onClick={() => exportData('questions')} className={styles.exportBtn}>
-              Export Questions
-            </button>
+        <Card className="mt-8">
+          <div className="mb-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">Analysis Results</h3>
+            <div className="flex gap-3 mb-6">
+              <Button variant="secondary" onClick={() => exportData('summary')}>
+                Export Summary
+              </Button>
+              <Button variant="secondary" onClick={() => exportData('questions')}>
+                Export Questions
+              </Button>
+            </div>
           </div>
           
-          <div className={styles.resultsPreview}>
-            <div className={styles.resultsTabs}>
-              <h4>Summary Preview:</h4>
-            </div>
-            <div className={styles.markdownPreview}>
-              <div 
-                dangerouslySetInnerHTML={{
-                  __html: convertMarkdownToHTML(results.summary)
-                }}
-              />
+          <div className="space-y-6">
+            <div>
+              <h4 className="text-lg font-medium text-gray-900 mb-3">Summary Preview:</h4>
+              <div className="prose max-w-none p-4 bg-gray-50 rounded-lg border">
+                <div 
+                  dangerouslySetInnerHTML={{
+                    __html: convertMarkdownToHTML(results.summary)
+                  }}
+                />
+              </div>
             </div>
             
             {results.questions && (
-              <>
-                <h4>Questions Preview:</h4>
-                <div className={styles.markdownPreview}>
+              <div>
+                <h4 className="text-lg font-medium text-gray-900 mb-3">Questions Preview:</h4>
+                <div className="prose max-w-none p-4 bg-gray-50 rounded-lg border">
                   <div 
                     dangerouslySetInnerHTML={{
                       __html: convertMarkdownToHTML(results.questions)
                     }}
                   />
                 </div>
-              </>
+              </div>
             )}
           </div>
-        </div>
+        </Card>
       )}
 
-      {showApiModal && (
-        <div className={styles.modal}>
-          <div className={styles.modalContent}>
-            <h3>Claude API Key Required</h3>
-            <p>Enter your Claude API key to analyze peer reviews:</p>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Enter Claude API key"
-              className={styles.apiInput}
-            />
-            <div className={styles.modalButtons}>
-              <button onClick={() => setShowApiModal(false)} className={styles.cancelBtn}>
-                Cancel
-              </button>
-              <button 
-                onClick={() => {
-                  if (apiKey) {
-                    setShowApiModal(false);
-                    processFiles();
-                  }
-                }}
-                className={styles.saveBtn}
-              >
-                Save & Process
-              </button>
-            </div>
-          </div>
+      {results && !processing && (
+        <div className="flex justify-center mt-6">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setResults(null);
+              setProgress(0);
+              setProgressText('');
+            }}
+          >
+            📝 New Analysis
+          </Button>
         </div>
       )}
-    </div>
+    </Layout>
   );
 }

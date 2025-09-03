@@ -48,6 +48,7 @@ export default async function handler(req, res) {
     const additionalNotes = Array.isArray(fields.additionalNotes) ? fields.additionalNotes[0] : fields.additionalNotes || '';
     const suggestedReviewers = Array.isArray(fields.suggestedReviewers) ? fields.suggestedReviewers[0] : fields.suggestedReviewers || '';
     const excludedReviewers = Array.isArray(fields.excludedReviewers) ? fields.excludedReviewers[0] : fields.excludedReviewers || '';
+    const reviewerCount = parseInt(Array.isArray(fields.reviewerCount) ? fields.reviewerCount[0] : fields.reviewerCount) || 15;
 
     if (!file) {
       console.log('Error: No file uploaded');
@@ -116,7 +117,8 @@ export default async function handler(req, res) {
       extractedInfo,
       suggestedReviewers,
       excludedReviewers,
-      proposalText
+      proposalText,
+      reviewerCount
     );
 
     let reviewerResponse;

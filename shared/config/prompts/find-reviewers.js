@@ -43,7 +43,7 @@ APPLICATION_DOMAINS: [domains]`;
 /**
  * Creates a prompt to find expert reviewers based on extracted proposal information
  */
-export function createReviewerPrompt(extractedInfo, suggestedReviewers = '', excludedReviewers = '', proposalText = '') {
+export function createReviewerPrompt(extractedInfo, suggestedReviewers = '', excludedReviewers = '', proposalText = '', reviewerCount = 15) {
   // Handle null/undefined extractedInfo
   const safeInfo = extractedInfo || {};
   const safeProposalText = proposalText || '';
@@ -53,7 +53,7 @@ export function createReviewerPrompt(extractedInfo, suggestedReviewers = '', exc
                    extractProposalSection(safeProposalText, 'summary') ||
                    (safeProposalText ? safeProposalText.substring(0, 1500) + '...' : 'No proposal text provided');
   
-  return `You are helping identify expert reviewers for a scientific research proposal. Based on the information below, please identify approximately 15 potential reviewers who would be qualified to evaluate this work.
+  return `You are helping identify expert reviewers for a scientific research proposal. Based on the information below, please identify approximately ${reviewerCount} potential reviewers who would be qualified to evaluate this work.
 
 **PROPOSAL INFORMATION:**
 - Title: ${safeInfo.title || 'Not specified'}
@@ -82,7 +82,7 @@ ${excludedReviewers ? `- Excluded Reviewers (must not include): ${excludedReview
 6. For interdisciplinary work, include experts from each major area
 
 **OUTPUT FORMAT:**
-Provide a numbered list of 15 potential reviewers. For each reviewer, include:
+Provide a numbered list of ${reviewerCount} potential reviewers. For each reviewer, include:
 
 [Number]. **Name, Title**
    Institution: [University/Organization, Department]

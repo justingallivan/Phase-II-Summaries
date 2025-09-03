@@ -6,7 +6,8 @@ export default function ResultsDisplay({
   onRefine, 
   onQuestionAsk,
   showActions = true,
-  exportFormats = ['markdown', 'json'] 
+  exportFormats = ['markdown', 'json'],
+  hideMetadata = false
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [copySuccess, setCopySuccess] = useState({});
@@ -229,7 +230,7 @@ export default function ResultsDisplay({
                   </div>
                 </div>
 
-                {result.metadata && (
+                {!hideMetadata && result.metadata && (
                   <div className={styles.metadataSection}>
                     <h4>Document Information</h4>
                     <div className={styles.metadata}>
@@ -267,7 +268,7 @@ export default function ResultsDisplay({
                   </div>
                 )}
 
-                {result.structuredData && (
+                {!hideMetadata && result.structuredData && (
                   <div className={styles.structuredDataSection}>
                     <h4>Extracted Data</h4>
                     <div className={styles.structuredData}>

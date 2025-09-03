@@ -1,10 +1,8 @@
 import { useState, useCallback } from 'react';
-import Head from 'next/head';
-import Link from 'next/link';
+import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import ApiKeyManager from '../shared/components/ApiKeyManager';
 import ResultsDisplay from '../shared/components/ResultsDisplay';
-import styles from '../styles/Home.module.css';
 
 export default function ProposalSummarizer() {
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -142,7 +140,7 @@ export default function ProposalSummarizer() {
 
   const submitRefinement = async () => {
     if (!feedbackText.trim()) {
-      alert('Please provide feedback for refinement');
+      setError('Please provide feedback for refinement');
       return;
     }
 
@@ -197,7 +195,7 @@ export default function ProposalSummarizer() {
 
   const submitQuestion = async () => {
     if (!currentQuestion.trim()) {
-      alert('Please enter a question');
+      setError('Please enter a question');
       return;
     }
 
@@ -244,146 +242,163 @@ export default function ProposalSummarizer() {
   };
 
   return (
-    <div className={styles.container}>
-      <Head>
-        <title>Create Phase II Writeup Draft</title>
-        <meta name="description" content="Generate standardized writeup drafts from PDF research proposals using Claude AI" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+    <Layout 
+      title="Create Phase II Writeup Draft"
+      description="Generate standardized writeup drafts from PDF research proposals using Claude AI"
+    >
+      <PageHeader 
+        title="Create Phase II Writeup Draft"
+        subtitle="Generate standardized writeup drafts from PDF research proposals using Claude AI"
+        icon="🔬"
+      />
 
-      <main className={styles.main}>
-        <div className={styles.header}>
-          <Link href="/" className={styles.backButton}>
-            ← Back to Apps
-          </Link>
-          <h1 className={styles.title}>
-            🔬 Create Phase II Writeup Draft
-          </h1>
-          <p className={styles.description}>
-            Generate standardized writeup drafts from PDF research proposals using Claude AI
-          </p>
-        </div>
-
-        <div className={styles.content}>
+      <Card className="mb-8">
+        <div className="text-center">
           <ApiKeyManager 
             onApiKeySet={handleApiKeySet}
             required={true}
           />
-
-          {error && (
-            <div className={styles.errorBox}>
-              <span className={styles.errorIcon}>⚠️</span>
-              <span className={styles.errorText}>{error}</span>
-            </div>
-          )}
-
-          <div className={styles.uploadSection}>
-            <h2>📁 Upload Research Proposals</h2>
-            <FileUploaderSimple
-              onFilesSelected={handleFilesSelected}
-              multiple={true}
-              accept=".pdf"
-              maxSize={10 * 1024 * 1024}
-            />
-          </div>
-
-          {selectedFiles.length > 0 && !processing && !results && (
-            <div className={styles.readySection}>
-              <h3>Ready to Process</h3>
-              <p>{selectedFiles.length} proposal{selectedFiles.length > 1 ? 's' : ''} ready for Phase II writeup generation</p>
-              <button
-                onClick={processProposals}
-                className={styles.processButton}
-              >
-                🚀 Generate Writeup Drafts
-              </button>
-            </div>
-          )}
-
-          {processing && (
-            <div className={styles.processingSection}>
-              <div className={styles.processingHeader}>
-                <div className={styles.spinner}></div>
-                <span>{progressText}</span>
-              </div>
-              <div className={styles.progressBarContainer}>
-                <div 
-                  className={styles.progressBar}
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <div className={styles.progressPercent}>{progress}%</div>
-            </div>
-          )}
-
-          {results && (
-            <ResultsDisplay
-              results={results}
-              onRefine={handleRefine}
-              onQuestionAsk={handleQuestionAsk}
-              showActions={true}
-              exportFormats={['markdown', 'json']}
-            />
-          )}
-
-          {results && !processing && (
-            <div className={styles.actionButtons}>
-              <button
-                onClick={() => {
-                  setResults(null);
-                  setProgress(0);
-                  setProgressText('');
-                }}
-                className={styles.newAnalysisButton}
-              >
-                📄 New Proposals
-              </button>
-            </div>
-          )}
         </div>
-      </main>
+      </Card>
+
+      {error && (
+        <Card className="mb-6 border-red-200 bg-red-50">
+          <div className="flex items-center gap-3">
+            <span className="text-red-600 text-xl">⚠️</span>
+            <p className="text-red-800 font-medium">{error}</p>
+          </div>
+        </Card>
+      )}
+
+      <Card className="mb-6">
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2 flex items-center gap-2">
+            <span>📁</span>
+            <span>Upload Research Proposals</span>
+          </h2>
+        </div>
+        <FileUploaderSimple
+          onFilesSelected={handleFilesSelected}
+          multiple={true}
+          accept=".pdf"
+          maxSize={10 * 1024 * 1024}
+        />
+      </Card>
+
+      {selectedFiles.length > 0 && !processing && !results && (
+        <Card className="mb-6 bg-green-50 border-green-200">
+          <div className="text-center">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Ready to Process</h3>
+            <p className="text-gray-700 mb-4">
+              {selectedFiles.length} proposal{selectedFiles.length > 1 ? 's' : ''} ready for Phase II writeup generation
+            </p>
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={processProposals}
+            >
+              🚀 Generate Writeup Drafts
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {processing && (
+        <Card className="mb-6">
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-400 border-t-transparent"></div>
+              <span className="text-gray-700 font-medium">{progressText}</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
+              <div 
+                className="bg-gray-600 h-3 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="text-sm text-gray-600">{progress}%</div>
+          </div>
+        </Card>
+      )}
+
+      {results && (
+        <div className="mt-8">
+          <ResultsDisplay
+            results={results}
+            onRefine={handleRefine}
+            onQuestionAsk={handleQuestionAsk}
+            showActions={true}
+            exportFormats={['markdown', 'json']}
+          />
+        </div>
+      )}
+
+      {results && !processing && (
+        <div className="flex justify-center mt-6">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setResults(null);
+              setProgress(0);
+              setProgressText('');
+            }}
+          >
+            📄 New Proposals
+          </Button>
+        </div>
+      )}
 
       {/* Q&A Modal */}
       {showQAModal && (
-        <div className={styles.modalOverlay} onClick={() => setShowQAModal(false)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <h2>Ask Questions - {selectedFileForQA}</h2>
-              <button onClick={() => setShowQAModal(false)} className={styles.closeButton}>✕</button>
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowQAModal(false)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Ask Questions - {selectedFileForQA}</h2>
+              <button onClick={() => setShowQAModal(false)} className="text-gray-500 hover:text-gray-700 text-2xl leading-none">
+                ✕
+              </button>
             </div>
-            <div className={styles.modalContent}>
-              <div className={styles.qaMessages}>
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {qaMessages.map((msg, index) => (
-                  <div key={index} className={`${styles.message} ${styles[msg.role]}`}>
-                    <div className={styles.messageContent}>{msg.content}</div>
+                  <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[80%] p-3 rounded-lg ${
+                      msg.role === 'user' 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-gray-100 text-gray-900'
+                    }`}>
+                      <div className="whitespace-pre-wrap">{msg.content}</div>
+                    </div>
                   </div>
                 ))}
                 {isQAProcessing && (
-                  <div className={styles.message + ' ' + styles.assistant}>
-                    <div className={styles.messageContent}>
-                      <div className={styles.spinner}></div>
+                  <div className="flex justify-start">
+                    <div className="bg-gray-100 text-gray-900 p-3 rounded-lg flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent"></div>
                       Thinking...
                     </div>
                   </div>
                 )}
               </div>
-              <div className={styles.qaInput}>
-                <input
-                  type="text"
-                  value={currentQuestion}
-                  onChange={(e) => setCurrentQuestion(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && !isQAProcessing && submitQuestion()}
-                  placeholder="Ask a question about this proposal..."
-                  disabled={isQAProcessing}
-                  className={styles.qaTextInput}
-                />
-                <button
-                  onClick={submitQuestion}
-                  disabled={isQAProcessing || !currentQuestion.trim()}
-                  className={styles.qaAskButton}
-                >
-                  Ask
-                </button>
+              <div className="border-t border-gray-200 p-4">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={currentQuestion}
+                    onChange={(e) => setCurrentQuestion(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && !isQAProcessing && submitQuestion()}
+                    placeholder="Ask a question about this proposal..."
+                    disabled={isQAProcessing}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <Button
+                    variant="primary"
+                    onClick={submitQuestion}
+                    disabled={isQAProcessing || !currentQuestion.trim()}
+                  >
+                    Ask
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -392,314 +407,61 @@ export default function ProposalSummarizer() {
 
       {/* Feedback Modal */}
       {showFeedbackModal && (
-        <div className={styles.modalOverlay} onClick={isRefining ? null : () => setShowFeedbackModal(false)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <h2>Refine Summary - {selectedFileForRefine}</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={isRefining ? null : () => setShowFeedbackModal(false)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Refine Summary - {selectedFileForRefine}</h2>
               <button 
                 onClick={() => setShowFeedbackModal(false)} 
-                className={styles.closeButton}
+                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
                 disabled={isRefining}
-              >✕</button>
+              >
+                ✕
+              </button>
             </div>
-            <div className={styles.modalContent}>
+            <div className="flex-1 overflow-hidden flex flex-col p-4">
               {isRefining ? (
-                <div className="refiningSection">
-                  <div className="refiningHeader">
-                    <div className="spinner"></div>
-                    <span>Claude is refining your summary...</span>
+                <div className="text-center space-y-4">
+                  <div className="flex items-center justify-center gap-3">
+                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-400 border-t-transparent"></div>
+                    <span className="text-gray-700 font-medium">Claude is refining your summary...</span>
                   </div>
-                  <p>Please wait while your feedback is being processed and incorporated into an improved summary.</p>
-                  <div className="feedbackDisplay">
-                    <strong>Your feedback:</strong>
-                    <p>"{feedbackText}"</p>
+                  <p className="text-gray-600">Please wait while your feedback is being processed and incorporated into an improved summary.</p>
+                  <div className="bg-gray-50 p-4 rounded-lg text-left">
+                    <p className="font-medium text-gray-900 mb-2">Your feedback:</p>
+                    <p className="text-gray-700 italic">"{feedbackText}"</p>
                   </div>
                 </div>
               ) : (
-                <>
+                <div className="space-y-4">
                   <textarea
                     value={feedbackText}
                     onChange={(e) => setFeedbackText(e.target.value)}
                     placeholder="Provide specific feedback on how to improve the summary..."
                     rows={6}
-                    className={styles.feedbackTextarea}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                   />
-                  <div className={styles.modalActions}>
-                    <button
+                  <div className="flex justify-end gap-3">
+                    <Button
+                      variant="secondary"
                       onClick={() => setShowFeedbackModal(false)}
-                      className={styles.cancelButton}
                     >
                       Cancel
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="primary"
                       onClick={submitRefinement}
                       disabled={isRefining || !feedbackText.trim()}
-                      className={styles.refineButton}
                     >
                       {isRefining ? 'Refining...' : 'Refine Summary'}
-                    </button>
+                    </Button>
                   </div>
-                </>
+                </div>
               )}
             </div>
           </div>
         </div>
       )}
-
-      <style jsx>{`
-        .spinner {
-          border: 3px solid #f3f3f3;
-          border-top: 3px solid #0070f3;
-          border-radius: 50%;
-          width: 24px;
-          height: 24px;
-          animation: spin 1s linear infinite;
-          display: inline-block;
-          margin-right: 0.5rem;
-        }
-
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-
-        .errorBox {
-          background-color: #fee;
-          color: #c00;
-          padding: 1rem;
-          border-radius: 8px;
-          margin: 1rem 0;
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-
-        .refiningSection {
-          text-align: center;
-          padding: 2rem;
-          background-color: #f8f9fa;
-          border-radius: 8px;
-        }
-
-        .refiningHeader {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0.75rem;
-          margin-bottom: 1rem;
-          font-size: 1.1rem;
-          font-weight: 600;
-          color: #333;
-        }
-
-        .feedbackDisplay {
-          background-color: white;
-          border: 1px solid #e0e0e0;
-          border-radius: 8px;
-          padding: 1rem;
-          margin-top: 1rem;
-          text-align: left;
-        }
-
-        .feedbackDisplay strong {
-          color: #667eea;
-          margin-bottom: 0.5rem;
-          display: block;
-        }
-
-        .feedbackDisplay p {
-          margin: 0.5rem 0 0 0;
-          font-style: italic;
-          color: #555;
-        }
-
-        .closeButton:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .readySection, .processingSection {
-          text-align: center;
-          padding: 2rem;
-          background-color: #f9f9f9;
-          border-radius: 8px;
-          margin: 2rem 0;
-        }
-
-        .processingHeader {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 1rem;
-          margin-bottom: 1rem;
-        }
-
-        .progressBarContainer {
-          width: 100%;
-          height: 20px;
-          background-color: #e0e0e0;
-          border-radius: 10px;
-          overflow: hidden;
-          margin: 1rem 0;
-        }
-
-        .progressBar {
-          height: 100%;
-          background-color: #0070f3;
-          transition: width 0.3s ease;
-        }
-
-        .progressPercent {
-          color: #666;
-          font-size: 0.9rem;
-        }
-
-        .actionButtons {
-          display: flex;
-          justify-content: center;
-          margin: 2rem 0;
-        }
-
-        .processButton,
-        .newAnalysisButton {
-          padding: 1rem 2rem;
-          background-color: #0070f3;
-          color: white;
-          border: none;
-          border-radius: 8px;
-          font-size: 1.1rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: background-color 0.2s;
-        }
-
-        .processButton:hover,
-        .newAnalysisButton:hover {
-          background-color: #0051cc;
-        }
-
-        .modalOverlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background-color: rgba(0, 0, 0, 0.3);
-          z-index: 1000;
-        }
-
-        .modal {
-          position: fixed;
-          top: 0;
-          right: 0;
-          bottom: 0;
-          background-color: white;
-          box-shadow: -5px 0 20px rgba(0, 0, 0, 0.3);
-          width: 500px;
-          max-width: 40vw;
-          min-width: 400px;
-          overflow: auto;
-          transform: translateX(0);
-          transition: transform 0.3s ease;
-        }
-
-        .modalHeader {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 1.5rem;
-          border-bottom: 1px solid #e0e0e0;
-          background-color: #f8f9fa;
-          position: sticky;
-          top: 0;
-          z-index: 1;
-        }
-
-        .modalHeader h2 {
-          margin: 0;
-          font-size: 1.25rem;
-          color: #333;
-        }
-
-        .closeButton {
-          background: none;
-          border: none;
-          font-size: 1.5rem;
-          color: #999;
-          cursor: pointer;
-          padding: 0;
-          width: 32px;
-          height: 32px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 4px;
-          transition: all 0.2s;
-        }
-
-        .closeButton:hover {
-          background-color: #f0f0f0;
-          color: #333;
-        }
-
-        .modalContent {
-          padding: 1.5rem;
-        }
-
-
-
-        .feedbackTextarea {
-          width: 100%;
-          padding: 1rem;
-          border: 1px solid #ddd;
-          border-radius: 8px;
-          font-size: 1rem;
-          font-family: inherit;
-          resize: vertical;
-          margin-bottom: 1rem;
-        }
-
-        .modalActions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 1rem;
-        }
-
-        .cancelButton,
-        .refineButton {
-          padding: 0.75rem 1.5rem;
-          border-radius: 4px;
-          font-size: 1rem;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .cancelButton {
-          background-color: white;
-          border: 1px solid #ddd;
-          color: #666;
-        }
-
-        .cancelButton:hover {
-          background-color: #f5f5f5;
-        }
-
-        .refineButton {
-          background-color: #ffc107;
-          border: 1px solid #ffc107;
-          color: #333;
-        }
-
-        .refineButton:hover:not(:disabled) {
-          background-color: #e0a800;
-          border-color: #e0a800;
-        }
-
-        .refineButton:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-      `}</style>
-    </div>
+    </Layout>
   );
 }
