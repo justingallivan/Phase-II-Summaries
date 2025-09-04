@@ -1,9 +1,5 @@
-import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
-import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
-import { BASE_CONFIG } from '../../shared/config/baseConfig';
-import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
-import { applySecurityMiddleware } from '../../shared/api/middleware/security';
-import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
+import pdf from 'pdf-parse';
+import { CONFIG, PROMPTS } from '../../lib/config';
 
 export const config = {
   api: {
@@ -77,62 +73,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Apply security middleware
-    const securityCheck = await applySecurityMiddleware(req, res);
-    if (!securityCheck) {
-      return;
+    const { files, summaryLength = 2, summaryLevel = 'technical-non-expert', apiKey } = req.body;
+    
+    if (!apiKey) {
+      return res.status(400).json({ error: 'API key required' });
     }
-
-    // Apply rate limiting (more restrictive for batch processing)
-    const rateLimitCheck = await nextRateLimiter({ 
-      max: 10, 
-      windowMs: 60000 
-    })(req, res);
-    if (!rateLimitCheck) {
-      return;
-    }
-
-    const { files, summaryLength = 2, summaryLevel = 'technical-non-expert', apiKey: clientApiKey } = req.body;
     
     if (!files || files.length === 0) {
-      return res.status(400).json({ 
-        error: 'No files to process',
-        timestamp: new Date().toISOString()
-      });
+      return res.status(400).json({ error: 'No files to process' });
     }
 
     if (files.length > 20) {
-      return res.status(400).json({ 
-        error: 'Maximum 20 files allowed for batch processing',
-        timestamp: new Date().toISOString()
-      });
+      return res.status(400).json({ error: 'Maximum 20 files allowed for batch processing' });
     }
-
-    // Get API key (prefer server-side, fall back to client)
-    const apiKeyManager = getApiKeyManager();
-    let apiKey;
-    
-    try {
-      apiKey = apiKeyManager.selectApiKey(clientApiKey || req.apiKey);
-    } catch (error) {
-      return res.status(401).json({ 
-        error: BASE_CONFIG.ERROR_MESSAGES.NO_API_KEY,
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    // Initialize shared utilities with higher token limit for longer summaries
-    const maxTokens = Math.min(4000, 800 * summaryLength);
-    const claudeClient = createClaudeClient(apiKey, {
-      model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
-      defaultMaxTokens: maxTokens,
-      defaultTemperature: 0.2, // Lower temperature for consistency
-    });
-
-    const fileProcessor = createFileProcessor({
-      maxTextLength: BASE_CONFIG.FILE_PROCESSING.MAX_TEXT_LENGTH,
-      minTextLength: BASE_CONFIG.FILE_PROCESSING.MIN_TEXT_LENGTH,
-    });
 
     // Set up streaming response with proper SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
@@ -181,8 +134,13 @@ export default async function handler(req, res) {
         if (res.flush) res.flush();
         await new Promise(resolve => setTimeout(resolve, 50));
         
-        // Process PDF file
-        const processedFile = await fileProcessor.processPDF(buffer, file.filename);
+        // Extract text from PDF
+        const pdfData = await pdf(buffer);
+        const text = pdfData.text;
+
+        if (!text || text.trim().length < 100) {
+          throw new Error('PDF appears to be empty or contains insufficient text');
+        }
         
         // Send AI processing update (50% of this file's progress)
         res.write(`data: ${JSON.stringify({
@@ -192,17 +150,34 @@ export default async function handler(req, res) {
         if (res.flush) res.flush();
         
         // Generate batch summary using Claude
-        const prompt = BATCH_SUMMARY_PROMPT(
-          processedFile.text, 
-          file.filename, 
-          summaryLength, 
-          summaryLevel
-        );
+        const prompt = BATCH_SUMMARY_PROMPT(text, file.filename, summaryLength, summaryLevel);
+        const maxTokens = Math.min(4000, 800 * summaryLength);
         
-        const summary = await claudeClient.sendMessage(prompt, {
-          maxTokens,
-          temperature: 0.2
+        const response = await fetch(CONFIG.CLAUDE_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey.trim(),
+            'anthropic-version': CONFIG.ANTHROPIC_VERSION
+          },
+          body: JSON.stringify({
+            model: CONFIG.CLAUDE_MODEL,
+            max_tokens: maxTokens,
+            temperature: 0.2,
+            messages: [{
+              role: 'user',
+              content: prompt
+            }]
+          })
         });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Claude API error ${response.status}: ${errorText}`);
+        }
+
+        const data = await response.json();
+        const summary = data.content[0].text;
 
         // Send metadata extraction update (80% of this file's progress)
         res.write(`data: ${JSON.stringify({
@@ -217,19 +192,38 @@ export default async function handler(req, res) {
           const metaPrompt = `Extract basic proposal info as JSON:
 {
   "institution": "primary institution",
-  "principal_investigator": "PI name",
+  "principal_investigator": "PI name", 
   "research_area": "field of research",
   "funding_amount": "amount if mentioned",
   "keywords": ["key", "terms"]
 }
 
-From: ${processedFile.text.substring(0, 3000)}
+From: ${text.substring(0, 3000)}
 Return only JSON.`;
           
-          structuredData = await claudeClient.sendMessageForJSON(metaPrompt, {
-            maxTokens: 300,
-            temperature: 0.1
+          const metaResponse = await fetch(CONFIG.CLAUDE_API_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey.trim(),
+              'anthropic-version': CONFIG.ANTHROPIC_VERSION
+            },
+            body: JSON.stringify({
+              model: CONFIG.CLAUDE_MODEL,
+              max_tokens: 300,
+              temperature: 0.1,
+              messages: [{
+                role: 'user',
+                content: metaPrompt
+              }]
+            })
           });
+          
+          if (metaResponse.ok) {
+            const metaData = await metaResponse.json();
+            const jsonText = metaData.content[0].text;
+            structuredData = JSON.parse(jsonText);
+          }
         } catch (e) {
           console.warn('Failed to extract structured data for batch:', e);
         }
@@ -245,7 +239,8 @@ Return only JSON.`;
           filename: file.filename,
           summary,
           metadata: {
-            ...processedFile.metadata,
+            pages: pdfData.numpages,
+            wordCount: text.split(/\s+/).length,
             summaryLength,
             summaryLevel,
             processedAt: new Date().toISOString()
@@ -297,11 +292,7 @@ Return only JSON.`;
     console.error('Batch processing error:', error);
     
     if (!res.headersSent) {
-      res.status(500).json({ 
-        error: BASE_CONFIG.ERROR_MESSAGES.PROCESSING_FAILED,
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-        timestamp: new Date().toISOString()
-      });
+      res.status(500).json({ error: error.message });
     } else {
       // If headers were already sent, send error in stream
       res.write(`data: ${JSON.stringify({
