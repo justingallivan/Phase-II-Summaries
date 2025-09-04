@@ -191,7 +191,10 @@ export default function BatchProposalSummaries() {
       <div className="space-y-6">
         <Card>
           <div>
-            <h2>⚙️ Summary Configuration</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <span>⚙️</span>
+              <span>Summary Configuration</span>
+            </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <label htmlFor="summaryLength" className="block text-sm font-medium text-gray-700">
@@ -367,7 +370,6 @@ export default function BatchProposalSummaries() {
               </Button>
             </div>
           )}
-        </Card>
       </div>
 
     </Layout>
