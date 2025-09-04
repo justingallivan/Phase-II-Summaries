@@ -42,29 +42,46 @@ export default function BatchProposalSummaries() {
     setError(null);
 
     try {
-      // Convert files to base64
-      const filesWithContent = await Promise.all(
-        selectedFiles.map(async (file) => {
-          return new Promise((resolve, reject) => {
+      // Convert files to base64 with better error handling
+      const filesWithContent = [];
+      
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        try {
+          const base64Content = await new Promise((resolve, reject) => {
             const reader = new FileReader();
-            reader.onload = () => {
-              const result = reader.result;
-              const base64Content = result && typeof result === 'string' && result.includes(',') 
-                ? result.split(',')[1] 
-                : '';
-              
-              resolve({
-                filename: file.name,
-                content: base64Content,
-                size: file.size,
-                type: file.type
-              });
+            reader.onload = (e) => {
+              try {
+                const result = e.target.result;
+                if (typeof result === 'string' && result.startsWith('data:')) {
+                  const commaIndex = result.indexOf(',');
+                  if (commaIndex > -1) {
+                    resolve(result.substring(commaIndex + 1));
+                  } else {
+                    reject(new Error('Invalid data URL format'));
+                  }
+                } else {
+                  reject(new Error('FileReader did not return a data URL'));
+                }
+              } catch (parseError) {
+                reject(new Error(`Failed to process file data: ${parseError.message}`));
+              }
             };
-            reader.onerror = reject;
+            reader.onerror = () => reject(new Error('Failed to read file'));
             reader.readAsDataURL(file);
           });
-        })
-      );
+          
+          filesWithContent.push({
+            filename: file.name,
+            content: base64Content,
+            size: file.size,
+            type: file.type
+          });
+        } catch (fileError) {
+          console.error(`Error processing file ${file.name}:`, fileError);
+          throw new Error(`Failed to process file "${file.name}": ${fileError.message}`);
+        }
+      }
 
       const response = await fetch('/api/process-batch-simple', {
         method: 'POST',
@@ -85,59 +102,55 @@ export default function BatchProposalSummaries() {
         throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
-      // Handle streaming response
+      // Handle streaming response with simplified parsing
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
+      const decoder = new TextDecoder('utf-8');
       let buffer = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n\n');
-        buffer = lines.pop();
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
+          
+          // Process complete lines
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
-        for (const line of lines) {
-          if (line && typeof line === 'string' && line.startsWith('data: ')) {
-            try {
-              const jsonData = line.length > 6 ? line.substring(6).trim() : '{}';
-              
-              // Skip empty or invalid JSON strings
-              if (!jsonData || jsonData === '' || jsonData === 'undefined' || jsonData === 'null') {
+          for (const line of lines) {
+            if (line && line.startsWith('data: ')) {
+              try {
+                const jsonString = line.slice(6).trim();
+                
+                if (jsonString && jsonString !== '' && jsonString !== 'null') {
+                  const data = JSON.parse(jsonString);
+                  
+                  if (data && typeof data === 'object') {
+                    if (typeof data.progress === 'number') {
+                      setProgress(data.progress);
+                    }
+                    
+                    if (data.message) {
+                      setProgressText(String(data.message));
+                    }
+                    
+                    if (data.results) {
+                      setResults(data.results);
+                    }
+                  }
+                }
+              } catch (parseError) {
+                // Silently continue on parse errors to avoid breaking the stream
                 continue;
               }
-              
-              // Log problematic data for debugging
-              console.log('Parsing JSON data:', jsonData);
-              
-              const data = JSON.parse(jsonData);
-              
-              if (data && typeof data === 'object') {
-                if (data.progress !== undefined) {
-                  setProgress(data.progress);
-                }
-                
-                if (data.message) {
-                  setProgressText(data.message);
-                }
-                
-                if (data.results) {
-                  setResults(data.results);
-                }
-              }
-            } catch (e) {
-              console.error('Failed to parse streaming data:', {
-                error: e.message,
-                line: line,
-                jsonData: line.length > 6 ? line.substring(6) : '',
-                lineLength: line.length
-              });
-              // Continue processing other lines instead of failing
-              continue;
             }
           }
         }
+      } catch (streamError) {
+        console.error('Streaming error:', streamError);
+        throw new Error('Failed to process server response stream');
       }
 
       setProgressText('Batch processing complete!');
