@@ -231,6 +231,7 @@ export default function BatchProposalSummaries() {
               </div>
             </div>
           </div>
+        </Card>
 
         <Card className="mb-6">
           <div className="mb-4">
