@@ -231,7 +231,14 @@ async function analyzePeerReviews(reviewTexts, apiKey) {
           .replace('**OUTPUT 1:**', '')
           .replace('**SUMMARY:**', '')
           .trim();
-        questions = parts[1]?.trim() || '';
+        
+        // Preserve the questions content and add a proper header
+        const questionsContent = parts[1]?.trim() || '';
+        if (questionsContent) {
+          // Add a proper header to the questions section
+          questions = `## Questions and Concerns Raised by Reviewers\n\n${questionsContent}`;
+        }
+        
         console.log(`Found marker: ${marker}, Questions length: ${questions.length}`);
         break;
       }
@@ -263,12 +270,14 @@ async function analyzePeerReviews(reviewTexts, apiKey) {
 
         if (questionsResponse.ok) {
           const questionsData = await questionsResponse.json();
-          questions = questionsData.content[0].text;
+          const questionsContent = questionsData.content[0].text;
+          // Add proper header to separately fetched questions
+          questions = `## Questions and Concerns Raised by Reviewers\n\n${questionsContent}`;
           console.log('Got questions from separate request, length:', questions.length);
         }
       } catch (questionsError) {
         console.warn('Failed to extract questions separately:', questionsError);
-        questions = '### Questions and Concerns\n\nNo specific questions could be extracted from the peer reviews. Please review the summary above for the main points raised by reviewers.';
+        questions = '## Questions and Concerns Raised by Reviewers\n\nNo specific questions could be extracted from the peer reviews. Please review the summary above for the main points raised by reviewers.';
       }
     }
 
