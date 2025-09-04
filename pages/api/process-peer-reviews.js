@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     }
 
     if (!files || files.length === 0) {
-      return res.status(400).json({ error: 'No file URLs provided' });
+      return res.status(400).json({ error: 'No files provided' });
     }
 
     // Set headers for streaming response
@@ -38,33 +38,61 @@ export default async function handler(req, res) {
       })}\n\n`);
 
       try {
-        // Fetch file from Vercel Blob
-        const response = await fetch(fileInfo.url);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch file: ${response.status}`);
+        let buffer;
+        
+        // Handle both base64 content and URLs
+        if (fileInfo.content) {
+          // File content is provided as base64
+          buffer = Buffer.from(fileInfo.content, 'base64');
+        } else if (fileInfo.url) {
+          // File is provided as URL (Vercel Blob)
+          const response = await fetch(fileInfo.url);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch file: ${response.status}`);
+          }
+          const arrayBuffer = await response.arrayBuffer();
+          buffer = Buffer.from(arrayBuffer);
+        } else {
+          throw new Error('No file content or URL provided');
         }
         
-        const buffer = await response.arrayBuffer();
         let text = '';
 
         // Extract text based on file type
         if (fileInfo.filename.toLowerCase().endsWith('.pdf')) {
-          const pdfData = await pdf(Buffer.from(buffer));
-          text = pdfData.text;
+          try {
+            const pdfData = await pdf(buffer);
+            text = pdfData.text;
+            console.log(`Extracted ${text.length} characters from PDF: ${fileInfo.filename}`);
+          } catch (pdfError) {
+            console.error(`PDF parsing error for ${fileInfo.filename}:`, pdfError);
+            throw new Error(`Failed to parse PDF: ${pdfError.message}`);
+          }
         } else if (fileInfo.filename.toLowerCase().endsWith('.docx')) {
-          const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) });
-          text = result.value;
+          try {
+            const result = await mammoth.extractRawText({ buffer });
+            text = result.value;
+            console.log(`Extracted ${text.length} characters from DOCX: ${fileInfo.filename}`);
+          } catch (docxError) {
+            console.error(`DOCX parsing error for ${fileInfo.filename}:`, docxError);
+            throw new Error(`Failed to parse DOCX: ${docxError.message}`);
+          }
         } else if (fileInfo.filename.toLowerCase().endsWith('.doc')) {
           // For older .doc files, mammoth might work but with limitations
           try {
-            const result = await mammoth.extractRawText({ buffer: Buffer.from(buffer) });
+            const result = await mammoth.extractRawText({ buffer });
             text = result.value;
+            console.log(`Extracted ${text.length} characters from DOC: ${fileInfo.filename}`);
           } catch (docError) {
             throw new Error('Unable to process .doc file - please convert to .docx or PDF format');
           }
+        } else {
+          throw new Error(`Unsupported file type. Please use PDF, DOCX, or DOC files.`);
         }
 
-        if (!text || text.trim().length < 50) {
+        // More lenient text validation
+        if (!text || text.trim().length < 10) {
+          console.warn(`File ${fileInfo.filename} has very little text (${text.trim().length} chars)`);
           throw new Error('Document appears to be empty or contains insufficient text');
         }
 
@@ -72,6 +100,8 @@ export default async function handler(req, res) {
           filename: fileInfo.filename,
           text: text.trim()
         });
+        
+        console.log(`Successfully processed ${fileInfo.filename}: ${text.trim().length} characters`);
 
       } catch (fileError) {
         console.error(`Error processing ${fileInfo.filename}:`, fileError);
@@ -128,13 +158,23 @@ export default async function handler(req, res) {
 
 async function analyzePeerReviews(reviewTexts, apiKey) {
   try {
+    console.log('Starting analysis with', reviewTexts.length, 'review texts');
+    
     // Filter out error entries and extract just the text
     const validTexts = reviewTexts
-      .filter(review => !review.error)
+      .filter(review => !review.error && review.text && review.text.length > 10)
       .map(review => review.text);
 
+    console.log('Valid texts after filtering:', validTexts.length);
+    
     if (validTexts.length === 0) {
-      throw new Error('No valid review texts to analyze');
+      // Provide detailed error information
+      const errorDetails = reviewTexts.map(r => 
+        `${r.filename}: ${r.error ? 'Error - ' + r.text : 'Text length: ' + (r.text ? r.text.length : 0)}`
+      ).join('\n');
+      
+      console.error('No valid texts found. Details:', errorDetails);
+      throw new Error(`No valid review texts to analyze. All files either failed to process or contained no extractable text.\n\nFile details:\n${errorDetails}`);
     }
 
     // Generate comprehensive analysis
