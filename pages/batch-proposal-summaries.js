@@ -48,9 +48,14 @@ export default function BatchProposalSummaries() {
           return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => {
+              const result = reader.result;
+              const base64Content = result && typeof result === 'string' && result.includes(',') 
+                ? result.split(',')[1] 
+                : '';
+              
               resolve({
                 filename: file.name,
-                content: reader.result.split(',')[1],
+                content: base64Content,
                 size: file.size,
                 type: file.type
               });
@@ -94,9 +99,10 @@ export default function BatchProposalSummaries() {
         buffer = lines.pop();
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
+          if (line && typeof line === 'string' && line.startsWith('data: ')) {
             try {
-              const data = JSON.parse(line.substring(6));
+              const jsonData = line.length > 6 ? line.substring(6) : '{}';
+              const data = JSON.parse(jsonData);
               
               if (data.progress !== undefined) {
                 setProgress(data.progress);
@@ -258,7 +264,7 @@ export default function BatchProposalSummaries() {
               <p className="text-gray-700 mb-4">
                 {selectedFiles.length} proposal{selectedFiles.length > 1 ? 's' : ''} ready for batch processing
                 <br />
-                Summary: {summaryLength} page{summaryLength > 1 ? 's' : ''} • Level: {summaryLevel.replace('-', ' ')}
+                Summary: {summaryLength} page{summaryLength > 1 ? 's' : ''} • Level: {summaryLevel ? summaryLevel.replace('-', ' ') : 'technical non expert'}
               </p>
               <Button
                 variant="primary"
@@ -331,10 +337,13 @@ export default function BatchProposalSummaries() {
                       ) : (
                         <>
                           <div className="text-gray-700 leading-relaxed">
-                            {result.summary?.split('\n').slice(0, 5).map((line, i) => (
-                              <p key={i} className="mb-2">{line}</p>
-                            ))}
-                            {result.summary?.split('\n').length > 5 && (
+                            {result.summary && typeof result.summary === 'string' ? 
+                              result.summary.split('\n').slice(0, 5).map((line, i) => (
+                                <p key={i} className="mb-2">{line}</p>
+                              )) : 
+                              <p>No summary available</p>
+                            }
+                            {result.summary && typeof result.summary === 'string' && result.summary.split('\n').length > 5 && (
                               <p className="mb-2"><em className="text-gray-500">... (truncated in preview)</em></p>
                             )}
                           </div>
