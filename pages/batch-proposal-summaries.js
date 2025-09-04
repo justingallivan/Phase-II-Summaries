@@ -101,22 +101,40 @@ export default function BatchProposalSummaries() {
         for (const line of lines) {
           if (line && typeof line === 'string' && line.startsWith('data: ')) {
             try {
-              const jsonData = line.length > 6 ? line.substring(6) : '{}';
+              const jsonData = line.length > 6 ? line.substring(6).trim() : '{}';
+              
+              // Skip empty or invalid JSON strings
+              if (!jsonData || jsonData === '' || jsonData === 'undefined' || jsonData === 'null') {
+                continue;
+              }
+              
+              // Log problematic data for debugging
+              console.log('Parsing JSON data:', jsonData);
+              
               const data = JSON.parse(jsonData);
               
-              if (data.progress !== undefined) {
-                setProgress(data.progress);
-              }
-              
-              if (data.message) {
-                setProgressText(data.message);
-              }
-              
-              if (data.results) {
-                setResults(data.results);
+              if (data && typeof data === 'object') {
+                if (data.progress !== undefined) {
+                  setProgress(data.progress);
+                }
+                
+                if (data.message) {
+                  setProgressText(data.message);
+                }
+                
+                if (data.results) {
+                  setResults(data.results);
+                }
               }
             } catch (e) {
-              console.error('Failed to parse streaming data:', e);
+              console.error('Failed to parse streaming data:', {
+                error: e.message,
+                line: line,
+                jsonData: line.length > 6 ? line.substring(6) : '',
+                lineLength: line.length
+              });
+              // Continue processing other lines instead of failing
+              continue;
             }
           }
         }
@@ -126,8 +144,25 @@ export default function BatchProposalSummaries() {
       setSelectedFiles([]);
 
     } catch (error) {
-      console.error('Processing error:', error);
-      setError(error.message || 'Failed to process batch');
+      console.error('Processing error:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to process batch';
+      if (error.name === 'SyntaxError') {
+        errorMessage = 'Error parsing server response. Please try again.';
+      } else if (error.message.includes('fetch')) {
+        errorMessage = 'Network error. Please check your connection and try again.';
+      } else if (error.message.includes('API key')) {
+        errorMessage = 'Invalid API key. Please check your API key and try again.';
+      } else {
+        errorMessage = error.message || 'Failed to process batch';
+      }
+      
+      setError(errorMessage);
     } finally {
       setProcessing(false);
     }

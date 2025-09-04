@@ -105,10 +105,14 @@ export default async function handler(req, res) {
       const fileProgressRange = fileProgressEnd - fileProgressStart;
       
       // Send start-of-file progress update
-      res.write(`data: ${JSON.stringify({
-        progress: fileProgressStart,
-        message: `Starting ${file.filename} (${i + 1}/${totalFiles})...`
-      })}\n\n`);
+      try {
+        res.write(`data: ${JSON.stringify({
+          progress: fileProgressStart,
+          message: `Starting ${file.filename} (${i + 1}/${totalFiles})...`
+        })}\n\n`);
+      } catch (e) {
+        console.error('JSON serialization error in progress update:', e);
+      }
       
       // Force flush and small delay to ensure streaming works
       if (res.flush) res.flush();
@@ -271,20 +275,31 @@ Return only JSON.`;
     }
 
     // Send final results
-    res.write(`data: ${JSON.stringify({
-      progress: 100,
-      message: `Batch complete! Processed ${totalFiles} proposals with ${summaryLength}-page summaries.`,
-      results,
-      summary: {
-        totalFiles,
-        successCount: Object.values(results).filter(r => !r.metadata?.error).length,
-        errorCount: Object.values(results).filter(r => r.metadata?.error).length,
-        configuration: {
-          summaryLength: `${summaryLength} page${summaryLength > 1 ? 's' : ''}`,
-          summaryLevel: summaryLevel.replace('-', ' ')
+    try {
+      const finalResponse = {
+        progress: 100,
+        message: `Batch complete! Processed ${totalFiles} proposals with ${summaryLength}-page summaries.`,
+        results,
+        summary: {
+          totalFiles,
+          successCount: Object.values(results).filter(r => !r.metadata?.error).length,
+          errorCount: Object.values(results).filter(r => r.metadata?.error).length,
+          configuration: {
+            summaryLength: `${summaryLength} page${summaryLength > 1 ? 's' : ''}`,
+            summaryLevel: summaryLevel ? summaryLevel.replace('-', ' ') : 'technical non expert'
+          }
         }
-      }
-    })}\n\n`);
+      };
+      
+      res.write(`data: ${JSON.stringify(finalResponse)}\n\n`);
+    } catch (jsonError) {
+      console.error('Error serializing final response:', jsonError);
+      res.write(`data: ${JSON.stringify({
+        progress: 100,
+        message: 'Batch processing completed with serialization errors',
+        error: true
+      })}\n\n`);
+    }
 
     res.end();
 
