@@ -233,8 +233,35 @@ async function analyzePeerReviews(reviewTexts, apiKey) {
           .trim();
         
         // Preserve the questions content and add a proper header
-        const questionsContent = parts[1]?.trim() || '';
+        let questionsContent = parts[1]?.trim() || '';
         if (questionsContent) {
+          // Clean up any partial headers that might be at the beginning
+          const headerFragments = [
+            ', Concerns, and Issues Raised by Reviewers',
+            'Concerns, and Issues Raised by Reviewers',
+            'and Issues Raised by Reviewers',
+            'Issues Raised by Reviewers',
+            'Raised by Reviewers',
+            'by Reviewers',
+            'Reviewers',
+            'Questions, Concerns',
+            'Concerns and Issues',
+            '---'
+          ];
+          
+          // Remove any partial headers from the beginning
+          for (const fragment of headerFragments) {
+            if (questionsContent.startsWith(fragment)) {
+              questionsContent = questionsContent.substring(fragment.length).trim();
+            }
+          }
+          
+          // Also remove if it starts with a line containing these fragments
+          const lines = questionsContent.split('\n');
+          if (lines[0] && headerFragments.some(fragment => lines[0].includes(fragment))) {
+            questionsContent = lines.slice(1).join('\n').trim();
+          }
+          
           // Add a proper header to the questions section
           questions = `## Questions and Concerns Raised by Reviewers\n\n${questionsContent}`;
         }
@@ -270,7 +297,38 @@ async function analyzePeerReviews(reviewTexts, apiKey) {
 
         if (questionsResponse.ok) {
           const questionsData = await questionsResponse.json();
-          const questionsContent = questionsData.content[0].text;
+          let questionsContent = questionsData.content[0].text.trim();
+          
+          // Clean up any partial headers that might be at the beginning
+          const headerFragments = [
+            ', Concerns, and Issues Raised by Reviewers',
+            'Concerns, and Issues Raised by Reviewers',
+            'and Issues Raised by Reviewers',
+            'Issues Raised by Reviewers',
+            'Raised by Reviewers',
+            'by Reviewers',
+            'Reviewers',
+            'Questions, Concerns',
+            'Concerns and Issues',
+            '### Questions',
+            '## Questions',
+            '# Questions',
+            '---'
+          ];
+          
+          // Remove any partial headers from the beginning
+          for (const fragment of headerFragments) {
+            if (questionsContent.startsWith(fragment)) {
+              questionsContent = questionsContent.substring(fragment.length).trim();
+            }
+          }
+          
+          // Also remove if it starts with a line containing these fragments
+          const lines = questionsContent.split('\n');
+          if (lines[0] && headerFragments.some(fragment => lines[0].includes(fragment))) {
+            questionsContent = lines.slice(1).join('\n').trim();
+          }
+          
           // Add proper header to separately fetched questions
           questions = `## Questions and Concerns Raised by Reviewers\n\n${questionsContent}`;
           console.log('Got questions from separate request, length:', questions.length);
