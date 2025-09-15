@@ -1,0 +1,18 @@
+{
+  "functions": {
+    "pages/api/process.js": {
+      "maxDuration": 300
+    },
+    "pages/api/process-*.js": {
+      "maxDuration": 300
+    },
+    "pages/api/analyze-*.js": {
+      "maxDuration": 300
+    }
+  },
+  "api": {
+    "bodyParser": {
+      "sizeLimit": "50mb"
+    }
+  }
+}

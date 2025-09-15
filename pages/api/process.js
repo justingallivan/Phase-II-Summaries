@@ -6,8 +6,8 @@ import { CONFIG, PROMPTS } from '../../lib/config';
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 500 * 1024 * 1024, // 500MB - much larger limit
-    fieldSize: 500 * 1024 * 1024,
+    fileSize: 50 * 1024 * 1024, // 50MB - Vercel compatible limit
+    fieldSize: 50 * 1024 * 1024,
   },
 });
 

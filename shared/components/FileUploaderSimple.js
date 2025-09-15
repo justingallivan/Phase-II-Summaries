@@ -5,7 +5,7 @@ export default function FileUploaderSimple({
   onFilesSelected, 
   multiple = true, 
   accept = '.pdf',
-  maxSize = 50 * 1024 * 1024,
+  maxSize = 45 * 1024 * 1024, // Slightly under Vercel's 50MB limit
   hideFileList = false,
 }) {
   const [files, setFiles] = useState([]);
