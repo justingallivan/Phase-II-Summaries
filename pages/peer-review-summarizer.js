@@ -1,0 +1,296 @@
+import { useState, useCallback } from 'react';
+import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
+import FileUploaderSimple from '../shared/components/FileUploaderSimple';
+import ApiKeyManager from '../shared/components/ApiKeyManager';
+
+export default function PeerReviewSummarizer() {
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [processing, setProcessing] = useState(false);
+  const [results, setResults] = useState(null);
+  const [apiKey, setApiKey] = useState('');
+  const [progress, setProgress] = useState(0);
+  const [progressText, setProgressText] = useState('');
+  const [error, setError] = useState(null);
+
+  const handleApiKeySet = useCallback((key) => {
+    setApiKey(key);
+    setError(null);
+  }, []);
+
+  const handleFilesUploaded = useCallback((uploadedFiles) => {
+    setSelectedFiles(uploadedFiles);
+    setError(null);
+    setResults(null);
+  }, []);
+
+
+
+  const processFiles = async () => {
+    if (!apiKey) {
+      setError('Please provide an API key');
+      return;
+    }
+
+    if (selectedFiles.length === 0) {
+      setError('Please select files first');
+      return;
+    }
+
+    setProcessing(true);
+    setProgress(0);
+    setProgressText('Starting peer review analysis...');
+    setError(null);
+
+    try {
+      const response = await fetch('/api/process-peer-reviews', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey
+        },
+        body: JSON.stringify({
+          files: selectedFiles,
+          apiKey
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      // Handle streaming response
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.substring(6));
+              
+              if (data.progress !== undefined) {
+                setProgress(data.progress);
+              }
+              
+              if (data.message) {
+                setProgressText(data.message);
+              }
+              
+              if (data.results) {
+                setResults(data.results);
+              }
+            } catch (e) {
+              console.error('Failed to parse streaming data:', e);
+            }
+          }
+        }
+      }
+
+      setProgressText('Analysis complete!');
+      setSelectedFiles([]);
+
+    } catch (error) {
+      console.error('Processing error:', error);
+      setError(error.message || 'Failed to process peer reviews');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const exportData = (type) => {
+    if (!results) return;
+
+    let content, filename;
+    const timestamp = new Date().toISOString().split('T')[0];
+    
+    if (type === 'summary') {
+      content = results.formatted || 'No summary generated';
+      filename = `${timestamp}_peer_review_summary.md`;
+    } else if (type === 'questions') {
+      content = results.structured?.questions || 'No questions extracted';
+      filename = `${timestamp}_reviewer_questions.md`;
+    }
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const convertMarkdownToHTML = (markdown) => {
+    if (!markdown) return '';
+    
+    let html = markdown
+      .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+      .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+      .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/<u>(.*?)<\/u>/g, '<u>$1</u>')
+      .replace(/^---$/gm, '<hr>')
+      .replace(/^[\*\-] (.*$)/gm, '<li>$1</li>');
+
+    html = html.replace(/(<li>.*?<\/li>(\n<li>.*?<\/li>)*)/g, '<ul>$1</ul>');
+    html = html.replace(/\n\n+/g, '</p><p>');
+    html = html.replace(/\n/g, '<br>');
+    html = '<p>' + html + '</p>';
+    
+    html = html
+      .replace(/<p>(<h[1-3]>.*?<\/h[1-3]>)<\/p>/g, '$1')
+      .replace(/<p>(<ul>.*?<\/ul>)<\/p>/g, '$1')
+      .replace(/<p>(<hr>)<\/p>/g, '$1')
+      .replace(/<p><\/p>/g, '');
+    
+    return html;
+  };
+
+  return (
+    <Layout 
+      title="Peer Review Summarizer"
+      description="Synthesize and analyze peer review feedback with actionable insights"
+    >
+      <PageHeader 
+        title="Peer Review Summarizer"
+        subtitle="Upload peer review documents to generate comprehensive analysis and synthesis"
+        icon="📝"
+      />
+
+      <Card className="mb-8">
+        <div className="text-center">
+          <ApiKeyManager 
+            onApiKeySet={handleApiKeySet}
+            required={true}
+          />
+        </div>
+      </Card>
+
+      {error && (
+        <Card className="mb-6 border-red-200 bg-red-50">
+          <div className="flex items-center gap-3">
+            <span className="text-red-600 text-xl">⚠️</span>
+            <p className="text-red-800 font-medium">{error}</p>
+          </div>
+        </Card>
+      )}
+
+      <Card className="mb-6">
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2 flex items-center gap-2">
+            <span>📁</span>
+            <span>Upload Peer Reviews</span>
+          </h2>
+        </div>
+        <FileUploaderSimple
+          onFilesUploaded={handleFilesUploaded}
+          multiple={true}
+          accept=".pdf,.doc,.docx"
+          maxSize={50 * 1024 * 1024}
+        />
+      </Card>
+
+      {selectedFiles.length > 0 && !processing && !results && (
+        <Card className="mb-6 bg-green-50 border-green-200">
+          <div className="text-center">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Ready to Process</h3>
+            <p className="text-gray-700 mb-4">
+              {selectedFiles.length} file{selectedFiles.length > 1 ? 's' : ''} uploaded and ready for peer review analysis
+            </p>
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={processFiles}
+            >
+              🚀 Analyze Reviews
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {processing && (
+        <Card className="mb-6">
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-400 border-t-transparent"></div>
+              <span className="text-gray-700 font-medium">{progressText}</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
+              <div 
+                className="bg-gray-600 h-3 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="text-sm text-gray-600">{progress}%</div>
+          </div>
+        </Card>
+      )}
+
+      {results && (
+        <Card className="mt-8">
+          <div className="mb-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">Analysis Results</h3>
+            <div className="flex gap-3 mb-6">
+              <Button variant="secondary" onClick={() => exportData('summary')}>
+                Export Summary
+              </Button>
+              <Button variant="secondary" onClick={() => exportData('questions')}>
+                Export Questions
+              </Button>
+            </div>
+          </div>
+          
+          <div className="space-y-6">
+            <div>
+              <h4 className="text-lg font-medium text-gray-900 mb-3">Summary Preview:</h4>
+              <div className="prose max-w-none p-4 bg-gray-50 rounded-lg border">
+                <div 
+                  dangerouslySetInnerHTML={{
+                    __html: convertMarkdownToHTML(results.formatted)
+                  }}
+                />
+              </div>
+            </div>
+            
+            {results.structured?.questions && (
+              <div>
+                <h4 className="text-lg font-medium text-gray-900 mb-3">Questions Preview:</h4>
+                <div className="prose max-w-none p-4 bg-gray-50 rounded-lg border">
+                  <div 
+                    dangerouslySetInnerHTML={{
+                      __html: convertMarkdownToHTML(results.structured.questions)
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {results && !processing && (
+        <div className="flex justify-center mt-6">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setResults(null);
+              setProgress(0);
+              setProgressText('');
+            }}
+          >
+            📝 New Analysis
+          </Button>
+        </div>
+      )}
+    </Layout>
+  );
+}
