@@ -1,0 +1,325 @@
+import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
+import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
+import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
+import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
+import { PROMPTS, CONFIG } from '../../lib/config';
+import { queryNSFforPI, queryNSFforKeywords, formatCurrency, formatDate } from '../../lib/fundingApis';
+
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '1mb', // Only for JSON payload with blob URLs
+    },
+  },
+};
+
+// Create rate limiter for this endpoint (more lenient due to external API calls)
+const rateLimiter = nextRateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  max: 3, // 3 requests per minute (slower due to NSF API queries)
+});
+
+export default async function handler(req, res) {
+  console.log('Funding Gap Analyzer API called:', new Date().toISOString());
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Apply rate limiting
+  const rateLimitResult = await rateLimiter(req, res);
+  if (!rateLimitResult) {
+    console.log('Rate limit exceeded for request');
+    return; // Response already sent by rate limiter
+  }
+
+  try {
+    const { files, apiKey, searchYears = 5, includeCoPIs = false } = req.body;
+
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: 'No files provided' });
+    }
+
+    // Validate and select API key
+    const apiKeyManager = getApiKeyManager();
+    let validatedKey;
+    try {
+      validatedKey = apiKeyManager.selectApiKey(apiKey);
+      console.log('API key validated');
+    } catch (error) {
+      console.log('Error: Invalid or missing API key');
+      return res.status(401).json({ error: 'Invalid or missing API key. Please check your Claude API key.' });
+    }
+
+    // Set headers for streaming response
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const sendProgress = (message, progress = null) => {
+      const data = { message };
+      if (progress !== null) {
+        data.progress = progress;
+      }
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+      console.log('Progress:', message);
+    };
+
+    // Initialize Claude client and file processor
+    const claudeClient = createClaudeClient(validatedKey);
+    const fileProcessor = createFileProcessor();
+
+    const allProposals = [];
+
+    // Process each proposal
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const baseProgress = Math.round((i / files.length) * 90);
+
+      sendProgress(`Processing proposal ${i + 1}/${files.length}: ${file.filename}`, baseProgress);
+
+      try {
+        // Step 1: Extract text from PDF
+        sendProgress(`Extracting text from ${file.filename}...`, baseProgress + 1);
+        const fileResponse = await fetch(file.url);
+        if (!fileResponse.ok) {
+          throw new Error(`Failed to fetch file from blob storage: ${fileResponse.statusText}`);
+        }
+
+        const fileBuffer = Buffer.from(await fileResponse.arrayBuffer());
+        const { text: proposalText, metadata } = await fileProcessor.processFile(
+          fileBuffer,
+          file.filename || 'proposal.pdf'
+        );
+
+        if (!proposalText || proposalText.length < 100) {
+          throw new Error('Could not extract sufficient text from the PDF');
+        }
+
+        // Step 2: Use Claude to extract PI, institution, keywords
+        sendProgress(`Extracting PI information and keywords from ${file.filename}...`, baseProgress + 5);
+
+        const extractionPrompt = PROMPTS.FUNDING_EXTRACTION(proposalText);
+        let extractionResponse;
+
+        try {
+          extractionResponse = await claudeClient.sendMessage(extractionPrompt, {
+            maxTokens: 1000,
+            temperature: 0.3
+          });
+        } catch (claudeError) {
+          console.error('Claude API error during extraction:', claudeError);
+          throw new Error(`Claude API error: ${claudeError.message}`);
+        }
+
+        // Parse the JSON response
+        let extraction;
+        try {
+          // Clean the response - remove markdown code blocks if present
+          let cleanedResponse = extractionResponse.trim();
+          if (cleanedResponse.startsWith('```json')) {
+            cleanedResponse = cleanedResponse.replace(/```json\n?/g, '').replace(/```\n?$/g, '');
+          } else if (cleanedResponse.startsWith('```')) {
+            cleanedResponse = cleanedResponse.replace(/```\n?/g, '');
+          }
+          extraction = JSON.parse(cleanedResponse);
+
+          if (!extraction.pi || !extraction.institution || !extraction.keywords) {
+            throw new Error('Missing required fields in extraction');
+          }
+
+          if (!extraction.state) {
+            sendProgress(`Warning: State not extracted, NSF results may be less accurate`, baseProgress + 10);
+          }
+
+          sendProgress(`Found PI: ${extraction.pi} at ${extraction.institution}${extraction.state ? ` (${extraction.state})` : ''}`, baseProgress + 10);
+          sendProgress(`Identified ${extraction.keywords.length} research keywords`, baseProgress + 12);
+        } catch (parseError) {
+          console.error('Error parsing extraction response:', parseError);
+          throw new Error('Failed to extract structured data from proposal. Please ensure the proposal contains PI and institution information.');
+        }
+
+        // Step 3: Query NSF for PI's awards (using state for better matching)
+        sendProgress(`Querying NSF for ${extraction.pi}'s awards${includeCoPIs ? ' (including Co-PI roles)' : ''} in ${extraction.state || 'all states'}...`, baseProgress + 15);
+
+        // Try full name with all awards (not just active)
+        let nsfPIAwards = await queryNSFforPI(extraction.pi, extraction.state, false, includeCoPIs);
+
+        // If no results with full name, try just last name
+        if (nsfPIAwards.totalCount === 0 && extraction.pi.includes(' ')) {
+          const lastName = extraction.pi.split(' ').pop();
+          sendProgress(`Trying last name only: ${lastName}...`, baseProgress + 17);
+          nsfPIAwards = await queryNSFforPI(lastName, extraction.state, false, includeCoPIs);
+        }
+
+        if (nsfPIAwards.error) {
+          sendProgress(`Warning: NSF API error for PI query: ${nsfPIAwards.error}`, baseProgress + 20);
+        } else if (nsfPIAwards.totalCount > 0) {
+          const roleText = includeCoPIs ? ' (as PI or Co-PI)' : '';
+          sendProgress(`Found ${nsfPIAwards.totalCount} NSF award(s)${roleText} (${formatCurrency(nsfPIAwards.totalFunding)} total)`, baseProgress + 20);
+        } else {
+          sendProgress(`No NSF awards found for ${extraction.pi} in ${extraction.state || 'any state'}`, baseProgress + 20);
+        }
+
+        // Step 4: Query NSF for research area keywords
+        sendProgress(`Analyzing NSF funding landscape for research keywords...`, baseProgress + 25);
+
+        const nsfKeywordResults = await queryNSFforKeywords(extraction.keywords, searchYears);
+
+        const keywordSummaries = [];
+        for (const [keyword, data] of Object.entries(nsfKeywordResults)) {
+          if (data.error) {
+            keywordSummaries.push(`${keyword}: Error`);
+          } else {
+            keywordSummaries.push(`${keyword}: ${data.totalCount} awards, ${formatCurrency(data.totalFunding)}`);
+          }
+        }
+
+        sendProgress(`NSF landscape analysis complete`, baseProgress + 40);
+
+        // Step 5: Generate comprehensive analysis with Claude
+        sendProgress(`Generating federal funding gap analysis for ${file.filename}...`, baseProgress + 45);
+
+        // Truncate NSF data to avoid token limits
+        const truncatedNSFData = {
+          piAwards: {
+            awards: nsfPIAwards.awards.slice(0, 10).map(a => ({
+              id: a.id,
+              title: a.title,
+              fundProgramName: a.fundProgramName,
+              fundsObligatedAmt: a.fundsObligatedAmt,
+              startDate: a.startDate,
+              expDate: a.expDate
+            })),
+            totalCount: nsfPIAwards.totalCount,
+            totalFunding: nsfPIAwards.totalFunding
+          },
+          keywordResults: {}
+        };
+
+        // For each keyword, keep only top 5 awards and summary stats
+        for (const [keyword, data] of Object.entries(nsfKeywordResults)) {
+          if (data.error) {
+            truncatedNSFData.keywordResults[keyword] = { error: data.error };
+          } else {
+            truncatedNSFData.keywordResults[keyword] = {
+              awards: data.awards.slice(0, 5).map(a => ({
+                id: a.id,
+                title: a.title,
+                fundProgramName: a.fundProgramName,
+                fundsObligatedAmt: a.fundsObligatedAmt,
+                startDate: a.startDate
+              })),
+              totalCount: data.totalCount,
+              totalFunding: data.totalFunding,
+              averageAward: data.averageAward
+            };
+          }
+        }
+
+        const analysisData = {
+          pi: extraction.pi,
+          institution: extraction.institution,
+          keywords: extraction.keywords,
+          nsfData: truncatedNSFData,
+          searchYears: searchYears
+        };
+
+        const analysisPrompt = PROMPTS.FUNDING_ANALYSIS(analysisData);
+
+        let analysisResponse;
+        try {
+          analysisResponse = await claudeClient.sendMessage(analysisPrompt, {
+            maxTokens: 4000,
+            temperature: 0.4
+          });
+          sendProgress(`Analysis complete for ${file.filename}`, baseProgress + 75);
+        } catch (claudeError) {
+          console.error('Claude API error during analysis:', claudeError);
+          throw new Error(`Claude API error: ${claudeError.message}`);
+        }
+
+        // Store proposal result
+        allProposals.push({
+          filename: file.filename,
+          pi: extraction.pi,
+          institution: extraction.institution,
+          state: extraction.state,
+          keywords: extraction.keywords,
+          nsfTotalFunding: formatCurrency(nsfPIAwards.totalFunding),
+          nsfAwardCount: nsfPIAwards.totalCount,
+          analysis: analysisResponse,
+          metadata: {
+            processedAt: new Date().toISOString(),
+            searchYears: searchYears,
+            proposalLength: proposalText.length,
+            ...metadata
+          }
+        });
+
+      } catch (fileError) {
+        console.error(`Error processing ${file.filename}:`, fileError);
+
+        // Create error result
+        const errorMarkdown = `# Error Processing ${file.filename}\n\n**Error:** ${fileError.message}\n\nPlease check the file and try again.`;
+
+        allProposals.push({
+          filename: file.filename,
+          pi: 'Error',
+          institution: 'Error',
+          keywords: [],
+          nsfTotalFunding: '$0',
+          nsfAwardCount: 0,
+          analysis: errorMarkdown,
+          metadata: {
+            error: true,
+            errorMessage: fileError.message,
+            processedAt: new Date().toISOString()
+          }
+        });
+
+        sendProgress(`Error processing ${file.filename}: ${fileError.message}`, baseProgress + 75);
+      }
+    }
+
+    // Send final results - individual reports for each proposal
+    sendProgress('Complete! Analysis ready.', 100);
+
+    // Convert allProposals array to object keyed by filename
+    const resultsObject = {};
+    for (const proposal of allProposals) {
+      resultsObject[proposal.filename] = {
+        formatted: proposal.analysis,
+        structured: {
+          pi: proposal.pi,
+          institution: proposal.institution,
+          state: proposal.state,
+          keywords: proposal.keywords,
+          nsfTotalFunding: proposal.nsfTotalFunding,
+          nsfAwardCount: proposal.nsfAwardCount
+        },
+        metadata: proposal.metadata
+      };
+    }
+
+    res.write(`data: ${JSON.stringify({
+      complete: true,
+      results: resultsObject,
+      metadata: {
+        proposalCount: files.length,
+        searchYears: searchYears,
+        generatedAt: new Date().toISOString()
+      }
+    })}\n\n`);
+
+    res.end();
+
+  } catch (error) {
+    console.error('Error in funding gap analyzer API:', error);
+    res.write(`data: ${JSON.stringify({
+      error: error.message || 'Analysis failed. Please try again.',
+      complete: true
+    })}\n\n`);
+    res.end();
+  }
+}

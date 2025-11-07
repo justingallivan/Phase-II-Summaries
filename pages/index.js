@@ -31,6 +31,15 @@ const apps = [
     path: '/batch-proposal-summaries'
   },
   {
+    id: 'batch-phase-i-summaries',
+    title: 'Batch Phase I Summaries',
+    description: 'Process multiple Phase I proposals simultaneously with customizable summary length',
+    icon: '📑',
+    status: 'active',
+    features: ['Batch Processing', 'Phase I Specific', 'Custom Length', 'Bulk Export'],
+    path: '/batch-phase-i-summaries'
+  },
+  {
     id: 'find-reviewers',
     title: 'Find Reviewers',
     description: 'Identify and match expert reviewers for grant proposals based on expertise and research areas',

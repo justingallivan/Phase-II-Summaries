@@ -15,10 +15,12 @@ export default function Layout({
     { name: 'Home', href: '/', icon: '🏠' },
     { name: 'Document Analyzer', href: '/document-analyzer', icon: '🔍' },
     { name: 'Phase II Writeup', href: '/proposal-summarizer', icon: '🔬' },
-    { name: 'Batch Summaries', href: '/batch-proposal-summaries', icon: '📚' },
+    { name: 'Batch Phase II', href: '/batch-proposal-summaries', icon: '📚' },
+    { name: 'Batch Phase I', href: '/batch-phase-i-summaries', icon: '📑' },
     { name: 'Find Reviewers', href: '/find-reviewers', icon: '🔎' },
     { name: 'Peer Review Summary', href: '/peer-review-summarizer', icon: '📝' },
     { name: 'Expense Reporter', href: '/expense-reporter', icon: '💰' },
+    { name: 'Funding Gap Analyzer', href: '/funding-gap-analyzer', icon: '💵' },
   ];
 
   return (

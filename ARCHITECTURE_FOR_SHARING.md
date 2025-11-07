@@ -1,3 +1,116 @@
+# Project Architecture Summary (For Integration Discussion)
+
+## Executive Summary
+
+**What This Is:**
+A multi-application document processing platform built on Next.js 14 with Claude AI integration. The system uses a shared-component architecture (~80% code reuse) to rapidly deploy specialized document analysis tools.
+
+**Current Scale:**
+- **7 Active Applications** (document analyzer, Phase II writeup, batch summaries, Phase I summaries, reviewer finder, peer review analyzer, expense reporter)
+- **11 API Endpoints** handling various document processing workflows
+- **10 Shared UI Components** ensuring consistency across apps
+- **Production-Ready** with active use and recent feature additions
+
+## Architecture Philosophy
+
+**Key Pattern: Configuration Over Implementation**
+- Apps share 80% of code (UI, handlers, utilities)
+- Each app has unique prompts and configurations
+- "Fix once, benefit everywhere" maintenance model
+- New apps can be added in ~1 day of development
+
+**Technology Stack:**
+- **Frontend:** Next.js 14, React 18, Tailwind CSS 3.4
+- **Backend:** Next.js API Routes with streaming support
+- **AI:** Claude API (claude-sonnet-4-20250514)
+- **File Processing:** pdf-parse, mammoth (Word), Vercel Blob (>4.5MB files)
+- **Storage:** Vercel Blob for temporary file storage
+- **Deployment:** Vercel (production-ready)
+
+## Active Applications
+
+1. **Document Analyzer** - General-purpose AI document analysis
+2. **Phase II Writeup Draft** - Research proposal drafts with Q&A and refinement
+3. **Batch Proposal Summaries** - Multi-file Phase II processing (1-5 pages, 4 technical levels)
+4. **Batch Phase I Summaries** - Multi-file Phase I processing (1-3 paragraphs, 3 technical levels) *[NEW]*
+5. **Find Reviewers** - Expert reviewer matching with conflict detection
+6. **Peer Review Summarizer** - Synthesizes review feedback with action items
+7. **Expense Reporter** - Receipt/invoice OCR with auto-categorization and Excel export
+
+## Current Architecture Patterns
+
+**Data Flow:**
+```
+User Upload → Vercel Blob Storage → PDF Parsing → Claude API → Streaming Response → Results Display
+```
+
+**Standardized Data Structure:**
+```javascript
+{
+  formatted: string,      // Main content (markdown)
+  structured: object,     // Extracted data (JSON)
+  metadata: object       // Processing info
+}
+```
+
+**Shared Component System:**
+- `Layout.js` - Main layout with navigation
+- `FileUploaderSimple.js` - Blob-based file upload
+- `ApiKeyManager.js` - Encrypted API key handling
+- `ResultsDisplay.js` - Unified results visualization
+- Streaming progress tracking across all apps
+
+**Configuration-Driven Prompts:**
+- Centralized in `/lib/config.js`
+- Function-based prompts accept runtime parameters
+- Easy customization per application
+- Example: `PROMPTS.PHASE_I_SUMMARIZATION(text, paragraphs, level)`
+
+## Integration Points & Extensibility
+
+**Easy to Add:**
+- New document processing workflows
+- New Claude prompt configurations
+- New export formats (currently: Markdown, JSON, CSV, Excel)
+- New file types (currently: PDF, Word, images)
+
+**Current Limitations:**
+- API key required (user-provided, stored in sessionStorage)
+- 50MB PDF size limit
+- 15,000 character text truncation for processing
+- 5-minute timeout per processing job
+
+**Potential Integration Opportunities:**
+- Additional AI models/providers
+- Database for result persistence
+- User authentication system
+- Batch processing queue
+- Webhook notifications
+- Custom template builder
+
+## Recent Development (Last 30 Days)
+
+**Completed:**
+- Phase I Batch Summaries app (new workflow with different output format)
+- Dropdown parameter integration (length/level now customize prompts)
+- Superlative-free prompt engineering (factual, dispassionate tone)
+- Budget data extraction in funding justifications
+- Frontend-backend data structure consistency audit
+
+**Architecture Maturity:**
+- Production-ready with active use
+- Well-documented codebase
+- Consistent patterns established
+- Active maintenance and improvements
+
+---
+
+# Full Technical Documentation
+
+The following is the complete CLAUDE.md documentation from the project:
+
+---
+
 # Document Processing Multi-App System
 
 ## Project Overview
@@ -41,17 +154,7 @@ This is a multi-application document processing system designed to handle variou
 
 ### ✅ Completed
 - **Phase II writeup draft app** - Fully functional with unified Layout system
-- **Expense Reporter App** - Automated expense report generation from receipts/invoices (PDF & images)
-- **Federal Funding Gap Analyzer** - NEW! (November 2025) - Comprehensive federal funding analysis tool
-  - Real-time NSF API integration for PI award history
-  - State-based filtering for accurate institution matching
-  - Co-PI role search option (enabled by default)
-  - Claude-based analysis for NIH/DOE/DOD funding landscapes
-  - Individual report generation with collapsible cards
-  - ZIP download for batch analyses
-  - Filename pattern: `funding_analysis_[PI]_[filename]_[date].md`
-  - Token optimization (6K chars for extraction, truncated NSF data)
-  - Smart fallback to last name if full name search fails
+- **Expense Reporter App** - NEW! Automated expense report generation from receipts/invoices (PDF & images)
 - **Unified Layout System** - All pages using shared components:
   - `Layout.js` - Main layout with navigation and responsive design
   - `PageHeader.js` - Consistent page headers with icons
@@ -100,7 +203,6 @@ This is a multi-application document processing system designed to handle variou
 - `/api/refine` - Summary refinement
 - `/api/upload-handler` - Vercel Blob file upload handler
 - `/api/process-expenses` - Expense extraction from receipts/invoices (PDF & images)
-- `/api/analyze-funding-gap` - Federal funding gap analysis with NSF API integration (streaming)
 
 ### Future Architecture
 Each app will have minimal API routes that call shared handlers:
@@ -251,7 +353,7 @@ Conducted a systematic audit of all applications to ensure frontend-backend cons
 2. **peer-review-summarizer.js** (`pages/peer-review-summarizer.js`)
    - **Issues**: Multiple references to old data structure properties
    - **Fixes Applied**:
-     - Line 116: `results.summary` → `results.formatted` 
+     - Line 116: `results.summary` → `results.formatted`
      - Line 119: `results.questions` → `results.structured?.questions`
      - Line 258: `results.summary` → `results.formatted`
      - Line 264: `results.questions` → `results.structured?.questions`
@@ -278,7 +380,7 @@ Conducted a systematic audit of all applications to ensure frontend-backend cons
 #### API Endpoints Verified:
 
 - **`/api/process`**: Returns `{formatted, structured}` ✅
-- **`/api/find-reviewers`**: Returns `{extractedInfo, reviewers, csvData, parsedReviewers, metadata}` ✅ 
+- **`/api/find-reviewers`**: Returns `{extractedInfo, reviewers, csvData, parsedReviewers, metadata}` ✅
 - **`/api/refine`**: Returns `{refinedSummary, timestamp}` ✅
 - **`/api/qa`**: Returns `{answer, timestamp}` ✅
 
@@ -331,7 +433,7 @@ The API endpoint `/pages/api/process.js` was only extracting `files` and `apiKey
    - Added length requirements: 1-5 pages, ~500 words per page
    - Added audience-specific language instructions:
      - **General Audience**: Avoids technical jargon, explains concepts accessibly
-     - **Technical Non-Expert**: Uses some technical terms with clear explanations  
+     - **Technical Non-Expert**: Uses some technical terms with clear explanations
      - **Technical Expert**: Uses field-specific terminology, assumes domain knowledge
      - **Academic**: Uses precise scientific language and detailed methodology
 
@@ -348,97 +450,5 @@ Frontend Dropdowns → POST Request Body → API Parameter Extraction → genera
 
 ---
 
-### November 7, 2025 - Federal Funding Gap Analyzer
-
-**Feature Implemented:**
-A comprehensive federal funding analysis tool that queries the NSF API for real-time award data and uses Claude to analyze the broader federal funding landscape (NIH, DOE, DOD).
-
-**Implementation Details:**
-
-**Files Created:**
-1. `lib/fundingApis.js` - NSF API query utilities
-   - `queryNSFforPI()` - Queries PI and Co-PI awards with state filtering
-   - `queryNSFforKeywords()` - Analyzes funding by research keywords
-   - Helper functions for formatting and date handling
-
-2. `pages/api/analyze-funding-gap.js` - Main API endpoint (Pattern B with shared handlers)
-   - Multi-step processing pipeline per proposal
-   - Streaming SSE responses for real-time progress
-   - Token optimization to stay under Claude's 200K limit
-   - Individual report generation (no batch summary)
-
-3. `pages/funding-gap-analyzer.js` - Frontend page
-   - Configuration options: Search years (3/5/10), Include Co-PIs checkbox
-   - Collapsible cards for each proposal (Option B)
-   - Individual download buttons with naming pattern
-   - ZIP download for all reports (using JSZip)
-
-**Files Modified:**
-4. `lib/config.js` - Added 3 new prompts:
-   - `FUNDING_EXTRACTION` - Extracts PI, institution, state, and keywords
-   - `FUNDING_ANALYSIS` - Generates comprehensive funding analysis
-   - `BATCH_FUNDING_SUMMARY` - (Created but not used in final implementation)
-
-5. `shared/components/Layout.js` - Added navigation link (💵 Funding Gap Analyzer)
-
-**Key Technical Decisions:**
-
-1. **State-Based Institution Matching:**
-   - Changed from institution name matching to state code filtering
-   - More reliable for NSF API queries
-   - Claude infers state from institution (e.g., "UC Berkeley" → "CA")
-
-2. **Search ALL NSF Awards (Not Just Active):**
-   - Provides complete funding history
-   - Shows active vs. expired awards in analysis
-
-3. **Co-PI Search (Enabled by Default):**
-   - Queries both `pdPIName` and `coPDPIName` parameters
-   - Deduplicates awards to avoid double-counting
-   - Provides comprehensive view of researcher's NSF involvement
-
-4. **Token Optimization:**
-   - Extraction: Limited to 6,000 characters (first few pages only)
-   - NSF data: Truncated to 10 PI awards + 5 per keyword
-   - Prevents Claude API "prompt too long" errors
-
-5. **Smart Fallback:**
-   - First tries full PI name
-   - Automatically falls back to last name if no results
-
-6. **Individual Report Mode:**
-   - Each proposal generates standalone markdown report
-   - Filename pattern: `funding_analysis_[PI_name]_[original_filename]_[date].md`
-   - No combined batch report (cleaner for sharing)
-
-**Data Flow:**
-```
-User uploads PDFs → Vercel Blob → Extract text → Claude (PI/state/keywords) →
-NSF API (real awards data) → Claude (NIH/DOE/DOD analysis) →
-Individual markdown reports → Collapsible cards + ZIP download
-```
-
-**UI/UX Features:**
-- Collapsible proposal cards (collapsed by default)
-- Quick summary: PI, Institution, State, NSF funding, Keywords
-- "View Full Report" button to expand
-- Individual "Download" buttons per proposal
-- "Download All as ZIP" button at top
-- Summary stats card (proposals analyzed, years searched, reports generated)
-
-**Dependencies Added:**
-- `jszip@3.10.1` - For ZIP file creation client-side
-
-**Result:**
-Fully functional federal funding gap analyzer with NSF integration. Successfully tested with multiple UC proposals. State-based filtering significantly improved NSF award matching accuracy.
-
-**Testing Notes:**
-- Single proposal: ~1-2 minutes processing time
-- Batch (3 proposals): ~5-7 minutes total
-- NSF API rate limiting: 200ms delay between keyword queries
-- Token limits: Resolved through data truncation strategy
-
----
-
-Last Updated: November 7, 2025
-Version: 2.3 (Federal Funding Gap Analyzer + Individual Report Mode + NSF API Integration)
+Last Updated: September 21, 2025
+Version: 2.2 (Dropdown Parameter Integration + Data Structure Consistency + Vercel Blob Integration)
