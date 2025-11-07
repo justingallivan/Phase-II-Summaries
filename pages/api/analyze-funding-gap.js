@@ -3,7 +3,7 @@ import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
 import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { PROMPTS, CONFIG } from '../../lib/config';
-import { queryNSFforPI, queryNSFforKeywords, formatCurrency, formatDate } from '../../lib/fundingApis';
+import { queryNSFforPI, queryNSFforKeywords, queryNIHforPI, queryNIHforKeywords, queryUSASpending, formatCurrency, formatDate } from '../../lib/fundingApis';
 
 export const config = {
   api: {
@@ -175,12 +175,46 @@ export default async function handler(req, res) {
           }
         }
 
-        sendProgress(`NSF landscape analysis complete`, baseProgress + 40);
+        sendProgress(`NSF landscape analysis complete`, baseProgress + 30);
 
-        // Step 5: Generate comprehensive analysis with Claude
-        sendProgress(`Generating federal funding gap analysis for ${file.filename}...`, baseProgress + 45);
+        // Step 5: Query NIH for PI's projects
+        sendProgress(`Querying NIH RePORTER for ${extraction.pi}'s projects...`, baseProgress + 35);
 
-        // Truncate NSF data to avoid token limits
+        const nihPIProjects = await queryNIHforPI(extraction.pi, searchYears);
+
+        if (nihPIProjects.error) {
+          sendProgress(`Warning: NIH API error for PI query: ${nihPIProjects.error}`, baseProgress + 40);
+        } else if (nihPIProjects.totalCount > 0) {
+          sendProgress(`Found ${nihPIProjects.totalCount} NIH project(s) (${formatCurrency(nihPIProjects.totalFunding)} total)`, baseProgress + 40);
+        } else {
+          sendProgress(`No NIH projects found for ${extraction.pi}`, baseProgress + 40);
+        }
+
+        // Step 6: Query NIH for research area keywords
+        sendProgress(`Analyzing NIH funding landscape for research keywords...`, baseProgress + 45);
+
+        const nihKeywordResults = await queryNIHforKeywords(extraction.keywords, searchYears);
+
+        sendProgress(`NIH landscape analysis complete`, baseProgress + 55);
+
+        // Step 7: Query USAspending for institution awards (DOE, DOD, etc.)
+        sendProgress(`Querying USAspending.gov for ${extraction.institution} awards...`, baseProgress + 60);
+
+        const usaSpendingResults = await queryUSASpending(extraction.institution, searchYears);
+
+        if (usaSpendingResults.error) {
+          sendProgress(`Warning: USAspending API error: ${usaSpendingResults.error}`, baseProgress + 65);
+        } else if (usaSpendingResults.totalCount > 0) {
+          const agencyCount = Object.keys(usaSpendingResults.byAgency).length;
+          sendProgress(`Found ${usaSpendingResults.totalCount} award(s) from ${agencyCount} agencies (${formatCurrency(usaSpendingResults.totalFunding)} total)`, baseProgress + 65);
+        } else {
+          sendProgress(`No USAspending awards found for ${extraction.institution}`, baseProgress + 65);
+        }
+
+        // Step 8: Generate comprehensive analysis with Claude
+        sendProgress(`Generating federal funding gap analysis for ${file.filename}...`, baseProgress + 70);
+
+        // Truncate data to avoid token limits while including all agencies
         const truncatedNSFData = {
           piAwards: {
             awards: nsfPIAwards.awards.slice(0, 10).map(a => ({
@@ -197,7 +231,7 @@ export default async function handler(req, res) {
           keywordResults: {}
         };
 
-        // For each keyword, keep only top 5 awards and summary stats
+        // For each keyword, keep only top 5 NSF awards and summary stats
         for (const [keyword, data] of Object.entries(nsfKeywordResults)) {
           if (data.error) {
             truncatedNSFData.keywordResults[keyword] = { error: data.error };
@@ -217,11 +251,77 @@ export default async function handler(req, res) {
           }
         }
 
+        // Truncate NIH data
+        const truncatedNIHData = {
+          piProjects: {
+            projects: nihPIProjects.projects.slice(0, 10).map(p => ({
+              project_title: p.project_title,
+              organization: p.organization?.org_name,
+              award_amount: p.award_amount,
+              fiscal_year: p.fiscal_year,
+              project_start_date: p.project_start_date,
+              project_end_date: p.project_end_date
+            })),
+            totalCount: nihPIProjects.totalCount,
+            totalFunding: nihPIProjects.totalFunding
+          },
+          keywordResults: {}
+        };
+
+        // For each keyword, keep only top 5 NIH projects and summary stats
+        for (const [keyword, data] of Object.entries(nihKeywordResults)) {
+          if (data.error) {
+            truncatedNIHData.keywordResults[keyword] = { error: data.error };
+          } else {
+            truncatedNIHData.keywordResults[keyword] = {
+              projects: data.projects.slice(0, 5).map(p => ({
+                project_title: p.project_title,
+                organization: p.organization?.org_name,
+                award_amount: p.award_amount,
+                fiscal_year: p.fiscal_year
+              })),
+              totalCount: data.totalCount,
+              totalFunding: data.totalFunding,
+              averageAward: data.averageAward
+            };
+          }
+        }
+
+        // Truncate USAspending data
+        const truncatedUSASpendingData = {
+          awards: usaSpendingResults.awards.slice(0, 10).map(a => ({
+            award_id: a['Award ID'],
+            amount: a['Award Amount'],
+            description: a.Description,
+            start_date: a['Start Date'],
+            end_date: a['End Date'],
+            agency: a['Awarding Agency']
+          })),
+          totalCount: usaSpendingResults.totalCount,
+          totalFunding: usaSpendingResults.totalFunding,
+          byAgency: {}
+        };
+
+        // Include agency summaries
+        for (const [agency, data] of Object.entries(usaSpendingResults.byAgency)) {
+          truncatedUSASpendingData.byAgency[agency] = {
+            count: data.count,
+            totalFunding: data.totalFunding,
+            topAwards: data.awards.slice(0, 3).map(a => ({
+              award_id: a['Award ID'],
+              amount: a['Award Amount'],
+              description: a.Description
+            }))
+          };
+        }
+
         const analysisData = {
           pi: extraction.pi,
           institution: extraction.institution,
           keywords: extraction.keywords,
           nsfData: truncatedNSFData,
+          nihData: truncatedNIHData,
+          usaSpendingData: truncatedUSASpendingData,
           searchYears: searchYears
         };
 
@@ -248,6 +348,10 @@ export default async function handler(req, res) {
           keywords: extraction.keywords,
           nsfTotalFunding: formatCurrency(nsfPIAwards.totalFunding),
           nsfAwardCount: nsfPIAwards.totalCount,
+          nihTotalFunding: formatCurrency(nihPIProjects.totalFunding),
+          nihProjectCount: nihPIProjects.totalCount,
+          usaSpendingTotalFunding: formatCurrency(usaSpendingResults.totalFunding),
+          usaSpendingAwardCount: usaSpendingResults.totalCount,
           analysis: analysisResponse,
           metadata: {
             processedAt: new Date().toISOString(),
@@ -296,7 +400,11 @@ export default async function handler(req, res) {
           state: proposal.state,
           keywords: proposal.keywords,
           nsfTotalFunding: proposal.nsfTotalFunding,
-          nsfAwardCount: proposal.nsfAwardCount
+          nsfAwardCount: proposal.nsfAwardCount,
+          nihTotalFunding: proposal.nihTotalFunding,
+          nihProjectCount: proposal.nihProjectCount,
+          usaSpendingTotalFunding: proposal.usaSpendingTotalFunding,
+          usaSpendingAwardCount: proposal.usaSpendingAwardCount
         },
         metadata: proposal.metadata
       };
