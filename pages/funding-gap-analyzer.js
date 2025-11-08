@@ -12,6 +12,7 @@ export default function FundingGapAnalyzer() {
   const [progressText, setProgressText] = useState('');
   const [searchYears, setSearchYears] = useState(5);
   const [includeCoPIs, setIncludeCoPIs] = useState(true);
+  const [includeUSASpending, setIncludeUSASpending] = useState(false);
   const [error, setError] = useState(null);
 
   const handleApiKeySet = useCallback((key) => {
@@ -51,7 +52,8 @@ export default function FundingGapAnalyzer() {
           files: selectedFiles,
           apiKey,
           searchYears,
-          includeCoPIs
+          includeCoPIs,
+          includeUSASpending
         })
       });
 
@@ -277,10 +279,30 @@ export default function FundingGapAnalyzer() {
                   />
                   <div>
                     <span className="text-sm font-medium text-gray-700">
-                      Include Co-Principal Investigator roles
+                      Include Co-Principal Investigator roles (NSF)
                     </span>
                     <p className="text-xs text-gray-600">
                       Search NSF awards where the person is listed as Co-PI in addition to PI
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              <div className="max-w-md">
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeUSASpending}
+                    onChange={(e) => setIncludeUSASpending(e.target.checked)}
+                    disabled={processing}
+                    className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">
+                      Include USAspending.gov data (DOE, DOD, NASA, etc.)
+                    </span>
+                    <p className="text-xs text-gray-600">
+                      Query institution-wide federal awards from all agencies (may include irrelevant data)
                     </p>
                   </div>
                 </label>

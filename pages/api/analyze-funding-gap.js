@@ -34,7 +34,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { files, apiKey, searchYears = 5, includeCoPIs = false } = req.body;
+    const { files, apiKey, searchYears = 5, includeCoPIs = false, includeUSASpending = false } = req.body;
 
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'No files provided' });
@@ -177,15 +177,23 @@ export default async function handler(req, res) {
 
         sendProgress(`NSF landscape analysis complete`, baseProgress + 30);
 
-        // Step 5: Query NIH for PI's projects
+        // Step 5: Query NIH for PI's projects (with institution + keyword filtering)
         sendProgress(`Querying NIH RePORTER for ${extraction.pi}'s projects...`, baseProgress + 35);
 
-        const nihPIProjects = await queryNIHforPI(extraction.pi, searchYears);
+        const nihPIProjects = await queryNIHforPI(extraction.pi, searchYears, extraction.institution, extraction.keywords);
 
         if (nihPIProjects.error) {
           sendProgress(`Warning: NIH API error for PI query: ${nihPIProjects.error}`, baseProgress + 40);
         } else if (nihPIProjects.totalCount > 0) {
-          sendProgress(`Found ${nihPIProjects.totalCount} NIH project(s) (${formatCurrency(nihPIProjects.totalFunding)} total)`, baseProgress + 40);
+          const warningText = nihPIProjects.warnings.length > 0 ? ` (${nihPIProjects.warnings.join('; ')})` : '';
+          sendProgress(`Found ${nihPIProjects.totalCount} NIH project(s) (${formatCurrency(nihPIProjects.totalFunding)} total)${warningText}`, baseProgress + 40);
+
+          // Log warnings separately for visibility
+          if (nihPIProjects.warnings.length > 0) {
+            nihPIProjects.warnings.forEach(warning => {
+              console.log(`NIH WARNING for ${extraction.pi}: ${warning}`);
+            });
+          }
         } else {
           sendProgress(`No NIH projects found for ${extraction.pi}`, baseProgress + 40);
         }
@@ -197,18 +205,31 @@ export default async function handler(req, res) {
 
         sendProgress(`NIH landscape analysis complete`, baseProgress + 55);
 
-        // Step 7: Query USAspending for institution awards (DOE, DOD, etc.)
-        sendProgress(`Querying USAspending.gov for ${extraction.institution} awards...`, baseProgress + 60);
+        // Step 7: Query USAspending for institution awards (DOE, DOD, etc.) - OPTIONAL
+        let usaSpendingResults;
+        if (includeUSASpending) {
+          sendProgress(`Querying USAspending.gov for ${extraction.institution} awards...`, baseProgress + 60);
 
-        const usaSpendingResults = await queryUSASpending(extraction.institution, searchYears);
+          usaSpendingResults = await queryUSASpending(extraction.institution, searchYears);
 
-        if (usaSpendingResults.error) {
-          sendProgress(`Warning: USAspending API error: ${usaSpendingResults.error}`, baseProgress + 65);
-        } else if (usaSpendingResults.totalCount > 0) {
-          const agencyCount = Object.keys(usaSpendingResults.byAgency).length;
-          sendProgress(`Found ${usaSpendingResults.totalCount} award(s) from ${agencyCount} agencies (${formatCurrency(usaSpendingResults.totalFunding)} total)`, baseProgress + 65);
+          if (usaSpendingResults.error) {
+            sendProgress(`Warning: USAspending API error: ${usaSpendingResults.error}`, baseProgress + 65);
+          } else if (usaSpendingResults.totalCount > 0) {
+            const agencyCount = Object.keys(usaSpendingResults.byAgency).length;
+            sendProgress(`Found ${usaSpendingResults.totalCount} award(s) from ${agencyCount} agencies (${formatCurrency(usaSpendingResults.totalFunding)} total)`, baseProgress + 65);
+          } else {
+            sendProgress(`No USAspending awards found for ${extraction.institution}`, baseProgress + 65);
+          }
         } else {
-          sendProgress(`No USAspending awards found for ${extraction.institution}`, baseProgress + 65);
+          // USAspending disabled - provide empty results
+          usaSpendingResults = {
+            awards: [],
+            totalCount: 0,
+            totalFunding: 0,
+            byAgency: {},
+            disabled: true
+          };
+          sendProgress(`USAspending.gov query skipped (disabled in settings)`, baseProgress + 65);
         }
 
         // Step 8: Generate comprehensive analysis with Claude
