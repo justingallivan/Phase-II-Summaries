@@ -321,13 +321,14 @@ export default function FundingGapAnalyzer() {
               <p>This analyzer will:</p>
               <ul className="list-disc ml-6 space-y-1">
                 <li>Extract PI name, institution, and research keywords from proposals</li>
-                <li>Query NSF Awards API for PI's current funding and research area trends</li>
-                <li>Analyze NIH, DOE, and DOD funding landscapes based on Claude's knowledge</li>
-                <li>Identify potential funding gaps and opportunities</li>
+                <li>Query <strong>NSF Awards API</strong> for PI's current funding and research area trends</li>
+                <li>Query <strong>NIH RePORTER API</strong> for PI's biomedical research projects (with smart filtering)</li>
+                <li>Analyze DOE and DOD funding landscapes based on Claude's knowledge</li>
+                <li>Identify potential funding gaps and opportunities across federal agencies</li>
                 <li>Generate actionable recommendations for federal funding applications</li>
               </ul>
               <p className="text-sm italic mt-3">
-                Processing time: Approximately 1-2 minutes per proposal due to external API queries
+                Processing time: Approximately 1-2 minutes per proposal due to real-time API queries
               </p>
             </div>
           </div>
