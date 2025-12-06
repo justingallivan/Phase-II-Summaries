@@ -1,0 +1,238 @@
+import { useState, useCallback } from 'react';
+import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
+import FileUploaderSimple from '../shared/components/FileUploaderSimple';
+import ApiKeyManager from '../shared/components/ApiKeyManager';
+import ResultsDisplay from '../shared/components/ResultsDisplay';
+
+export default function PhaseIWriteup() {
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [processing, setProcessing] = useState(false);
+  const [results, setResults] = useState(null);
+  const [apiKey, setApiKey] = useState('');
+  const [progress, setProgress] = useState(0);
+  const [progressText, setProgressText] = useState('');
+  const [error, setError] = useState(null);
+
+  const handleApiKeySet = useCallback((key) => {
+    setApiKey(key);
+    setError(null);
+  }, []);
+
+  const handleFilesUploaded = useCallback((uploadedFiles) => {
+    setSelectedFiles(uploadedFiles);
+    setError(null);
+    setResults(null);
+  }, []);
+
+  const processProposals = async () => {
+    if (!apiKey) {
+      setError('Please provide an API key');
+      return;
+    }
+
+    if (selectedFiles.length === 0) {
+      setError('Please select PDF files first');
+      return;
+    }
+
+    setProcessing(true);
+    setProgress(0);
+    setProgressText('Starting proposal processing...');
+    setError(null);
+
+    try {
+      const response = await fetch('/api/process-phase-i-writeup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey
+        },
+        body: JSON.stringify({
+          files: selectedFiles,
+          apiKey
+        })
+      });
+
+      if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (e) {
+          // If JSON parsing fails, use the default error message
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Handle streaming response
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      console.log('Starting to read streaming response...');
+
+      while (true) {
+        const { done, value } = await reader.read();
+        console.log('Read chunk:', { done, valueLength: value?.length });
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        console.log('Decoded chunk:', chunk);
+        buffer += chunk;
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop();
+        console.log('Split into lines:', lines.length, 'lines, buffer remaining:', buffer.length);
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.substring(6));
+              console.log('Frontend received streaming data:', data);
+
+              if (data.progress !== undefined) {
+                console.log('Setting progress to:', data.progress);
+                setProgress(data.progress);
+              }
+
+              if (data.message) {
+                console.log('Setting progress text to:', data.message);
+                setProgressText(data.message);
+              }
+
+              if (data.results) {
+                console.log('Setting results to:', data.results);
+                setResults(data.results);
+              }
+            } catch (e) {
+              console.error('Failed to parse streaming data:', e);
+              console.error('Problematic line:', line);
+            }
+          }
+        }
+      }
+
+      console.log('Streaming complete, setting final state...');
+      setProgressText('Processing complete!');
+      setSelectedFiles([]);
+      console.log('Final state set, results should be visible now.');
+      console.log('Current processing state:', processing);
+      console.log('Current results state:', results);
+
+    } catch (error) {
+      console.error('Processing error:', error);
+      setError(error.message || 'Failed to process proposals');
+    } finally {
+      console.log('Setting processing to false...');
+      setProcessing(false);
+      console.log('Processing state set to false');
+    }
+  };
+
+  return (
+    <Layout
+      title="Create Phase I Writeup Draft"
+      description="Generate Phase I writeup drafts from PDF research proposals using Claude AI"
+    >
+      <PageHeader
+        title="Create Phase I Writeup Draft"
+        subtitle="Generate Phase I writeup drafts from PDF research proposals using Claude AI"
+        icon="📝"
+      />
+
+      <Card className="mb-8">
+        <div className="text-center">
+          <ApiKeyManager
+            onApiKeySet={handleApiKeySet}
+            required={true}
+          />
+        </div>
+      </Card>
+
+      {error && (
+        <Card className="mb-6 border-red-200 bg-red-50">
+          <div className="flex items-center gap-3">
+            <span className="text-red-600 text-xl">⚠️</span>
+            <p className="text-red-800 font-medium">{error}</p>
+          </div>
+        </Card>
+      )}
+
+      <Card className="mb-6">
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2 flex items-center gap-2">
+            <span>📁</span>
+            <span>Upload Research Proposals</span>
+          </h2>
+        </div>
+        <FileUploaderSimple
+          onFilesUploaded={handleFilesUploaded}
+          multiple={true}
+          accept=".pdf"
+          maxSize={50 * 1024 * 1024}
+        />
+      </Card>
+
+      {selectedFiles.length > 0 && !processing && !results && (
+        <Card className="mb-6 bg-green-50 border-green-200">
+          <div className="text-center">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Ready to Process</h3>
+            <p className="text-gray-700 mb-4">
+              {selectedFiles.length} proposal{selectedFiles.length > 1 ? 's' : ''} uploaded and ready for Phase I writeup generation
+            </p>
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={processProposals}
+            >
+              🚀 Generate Writeup Drafts
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {processing && (
+        <Card className="mb-6">
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-400 border-t-transparent"></div>
+              <span className="text-gray-700 font-medium">{progressText}</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
+              <div
+                className="bg-gray-600 h-3 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="text-sm text-gray-600">{progress}%</div>
+          </div>
+        </Card>
+      )}
+
+      {results && (
+        <div className="mt-8">
+          {console.log('Rendering ResultsDisplay with results:', results)}
+          <ResultsDisplay
+            results={results}
+            showActions={false}
+            exportFormats={['markdown', 'json']}
+          />
+        </div>
+      )}
+
+      {results && !processing && (
+        <div className="flex justify-center mt-6">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setResults(null);
+              setProgress(0);
+              setProgressText('');
+            }}
+          >
+            📄 New Proposals
+          </Button>
+        </div>
+      )}
+    </Layout>
+  );
+}

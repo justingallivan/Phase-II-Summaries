@@ -22,6 +22,15 @@ const apps = [
     path: '/proposal-summarizer'
   },
   {
+    id: 'phase-i-writeup',
+    title: 'Create Phase I Writeup Draft',
+    description: 'Generate Keck Foundation Phase I writeup drafts with standardized formatting',
+    icon: '✍️',
+    status: 'active',
+    features: ['PDF Analysis', '1-Page Format', 'Institution Detection', 'Export Options'],
+    path: '/phase-i-writeup'
+  },
+  {
     id: 'batch-proposal-summaries',
     title: 'Batch Proposal Summaries',
     description: 'Process multiple proposals at once with customizable summary length (1-5 pages)',
