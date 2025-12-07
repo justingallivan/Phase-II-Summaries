@@ -1,5 +1,6 @@
 import pdf from 'pdf-parse';
-import { CONFIG, PROMPTS } from '../../lib/config';
+import { BASE_CONFIG } from '../../shared/config/baseConfig';
+import { createSummarizationPrompt, createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer';
 
 
 export default async function handler(req, res) {
@@ -95,19 +96,19 @@ export default async function handler(req, res) {
 
 async function generateSummary(text, filename, apiKey, summaryLength, summaryLevel) {
   try {
-    const prompt = PROMPTS.SUMMARIZATION(text, summaryLength, summaryLevel);
+    const prompt = createSummarizationPrompt(text, summaryLength, summaryLevel);
     
-    const response = await fetch(CONFIG.CLAUDE_API_URL, {
+    const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey.trim(),
-        'anthropic-version': CONFIG.ANTHROPIC_VERSION
+        'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
       },
       body: JSON.stringify({
-        model: CONFIG.CLAUDE_MODEL,
-        max_tokens: CONFIG.DEFAULT_MAX_TOKENS,
-        temperature: CONFIG.SUMMARIZATION_TEMPERATURE,
+        model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+        max_tokens: BASE_CONFIG.MODEL_PARAMS.DEFAULT_MAX_TOKENS,
+        temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
         messages: [{
           role: 'user',
           content: prompt
@@ -145,17 +146,17 @@ async function generateSummary(text, filename, apiKey, summaryLength, summaryLev
 
 async function extractStructuredData(text, filename, summary, apiKey) {
   try {
-    const extractionPrompt = PROMPTS.STRUCTURED_DATA_EXTRACTION(text, filename);
+    const extractionPrompt = createStructuredDataExtractionPrompt(text, filename);
 
-    const response = await fetch(CONFIG.CLAUDE_API_URL, {
+    const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey.trim(),
-        'anthropic-version': CONFIG.ANTHROPIC_VERSION
+        'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
       },
       body: JSON.stringify({
-        model: CONFIG.CLAUDE_MODEL,
+        model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
         max_tokens: 1000,
         temperature: 0.1,
         messages: [{

@@ -19,7 +19,13 @@ export const BASE_CONFIG = {
     MIN_MAX_TOKENS: 500,
     DEFAULT_TEMPERATURE: 0.3,
     STRUCTURED_DATA_TEMPERATURE: 0.1,
-    CREATIVE_TEMPERATURE: 0.7
+    CREATIVE_TEMPERATURE: 0.7,
+    // Legacy config compatibility (from lib/config.js)
+    REFINEMENT_MAX_TOKENS: 2500,
+    QA_MAX_TOKENS: 1500,
+    SUMMARIZATION_TEMPERATURE: 0.3,
+    REFINEMENT_TEMPERATURE: 0.3,
+    QA_TEMPERATURE: 0.4
   },
 
   // File Processing
@@ -31,7 +37,10 @@ export const BASE_CONFIG = {
     TEXT_TRUNCATE_LIMIT: 15000, // characters for API calls
     CHUNK_SIZE: 10000, // for splitting large texts
     CHUNK_OVERLAP: 500, // overlap between chunks
-    SUPPORTED_FORMATS: ['pdf', 'txt', 'md']
+    SUPPORTED_FORMATS: ['pdf', 'txt', 'md'],
+    // Legacy config compatibility (from lib/config.js)
+    QA_TEXT_TRUNCATE_LIMIT: 10000, // characters for structured data extraction
+    FUNDING_EXTRACTION_LIMIT: 6000 // characters for PI/institution/keyword extraction
   },
 
   // API Rate Limiting

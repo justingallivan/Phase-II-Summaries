@@ -6,11 +6,27 @@
 /**
  * Main summarization prompt for research proposals
  * @param {string} text - The proposal text to summarize
- * @param {number} textLimit - Maximum characters to process
+ * @param {number} summaryLength - Number of pages (1-5, default: 2)
+ * @param {string} summaryLevel - Technical level: 'general-audience', 'technical-non-expert', 'technical-expert', 'academic' (default: 'technical-non-expert')
+ * @param {number} textLimit - Maximum characters to process (default: 15000)
  * @returns {string} - The formatted prompt
  */
-export function createSummarizationPrompt(text, textLimit = 15000) {
-  return `Please analyze this research proposal and create a comprehensive summary following the exact format and style of the examples below. Use clear, professional language with bullet points for the Executive Summary section and paragraphs for other sections.
+export function createSummarizationPrompt(text, summaryLength = 2, summaryLevel = 'technical-non-expert', textLimit = 15000) {
+  // Map summary levels to descriptions
+  const levelDescriptions = {
+    'general-audience': 'general audience (avoiding technical jargon, explaining concepts accessibly)',
+    'technical-non-expert': 'technical non-expert audience (using some technical terms with clear explanations)',
+    'technical-expert': 'technical expert audience (using field-specific terminology and assuming domain knowledge)',
+    'academic': 'academic/scientific audience (using precise scientific language and detailed methodology descriptions)'
+  };
+
+  const targetAudience = levelDescriptions[summaryLevel] || levelDescriptions['technical-non-expert'];
+
+  return `Please analyze this research proposal and create a comprehensive ${summaryLength}-page summary written for a ${targetAudience}. Follow the exact format and style of the examples below. Use clear, professional language with bullet points for the Executive Summary section and paragraphs for other sections.
+
+**LENGTH REQUIREMENT:** The summary should be approximately ${summaryLength} page${summaryLength > 1 ? 's' : ''} when printed (roughly ${summaryLength * 500} words).
+
+**AUDIENCE LEVEL:** Write for a ${targetAudience}.
 
 **TONE AND LANGUAGE RULES:**
 - Use neutral, matter-of-fact language - avoid promotional or effusive terms
