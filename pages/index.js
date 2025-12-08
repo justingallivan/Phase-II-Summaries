@@ -76,6 +76,15 @@ const apps = [
     path: '/expense-reporter'
   },
   {
+    id: 'funding-gap-analyzer',
+    title: 'Funding Gap Analyzer',
+    description: 'Analyze federal funding landscapes for research proposals using NSF, NIH, and USAspending.gov data',
+    icon: '💵',
+    status: 'active',
+    features: ['NSF Awards API', 'NIH RePORTER', 'USAspending.gov', 'Funding Gap Analysis'],
+    path: '/funding-gap-analyzer'
+  },
+  {
     id: 'literature-analyzer',
     title: 'Literature Analyzer',
     description: 'Comprehensive analysis and synthesis of research papers and academic literature',
