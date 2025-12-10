@@ -1,5 +1,5 @@
 import pdf from 'pdf-parse';
-import { CONFIG, PROMPTS } from '../../lib/config';
+import { BASE_CONFIG } from '../../shared/config';
 
 export const config = {
   api: {
@@ -156,16 +156,16 @@ export default async function handler(req, res) {
         // Generate batch summary using Claude
         const prompt = BATCH_SUMMARY_PROMPT(text, file.filename, summaryLength, summaryLevel);
         const maxTokens = Math.min(4000, 800 * summaryLength);
-        
-        const response = await fetch(CONFIG.CLAUDE_API_URL, {
+
+        const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'x-api-key': apiKey.trim(),
-            'anthropic-version': CONFIG.ANTHROPIC_VERSION
+            'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
           },
           body: JSON.stringify({
-            model: CONFIG.CLAUDE_MODEL,
+            model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
             max_tokens: maxTokens,
             temperature: 0.2,
             messages: [{
@@ -205,15 +205,15 @@ export default async function handler(req, res) {
 From: ${text.substring(0, 3000)}
 Return only JSON.`;
           
-          const metaResponse = await fetch(CONFIG.CLAUDE_API_URL, {
+          const metaResponse = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'x-api-key': apiKey.trim(),
-              'anthropic-version': CONFIG.ANTHROPIC_VERSION
+              'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
             },
             body: JSON.stringify({
-              model: CONFIG.CLAUDE_MODEL,
+              model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
               max_tokens: 300,
               temperature: 0.1,
               messages: [{

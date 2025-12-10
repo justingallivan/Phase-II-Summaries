@@ -1,5 +1,7 @@
 import pdf from 'pdf-parse';
-import { CONFIG, PROMPTS } from '../../lib/config';
+import { BASE_CONFIG, KECK_GUIDELINES } from '../../shared/config';
+import { createPhaseISummarizationPrompt } from '../../shared/config/prompts/phase-i-summaries';
+import { createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer';
 
 
 export default async function handler(req, res) {
@@ -96,19 +98,19 @@ export default async function handler(req, res) {
 async function generatePhaseISummary(text, filename, apiKey, summaryLength, summaryLevel) {
   try {
     // Use Phase I specific prompt
-    const prompt = PROMPTS.PHASE_I_SUMMARIZATION(text, summaryLength, summaryLevel);
+    const prompt = createPhaseISummarizationPrompt(text, summaryLength, summaryLevel, KECK_GUIDELINES);
 
-    const response = await fetch(CONFIG.CLAUDE_API_URL, {
+    const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey.trim(),
-        'anthropic-version': CONFIG.ANTHROPIC_VERSION
+        'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
       },
       body: JSON.stringify({
-        model: CONFIG.CLAUDE_MODEL,
-        max_tokens: CONFIG.DEFAULT_MAX_TOKENS,
-        temperature: CONFIG.SUMMARIZATION_TEMPERATURE,
+        model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+        max_tokens: BASE_CONFIG.MODEL_PARAMS.DEFAULT_MAX_TOKENS,
+        temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
         messages: [{
           role: 'user',
           content: prompt
@@ -146,17 +148,17 @@ async function generatePhaseISummary(text, filename, apiKey, summaryLength, summ
 
 async function extractStructuredData(text, filename, summary, apiKey) {
   try {
-    const extractionPrompt = PROMPTS.STRUCTURED_DATA_EXTRACTION(text, filename);
+    const extractionPrompt = createStructuredDataExtractionPrompt(text, filename);
 
-    const response = await fetch(CONFIG.CLAUDE_API_URL, {
+    const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey.trim(),
-        'anthropic-version': CONFIG.ANTHROPIC_VERSION
+        'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
       },
       body: JSON.stringify({
-        model: CONFIG.CLAUDE_MODEL,
+        model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
         max_tokens: 1000,
         temperature: 0.1,
         messages: [{

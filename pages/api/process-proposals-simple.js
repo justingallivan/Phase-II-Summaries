@@ -4,7 +4,7 @@ import { BASE_CONFIG } from '../../shared/config/baseConfig';
 import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
 import { applySecurityMiddleware } from '../../shared/api/middleware/security';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
-import { PROMPTS } from '../../lib/config';
+import { createSummarizationPrompt, createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer';
 
 export const config = {
   api: {
@@ -134,7 +134,7 @@ export default async function handler(req, res) {
         if (res.flush) res.flush();
         
         // Generate Phase II writeup using original prompt
-        const prompt = PROMPTS.SUMMARIZATION(processedFile.text);
+        const prompt = createSummarizationPrompt(processedFile.text);
         const summary = await claudeClient.sendMessage(prompt, {
           maxTokens: 2000,
           temperature: 0.3
@@ -150,8 +150,8 @@ export default async function handler(req, res) {
         // Try to extract structured data
         let structuredData = null;
         try {
-          const structDataPrompt = PROMPTS.STRUCTURED_DATA_EXTRACTION(
-            processedFile.text, 
+          const structDataPrompt = createStructuredDataExtractionPrompt(
+            processedFile.text,
             file.filename
           );
           

@@ -1,5 +1,7 @@
 import pdf from 'pdf-parse';
-import { CONFIG, PROMPTS } from '../../lib/config';
+import { BASE_CONFIG } from '../../shared/config';
+import { createPhaseIWriteupPrompt } from '../../shared/config/prompts/phase-i-writeup';
+import { createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -99,19 +101,19 @@ async function generatePhaseIWriteup(text, filename, institution, apiKey) {
     console.log(`[Generate Writeup] Filename: ${filename}`);
     console.log(`[Generate Writeup] Institution parameter: "${institution}"`);
     console.log(`[Generate Writeup] Institution is ${institution ? 'provided' : 'NOT provided (will extract from PDF)'}`);
-    const prompt = PROMPTS.PHASE_I_WRITEUP(text, institution);
+    const prompt = createPhaseIWriteupPrompt(text, institution);
 
-    const response = await fetch(CONFIG.CLAUDE_API_URL, {
+    const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey.trim(),
-        'anthropic-version': CONFIG.ANTHROPIC_VERSION
+        'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
       },
       body: JSON.stringify({
-        model: CONFIG.CLAUDE_MODEL,
-        max_tokens: CONFIG.DEFAULT_MAX_TOKENS,
-        temperature: CONFIG.SUMMARIZATION_TEMPERATURE,
+        model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+        max_tokens: BASE_CONFIG.MODEL_PARAMS.DEFAULT_MAX_TOKENS,
+        temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
         messages: [{
           role: 'user',
           content: prompt
@@ -149,17 +151,17 @@ async function generatePhaseIWriteup(text, filename, institution, apiKey) {
 
 async function extractStructuredData(text, filename, writeup, apiKey) {
   try {
-    const extractionPrompt = PROMPTS.STRUCTURED_DATA_EXTRACTION(text, filename);
+    const extractionPrompt = createStructuredDataExtractionPrompt(text, filename);
 
-    const response = await fetch(CONFIG.CLAUDE_API_URL, {
+    const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey.trim(),
-        'anthropic-version': CONFIG.ANTHROPIC_VERSION
+        'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
       },
       body: JSON.stringify({
-        model: CONFIG.CLAUDE_MODEL,
+        model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
         max_tokens: 1000,
         temperature: 0.2,
         messages: [{

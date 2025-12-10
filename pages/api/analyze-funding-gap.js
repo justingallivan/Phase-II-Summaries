@@ -2,7 +2,7 @@ import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
 import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
 import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
-import { PROMPTS, CONFIG } from '../../lib/config';
+import { createFundingExtractionPrompt, createFundingAnalysisPrompt } from '../../shared/config/prompts/funding-gap-analyzer';
 import { queryNSFforPI, queryNSFforKeywords, queryNIHforPI, queryNIHforKeywords, queryUSASpending, formatCurrency, formatDate } from '../../lib/fundingApis';
 
 export const config = {
@@ -99,7 +99,7 @@ export default async function handler(req, res) {
         // Step 2: Use Claude to extract PI, institution, keywords
         sendProgress(`Extracting PI information and keywords from ${file.filename}...`, baseProgress + 5);
 
-        const extractionPrompt = PROMPTS.FUNDING_EXTRACTION(proposalText);
+        const extractionPrompt = createFundingExtractionPrompt(proposalText);
         let extractionResponse;
 
         try {
@@ -346,7 +346,7 @@ export default async function handler(req, res) {
           searchYears: searchYears
         };
 
-        const analysisPrompt = PROMPTS.FUNDING_ANALYSIS(analysisData);
+        const analysisPrompt = createFundingAnalysisPrompt(analysisData);
 
         let analysisResponse;
         try {

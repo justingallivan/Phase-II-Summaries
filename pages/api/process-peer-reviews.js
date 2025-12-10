@@ -1,6 +1,7 @@
 import pdf from 'pdf-parse';
 import mammoth from 'mammoth';
-import { CONFIG, PROMPTS } from '../../lib/config';
+import { BASE_CONFIG } from '../../shared/config';
+import { createPeerReviewAnalysisPrompt, createPeerReviewQuestionsPrompt } from '../../shared/config/prompts/peer-reviewer';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -180,19 +181,19 @@ async function analyzePeerReviews(reviewTexts, apiKey) {
     }
 
     // Generate comprehensive analysis
-    const analysisPrompt = PROMPTS.PEER_REVIEW_ANALYSIS(validTexts);
-    
-    const response = await fetch(CONFIG.CLAUDE_API_URL, {
+    const analysisPrompt = createPeerReviewAnalysisPrompt(validTexts);
+
+    const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey.trim(),
-        'anthropic-version': CONFIG.ANTHROPIC_VERSION
+        'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
       },
       body: JSON.stringify({
-        model: CONFIG.CLAUDE_MODEL,
-        max_tokens: CONFIG.REFINEMENT_MAX_TOKENS, // Use higher token limit for comprehensive analysis
-        temperature: CONFIG.SUMMARIZATION_TEMPERATURE,
+        model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+        max_tokens: BASE_CONFIG.MODEL_PARAMS.REFINEMENT_MAX_TOKENS, // Use higher token limit for comprehensive analysis
+        temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
         messages: [{
           role: 'user',
           content: analysisPrompt
@@ -277,19 +278,19 @@ async function analyzePeerReviews(reviewTexts, apiKey) {
     if (!questions || questions.length < 50) {
       console.log('Questions not found or too short, making separate request...');
       try {
-        const questionsPrompt = PROMPTS.PEER_REVIEW_QUESTIONS(validTexts);
-        
-        const questionsResponse = await fetch(CONFIG.CLAUDE_API_URL, {
+        const questionsPrompt = createPeerReviewQuestionsPrompt(validTexts);
+
+        const questionsResponse = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'x-api-key': apiKey.trim(),
-            'anthropic-version': CONFIG.ANTHROPIC_VERSION
+            'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
           },
           body: JSON.stringify({
-            model: CONFIG.CLAUDE_MODEL,
-            max_tokens: CONFIG.DEFAULT_MAX_TOKENS,
-            temperature: CONFIG.SUMMARIZATION_TEMPERATURE,
+            model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+            max_tokens: BASE_CONFIG.MODEL_PARAMS.DEFAULT_MAX_TOKENS,
+            temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
             messages: [{
               role: 'user',
               content: questionsPrompt
