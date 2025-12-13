@@ -160,6 +160,18 @@ export default async function handler(req, res) {
           sendEvent('progress', progress);
         }
       );
+
+      // Filter out irrelevant candidates (those marked as not relevant by Claude)
+      const beforeFilter = enhancedDiscovered.length;
+      enhancedDiscovered = enhancedDiscovered.filter(c => c.isRelevant !== false);
+      const filtered = beforeFilter - enhancedDiscovered.length;
+
+      if (filtered > 0) {
+        sendEvent('progress', {
+          stage: 'filtering',
+          message: `Filtered out ${filtered} irrelevant candidates from database discoveries`
+        });
+      }
     }
 
     // Combine and rank all candidates

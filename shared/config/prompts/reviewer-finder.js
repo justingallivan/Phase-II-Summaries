@@ -125,21 +125,21 @@ ${pubs}`;
 ${proposalSummary}
 
 **CANDIDATE REVIEWERS FOUND VIA DATABASE SEARCH:**
-These researchers were discovered through academic database searches based on their recent publications. Generate a brief reasoning statement explaining why each would be qualified to review this proposal.
+These researchers were discovered through academic database searches. Some may be relevant reviewers, but others may have been found due to keyword overlap from unrelated fields. Your job is to evaluate each candidate's relevance.
 
 ${candidatesList}
 
 **YOUR TASK:**
-For each candidate, provide:
-1. A 1-2 sentence explanation of why their expertise is relevant to this proposal
-2. An estimated seniority level based on their publication record
+For each candidate, determine if their research is RELEVANT to this specific proposal:
+1. RELEVANT = Their publications are in the same field or closely related methodologies
+2. NOT RELEVANT = Their publications are from a different field (e.g., physics when proposal is biology)
 
 **FORMAT (one per line, maintain the numbering):**
-1. REASONING: [Why they're relevant] | SENIORITY: [Early-career/Mid-career/Senior]
-2. REASONING: [Why they're relevant] | SENIORITY: [Early-career/Mid-career/Senior]
+1. RELEVANT: [Yes/No] | REASONING: [1-2 sentences explaining relevance or why not relevant] | SENIORITY: [Early-career/Mid-career/Senior]
+2. RELEVANT: [Yes/No] | REASONING: [1-2 sentences] | SENIORITY: [Early-career/Mid-career/Senior]
 ...
 
-Be concise and specific. Reference how their publications relate to the proposal's research areas.`;
+Be strict about relevance. If someone's publications are clearly from a different scientific domain than the proposal, mark them as NOT relevant.`;
 }
 
 /**
@@ -234,6 +234,7 @@ export function parseAnalysisResponse(response) {
 
 /**
  * Parse the discovered candidates reasoning response
+ * Now includes relevance flag: RELEVANT: Yes/No | REASONING: ... | SENIORITY: ...
  */
 export function parseDiscoveredReasoningResponse(response, candidates) {
   if (!response || typeof response !== 'string') {
@@ -243,12 +244,26 @@ export function parseDiscoveredReasoningResponse(response, candidates) {
   const lines = response.split('\n').filter(line => line.trim());
 
   for (const line of lines) {
-    const match = line.match(/^(\d+)\.\s*REASONING:\s*(.+?)\s*\|\s*SENIORITY:\s*(.+)/i);
-    if (match) {
-      const index = parseInt(match[1], 10) - 1;
+    // New format: RELEVANT: Yes/No | REASONING: ... | SENIORITY: ...
+    const newMatch = line.match(/^(\d+)\.\s*RELEVANT:\s*(Yes|No)\s*\|\s*REASONING:\s*(.+?)\s*\|\s*SENIORITY:\s*(.+)/i);
+    if (newMatch) {
+      const index = parseInt(newMatch[1], 10) - 1;
       if (index >= 0 && index < candidates.length) {
-        candidates[index].generatedReasoning = match[2].trim();
-        candidates[index].seniorityEstimate = match[3].trim();
+        candidates[index].isRelevant = newMatch[2].toLowerCase() === 'yes';
+        candidates[index].generatedReasoning = newMatch[3].trim();
+        candidates[index].seniorityEstimate = newMatch[4].trim();
+      }
+      continue;
+    }
+
+    // Fallback: old format without relevance (assume relevant)
+    const oldMatch = line.match(/^(\d+)\.\s*REASONING:\s*(.+?)\s*\|\s*SENIORITY:\s*(.+)/i);
+    if (oldMatch) {
+      const index = parseInt(oldMatch[1], 10) - 1;
+      if (index >= 0 && index < candidates.length) {
+        candidates[index].isRelevant = true; // Assume relevant if old format
+        candidates[index].generatedReasoning = oldMatch[2].trim();
+        candidates[index].seniorityEstimate = oldMatch[3].trim();
       }
     }
   }
