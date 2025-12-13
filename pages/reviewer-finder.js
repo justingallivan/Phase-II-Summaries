@@ -206,7 +206,7 @@ function CandidateCard({ candidate, selected, onSelect }) {
 }
 
 // New Search Tab content
-function NewSearchTab({ apiKey }) {
+function NewSearchTab({ apiKey, onCandidatesSaved }) {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [excludedNames, setExcludedNames] = useState('');
@@ -217,12 +217,14 @@ function NewSearchTab({ apiKey }) {
   });
 
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [currentStage, setCurrentStage] = useState(null);
   const [progressMessages, setProgressMessages] = useState([]);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [discoveryResult, setDiscoveryResult] = useState(null);
   const [selectedCandidates, setSelectedCandidates] = useState(new Set());
   const [error, setError] = useState(null);
+  const [saveMessage, setSaveMessage] = useState(null);
 
   const progressRef = useRef(null);
 
@@ -409,6 +411,173 @@ function NewSearchTab({ apiKey }) {
   const allCandidates = discoveryResult?.ranked || [];
   const verifiedCount = discoveryResult?.verified?.length || 0;
   const discoveredCount = discoveryResult?.discovered?.length || 0;
+
+  // Get selected candidate objects
+  const getSelectedCandidateObjects = () => {
+    return allCandidates.filter(c => selectedCandidates.has(c.name));
+  };
+
+  // Generate a unique proposal ID from the title and timestamp
+  const generateProposalId = () => {
+    const title = analysisResult?.proposalInfo?.title || 'untitled';
+    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 30);
+    const timestamp = Date.now();
+    return `${slug}-${timestamp}`;
+  };
+
+  // Save candidates to database
+  const handleSaveCandidates = async () => {
+    const selected = getSelectedCandidateObjects();
+    if (selected.length === 0) return;
+
+    setIsSaving(true);
+    setSaveMessage(null);
+
+    try {
+      const response = await fetch('/api/reviewer-finder/save-candidates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proposalId: generateProposalId(),
+          proposalTitle: analysisResult?.proposalInfo?.title || 'Untitled Proposal',
+          candidates: selected
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setSaveMessage({
+          type: 'success',
+          text: `Saved ${result.savedCount} candidate(s) to My Candidates`
+        });
+        // Notify parent to refresh My Candidates tab
+        if (onCandidatesSaved) {
+          onCandidatesSaved();
+        }
+      } else {
+        setSaveMessage({
+          type: 'error',
+          text: result.error || 'Failed to save candidates'
+        });
+      }
+    } catch (err) {
+      setSaveMessage({
+        type: 'error',
+        text: err.message || 'Failed to save candidates'
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Export selected candidates as Markdown
+  const exportAsMarkdown = () => {
+    const selected = getSelectedCandidateObjects();
+    if (selected.length === 0) return;
+
+    const proposalTitle = analysisResult?.proposalInfo?.title || 'Untitled Proposal';
+    const date = new Date().toLocaleDateString();
+
+    let markdown = `# Expert Reviewers for "${proposalTitle}"\n\n`;
+    markdown += `Generated: ${date}\n\n`;
+    markdown += `---\n\n`;
+    markdown += `## Selected Candidates (${selected.length})\n\n`;
+
+    selected.forEach((candidate, index) => {
+      markdown += `### ${index + 1}. ${candidate.name}\n\n`;
+
+      if (candidate.affiliation) {
+        markdown += `**Affiliation:** ${candidate.affiliation}\n\n`;
+      }
+
+      const isClaudeSuggestion = candidate.isClaudeSuggestion || candidate.source === 'claude_suggestion';
+      markdown += `**Source:** ${isClaudeSuggestion ? 'Claude suggestion (verified)' : candidate.source || 'Database discovery'}\n\n`;
+
+      if (candidate.seniorityEstimate) {
+        markdown += `**Seniority:** ${candidate.seniorityEstimate}\n\n`;
+      }
+
+      const reasoning = candidate.reasoning || candidate.generatedReasoning;
+      if (reasoning) {
+        markdown += `**Why this reviewer:** ${reasoning}\n\n`;
+      }
+
+      // COI Warning
+      if (candidate.hasCoauthorCOI && candidate.coauthorships) {
+        markdown += `**⚠️ COI Warning:** Has co-authored papers with proposal authors:\n`;
+        candidate.coauthorships.forEach(coauth => {
+          markdown += `- ${coauth.paperCount} paper(s) with ${coauth.proposalAuthor}\n`;
+        });
+        markdown += '\n';
+      }
+
+      // Publications
+      if (candidate.publications && candidate.publications.length > 0) {
+        markdown += `**Recent Publications (${candidate.publications.length}):**\n`;
+        candidate.publications.slice(0, 5).forEach(pub => {
+          const url = pub.url || (pub.pmid ? `https://pubmed.ncbi.nlm.nih.gov/${pub.pmid}` : '');
+          if (url) {
+            markdown += `- [${pub.title}](${url}) (${pub.year || 'N/A'})\n`;
+          } else {
+            markdown += `- ${pub.title} (${pub.year || 'N/A'})\n`;
+          }
+        });
+        markdown += '\n';
+      }
+
+      markdown += `---\n\n`;
+    });
+
+    // Download the file
+    const blob = new Blob([markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reviewers-${proposalTitle.replace(/[^a-z0-9]/gi, '-').substring(0, 30)}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Export selected candidates as CSV
+  const exportAsCSV = () => {
+    const selected = getSelectedCandidateObjects();
+    if (selected.length === 0) return;
+
+    const proposalTitle = analysisResult?.proposalInfo?.title || 'Untitled Proposal';
+
+    // CSV header
+    let csv = 'Name,Affiliation,Source,Seniority,Publications_5yr,COI_Warning,Reasoning\n';
+
+    selected.forEach(candidate => {
+      const isClaudeSuggestion = candidate.isClaudeSuggestion || candidate.source === 'claude_suggestion';
+      const source = isClaudeSuggestion ? 'Claude suggestion' : (candidate.source || 'Database');
+      const pubCount = candidate.publicationCount5yr || candidate.publications?.length || 0;
+      const coiWarning = candidate.hasCoauthorCOI ? 'Yes - Coauthor COI' : 'No';
+      const reasoning = (candidate.reasoning || candidate.generatedReasoning || '').replace(/"/g, '""');
+
+      csv += `"${candidate.name}","${candidate.affiliation || ''}","${source}","${candidate.seniorityEstimate || ''}",${pubCount},"${coiWarning}","${reasoning}"\n`;
+    });
+
+    // Download the file
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reviewers-${proposalTitle.replace(/[^a-z0-9]/gi, '-').substring(0, 30)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Handle export with format selection
+  const handleExportSelected = () => {
+    // For now, export both formats. Could add a dropdown later.
+    exportAsMarkdown();
+  };
 
   return (
     <div className="space-y-6">
@@ -603,13 +772,34 @@ function NewSearchTab({ apiKey }) {
 
           {/* Actions */}
           {selectedCandidates.size > 0 && (
-            <div className="mt-6 pt-4 border-t border-gray-200 flex gap-3">
-              <Button variant="primary">
-                Save to My Candidates ({selectedCandidates.size})
-              </Button>
-              <Button variant="outline">
-                Export Selected
-              </Button>
+            <div className="mt-6 pt-4 border-t border-gray-200">
+              {saveMessage && (
+                <div className={`mb-3 p-2 rounded text-sm ${
+                  saveMessage.type === 'success'
+                    ? 'bg-green-50 text-green-700 border border-green-200'
+                    : 'bg-red-50 text-red-700 border border-red-200'
+                }`}>
+                  {saveMessage.type === 'success' ? '✓ ' : '✗ '}
+                  {saveMessage.text}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  variant="primary"
+                  onClick={handleSaveCandidates}
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Saving...' : `Save to My Candidates (${selectedCandidates.size})`}
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={exportAsMarkdown}>
+                    Export Markdown
+                  </Button>
+                  <Button variant="outline" onClick={exportAsCSV}>
+                    Export CSV
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </Card>
@@ -637,23 +827,274 @@ function NewSearchTab({ apiKey }) {
   );
 }
 
-// My Candidates Tab (placeholder)
-function MyCandidatesTab() {
+// Saved Candidate Card (simpler than search results)
+function SavedCandidateCard({ candidate, onUpdate, onRemove }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [notes, setNotes] = useState(candidate.notes || '');
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
+
+  const handleToggleInvited = async () => {
+    await onUpdate(candidate.suggestionId, { invited: !candidate.invited });
+  };
+
+  const handleToggleAccepted = async () => {
+    await onUpdate(candidate.suggestionId, { accepted: !candidate.accepted });
+  };
+
+  const handleSaveNotes = async () => {
+    setIsSavingNotes(true);
+    await onUpdate(candidate.suggestionId, { notes });
+    setIsSavingNotes(false);
+  };
+
+  const hasCoauthorCOI = candidate.reasoning?.includes('[COI WARNING');
+
   return (
-    <Card className="text-center py-12">
-      <div className="text-6xl mb-4">📋</div>
-      <h3 className="text-xl font-semibold text-gray-900 mb-2">My Candidates</h3>
-      <p className="text-gray-500 max-w-md mx-auto">
-        Save candidates from your searches to build a reviewer list.
-        This feature is coming soon in Phase 2.
-      </p>
-      <div className="mt-6">
-        <span className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-full text-sm">
-          <span className="w-2 h-2 bg-amber-400 rounded-full"></span>
-          Coming Soon
-        </span>
+    <div className={`border rounded-lg p-4 ${hasCoauthorCOI ? 'border-red-200 bg-red-50' : 'border-gray-200'}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h4 className="font-medium text-gray-900">{candidate.name}</h4>
+            {candidate.hIndex && (
+              <span className="text-xs text-gray-500">h-index: {candidate.hIndex}</span>
+            )}
+          </div>
+          {candidate.affiliation && (
+            <p className="text-sm text-gray-500 truncate">{candidate.affiliation}</p>
+          )}
+          {hasCoauthorCOI && (
+            <p className="text-xs text-red-600 mt-1">⚠️ Has COI warning</p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleToggleInvited}
+            className={`px-2 py-1 text-xs rounded ${
+              candidate.invited
+                ? 'bg-blue-100 text-blue-700'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+          >
+            {candidate.invited ? '✓ Invited' : 'Invited'}
+          </button>
+          <button
+            onClick={handleToggleAccepted}
+            className={`px-2 py-1 text-xs rounded ${
+              candidate.accepted
+                ? 'bg-green-100 text-green-700'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+          >
+            {candidate.accepted ? '✓ Accepted' : 'Accepted'}
+          </button>
+          <button
+            onClick={() => onRemove(candidate.suggestionId)}
+            className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-500 hover:bg-red-100 hover:text-red-600"
+            title="Remove from list"
+          >
+            ✕
+          </button>
+        </div>
       </div>
-    </Card>
+
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="mt-2 text-xs text-blue-600 hover:text-blue-800"
+      >
+        {isExpanded ? 'Hide details' : 'Show details'}
+      </button>
+
+      {isExpanded && (
+        <div className="mt-3 space-y-3">
+          {candidate.reasoning && (
+            <div>
+              <p className="text-xs font-medium text-gray-600">Why this reviewer:</p>
+              <p className="text-sm text-gray-700">{candidate.reasoning}</p>
+            </div>
+          )}
+
+          {candidate.email && (
+            <p className="text-xs text-gray-500">
+              <span className="font-medium">Email:</span>{' '}
+              <a href={`mailto:${candidate.email}`} className="text-blue-600">{candidate.email}</a>
+            </p>
+          )}
+
+          {candidate.website && (
+            <p className="text-xs text-gray-500">
+              <span className="font-medium">Website:</span>{' '}
+              <a href={candidate.website} target="_blank" rel="noopener noreferrer" className="text-blue-600">
+                {candidate.website}
+              </a>
+            </p>
+          )}
+
+          <div>
+            <label className="text-xs font-medium text-gray-600">Notes:</label>
+            <div className="flex gap-2 mt-1">
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Add notes..."
+                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded"
+              />
+              <button
+                onClick={handleSaveNotes}
+                disabled={isSavingNotes || notes === candidate.notes}
+                className="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50"
+              >
+                {isSavingNotes ? '...' : 'Save'}
+              </button>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-400">
+            Saved: {new Date(candidate.savedAt).toLocaleDateString()}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// My Candidates Tab
+function MyCandidatesTab({ refreshTrigger }) {
+  const [proposals, setProposals] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchCandidates = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/reviewer-finder/my-candidates');
+      const data = await response.json();
+      if (data.success) {
+        setProposals(data.proposals);
+      } else {
+        setError(data.error || 'Failed to fetch candidates');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCandidates();
+  }, [refreshTrigger]);
+
+  const handleUpdateCandidate = async (suggestionId, updates) => {
+    try {
+      await fetch('/api/reviewer-finder/my-candidates', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suggestionId, ...updates })
+      });
+      // Refresh to get updated data
+      fetchCandidates();
+    } catch (err) {
+      console.error('Update failed:', err);
+    }
+  };
+
+  const handleRemoveCandidate = async (suggestionId) => {
+    if (!confirm('Remove this candidate from your list?')) return;
+    try {
+      await fetch('/api/reviewer-finder/my-candidates', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suggestionId })
+      });
+      fetchCandidates();
+    } catch (err) {
+      console.error('Remove failed:', err);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <Card className="text-center py-12">
+        <div className="animate-spin text-4xl mb-4">⏳</div>
+        <p className="text-gray-500">Loading saved candidates...</p>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className="text-center py-12">
+        <div className="text-4xl mb-4">⚠️</div>
+        <h3 className="text-xl font-semibold text-gray-900 mb-2">Error</h3>
+        <p className="text-red-600">{error}</p>
+        <Button onClick={fetchCandidates} className="mt-4">Retry</Button>
+      </Card>
+    );
+  }
+
+  if (proposals.length === 0) {
+    return (
+      <Card className="text-center py-12">
+        <div className="text-6xl mb-4">📋</div>
+        <h3 className="text-xl font-semibold text-gray-900 mb-2">No Saved Candidates</h3>
+        <p className="text-gray-500 max-w-md mx-auto">
+          Run a search and save candidates to build your reviewer list.
+          They'll appear here organized by proposal.
+        </p>
+      </Card>
+    );
+  }
+
+  const totalCandidates = proposals.reduce((sum, p) => sum + p.candidates.length, 0);
+  const invitedCount = proposals.reduce((sum, p) =>
+    sum + p.candidates.filter(c => c.invited).length, 0);
+  const acceptedCount = proposals.reduce((sum, p) =>
+    sum + p.candidates.filter(c => c.accepted).length, 0);
+
+  return (
+    <div className="space-y-6">
+      {/* Summary Stats */}
+      <Card>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold">My Saved Candidates</h3>
+            <p className="text-sm text-gray-500">
+              {totalCandidates} candidate(s) across {proposals.length} proposal(s)
+            </p>
+          </div>
+          <div className="flex gap-4 text-sm">
+            <span className="text-blue-600">{invitedCount} invited</span>
+            <span className="text-green-600">{acceptedCount} accepted</span>
+          </div>
+        </div>
+      </Card>
+
+      {/* Proposals with Candidates */}
+      {proposals.map((proposal) => (
+        <Card key={proposal.proposalId}>
+          <h4 className="font-medium text-gray-900 mb-1">
+            {proposal.proposalTitle}
+          </h4>
+          <p className="text-xs text-gray-400 mb-4">
+            {proposal.candidates.length} candidate(s)
+          </p>
+
+          <div className="space-y-3">
+            {proposal.candidates.map((candidate) => (
+              <SavedCandidateCard
+                key={candidate.suggestionId}
+                candidate={candidate}
+                onUpdate={handleUpdateCandidate}
+                onRemove={handleRemoveCandidate}
+              />
+            ))}
+          </div>
+        </Card>
+      ))}
+    </div>
   );
 }
 
@@ -681,6 +1122,7 @@ function DatabaseTab() {
 export default function ReviewerFinderPage() {
   const [activeTab, setActiveTab] = useState('search');
   const [apiKey, setApiKey] = useState('');
+  const [myCandidatesRefresh, setMyCandidatesRefresh] = useState(0);
 
   // Load API key from localStorage
   useEffect(() => {
@@ -689,6 +1131,11 @@ export default function ReviewerFinderPage() {
       setApiKey(savedKey);
     }
   }, []);
+
+  // Callback to trigger refresh of My Candidates tab
+  const handleCandidatesSaved = () => {
+    setMyCandidatesRefresh(prev => prev + 1);
+  };
 
   const handleApiKeyChange = (e) => {
     const key = e.target.value;
@@ -750,8 +1197,8 @@ export default function ReviewerFinderPage() {
 
         {/* Tab Content */}
         <div className="min-h-[400px]">
-          {activeTab === 'search' && <NewSearchTab apiKey={apiKey} />}
-          {activeTab === 'candidates' && <MyCandidatesTab />}
+          {activeTab === 'search' && <NewSearchTab apiKey={apiKey} onCandidatesSaved={handleCandidatesSaved} />}
+          {activeTab === 'candidates' && <MyCandidatesTab refreshTrigger={myCandidatesRefresh} />}
           {activeTab === 'database' && <DatabaseTab />}
         </div>
       </div>
