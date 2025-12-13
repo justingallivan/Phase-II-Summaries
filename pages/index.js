@@ -49,13 +49,31 @@ const apps = [
     path: '/batch-phase-i-summaries'
   },
   {
+    id: 'reviewer-finder',
+    title: 'Expert Reviewer Finder',
+    description: 'Find qualified peer reviewers using Claude AI analysis combined with real database verification (PubMed, ArXiv, BioRxiv)',
+    icon: '🎯',
+    status: 'active',
+    features: ['Claude AI Analysis', 'Database Verification', 'Publication Links', 'Reasoning Explanations'],
+    path: '/reviewer-finder'
+  },
+  {
     id: 'find-reviewers',
-    title: 'Find Reviewers',
+    title: 'Find Reviewers (Classic)',
     description: 'Identify and match expert reviewers for grant proposals based on expertise and research areas',
     icon: '🔎',
     status: 'active',
     features: ['Expert Matching', 'Research Area Analysis', 'Reviewer Profiles', 'Conflict Detection'],
     path: '/find-reviewers'
+  },
+  {
+    id: 'find-reviewers-pro',
+    title: 'Find Reviewers Pro (Beta)',
+    description: 'Search academic databases (PubMed, ArXiv, BioRxiv, Google Scholar) to find expert reviewers with real publication data',
+    icon: '🔬',
+    status: 'active',
+    features: ['Multi-Source Search', 'h-Index Ranking', 'Publication History', 'Smart Deduplication'],
+    path: '/find-reviewers-pro'
   },
   {
     id: 'peer-review-summarizer',

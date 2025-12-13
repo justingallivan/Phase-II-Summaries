@@ -1,5 +1,18 @@
 # Document Processing Multi-App System
 
+## ⚠️ IMPORTANT: Git Commit Policy
+
+**Commit working changes to git regularly during each session.** This provides rollback points when debugging breaks things.
+
+- Before making significant changes, ensure current working state is committed
+- After completing a feature or fix that works, commit immediately
+- Use descriptive commit messages
+- Don't let multiple sessions of work accumulate without commits
+
+This prevents losing working code when experimental changes cause regressions.
+
+---
+
 ## Project Overview
 This is a multi-application document processing system designed to handle various document analysis workflows using Claude AI. The architecture supports multiple specialized apps (proposal-summarizer, grant-reviewer, literature-analyzer) that share ~80% of their codebase.
 
@@ -42,7 +55,7 @@ This is a multi-application document processing system designed to handle variou
 ### ✅ Completed
 - **Phase II writeup draft app** - Fully functional with unified Layout system
 - **Expense Reporter App** - Automated expense report generation from receipts/invoices (PDF & images)
-- **Federal Funding Gap Analyzer** - NEW! (November 2025) - Comprehensive federal funding analysis tool
+- **Federal Funding Gap Analyzer** - (November 2025) - Comprehensive federal funding analysis tool
   - Real-time NSF API integration for PI award history
   - State-based filtering for accurate institution matching
   - Co-PI role search option (enabled by default)
@@ -52,6 +65,15 @@ This is a multi-application document processing system designed to handle variou
   - Filename pattern: `funding_analysis_[PI]_[filename]_[date].md`
   - Token optimization (6K chars for extraction, truncated NSF data)
   - Smart fallback to last name if full name search fails
+- **Expert Reviewers Pro (Beta)** - NEW! (December 2025) - Multi-source academic database search
+  - Searches PubMed, ArXiv, BioRxiv, and Google Scholar (via SerpAPI)
+  - Vercel Postgres database for intelligent caching (6-month expiry)
+  - Smart deduplication ("J. Smith" merges with "John Smith")
+  - Conflict of interest filtering (excludes author's institution)
+  - Results include h-index, citations, and recent publications
+  - Relevance ranking based on h-index, citations, and keyword matches
+  - Streaming progress updates during multi-source search
+  - Export to CSV, Markdown, and JSON formats
 - **Unified Layout System** - All pages using shared components:
   - `Layout.js` - Main layout with navigation and responsive design
   - `PageHeader.js` - Consistent page headers with icons
@@ -96,6 +118,7 @@ This is a multi-application document processing system designed to handle variou
 ### Current (To Be Refactored)
 - `/api/process` - Main document processing (streaming)
 - `/api/find-reviewers` - Expert reviewer matching
+- `/api/search-reviewers-pro` - Multi-source academic database search (streaming)
 - `/api/qa` - Q&A functionality
 - `/api/refine` - Summary refinement
 - `/api/upload-handler` - Vercel Blob file upload handler
@@ -440,5 +463,132 @@ Fully functional federal funding gap analyzer with NSF integration. Successfully
 
 ---
 
-Last Updated: November 7, 2025
-Version: 2.3 (Federal Funding Gap Analyzer + Individual Report Mode + NSF API Integration)
+### December 10, 2025 - Expert Reviewers Pro (Beta)
+
+**Feature Implemented:**
+A multi-source academic database search tool that finds expert reviewers by querying PubMed, ArXiv, BioRxiv, and Google Scholar.
+
+**Architecture Overview:**
+
+```
+Proposal PDF → Vercel Blob → Claude (metadata extraction) →
+Multi-source search (PubMed, ArXiv, BioRxiv, Scholar) →
+Deduplication → COI filtering → Relevance ranking →
+Reviewer candidates with h-index and publications
+```
+
+**Files Created:**
+
+1. **Database Schema & Migration:**
+   - `lib/db/schema.sql` - 5 tables: search_cache, researchers, publications, researcher_keywords, reviewer_suggestions
+   - `scripts/setup-database.js` - Migration script for Vercel Postgres
+
+2. **Service Classes:**
+   - `lib/services/database-service.js` - Caching, researcher CRUD, suggestion tracking
+   - `lib/services/pubmed-service.js` - NCBI E-utilities API integration
+   - `lib/services/arxiv-service.js` - ArXiv Atom feed API
+   - `lib/services/biorxiv-service.js` - BioRxiv API with client-side filtering
+   - `lib/services/scholar-service.js` - Google Scholar via SerpAPI
+   - `lib/services/deduplication-service.js` - Name matching, COI filtering, ranking
+
+3. **API & Frontend:**
+   - `pages/api/search-reviewers-pro.js` - Orchestration endpoint (streaming)
+   - `pages/find-reviewers-pro.js` - Frontend with source selection and results
+
+**Key Technical Decisions:**
+
+1. **Reuses Existing Code:**
+   - File upload via `FileUploaderSimple`
+   - Metadata extraction via `createExtractionPrompt()` from find-reviewers
+   - Replaces Step 2 (Claude reviewer suggestions) with real database searches
+
+2. **Intelligent Caching:**
+   - 6-month cache expiry for search results
+   - 3-month cache for individual profiles
+   - Stored in Vercel Postgres
+
+3. **Name Deduplication:**
+   - Uses `string-similarity` package
+   - Matches "J. Smith" with "John Smith"
+   - Checks initials and partial first names
+
+4. **Conflict of Interest Filtering:**
+   - Excludes researchers from author's institution
+   - Institution name normalization for accurate matching
+
+5. **Relevance Ranking (100 points max):**
+   - h-index: 0-40 points
+   - Citations: 0-20 points (log scale)
+   - Multiple sources: 0-15 points
+   - Keyword matches: 0-25 points
+
+**New Dependencies Required:**
+```bash
+npm install @vercel/postgres xml2js serpapi string-similarity
+```
+
+**Environment Variables Required:**
+- `SERP_API_KEY` - For Google Scholar searches (paid service)
+- `NCBI_API_KEY` - Optional, increases PubMed rate limits
+- `POSTGRES_URL` - Auto-set by Vercel Postgres
+
+**Setup Instructions:**
+
+1. Create Vercel Postgres database in Vercel Dashboard
+2. Run: `vercel env pull .env.local`
+3. Run: `node scripts/setup-database.js`
+4. Add `SERP_API_KEY` to environment variables
+
+**Result:**
+Fully implemented multi-source reviewer finder. Searches real academic databases, deduplicates results, filters conflicts, and ranks by relevance with h-index and citation counts.
+
+---
+
+### December 11, 2025 - Expert Reviewers Pro Improvements
+
+**Issues Fixed:**
+
+1. **PubMed Rate Limiting:**
+   - Changed enrichment from `Promise.all()` (parallel) to sequential processing
+   - Added 400ms delay between PubMed API calls
+   - Prevents "API rate limit exceeded" errors
+   - File: `pages/api/search-reviewers-pro.js:469-563`
+
+2. **Publication URL Links:**
+   - Added clickable URLs to all publications:
+     - PubMed: `https://pubmed.ncbi.nlm.nih.gov/{pmid}`
+     - ArXiv: `https://arxiv.org/abs/{arxivId}`
+     - BioRxiv: `https://doi.org/${doi}`
+   - Fixed operator precedence bug in URL generation
+   - Updated on-screen display with blue clickable links
+   - Updated markdown export with `[Title](URL)` format
+   - Files: `pages/api/search-reviewers-pro.js`, `pages/find-reviewers-pro.js:606-614`
+
+3. **Quality Filter for Results:**
+   - Added filter requiring candidates to have BOTH:
+     - Recent publications (within last 10 years)
+     - Institutional affiliation
+   - Removes incomplete/useless candidates from results
+   - Stats now include `afterQualityFilter` count
+   - File: `pages/api/search-reviewers-pro.js:565-575`
+
+4. **Cache Issues Identified:**
+   - Old cache contained irrelevant results from generic queries
+   - Solution: Check "Skip cache" option to force fresh searches with Claude-generated queries
+
+**Known Issues / Future Work:**
+
+1. **Google Scholar** - Requires `SERP_API_KEY` (paid). Without it, h-index data unavailable.
+2. **Testing Needed** - Verify with "Skip cache" enabled:
+   - Claude-generated queries working correctly
+   - Publication URLs are clickable
+   - Quality filter removing incomplete candidates
+3. **Potential Improvements:**
+   - Adjust 10-year publication filter if too restrictive
+   - Add h-index minimum filter option
+   - Enhance affiliation extraction from PubMed articles
+
+---
+
+Last Updated: December 11, 2025
+Version: 2.5 (Expert Reviewers Pro improvements - rate limiting, URLs, quality filter)

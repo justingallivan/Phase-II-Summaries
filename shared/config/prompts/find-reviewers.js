@@ -175,6 +175,146 @@ export function formatReviewerRecommendations(reviewerText) {
 }
 
 /**
+ * Creates a prompt to generate optimized search queries for academic databases
+ * This is used by Expert Reviewers Pro to find relevant researchers
+ */
+export function createSearchQueryPrompt(proposalText, additionalNotes = '') {
+  const safeText = proposalText || 'No proposal text provided';
+
+  return `Analyze this research proposal to identify potential expert reviewers. You will generate two types of outputs:
+1. TOPIC-BASED search queries for finding new experts via academic databases
+2. SPECIFIC NAMES of researchers mentioned in references who would make good reviewers
+
+**PROPOSAL TEXT:**
+${safeText.substring(0, 10000)} ${safeText.length > 10000 ? '...[truncated]' : ''}
+
+${additionalNotes ? `**ADDITIONAL CONTEXT:**\n${additionalNotes}\n` : ''}
+
+**YOUR TASK:**
+
+**PART 1 - TOPIC QUERIES:** Generate specific search queries to find researchers publishing on these topics. These should be:
+- Specific scientific terms (not just "biology" or "machine learning")
+- Technical terminology from the proposal
+- Focus on methods, organisms, phenomena, or systems studied
+- Do NOT include author names in topic queries
+
+**PART 2 - REVIEWER NAMES:** Extract names of researchers from the proposal's references/citations who would be qualified reviewers. Look for:
+- Frequently cited authors in the field
+- Authors of foundational or highly relevant papers
+- Senior researchers (not first authors of cited papers unless clearly established)
+- Exclude the proposal authors themselves
+
+**OUTPUT FORMAT (follow exactly):**
+TITLE: [proposal title]
+AUTHOR_INSTITUTION: [institution name, or "Not specified" if unclear]
+
+PUBMED_QUERIES:
+1. [specific topic query - no names]
+2. [second topic query]
+3. [third topic query]
+
+ARXIV_QUERIES:
+1. [specific topic query - focus on computational/methods]
+2. [second topic query]
+
+BIORXIV_QUERIES:
+1. [specific topic query - focus on experimental biology]
+2. [second topic query]
+
+POTENTIAL_REVIEWERS:
+1. [Full Name] - [why they would be a good reviewer, based on their cited work]
+2. [Full Name] - [reason]
+3. [Full Name] - [reason]
+4. [Full Name] - [reason]
+5. [Full Name] - [reason]
+(list up to 10 potential reviewers from references)
+
+**EXAMPLE for a proposal about "Using CRISPR to edit mitochondrial DNA in cardiomyocytes":**
+PUBMED_QUERIES:
+1. mitochondrial DNA editing cardiomyocytes
+2. CRISPR mitochondria heart cells
+3. mtDNA mutations cardiac gene therapy
+
+ARXIV_QUERIES:
+1. CRISPR delivery optimization
+2. gene editing computational modeling
+
+BIORXIV_QUERIES:
+1. mitochondrial genome editing
+2. cardiomyocyte gene therapy
+
+POTENTIAL_REVIEWERS:
+1. Carlos Moraes - leading expert in mitochondrial genetics, frequently cited
+2. Vamsi Bhata - pioneered cardiac gene therapy approaches
+3. Jin Zhang - expert in CRISPR delivery to cardiomyocytes
+
+Now analyze the proposal and generate both topic queries and reviewer names:`;
+}
+
+/**
+ * Parses the search query response into a structured object
+ */
+export function parseSearchQueryResponse(response) {
+  if (!response || typeof response !== 'string') {
+    return { title: '', authorInstitution: '', queries: {}, potentialReviewers: [] };
+  }
+
+  const result = {
+    title: '',
+    authorInstitution: '',
+    queries: {
+      pubmed: [],
+      arxiv: [],
+      biorxiv: []
+    },
+    potentialReviewers: []
+  };
+
+  const lines = response.split('\n');
+  let currentSection = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith('TITLE:')) {
+      result.title = trimmed.replace('TITLE:', '').trim();
+    } else if (trimmed.startsWith('AUTHOR_INSTITUTION:')) {
+      result.authorInstitution = trimmed.replace('AUTHOR_INSTITUTION:', '').trim();
+    } else if (trimmed === 'PUBMED_QUERIES:') {
+      currentSection = 'pubmed';
+    } else if (trimmed === 'ARXIV_QUERIES:') {
+      currentSection = 'arxiv';
+    } else if (trimmed === 'BIORXIV_QUERIES:') {
+      currentSection = 'biorxiv';
+    } else if (trimmed === 'POTENTIAL_REVIEWERS:') {
+      currentSection = 'reviewers';
+    } else if (currentSection && /^\d+\./.test(trimmed)) {
+      // Extract the content (remove the number prefix)
+      const content = trimmed.replace(/^\d+\.\s*/, '').trim();
+
+      if (currentSection === 'reviewers') {
+        // Parse reviewer: "Name - reason" format
+        const dashIndex = content.indexOf(' - ');
+        if (dashIndex > 0) {
+          const name = content.substring(0, dashIndex).trim();
+          const reason = content.substring(dashIndex + 3).trim();
+          if (name && name.length > 2) {
+            result.potentialReviewers.push({ name, reason });
+          }
+        } else if (content.length > 2) {
+          // Just a name without reason
+          result.potentialReviewers.push({ name: content, reason: '' });
+        }
+      } else if (currentSection && content.length > 2) {
+        result.queries[currentSection].push(content);
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
  * Validates and cleans reviewer data
  */
 export function validateReviewerData(reviewerText, excludedList = []) {
