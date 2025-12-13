@@ -60,6 +60,13 @@ export default async function handler(req, res) {
       generateReasoning = true
     } = options;
 
+    // Debug: Log what we received from Stage 1
+    console.log('[Discover API] Received analysisResult:', {
+      proposalTitle: analysisResult.proposalInfo?.title,
+      suggestionCount: analysisResult.reviewerSuggestions?.length,
+      suggestions: analysisResult.reviewerSuggestions?.map(s => ({ name: s.name, expertise: s.expertiseAreas }))
+    });
+
     sendEvent('progress', {
       stage: 'discovery',
       message: 'Starting database discovery...',
