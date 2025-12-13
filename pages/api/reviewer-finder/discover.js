@@ -96,8 +96,26 @@ export default async function handler(req, res) {
       }
     });
 
-    // Check for coauthor COI if we have proposal authors
+    // Filter verified suggestions by institution COI
+    const authorInstitution = analysisResult.proposalInfo?.authorInstitution;
     let verifiedWithCOI = discoveryResults.verified;
+
+    if (authorInstitution) {
+      const { DeduplicationService } = require('../../../lib/services/deduplication-service');
+      const beforeInstitutionFilter = verifiedWithCOI.length;
+      verifiedWithCOI = DeduplicationService.filterConflicts(verifiedWithCOI, authorInstitution);
+      const institutionFiltered = beforeInstitutionFilter - verifiedWithCOI.length;
+
+      if (institutionFiltered > 0) {
+        sendEvent('progress', {
+          stage: 'coi_check',
+          status: 'institution_filter',
+          message: `Filtered ${institutionFiltered} candidate(s) from ${authorInstitution} (same institution as PI)`
+        });
+      }
+    }
+
+    // Check for coauthor COI if we have proposal authors
     const proposalAuthorsRaw = analysisResult.proposalInfo?.proposalAuthors;
 
     if (proposalAuthorsRaw && proposalAuthorsRaw.toLowerCase() !== 'not specified') {
