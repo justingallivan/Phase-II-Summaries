@@ -125,14 +125,10 @@ async function testPubMedSearch(candidate) {
   console.log('\n--- Test 3: Affiliation extraction ---');
   const allResults = filteredSimple.length > filteredDisambiguated.length ? filteredSimple : filteredDisambiguated;
 
-  const affiliationData = DiscoveryService.extractBestAffiliationMultiVariant(allResults, nameVariants);
-  const affiliation = affiliationData?.affiliation;
-  const email = affiliationData?.email;
-  const matchedByEmail = affiliationData?.matchedByEmail;
+  // Note: extractBestAffiliationMultiVariant returns a string, not an object
+  const affiliation = DiscoveryService.extractBestAffiliationMultiVariant(allResults, nameVariants);
 
-  console.log(`Extracted email: ${email || 'NONE FOUND'}`);
   console.log(`Extracted affiliation: ${affiliation?.substring(0, 80) || 'NONE FOUND'}...`);
-  console.log(`Matched by email domain: ${matchedByEmail ? 'YES ✓' : 'NO'}`);
 
   const matchesExpected = affiliation?.toLowerCase().includes(candidate.expectedInstitution.toLowerCase());
   console.log(`Matches expected institution: ${matchesExpected ? 'YES ✓' : 'NO ✗'}`);
@@ -171,8 +167,6 @@ async function testPubMedSearch(candidate) {
     disambiguatedResultCount: disambiguatedResults.length,
     filteredDisambiguatedCount: filteredDisambiguated.length,
     extractedAffiliation: affiliation,
-    extractedEmail: email,
-    matchedByEmail,
     matchesExpected,
     confidence
   };
@@ -211,9 +205,7 @@ async function main() {
       console.log(`${r.name}: ERROR - ${r.error}`);
     } else {
       const status = r.matchesExpected ? '✓' : '✗';
-      const emailMatch = r.matchedByEmail ? ' [EMAIL MATCH]' : '';
-      console.log(`${status} ${r.name}: ${r.filteredSimpleCount}/${r.simpleResultCount} simple, ${r.filteredDisambiguatedCount}/${r.disambiguatedResultCount} disamb., ${Math.round(r.confidence * 100)}% conf.${emailMatch}`);
-      console.log(`  Email: ${r.extractedEmail || 'NONE'}`);
+      console.log(`${status} ${r.name}: ${r.filteredSimpleCount}/${r.simpleResultCount} simple, ${r.filteredDisambiguatedCount}/${r.disambiguatedResultCount} disamb., ${Math.round(r.confidence * 100)}% conf.`);
       console.log(`  Affiliation: ${r.extractedAffiliation?.substring(0, 60) || 'NONE'}...`);
     }
   }
