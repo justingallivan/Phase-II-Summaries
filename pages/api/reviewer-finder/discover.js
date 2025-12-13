@@ -11,6 +11,9 @@
  * Uses streaming SSE for real-time progress updates.
  */
 
+// Enable verbose logging only in development with DEBUG_REVIEWER_FINDER env var
+const DEBUG = process.env.DEBUG_REVIEWER_FINDER === 'true';
+
 export const config = {
   api: {
     bodyParser: {
@@ -60,12 +63,13 @@ export default async function handler(req, res) {
       generateReasoning = true
     } = options;
 
-    // Debug: Log what we received from Stage 1
-    console.log('[Discover API] Received analysisResult:', {
-      proposalTitle: analysisResult.proposalInfo?.title,
-      suggestionCount: analysisResult.reviewerSuggestions?.length,
-      suggestions: analysisResult.reviewerSuggestions?.map(s => ({ name: s.name, expertise: s.expertiseAreas }))
-    });
+    if (DEBUG) {
+      console.log('[Discover API] Received analysisResult:', {
+        proposalTitle: analysisResult.proposalInfo?.title,
+        suggestionCount: analysisResult.reviewerSuggestions?.length,
+        suggestions: analysisResult.reviewerSuggestions?.map(s => ({ name: s.name, expertise: s.expertiseAreas }))
+      });
+    }
 
     sendEvent('progress', {
       stage: 'discovery',

@@ -14,22 +14,19 @@ Continue working on the Expert Reviewer Finder v2 app at:
 
 ## Context
 
-**Previous session (December 13, 2025 - Session 4):** Fixed COI filtering and reasoning parsing:
+**Previous session (December 13, 2025 - Session 5):** Technical debt cleanup:
 
-1. **Institution COI fix** - Applied institution filter to Track A (verified suggestions), not just Track B
-2. **Field name fix** - `filterConflicts` now checks both `affiliation` and `primaryAffiliation`
-3. **Institution matching improvement** - Stricter matching prevents false positives:
-   - "University of Michigan" no longer matches "Michigan State University"
-   - "University of Texas" no longer matches "Texas A&M University"
-   - Added conflicting words: `state`, `tech`, `polytechnic`, `am`, etc.
-4. **Reasoning parsing fix** - Made regex more flexible to handle Claude response variations
-5. **Fallback handling** - Candidates without parsed reasoning get "Reasoning not available" instead of nothing
-
-**Commits made this session:**
-- `6ed9ae1` - Fix institution-based COI filtering for reviewer candidates
-- `31b8f98` - Improve reasoning parsing robustness for database discoveries
+1. **Debug logging cleanup** - Added `DEBUG_REVIEWER_FINDER` environment variable flag
+   - All verbose console.log statements now gated behind `DEBUG` flag
+   - Set `DEBUG_REVIEWER_FINDER=true` to enable verbose logging
+   - Affects: `discovery-service.js`, `claude-reviewer-service.js`, `discover.js`
+2. **Test consolidation** - Created unified test suite `test-reviewer-finder.js`
+   - Combines all previous test scripts into single CLI tool
+   - Commands: `all`, `verification`, `candidates`, `confidence`, `parsing`, `coi`, `single <name>`
+   - Old scripts still exist but new one is preferred
 
 **Previous sessions:**
+- Session 4: COI filtering fixes (`6ed9ae1`, `31b8f98`)
 - Session 3: Relevance filtering for Track B (`9dd137c`)
 - Session 2: Coauthor COI detection (`59b4c89`)
 - Session 1: Verification fixes (`451a69b`, `359a484`, `f63d541`)
@@ -44,44 +41,35 @@ The Expert Reviewer Finder v2 has core functionality working:
 - Institution COI filtering (same institution as PI)
 - Coauthor COI detection (published together)
 - COI warnings displayed with red highlighting
+- Debug logging controlled via environment variable
 
 ## Priority Tasks for Next Session
 
-### 1. Clean Up Technical Debt (Start Here)
-
-- [ ] Review and remove excessive debug logging in:
-  - `lib/services/discovery-service.js`
-  - `lib/services/claude-reviewer-service.js`
-  - `pages/api/reviewer-finder/discover.js`
-- [ ] Clean up any commented-out code
-- [ ] Consolidate test scripts into a single test suite:
-  - Current: `debug-reviewer-finder.js`, `test-all-candidates.js`, `test-confidence-scores.js`, `test-verification-flow.js`, `test-relevance-parsing.js`
-  - Consider: Single `test-reviewer-finder.js` with subcommands
-
-### 2. UI/UX Improvements
+### 1. UI/UX Improvements (Start Here)
 
 - [ ] Add "View COI Details" expandable section showing coauthored paper titles
 - [ ] Sort candidates with COI to bottom of list (or add toggle)
 - [ ] Add export option that includes COI information in output
 - [ ] Consider adding a summary stats card at top of results
 
-### 3. Rate Limiting & Error Handling
+### 2. Rate Limiting & Error Handling
 
 - [ ] Add retry logic with exponential backoff for PubMed rate limit errors
 - [ ] Batch COI checks to reduce API calls (currently one per candidate)
 - [ ] Add user-friendly error messages for PubMed failures
 - [ ] Consider caching COI results in database
 
-### 4. Future Enhancements (Lower Priority)
+### 3. Future Enhancements (Lower Priority)
 
 - [ ] Option 2 from earlier: Improve query specificity for Track B
 - [ ] Add Google Scholar integration (requires SERP_API_KEY)
 - [ ] Batch processing for multiple proposals
+- [ ] Remove old individual test scripts (keep only test-reviewer-finder.js)
 
 ## Key Files
 
 ### Services
-- `lib/services/discovery-service.js` - Main verification + discovery logic (~1070 lines)
+- `lib/services/discovery-service.js` - Main verification + discovery logic (~1090 lines)
 - `lib/services/claude-reviewer-service.js` - Claude API calls for analysis + reasoning
 - `lib/services/pubmed-service.js` - PubMed API queries
 - `lib/services/deduplication-service.js` - Name matching, COI filtering, ranking
@@ -95,11 +83,12 @@ The Expert Reviewer Finder v2 has core functionality working:
 - `pages/reviewer-finder.js` - Frontend UI with CandidateCard component
 
 ### Test Scripts
-- `scripts/debug-reviewer-finder.js` - Tests individual candidates
-- `scripts/test-all-candidates.js` - Tests 5 known good candidates
-- `scripts/test-confidence-scores.js` - Tests expertise matching
-- `scripts/test-verification-flow.js` - Full API flow simulation
-- `scripts/test-relevance-parsing.js` - Tests reasoning parsing
+- `scripts/test-reviewer-finder.js` - **PREFERRED** Consolidated test suite with subcommands
+- `scripts/debug-reviewer-finder.js` - (Legacy) Tests individual candidates
+- `scripts/test-all-candidates.js` - (Legacy) Tests 5 known good candidates
+- `scripts/test-confidence-scores.js` - (Legacy) Tests expertise matching
+- `scripts/test-verification-flow.js` - (Legacy) Full API flow simulation
+- `scripts/test-relevance-parsing.js` - (Legacy) Tests reasoning parsing
 
 ## Key Principles
 
@@ -116,10 +105,19 @@ The Expert Reviewer Finder v2 has core functionality working:
 # Start dev server
 npm run dev
 
-# Run test scripts
-node scripts/test-relevance-parsing.js
-node scripts/test-verification-flow.js
-REAL_COI_TEST=true node scripts/test-verification-flow.js
+# Run consolidated test suite
+node scripts/test-reviewer-finder.js --help
+node scripts/test-reviewer-finder.js parsing          # Quick test (no API calls)
+node scripts/test-reviewer-finder.js candidates       # Test PubMed verification
+node scripts/test-reviewer-finder.js coi              # Test COI detection
+node scripts/test-reviewer-finder.js all              # Run all tests
+node scripts/test-reviewer-finder.js single "Forest Rohwer"  # Test specific candidate
+
+# Enable debug logging for development
+DEBUG_REVIEWER_FINDER=true npm run dev
+
+# Test COI with real coauthors
+REAL_COI_TEST=true node scripts/test-reviewer-finder.js coi
 
 # Check institution matching
 node -e "const { DeduplicationService } = require('./lib/services/deduplication-service'); console.log(DeduplicationService.institutionsMatch('university of michigan', 'michigan state university'));"
