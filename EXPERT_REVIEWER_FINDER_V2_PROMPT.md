@@ -5,65 +5,62 @@ Continue working on the Expert Reviewer Finder v2 app at:
 
 ## Context
 
-**Previous session (December 13, 2025):** Fixed the reported "regression" - it was actually two separate issues:
+**Previous session (December 13, 2025 - Session 2):** Implemented Coauthor COI Detection feature:
 
-1. **Debug script bug** - The debug script expected `extractBestAffiliationMultiVariant()` to return an object but it returns a string, causing misleading "NONE FOUND" output
-2. **Expertise confidence algorithm too strict** - Required 2+ keyword matches from exact phrases. Fixed by adding synonym expansion and single-keyword matching.
+1. **Prompt modification** - Added `PROPOSAL_AUTHORS` field extraction to Claude prompt
+2. **COI checking methods** - Added `checkCoauthorHistory()`, `checkCoauthorshipsForCandidates()`, and `toPubMedAuthorFormat()` to discovery-service.js
+3. **API integration** - Integrated COI checking into discover.js API after verification
+4. **UI display** - Added red-highlighted COI warnings in CandidateCard component
+5. **Testing** - Verified with known coauthors (Curtis Suttle / Mya Breitbart)
 
-**Results after fixes:**
-- All 5 known good candidates (Suttle, Rohwer, Breitbart, Weitz, Harcombe) now pass verification
-- Confidence scores improved dramatically (e.g., Curtis Suttle: 0% → 100%)
-- Tested with a new proposal (chemical biology/quantum computing) - 10/13 suggestions verified correctly
+**Key implementation details:**
+- PubMed author searches use "LastName FirstInitial" format (e.g., "Rohwer F") which works better than quoted full names
+- COI warnings show paper count and sample publication titles
+- Candidates with COI get red border and warning banner
 
-**Commits made:**
-- `451a69b` - Fix debug script data structure mismatch and add test scripts
-- `359a484` - Improve expertise match confidence algorithm for reviewer verification
-- `f63d541` - Add debugging to discover API and test script for verification flow
+**Commits made this session:**
+- `59b4c89` - Add coauthor COI detection to Expert Reviewer Finder v2
+
+**Previous session (December 13, 2025 - Session 1):** Fixed verification issues:
+- `451a69b` - Fix debug script data structure mismatch
+- `359a484` - Improve expertise match confidence algorithm
+- `f63d541` - Add debugging to discover API
 
 ## Current State
 
-The verification pipeline is working correctly:
-- Claude suggestions are being verified via PubMed
+The Expert Reviewer Finder v2 is now feature-complete for basic functionality:
+- Claude analyzes proposals and suggests reviewers
+- Suggestions are verified via PubMed
 - Name matching handles variants (Will/William, initials)
 - Expertise confidence uses synonym expansion
-- Debug logging shows what's happening at each step
+- **NEW: Coauthor COI detection flags candidates who have published with proposal authors**
 
-## Priority Tasks for This Session
+## Priority Tasks for Next Session
 
-### 1. Add Coauthor COI Detection (NEW FEATURE)
-
-Implement PubMed-based detection of coauthorship between candidates and proposal authors:
-
-1. **Extract proposal author name(s)** from Claude's analysis
-   - Modify prompt in `shared/config/prompts/reviewer-finder.js` to extract `PROPOSAL_AUTHORS`
-   - Parse in `parseAnalysisResponse()`
-
-2. **For each verified candidate**, search PubMed for coauthored papers:
-   ```javascript
-   Query: "${candidateName}[Author] AND ${proposalAuthor}[Author]"
-   ```
-
-3. **Flag candidates with coauthor history** (don't auto-reject):
-   - Add `coauthorships` array to candidate object
-   - Display warning in UI: "⚠️ Co-authored X papers with proposal author"
-
-**Files to modify:**
-- `shared/config/prompts/reviewer-finder.js` - Add PROPOSAL_AUTHORS field
-- `lib/services/discovery-service.js` - Add `checkCoauthorHistory()` method
-- `pages/reviewer-finder.js` - Display COI warnings in CandidateCard
-
-### 2. Clean Up Technical Debt
+### 1. Clean Up Technical Debt
 
 - [ ] Review and remove excessive debug logging if no longer needed
 - [ ] Clean up any commented-out code in discovery-service.js
-- [ ] Consider consolidating test scripts
+- [ ] Consider consolidating test scripts into a single test suite
+
+### 2. UI/UX Improvements
+
+- [ ] Add "View COI Details" expandable section showing coauthored paper titles
+- [ ] Consider sorting candidates with COI to bottom of list
+- [ ] Add export option that includes COI information
+
+### 3. Rate Limiting & Error Handling
+
+- [ ] Add retry logic for PubMed rate limit errors in COI checking
+- [ ] Consider batching COI checks to reduce API calls
+- [ ] Add better error messages for PubMed failures
 
 ## Key Files
 
-- `lib/services/discovery-service.js` - Main verification logic (~950 lines)
+- `lib/services/discovery-service.js` - Main verification logic + COI checking (~1070 lines)
 - `lib/services/pubmed-service.js` - PubMed API queries
 - `shared/config/prompts/reviewer-finder.js` - Claude prompts and parsing
-- `pages/reviewer-finder.js` - Frontend UI
+- `pages/reviewer-finder.js` - Frontend UI with COI warnings
 - `pages/api/reviewer-finder/discover.js` - API endpoint (Stage 2)
 
 ## Test Scripts
@@ -71,7 +68,8 @@ Implement PubMed-based detection of coauthorship between candidates and proposal
 - `node scripts/debug-reviewer-finder.js` - Tests individual candidates
 - `node scripts/test-all-candidates.js` - Tests 5 known good candidates
 - `node scripts/test-confidence-scores.js` - Tests expertise matching
-- `node scripts/test-verification-flow.js` - Simulates full API flow
+- `node scripts/test-verification-flow.js` - Simulates full API flow with COI checking
+  - Set `REAL_COI_TEST=true` to test with real coauthors
 
 ## Key Principles
 
@@ -79,3 +77,4 @@ Implement PubMed-based detection of coauthorship between candidates and proposal
 2. **One change at a time** with testing
 3. **Trust Claude** - verification confirms identity, not relevance
 4. **Simple filtering** - don't over-engineer
+5. **Flag, don't auto-reject** - let users make COI decisions
