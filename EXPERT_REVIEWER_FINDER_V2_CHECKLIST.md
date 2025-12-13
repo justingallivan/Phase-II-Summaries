@@ -1,7 +1,27 @@
 # Expert Reviewer Finder v2 - Implementation Checklist
 
 **Last Updated:** December 12, 2025
-**Status:** Phase 1 Core Pipeline Complete - Ready for Testing
+**Status:** Phase 1 Core Pipeline Complete - REGRESSION IDENTIFIED
+
+---
+
+## ⚠️ URGENT: Filtering Regression
+
+The verification logic may be too strict, resulting in fewer verified candidates than earlier implementations. See `EXPERT_REVIEWER_FINDER_V2_NEXT_SESSION.md` for investigation plan.
+
+### Immediate TODO
+- [ ] Investigate `filterToMatchingAuthorMultiVariant()` - may be over-filtering
+- [ ] Investigate `namesMatch()` - may be too strict
+- [ ] Test with known good candidates (Suttle, Rohwer, Breitbart, Weitz, Harcombe)
+- [ ] Establish baseline by running same proposal multiple times
+
+### New Feature: Coauthor COI Detection
+- [ ] Add `checkCoauthorHistory()` to discovery-service.js
+  - [ ] Search PubMed for co-authored papers: `[Candidate][Author] AND [Proposal Author][Author]`
+  - [ ] Return coauthor count and sample papers
+- [ ] Extract proposal author name(s) in Claude prompt
+- [ ] Display COI warning in CandidateCard component
+- [ ] Don't auto-reject, just flag for user review
 
 ---
 

@@ -1,86 +1,62 @@
-# Expert Reviewer Finder v2 - Session Startup Prompt
+# Expert Reviewer Finder v2 - Session Prompt
 
-Copy and paste this prompt to start a new session focused on implementing the Expert Reviewer Finder v2.
+Continue working on the Expert Reviewer Finder v2 app at:
+/Users/gallivan/Library/Mobile Documents/com~apple~CloudDocs/Documents/Programming/ClaudeCode/Grant_Review_Packages/Phase-II-Summaries
 
----
+## Context
 
-## Prompt
+Read the session plan at: `EXPERT_REVIEWER_FINDER_V2_NEXT_SESSION.md`
 
-I'm building a new app called "Expert Reviewer Finder" for my grant proposal processing suite. This will be a tiered, progressive reviewer discovery system.
+The previous session resulted in a **regression** - the system is now returning fewer verified reviewers than earlier implementations. We need to investigate and fix the filtering logic.
 
-**Please read these files to get up to speed:**
+## Priority Tasks
 
-1. `CLAUDE.md` - Project overview and tech stack
-2. `EXPERT_REVIEWER_FINDER_V2_PLAN.md` - Complete implementation plan (the main document)
-3. `EXPERT_REVIEWER_FINDER_V2_CHECKLIST.md` - Implementation checklist (create if needed)
+### 1. Investigate Filtering Regression (HIGH PRIORITY)
 
-**Context:**
-- This app replaces two existing apps: `/find-reviewers` (Claude-only suggestions) and `/find-reviewers-pro` (database search, incomplete)
-- The new app combines the best of both: Claude's reasoning + real database verification
-- Key insight: Claude provides the "why", databases provide verified "who"
-- Tiered cost structure: Free searches first (PubMed, ArXiv, BioRxiv), paid enrichment (Google Scholar) only for selected candidates
+The verification logic in `lib/services/discovery-service.js` may be too strict. Key areas to investigate:
 
-**Tech Stack:**
-- Next.js 14, React 18, Tailwind CSS
-- Vercel Postgres (existing database)
-- Claude API (user provides key)
-- Free APIs: PubMed (NCBI), ArXiv, BioRxiv
-- Paid APIs: SerpAPI for Google Scholar (deferred until free APIs validated)
+- `filterToMatchingAuthorMultiVariant()` (~line 845) - May be filtering out legitimate papers
+- `namesMatch()` (~line 879) - Name matching logic may be too strict
+- `MIN_PUBLICATIONS` threshold (currently 3) - May need adjustment
 
-**Existing Code to Reuse:**
-- `lib/services/pubmed-service.js` - Works, needs rate limiting
-- `lib/services/arxiv-service.js` - Works
-- `lib/services/biorxiv-service.js` - Works, low result counts
-- `lib/services/database-service.js` - Works, schema may need updates
-- `lib/services/deduplication-service.js` - Works
-- `shared/config/prompts/find-reviewers.js` - Has extraction prompts
+**Debug approach:**
+1. Run `node scripts/debug-reviewer-finder.js` with known good candidates
+2. Trace where papers are being lost in the pipeline
+3. Compare search results vs filtered results
 
-**Current Priority: Phase 1 - Core Pipeline**
+**Known good candidates for testing (microbial ecology proposals):**
+- Curtis Suttle, Forest Rohwer, Mya Breitbart, Joshua Weitz, Will Harcombe
 
-Please start by reviewing the plan, then let's discuss the implementation approach for Stage 1 (Claude analysis) and Stage 2 (Database discovery).
+### 2. Add Coauthor COI Detection (NEW FEATURE)
 
----
+Implement PubMed-based detection of coauthorship between candidates and proposal authors:
 
-## Subagent Delegation Strategy
+1. Extract proposal author name(s) from Claude's analysis
+2. For each candidate, search: `"[Candidate][Author] AND [Proposal Author][Author]"`
+3. Flag candidates with coauthor history (don't auto-reject)
+4. Display warning in UI
 
-For parallel work, consider these subagent tasks:
+Files to modify:
+- `lib/services/discovery-service.js` - Add `checkCoauthorHistory()` method
+- `pages/reviewer-finder.js` - Display COI warnings
+- `shared/config/prompts/reviewer-finder.js` - Ensure author extraction
 
-### Research/Exploration Agents (subagent_type: Explore)
-- "Explore the existing pubmed-service.js, arxiv-service.js, and biorxiv-service.js to understand current implementation patterns"
-- "Explore the database schema in lib/db/schema.sql and compare to the v2 plan"
-- "Find all usages of the existing find-reviewers prompts"
+## Key Principles
 
-### Implementation Agents (subagent_type: general-purpose)
-- "Implement the new Claude analysis prompt for Stage 1 that generates reviewer suggestions with reasoning AND search queries"
-- "Create the rate-limiter.js service with configurable limits per API"
-- "Update the database schema to match EXPERT_REVIEWER_FINDER_V2_PLAN.md"
-- "Create the basic UI structure for the three-tab interface"
+1. **Commit early and often** - Always commit working states before making changes
+2. **One change at a time** - Test after each modification
+3. **Simple filtering** - The verification should confirm identity, not judge relevance
+4. **Trust Claude** - If Claude suggests someone, they're likely relevant
 
-### Planning Agent (subagent_type: Plan)
-- "Plan the implementation of Stage 2 discovery service that combines verification and discovery tracks"
+## Current State
 
----
+- Git: Latest commit `54d28e6` - "Remove disambiguated search requirement"
+- The filtering is currently minimal: accept if ≥3 publications found
+- Expertise match score is calculated but doesn't cause rejection
+- Debug logging is enabled showing search/filter pipeline
 
-## Quick Reference
+## Files to Focus On
 
-| Stage | Description | Cost | Status |
-|-------|-------------|------|--------|
-| 1 | Claude analysis (reasoning + queries) | Free | TODO |
-| 2 | Database discovery & verification | Free | TODO |
-| 3 | User selection UI | Free | TODO |
-| 4 | Google Scholar enrichment | Paid | Deferred |
-
-**Key Files to Create:**
-- `pages/reviewer-finder.js` - Main app (tabbed UI)
-- `pages/api/reviewer-finder/analyze.js` - Stage 1
-- `pages/api/reviewer-finder/discover.js` - Stage 2
-- `lib/services/claude-reviewer-service.js` - Stage 1 logic
-- `lib/services/discovery-service.js` - Stage 2 orchestration
-
-**Verification Criteria:**
-- 3+ publications in last 5 years = active researcher
-
-**Database Approach:**
-- Store researchers permanently (no expiry)
-- Store Google Scholar URLs permanently (free to check manually later)
-- Metrics (h-index) stored as snapshots with timestamps
+- `lib/services/discovery-service.js` - Main verification logic (investigate filtering)
+- `scripts/debug-reviewer-finder.js` - Debug tool for testing candidates
+- `pages/reviewer-finder.js` - Frontend (for COI display)
