@@ -14,18 +14,23 @@ Continue working on the Expert Reviewer Finder v2 app at:
 
 ## Context
 
-**Previous session (December 13, 2025 - Session 5):** Technical debt cleanup:
+**Previous session (December 13, 2025 - Session 6):** Activated Save/Export buttons:
 
-1. **Debug logging cleanup** - Added `DEBUG_REVIEWER_FINDER` environment variable flag
-   - All verbose console.log statements now gated behind `DEBUG` flag
-   - Set `DEBUG_REVIEWER_FINDER=true` to enable verbose logging
-   - Affects: `discovery-service.js`, `claude-reviewer-service.js`, `discover.js`
-2. **Test consolidation** - Created unified test suite `test-reviewer-finder.js`
-   - Combines all previous test scripts into single CLI tool
-   - Commands: `all`, `verification`, `candidates`, `confidence`, `parsing`, `coi`, `single <name>`
-   - Old scripts still exist but new one is preferred
+1. **Save to My Candidates** - Now functional
+   - Creates `save-candidates.js` API to persist to Postgres
+   - Stores in `reviewer_suggestions` table with `selected=true`
+   - Creates researcher records if they don't exist
+2. **Export Selected** - Now functional
+   - Export Markdown: Full details with publications and COI warnings
+   - Export CSV: Tabular format for spreadsheets
+3. **My Candidates tab** - Now functional
+   - Fetches saved candidates grouped by proposal
+   - Shows Invited/Accepted status toggles
+   - Notes field for each candidate
+   - Remove from list functionality
 
 **Previous sessions:**
+- Session 5: Debug logging cleanup, test consolidation (`2815905`)
 - Session 4: COI filtering fixes (`6ed9ae1`, `31b8f98`)
 - Session 3: Relevance filtering for Track B (`9dd137c`)
 - Session 2: Coauthor COI detection (`59b4c89`)
@@ -42,15 +47,18 @@ The Expert Reviewer Finder v2 has core functionality working:
 - Coauthor COI detection (published together)
 - COI warnings displayed with red highlighting
 - Debug logging controlled via environment variable
+- **Save to My Candidates** - Persist selections to database
+- **Export Markdown/CSV** - Download selected candidates
+- **My Candidates tab** - View/manage saved candidates
 
 ## Priority Tasks for Next Session
 
-### 1. UI/UX Improvements (Start Here)
+### 1. UI/UX Improvements
 
 - [ ] Add "View COI Details" expandable section showing coauthored paper titles
 - [ ] Sort candidates with COI to bottom of list (or add toggle)
-- [ ] Add export option that includes COI information in output
 - [ ] Consider adding a summary stats card at top of results
+- [ ] Add bulk export from My Candidates tab
 
 ### 2. Rate Limiting & Error Handling
 
@@ -65,6 +73,7 @@ The Expert Reviewer Finder v2 has core functionality working:
 - [ ] Add Google Scholar integration (requires SERP_API_KEY)
 - [ ] Batch processing for multiple proposals
 - [ ] Remove old individual test scripts (keep only test-reviewer-finder.js)
+- [ ] Implement Database tab (browse all discovered researchers)
 
 ## Key Files
 
@@ -80,7 +89,9 @@ The Expert Reviewer Finder v2 has core functionality working:
 ### API & Frontend
 - `pages/api/reviewer-finder/analyze.js` - Stage 1 API (Claude analysis)
 - `pages/api/reviewer-finder/discover.js` - Stage 2 API (verification + discovery)
-- `pages/reviewer-finder.js` - Frontend UI with CandidateCard component
+- `pages/api/reviewer-finder/save-candidates.js` - Save selected candidates to database
+- `pages/api/reviewer-finder/my-candidates.js` - Fetch/update/remove saved candidates
+- `pages/reviewer-finder.js` - Frontend UI with CandidateCard, SavedCandidateCard, MyCandidatesTab
 
 ### Test Scripts
 - `scripts/test-reviewer-finder.js` - **PREFERRED** Consolidated test suite with subcommands
