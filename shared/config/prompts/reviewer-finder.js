@@ -244,27 +244,32 @@ export function parseDiscoveredReasoningResponse(response, candidates) {
   const lines = response.split('\n').filter(line => line.trim());
 
   for (const line of lines) {
+    // Try to extract the number at the start of the line
+    const numMatch = line.match(/^(\d+)[.\)]/);
+    if (!numMatch) continue;
+
+    const index = parseInt(numMatch[1], 10) - 1;
+    if (index < 0 || index >= candidates.length) continue;
+
     // New format: RELEVANT: Yes/No | REASONING: ... | SENIORITY: ...
-    const newMatch = line.match(/^(\d+)\.\s*RELEVANT:\s*(Yes|No)\s*\|\s*REASONING:\s*(.+?)\s*\|\s*SENIORITY:\s*(.+)/i);
-    if (newMatch) {
-      const index = parseInt(newMatch[1], 10) - 1;
-      if (index >= 0 && index < candidates.length) {
-        candidates[index].isRelevant = newMatch[2].toLowerCase() === 'yes';
-        candidates[index].generatedReasoning = newMatch[3].trim();
-        candidates[index].seniorityEstimate = newMatch[4].trim();
-      }
-      continue;
+    // More flexible regex that handles variable spacing and ordering
+    const relevantMatch = line.match(/RELEVANT:\s*(Yes|No)/i);
+    const reasoningMatch = line.match(/REASONING:\s*(.+?)(?:\s*\||\s*SENIORITY:|$)/i);
+    const seniorityMatch = line.match(/SENIORITY:\s*(.+?)(?:\s*\||$)/i);
+
+    if (relevantMatch) {
+      candidates[index].isRelevant = relevantMatch[1].toLowerCase() === 'yes';
+    } else {
+      // Default to relevant if not specified
+      candidates[index].isRelevant = true;
     }
 
-    // Fallback: old format without relevance (assume relevant)
-    const oldMatch = line.match(/^(\d+)\.\s*REASONING:\s*(.+?)\s*\|\s*SENIORITY:\s*(.+)/i);
-    if (oldMatch) {
-      const index = parseInt(oldMatch[1], 10) - 1;
-      if (index >= 0 && index < candidates.length) {
-        candidates[index].isRelevant = true; // Assume relevant if old format
-        candidates[index].generatedReasoning = oldMatch[2].trim();
-        candidates[index].seniorityEstimate = oldMatch[3].trim();
-      }
+    if (reasoningMatch && reasoningMatch[1].trim()) {
+      candidates[index].generatedReasoning = reasoningMatch[1].trim();
+    }
+
+    if (seniorityMatch && seniorityMatch[1].trim()) {
+      candidates[index].seniorityEstimate = seniorityMatch[1].trim();
     }
   }
 
