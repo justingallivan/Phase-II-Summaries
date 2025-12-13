@@ -96,6 +96,41 @@ export default async function handler(req, res) {
       }
     });
 
+    // Check for coauthor COI if we have proposal authors
+    let verifiedWithCOI = discoveryResults.verified;
+    const proposalAuthorsRaw = analysisResult.proposalInfo?.proposalAuthors;
+
+    if (proposalAuthorsRaw && proposalAuthorsRaw.toLowerCase() !== 'not specified') {
+      // Parse proposal authors (comma-separated)
+      const proposalAuthors = proposalAuthorsRaw
+        .split(',')
+        .map(a => a.trim())
+        .filter(a => a.length > 0);
+
+      if (proposalAuthors.length > 0 && discoveryResults.verified.length > 0) {
+        sendEvent('progress', {
+          stage: 'coi_check',
+          status: 'starting',
+          message: `Checking coauthorship history with ${proposalAuthors.length} proposal author(s)...`
+        });
+
+        verifiedWithCOI = await DiscoveryService.checkCoauthorshipsForCandidates(
+          discoveryResults.verified,
+          proposalAuthors,
+          (progress) => sendEvent('progress', progress)
+        );
+
+        const coiCount = verifiedWithCOI.filter(c => c.hasCoauthorCOI).length;
+        sendEvent('progress', {
+          stage: 'coi_check',
+          status: 'complete',
+          message: coiCount > 0
+            ? `Found ${coiCount} candidate(s) with coauthorship history`
+            : 'No coauthorship conflicts found'
+        });
+      }
+    }
+
     sendEvent('progress', {
       stage: 'discovery',
       status: 'discovered',
@@ -131,7 +166,7 @@ export default async function handler(req, res) {
     const proposalKeywords = analysisResult.proposalInfo?.keywords?.split(',').map(k => k.trim()) || [];
 
     const combinedResults = {
-      verified: discoveryResults.verified,
+      verified: verifiedWithCOI,
       unverified: discoveryResults.unverified,
       discovered: enhancedDiscovered,
       stats: discoveryResults.stats
@@ -143,7 +178,7 @@ export default async function handler(req, res) {
     );
 
     sendEvent('result', {
-      verified: discoveryResults.verified,
+      verified: verifiedWithCOI,
       unverified: discoveryResults.unverified,
       discovered: enhancedDiscovered,
       ranked: rankedCandidates,
@@ -153,7 +188,7 @@ export default async function handler(req, res) {
     sendEvent('complete', {
       message: 'Discovery complete',
       totalCandidates: rankedCandidates.length,
-      verifiedCount: discoveryResults.verified.length,
+      verifiedCount: verifiedWithCOI.length,
       discoveredCount: enhancedDiscovered.length
     });
 

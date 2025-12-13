@@ -82,10 +82,13 @@ function CandidateCard({ candidate, selected, onSelect }) {
   const confidence = candidate.verificationConfidence;
   const isLowConfidence = confidence !== undefined && confidence < 0.5;
 
+  const hasCoauthorCOI = candidate.hasCoauthorCOI;
+
   return (
     <div className={`
       border rounded-lg p-4 transition-all duration-200
       ${selected ? 'border-blue-500 bg-blue-50' :
+        hasCoauthorCOI ? 'border-red-300 bg-red-50' :
         isLowConfidence ? 'border-amber-300 bg-amber-50' :
         'border-gray-200 hover:border-gray-300'}
     `}>
@@ -115,6 +118,25 @@ function CandidateCard({ candidate, selected, onSelect }) {
             <p className="text-sm text-gray-500 truncate">
               {candidate.affiliation}
             </p>
+          )}
+
+          {/* Coauthor COI warning */}
+          {candidate.hasCoauthorCOI && candidate.coauthorships && candidate.coauthorships.length > 0 && (
+            <div className="mt-2 p-2 bg-red-50 border border-red-300 rounded text-xs text-red-800">
+              <span className="font-medium">🚨 Potential COI:</span> Co-authored {
+                candidate.coauthorships.reduce((sum, c) => sum + c.paperCount, 0)
+              } paper(s) with proposal author(s):
+              <ul className="mt-1 ml-4 list-disc">
+                {candidate.coauthorships.map((coauth, idx) => (
+                  <li key={idx}>
+                    <strong>{coauth.proposalAuthor}</strong> ({coauth.paperCount} paper{coauth.paperCount > 1 ? 's' : ''})
+                    {coauth.recentPapers && coauth.recentPapers.length > 0 && (
+                      <span className="text-red-600"> - e.g., "{coauth.recentPapers[0].title?.substring(0, 60)}..."</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           {/* Low confidence warning */}

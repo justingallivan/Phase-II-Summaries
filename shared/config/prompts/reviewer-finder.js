@@ -40,6 +40,7 @@ Analyze this proposal and provide THREE types of output:
 Extract key information about the proposal:
 
 TITLE: [Complete proposal title]
+PROPOSAL_AUTHORS: [Names of the proposal author(s), comma-separated if multiple. Extract from title page, abstract, or any author attribution. If not found, write "Not specified"]
 AUTHOR_INSTITUTION: [University or organization name, or "Not specified"]
 PRIMARY_RESEARCH_AREA: [Main scientific discipline]
 SECONDARY_AREAS: [Comma-separated list of related fields]
@@ -165,7 +166,7 @@ export function parseAnalysisResponse(response) {
 
   // Parse proposal metadata
   const metadataFields = [
-    'TITLE', 'AUTHOR_INSTITUTION', 'PRIMARY_RESEARCH_AREA',
+    'TITLE', 'PROPOSAL_AUTHORS', 'AUTHOR_INSTITUTION', 'PRIMARY_RESEARCH_AREA',
     'SECONDARY_AREAS', 'KEY_METHODOLOGIES', 'KEYWORDS'
   ];
 
