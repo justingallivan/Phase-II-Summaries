@@ -590,5 +590,36 @@ Fully implemented multi-source reviewer finder. Searches real academic databases
 
 ---
 
-Last Updated: December 11, 2025
-Version: 2.5 (Expert Reviewers Pro improvements - rate limiting, URLs, quality filter)
+### December 14, 2025 - Expert Reviewer Finder v2 Session 9
+
+**Features Implemented:**
+
+1. **Google Scholar Profile Links** (`426b6d7`, `b094ee7`)
+   - Added 🎓 Scholar Profile link to CandidateCard and SavedCandidateCard
+   - Opens Google Scholar author search in new tab (free, no API needed)
+   - URL cleanup: removes titles (Dr., Prof.), extracts institution name from full affiliation
+   - `buildScholarSearchUrl()` helper function in `pages/reviewer-finder.js`
+
+2. **Claude API Retry Logic with Fallback Model** (`1cd7416`, `5efed48`)
+   - Retry configuration: 2 retries with exponential backoff (1s, 2s delays)
+   - After retries exhausted, falls back to `claude-3-haiku-20240307`
+   - Only retries on overloaded/rate-limit errors (529, 503)
+   - `callClaude()` returns `{ text, usedFallback, model }` object
+   - Progress events include `status: 'fallback'` for UI notification
+   - File: `lib/services/claude-reviewer-service.js`
+
+3. **Fallback Model UI Indicator**
+   - Progress messages track `type` field ('info' or 'fallback')
+   - Fallback messages displayed with:
+     - ⚠️ warning emoji prefix
+     - Amber/yellow background highlighting (`bg-amber-50 text-amber-600`)
+   - Candidates track `reasoningFromFallback` flag
+
+**Files Modified:**
+- `pages/reviewer-finder.js` - Scholar links + fallback UI
+- `lib/services/claude-reviewer-service.js` - Retry logic with fallback
+
+---
+
+Last Updated: December 14, 2025
+Version: 2.6 (Expert Reviewer Finder v2 - Scholar links, Claude retry/fallback)

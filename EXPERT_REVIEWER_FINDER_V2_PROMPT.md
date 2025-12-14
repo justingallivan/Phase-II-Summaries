@@ -14,42 +14,39 @@ Continue working on the Expert Reviewer Finder v2 app at:
 
 ## Context
 
-**Next Session Goal:** Add Google Scholar integration to Expert Reviewer Finder v2
+**Previous session (December 14, 2025 - Session 9):** Google Scholar links + Claude API retry logic
 
-**Previous session (December 13, 2025 - Session 8):** Metadata parsing fixes:
+1. **Added Google Scholar profile search links** (`426b6d7`, `b094ee7`)
+   - Added 🎓 Scholar Profile link to CandidateCard and SavedCandidateCard
+   - Links open Google Scholar author search in new tab (free, no API needed)
+   - Cleaned up URLs: removes Dr./Prof. titles, extracts institution name from full affiliation
+   - Example: "Dr. Forest Rohwer, Department of Biology, San Diego State University, CA" → "Forest Rohwer San Diego State University"
 
-1. **Fixed Claude markdown formatting parsing** (`67f93c5`)
-   - Root cause: Claude sometimes outputs `**AUTHOR_INSTITUTION:**` instead of `AUTHOR_INSTITUTION:`
-   - Updated regex to handle markdown formatting variations (bold, list items)
-   - Added asterisk cleanup from parsed values
-   - This fixes institution COI not being detected for same-institution reviewers
+2. **Added Claude API retry logic with fallback model** (`1cd7416`, `5efed48`)
+   - Retry up to 2 times with exponential backoff (1s, 2s delays)
+   - After retries exhausted, fall back to `claude-3-haiku-20240307`
+   - Only retry on overloaded/rate-limit errors (529, 503)
+   - `callClaude()` now returns `{ text, usedFallback, model }` object
+   - Progress events include 'fallback' status when backup model used
+   - UI shows fallback messages in amber with ⚠️ warning icon
+   - Candidates track `reasoningFromFallback` flag for transparency
+
+**Session 8 (December 13, 2025):** Metadata parsing fixes (`67f93c5`)
 
 **Session 7 (December 13, 2025):** Bug fixes and optimizations:
-
-1. **Institution abbreviation matching** (`d74b2b1`)
-   - Added 30+ abbreviation mappings (UC, MIT, Georgia Tech, UCLA, etc.)
-   - "UC Berkeley" now correctly matches "University of California, Berkeley"
-2. **Fixed missing affiliations in database discoveries** (`6003874`)
-   - PubMed: Added `affiliation` alias for UI compatibility
-   - BioRxiv: Fixed extraction to use `article.institution` field
-3. **Optimized PubMed rate limiting** (`2a2814a`)
-   - Now uses `NCBI_API_KEY` for 4x faster searches (100ms vs 400ms)
-   - Removed redundant delays for ArXiv/BioRxiv (services have built-in delays)
-4. **Fixed false positive institution COI** (`191fb7d`)
-   - Bug: Greedy regex in `normalizeInstitution()` consumed entire string when no commas
-   - Example: "University of Michigan" was incorrectly matching "UC San Diego"
-   - Fix: Changed regex to require comma before removing department prefixes
-5. **Parallel COI checks** (`6298f28`)
-   - Implemented batched parallel processing for coauthor COI checks
-   - Batch size: 5 with API key, 2 without (~5x speedup)
+- Institution abbreviation matching (UC, MIT, etc.)
+- Fixed missing affiliations in database discoveries
+- Optimized PubMed rate limiting with NCBI_API_KEY
+- Fixed false positive institution COI
+- Parallel COI checks (~5x speedup)
 
 **Previous sessions:**
-- Session 6: Save/Export buttons, My Candidates tab (`f31ba87`)
-- Session 5: Debug logging cleanup, test consolidation (`2815905`)
-- Session 4: COI filtering fixes (`6ed9ae1`, `31b8f98`)
-- Session 3: Relevance filtering for Track B (`9dd137c`)
-- Session 2: Coauthor COI detection (`59b4c89`)
-- Session 1: Verification fixes (`451a69b`, `359a484`, `f63d541`)
+- Session 6: Save/Export buttons, My Candidates tab
+- Session 5: Debug logging cleanup, test consolidation
+- Session 4: COI filtering fixes
+- Session 3: Relevance filtering for Track B
+- Session 2: Coauthor COI detection
+- Session 1: Verification fixes
 
 ## Current State
 
@@ -67,44 +64,26 @@ The Expert Reviewer Finder v2 has core functionality working:
 - **Save to My Candidates** - Persist selections to database
 - **Export Markdown/CSV** - Download selected candidates
 - **My Candidates tab** - View/manage saved candidates
+- **🎓 Google Scholar links** - One-click profile lookup for h-index verification
+- **Claude API retry + fallback** - Automatic retry with Haiku fallback on overload
 
 ## Priority Tasks for Next Session
 
-### 1. Google Scholar Integration (PRIMARY GOAL)
-
-Add Google Scholar as a fourth search source for Track B discoveries. This will provide h-index and citation data that PubMed/ArXiv/BioRxiv don't have.
-
-**Implementation approach:**
-- Use SerpAPI (requires `SERP_API_KEY` environment variable)
-- Existing reference: `lib/services/scholar-service.js` from Expert Reviewers Pro
-- Add checkbox in UI similar to PubMed/ArXiv/BioRxiv
-- Integrate into discovery-service.js Track B pipeline
-- Key data to extract: h-index, total citations, recent papers
-
-**Key files to modify:**
-- `lib/services/discovery-service.js` - Add Scholar search to Track B
-- `pages/reviewer-finder.js` - Add Google Scholar checkbox
-- `pages/api/reviewer-finder/discover.js` - Pass Scholar option through
-
-**Reference implementation:**
-- `pages/api/search-reviewers-pro.js` lines 200-250 - How Scholar is called in v1
-- `lib/services/scholar-service.js` - Existing SerpAPI wrapper
-
-### 2. UI/UX Improvements (Lower Priority)
+### 1. UI/UX Improvements
 
 - [ ] Add "View COI Details" expandable section showing coauthored paper titles
 - [ ] Sort candidates with COI to bottom of list (or add toggle)
 - [ ] Consider adding a summary stats card at top of results
 - [ ] Add bulk export from My Candidates tab
 
-### 3. Error Handling & Robustness (Lower Priority)
+### 2. Error Handling & Robustness
 
-- [ ] Add retry logic with exponential backoff for PubMed rate limit errors
-- [x] Batch COI checks to reduce API calls (implemented in Session 7)
+- [x] Add retry logic with exponential backoff for Claude API (implemented Session 9)
+- [x] Batch COI checks to reduce API calls (implemented Session 7)
 - [ ] Add user-friendly error messages for PubMed failures
 - [ ] Consider caching COI results in database
 
-### 4. Future Enhancements
+### 3. Future Enhancements
 
 - [ ] Improve query specificity for Track B discoveries
 - [ ] Batch processing for multiple proposals
@@ -115,12 +94,13 @@ Add Google Scholar as a fourth search source for Track B discoveries. This will 
 
 ### Services
 - `lib/services/discovery-service.js` - Main verification + discovery logic (~1090 lines)
-- `lib/services/claude-reviewer-service.js` - Claude API calls for analysis + reasoning
+- `lib/services/claude-reviewer-service.js` - Claude API calls with retry/fallback logic
 - `lib/services/pubmed-service.js` - PubMed API queries
 - `lib/services/deduplication-service.js` - Name matching, COI filtering, ranking
 
 ### Config & Prompts
 - `shared/config/prompts/reviewer-finder.js` - Claude prompts and parsing functions
+- `shared/config/baseConfig.js` - Contains FALLBACK_MODEL setting
 
 ### API & Frontend
 - `pages/api/reviewer-finder/analyze.js` - Stage 1 API (Claude analysis)
@@ -131,11 +111,6 @@ Add Google Scholar as a fourth search source for Track B discoveries. This will 
 
 ### Test Scripts
 - `scripts/test-reviewer-finder.js` - **PREFERRED** Consolidated test suite with subcommands
-- `scripts/debug-reviewer-finder.js` - (Legacy) Tests individual candidates
-- `scripts/test-all-candidates.js` - (Legacy) Tests 5 known good candidates
-- `scripts/test-confidence-scores.js` - (Legacy) Tests expertise matching
-- `scripts/test-verification-flow.js` - (Legacy) Full API flow simulation
-- `scripts/test-relevance-parsing.js` - (Legacy) Tests reasoning parsing
 
 ## Key Principles
 
@@ -165,7 +140,4 @@ DEBUG_REVIEWER_FINDER=true npm run dev
 
 # Test COI with real coauthors
 REAL_COI_TEST=true node scripts/test-reviewer-finder.js coi
-
-# Check institution matching
-node -e "const { DeduplicationService } = require('./lib/services/deduplication-service'); console.log(DeduplicationService.institutionsMatch('university of michigan', 'michigan state university'));"
 ```
