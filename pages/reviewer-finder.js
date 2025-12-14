@@ -312,8 +312,8 @@ function NewSearchTab({ apiKey, onCandidatesSaved }) {
     setSelectedCandidates(new Set());
   };
 
-  const addProgressMessage = (message) => {
-    setProgressMessages(prev => [...prev, { time: new Date().toLocaleTimeString(), message }]);
+  const addProgressMessage = (message, type = 'info') => {
+    setProgressMessages(prev => [...prev, { time: new Date().toLocaleTimeString(), message, type }]);
   };
 
   const runAnalysis = async () => {
@@ -368,7 +368,9 @@ function NewSearchTab({ apiKey, onCandidatesSaved }) {
             try {
               const data = JSON.parse(line.slice(6));
               if (data.message) {
-                addProgressMessage(data.message);
+                // Detect fallback status from message or status field
+                const isFallback = data.status === 'fallback' || data.message?.toLowerCase().includes('fallback');
+                addProgressMessage(data.message, isFallback ? 'fallback' : 'info');
               }
               if (data.proposalInfo) {
                 analysisData = data;
@@ -426,7 +428,9 @@ function NewSearchTab({ apiKey, onCandidatesSaved }) {
             try {
               const data = JSON.parse(line.slice(6));
               if (data.message) {
-                addProgressMessage(data.message);
+                // Detect fallback status from message or status field
+                const isFallback = data.status === 'fallback' || data.message?.toLowerCase().includes('fallback');
+                addProgressMessage(data.message, isFallback ? 'fallback' : 'info');
               }
               if (data.ranked) {
                 discoveryData = data;
@@ -743,8 +747,10 @@ function NewSearchTab({ apiKey, onCandidatesSaved }) {
             className="mt-4 bg-gray-50 rounded-lg p-3 max-h-48 overflow-y-auto font-mono text-xs"
           >
             {progressMessages.map((msg, i) => (
-              <div key={i} className="text-gray-600">
-                <span className="text-gray-400">[{msg.time}]</span> {msg.message}
+              <div key={i} className={`${msg.type === 'fallback' ? 'text-amber-600 bg-amber-50 px-1 rounded' : 'text-gray-600'}`}>
+                <span className="text-gray-400">[{msg.time}]</span>{' '}
+                {msg.type === 'fallback' && <span className="font-medium">⚠️ </span>}
+                {msg.message}
               </div>
             ))}
           </div>
