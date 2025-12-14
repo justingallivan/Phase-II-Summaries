@@ -14,6 +14,8 @@ Continue working on the Expert Reviewer Finder v2 app at:
 
 ## Context
 
+**Next Session Goal:** Add Google Scholar integration to Expert Reviewer Finder v2
+
 **Previous session (December 13, 2025 - Session 8):** Metadata parsing fixes:
 
 1. **Fixed Claude markdown formatting parsing** (`67f93c5`)
@@ -68,24 +70,43 @@ The Expert Reviewer Finder v2 has core functionality working:
 
 ## Priority Tasks for Next Session
 
-### 1. UI/UX Improvements
+### 1. Google Scholar Integration (PRIMARY GOAL)
+
+Add Google Scholar as a fourth search source for Track B discoveries. This will provide h-index and citation data that PubMed/ArXiv/BioRxiv don't have.
+
+**Implementation approach:**
+- Use SerpAPI (requires `SERP_API_KEY` environment variable)
+- Existing reference: `lib/services/scholar-service.js` from Expert Reviewers Pro
+- Add checkbox in UI similar to PubMed/ArXiv/BioRxiv
+- Integrate into discovery-service.js Track B pipeline
+- Key data to extract: h-index, total citations, recent papers
+
+**Key files to modify:**
+- `lib/services/discovery-service.js` - Add Scholar search to Track B
+- `pages/reviewer-finder.js` - Add Google Scholar checkbox
+- `pages/api/reviewer-finder/discover.js` - Pass Scholar option through
+
+**Reference implementation:**
+- `pages/api/search-reviewers-pro.js` lines 200-250 - How Scholar is called in v1
+- `lib/services/scholar-service.js` - Existing SerpAPI wrapper
+
+### 2. UI/UX Improvements (Lower Priority)
 
 - [ ] Add "View COI Details" expandable section showing coauthored paper titles
 - [ ] Sort candidates with COI to bottom of list (or add toggle)
 - [ ] Consider adding a summary stats card at top of results
 - [ ] Add bulk export from My Candidates tab
 
-### 2. Error Handling & Robustness
+### 3. Error Handling & Robustness (Lower Priority)
 
 - [ ] Add retry logic with exponential backoff for PubMed rate limit errors
-- [ ] Batch COI checks to reduce API calls (currently one per candidate)
+- [x] Batch COI checks to reduce API calls (implemented in Session 7)
 - [ ] Add user-friendly error messages for PubMed failures
 - [ ] Consider caching COI results in database
 
-### 3. Future Enhancements (Lower Priority)
+### 4. Future Enhancements
 
 - [ ] Improve query specificity for Track B discoveries
-- [ ] Add Google Scholar integration (requires SERP_API_KEY)
 - [ ] Batch processing for multiple proposals
 - [ ] Remove old individual test scripts (keep only test-reviewer-finder.js)
 - [ ] Implement Database tab (browse all discovered researchers)
