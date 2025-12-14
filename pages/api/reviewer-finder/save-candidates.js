@@ -93,8 +93,11 @@ export default async function handler(req, res) {
 
         // Step 4: Build match reason
         let matchReason = candidate.reasoning || candidate.generatedReasoning || '';
+        if (candidate.hasInstitutionCOI) {
+          matchReason += ' [Institution COI: Same institution as proposal PI]';
+        }
         if (candidate.hasCoauthorCOI) {
-          matchReason += ' [COI WARNING: Has co-authored with proposal authors]';
+          matchReason += ' [Coauthor COI: Has co-authored with proposal authors]';
         }
 
         // Step 5: Insert/update reviewer suggestion

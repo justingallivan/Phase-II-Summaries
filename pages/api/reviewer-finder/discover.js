@@ -100,21 +100,20 @@ export default async function handler(req, res) {
       }
     });
 
-    // Filter verified suggestions by institution COI
+    // Mark institution COI (same institution as PI) - flag, don't filter
     const authorInstitution = analysisResult.proposalInfo?.authorInstitution;
     let verifiedWithCOI = discoveryResults.verified;
+    const { DeduplicationService } = require('../../../lib/services/deduplication-service');
 
     if (authorInstitution) {
-      const { DeduplicationService } = require('../../../lib/services/deduplication-service');
-      const beforeInstitutionFilter = verifiedWithCOI.length;
-      verifiedWithCOI = DeduplicationService.filterConflicts(verifiedWithCOI, authorInstitution);
-      const institutionFiltered = beforeInstitutionFilter - verifiedWithCOI.length;
+      verifiedWithCOI = DeduplicationService.markInstitutionCOI(verifiedWithCOI, authorInstitution);
+      const institutionCOICount = verifiedWithCOI.filter(c => c.hasInstitutionCOI).length;
 
-      if (institutionFiltered > 0) {
+      if (institutionCOICount > 0) {
         sendEvent('progress', {
           stage: 'coi_check',
-          status: 'institution_filter',
-          message: `Filtered ${institutionFiltered} candidate(s) from ${authorInstitution} (same institution as PI)`
+          status: 'institution_coi',
+          message: `Found ${institutionCOICount} candidate(s) from ${authorInstitution} (same institution as PI)`
         });
       }
     }
@@ -129,7 +128,7 @@ export default async function handler(req, res) {
         .map(a => a.trim())
         .filter(a => a.length > 0);
 
-      if (proposalAuthors.length > 0 && discoveryResults.verified.length > 0) {
+      if (proposalAuthors.length > 0 && verifiedWithCOI.length > 0) {
         sendEvent('progress', {
           stage: 'coi_check',
           status: 'starting',
@@ -137,7 +136,7 @@ export default async function handler(req, res) {
         });
 
         verifiedWithCOI = await DiscoveryService.checkCoauthorshipsForCandidates(
-          discoveryResults.verified,
+          verifiedWithCOI,
           proposalAuthors,
           (progress) => sendEvent('progress', progress)
         );
@@ -192,6 +191,19 @@ export default async function handler(req, res) {
         sendEvent('progress', {
           stage: 'filtering',
           message: `Filtered out ${filtered} irrelevant candidates from database discoveries`
+        });
+      }
+    }
+
+    // Mark institution COI on discovered candidates too
+    if (authorInstitution && enhancedDiscovered.length > 0) {
+      enhancedDiscovered = DeduplicationService.markInstitutionCOI(enhancedDiscovered, authorInstitution);
+      const discoveredInstCOI = enhancedDiscovered.filter(c => c.hasInstitutionCOI).length;
+      if (discoveredInstCOI > 0) {
+        sendEvent('progress', {
+          stage: 'coi_check',
+          status: 'discovered_institution_coi',
+          message: `Found ${discoveredInstCOI} discovered candidate(s) from ${authorInstitution}`
         });
       }
     }

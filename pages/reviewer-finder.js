@@ -83,12 +83,14 @@ function CandidateCard({ candidate, selected, onSelect }) {
   const isLowConfidence = confidence !== undefined && confidence < 0.5;
 
   const hasCoauthorCOI = candidate.hasCoauthorCOI;
+  const hasInstitutionCOI = candidate.hasInstitutionCOI;
+  const hasAnyCOI = hasCoauthorCOI || hasInstitutionCOI;
 
   return (
     <div className={`
       border rounded-lg p-4 transition-all duration-200
       ${selected ? 'border-blue-500 bg-blue-50' :
-        hasCoauthorCOI ? 'border-red-300 bg-red-50' :
+        hasAnyCOI ? 'border-red-300 bg-red-50' :
         isLowConfidence ? 'border-amber-300 bg-amber-50' :
         'border-gray-200 hover:border-gray-300'}
     `}>
@@ -120,10 +122,22 @@ function CandidateCard({ candidate, selected, onSelect }) {
             </p>
           )}
 
+          {/* Institution COI warning */}
+          {candidate.hasInstitutionCOI && (
+            <div className="mt-2 p-2 bg-red-50 border border-red-300 rounded text-xs text-red-800">
+              <span className="font-medium">🏛️ Institution COI:</span> Same institution as proposal PI
+              {candidate.institutionCOIDetails && (
+                <span className="ml-1">
+                  ({candidate.institutionCOIDetails.reviewerInstitution})
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Coauthor COI warning */}
           {candidate.hasCoauthorCOI && candidate.coauthorships && candidate.coauthorships.length > 0 && (
             <div className="mt-2 p-2 bg-red-50 border border-red-300 rounded text-xs text-red-800">
-              <span className="font-medium">🚨 Potential COI:</span> Co-authored {
+              <span className="font-medium">🚨 Coauthor COI:</span> Co-authored {
                 candidate.coauthorships.reduce((sum, c) => sum + c.paperCount, 0)
               } paper(s) with proposal author(s):
               <ul className="mt-1 ml-4 list-disc">
@@ -503,9 +517,17 @@ function NewSearchTab({ apiKey, onCandidatesSaved }) {
         markdown += `**Why this reviewer:** ${reasoning}\n\n`;
       }
 
-      // COI Warning
+      // COI Warnings
+      if (candidate.hasInstitutionCOI) {
+        markdown += `**🏛️ Institution COI:** Same institution as proposal PI`;
+        if (candidate.institutionCOIDetails?.reviewerInstitution) {
+          markdown += ` (${candidate.institutionCOIDetails.reviewerInstitution})`;
+        }
+        markdown += '\n\n';
+      }
+
       if (candidate.hasCoauthorCOI && candidate.coauthorships) {
-        markdown += `**⚠️ COI Warning:** Has co-authored papers with proposal authors:\n`;
+        markdown += `**🚨 Coauthor COI:** Has co-authored papers with proposal authors:\n`;
         candidate.coauthorships.forEach(coauth => {
           markdown += `- ${coauth.paperCount} paper(s) with ${coauth.proposalAuthor}\n`;
         });
@@ -555,7 +577,13 @@ function NewSearchTab({ apiKey, onCandidatesSaved }) {
       const isClaudeSuggestion = candidate.isClaudeSuggestion || candidate.source === 'claude_suggestion';
       const source = isClaudeSuggestion ? 'Claude suggestion' : (candidate.source || 'Database');
       const pubCount = candidate.publicationCount5yr || candidate.publications?.length || 0;
-      const coiWarning = candidate.hasCoauthorCOI ? 'Yes - Coauthor COI' : 'No';
+
+      // Build COI warning string
+      const coiParts = [];
+      if (candidate.hasInstitutionCOI) coiParts.push('Institution COI');
+      if (candidate.hasCoauthorCOI) coiParts.push('Coauthor COI');
+      const coiWarning = coiParts.length > 0 ? coiParts.join(', ') : 'No';
+
       const reasoning = (candidate.reasoning || candidate.generatedReasoning || '').replace(/"/g, '""');
 
       csv += `"${candidate.name}","${candidate.affiliation || ''}","${source}","${candidate.seniorityEstimate || ''}",${pubCount},"${coiWarning}","${reasoning}"\n`;
@@ -848,9 +876,11 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove }) {
   };
 
   const hasCoauthorCOI = candidate.reasoning?.includes('[COI WARNING');
+  const hasInstitutionCOI = candidate.reasoning?.includes('Institution COI') || candidate.hasInstitutionCOI;
+  const hasAnyCOI = hasCoauthorCOI || hasInstitutionCOI;
 
   return (
-    <div className={`border rounded-lg p-4 ${hasCoauthorCOI ? 'border-red-200 bg-red-50' : 'border-gray-200'}`}>
+    <div className={`border rounded-lg p-4 ${hasAnyCOI ? 'border-red-200 bg-red-50' : 'border-gray-200'}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -862,8 +892,12 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove }) {
           {candidate.affiliation && (
             <p className="text-sm text-gray-500 truncate">{candidate.affiliation}</p>
           )}
-          {hasCoauthorCOI && (
-            <p className="text-xs text-red-600 mt-1">⚠️ Has COI warning</p>
+          {hasAnyCOI && (
+            <p className="text-xs text-red-600 mt-1">
+              {hasInstitutionCOI && '🏛️ Institution COI'}
+              {hasInstitutionCOI && hasCoauthorCOI && ' • '}
+              {hasCoauthorCOI && '🚨 Coauthor COI'}
+            </p>
           )}
         </div>
 
