@@ -73,10 +73,37 @@ function StageProgress({ stages }) {
 
 // Build Google Scholar author search URL
 function buildScholarSearchUrl(name, affiliation) {
+  // Safety check - return empty search if no name
+  if (!name) {
+    return 'https://scholar.google.com/citations?view_op=search_authors&mauthors=';
+  }
+
+  // Clean up name - remove titles like Dr., Prof., Professor
+  const cleanName = name
+    .replace(/^(Dr\.?|Prof\.?|Professor)\s+/i, '')
+    .trim();
+
+  // Extract just the institution name from full affiliation
+  // Affiliations often look like: "Department of Biology, University of Minnesota, Minneapolis, MN 55455, USA"
+  // We want just: "University of Minnesota"
+  let cleanAffiliation = '';
+  if (affiliation) {
+    // Split by comma and look for university/institute/college
+    const parts = affiliation.split(',').map(p => p.trim());
+    const institutionPart = parts.find(p =>
+      /university|institute|college|school of|laboratory|lab\b/i.test(p)
+    );
+    cleanAffiliation = institutionPart || parts[0] || '';
+    // Remove department prefixes
+    cleanAffiliation = cleanAffiliation
+      .replace(/^(department of|dept\.? of|division of|school of)\s+/i, '')
+      .trim();
+  }
+
   // Use the author profile search which finds researcher pages
-  const query = affiliation
-    ? `${name} ${affiliation}`
-    : name;
+  const query = cleanAffiliation
+    ? `${cleanName} ${cleanAffiliation}`
+    : cleanName;
   return `https://scholar.google.com/citations?view_op=search_authors&mauthors=${encodeURIComponent(query)}`;
 }
 
