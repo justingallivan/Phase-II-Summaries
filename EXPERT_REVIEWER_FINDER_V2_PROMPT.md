@@ -14,7 +14,15 @@ Continue working on the Expert Reviewer Finder v2 app at:
 
 ## Context
 
-**Previous session (December 13, 2025 - Session 7):** Bug fixes and optimizations:
+**Previous session (December 13, 2025 - Session 8):** Metadata parsing fixes:
+
+1. **Fixed Claude markdown formatting parsing** (`67f93c5`)
+   - Root cause: Claude sometimes outputs `**AUTHOR_INSTITUTION:**` instead of `AUTHOR_INSTITUTION:`
+   - Updated regex to handle markdown formatting variations (bold, list items)
+   - Added asterisk cleanup from parsed values
+   - This fixes institution COI not being detected for same-institution reviewers
+
+**Session 7 (December 13, 2025):** Bug fixes and optimizations:
 
 1. **Institution abbreviation matching** (`d74b2b1`)
    - Added 30+ abbreviation mappings (UC, MIT, Georgia Tech, UCLA, etc.)
@@ -29,6 +37,9 @@ Continue working on the Expert Reviewer Finder v2 app at:
    - Bug: Greedy regex in `normalizeInstitution()` consumed entire string when no commas
    - Example: "University of Michigan" was incorrectly matching "UC San Diego"
    - Fix: Changed regex to require comma before removing department prefixes
+5. **Parallel COI checks** (`6298f28`)
+   - Implemented batched parallel processing for coauthor COI checks
+   - Batch size: 5 with API key, 2 without (~5x speedup)
 
 **Previous sessions:**
 - Session 6: Save/Export buttons, My Candidates tab (`f31ba87`)
