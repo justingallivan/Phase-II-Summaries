@@ -71,6 +71,15 @@ function StageProgress({ stages }) {
   );
 }
 
+// Build Google Scholar author search URL
+function buildScholarSearchUrl(name, affiliation) {
+  // Use the author profile search which finds researcher pages
+  const query = affiliation
+    ? `${name} ${affiliation}`
+    : name;
+  return `https://scholar.google.com/citations?view_op=search_authors&mauthors=${encodeURIComponent(query)}`;
+}
+
 // Candidate card component
 function CandidateCard({ candidate, selected, onSelect }) {
   const [expanded, setExpanded] = useState(false);
@@ -190,14 +199,26 @@ function CandidateCard({ candidate, selected, onSelect }) {
             </span>
           </div>
 
-          {candidate.publications && candidate.publications.length > 0 && (
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="mt-2 text-xs text-blue-600 hover:text-blue-800"
+          {/* Action buttons: View papers + Scholar lookup */}
+          <div className="mt-2 flex items-center gap-3">
+            {candidate.publications && candidate.publications.length > 0 && (
+              <button
+                onClick={() => setExpanded(!expanded)}
+                className="text-xs text-blue-600 hover:text-blue-800"
+              >
+                {expanded ? 'Show less' : `View ${candidate.publications.length} papers`}
+              </button>
+            )}
+            <a
+              href={buildScholarSearchUrl(candidate.name, candidate.affiliation)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1"
+              title="Search Google Scholar for this researcher's profile, h-index, and citations"
             >
-              {expanded ? 'Show less' : `View ${candidate.publications.length} papers`}
-            </button>
-          )}
+              🎓 Scholar Profile
+            </a>
+          </div>
 
           {expanded && candidate.publications && (
             <div className="mt-2 space-y-1">
@@ -932,12 +953,24 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove }) {
         </div>
       </div>
 
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="mt-2 text-xs text-blue-600 hover:text-blue-800"
-      >
-        {isExpanded ? 'Hide details' : 'Show details'}
-      </button>
+      {/* Action buttons: Show details + Scholar lookup */}
+      <div className="mt-2 flex items-center gap-3">
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="text-xs text-blue-600 hover:text-blue-800"
+        >
+          {isExpanded ? 'Hide details' : 'Show details'}
+        </button>
+        <a
+          href={buildScholarSearchUrl(candidate.name, candidate.affiliation)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1"
+          title="Search Google Scholar for this researcher's profile, h-index, and citations"
+        >
+          🎓 Scholar Profile
+        </a>
+      </div>
 
       {isExpanded && (
         <div className="mt-3 space-y-3">
