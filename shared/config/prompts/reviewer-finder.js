@@ -171,11 +171,18 @@ export function parseAnalysisResponse(response) {
   ];
 
   for (const field of metadataFields) {
-    const regex = new RegExp(`^${field}:\\s*(.+)$`, 'im');
+    // More flexible regex that handles:
+    // - Plain: AUTHOR_INSTITUTION: value
+    // - Markdown bold: **AUTHOR_INSTITUTION:** value
+    // - List items: - AUTHOR_INSTITUTION: value
+    // - Combinations: - **AUTHOR_INSTITUTION:** value
+    const regex = new RegExp(`^[-*]?\\s*\\*{0,2}${field}\\*{0,2}:\\*{0,2}\\s*(.+)$`, 'im');
     const match = response.match(regex);
     if (match) {
       const camelKey = field.toLowerCase().replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-      result.proposalInfo[camelKey] = match[1].trim();
+      // Clean up any remaining markdown asterisks from the value
+      const cleanValue = match[1].trim().replace(/^\*+\s*/, '').replace(/\s*\*+$/, '');
+      result.proposalInfo[camelKey] = cleanValue;
     }
   }
 

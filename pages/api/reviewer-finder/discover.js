@@ -66,10 +66,18 @@ export default async function handler(req, res) {
     if (DEBUG) {
       console.log('[Discover API] Received analysisResult:', {
         proposalTitle: analysisResult.proposalInfo?.title,
+        authorInstitution: analysisResult.proposalInfo?.authorInstitution,
+        proposalAuthors: analysisResult.proposalInfo?.proposalAuthors,
         suggestionCount: analysisResult.reviewerSuggestions?.length,
         suggestions: analysisResult.reviewerSuggestions?.map(s => ({ name: s.name, expertise: s.expertiseAreas }))
       });
     }
+
+    // Always log COI-relevant info for debugging
+    console.log('[Discover API] COI check info:', {
+      authorInstitution: analysisResult.proposalInfo?.authorInstitution || '(NOT SET)',
+      proposalAuthors: analysisResult.proposalInfo?.proposalAuthors || '(NOT SET)'
+    });
 
     sendEvent('progress', {
       stage: 'discovery',

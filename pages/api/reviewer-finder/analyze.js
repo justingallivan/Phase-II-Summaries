@@ -98,8 +98,8 @@ export default async function handler(req, res) {
     // DEBUG: Log what we got from Claude analysis
     console.log('=== ANALYZE API DEBUG ===');
     console.log('Result success:', result.success);
+    console.log('Proposal Info:', JSON.stringify(result.proposalInfo, null, 2));
     console.log('Reviewer suggestions count:', result.reviewerSuggestions?.length);
-    console.log('First suggestion:', JSON.stringify(result.reviewerSuggestions?.[0], null, 2));
     console.log('Search queries:', JSON.stringify(result.searchQueries, null, 2));
     console.log('=========================');
 
