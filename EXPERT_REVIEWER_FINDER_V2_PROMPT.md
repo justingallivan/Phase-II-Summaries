@@ -14,22 +14,24 @@ Continue working on the Expert Reviewer Finder v2 app at:
 
 ## Context
 
-**Previous session (December 13, 2025 - Session 6):** Activated Save/Export buttons:
+**Previous session (December 13, 2025 - Session 7):** Bug fixes and optimizations:
 
-1. **Save to My Candidates** - Now functional
-   - Creates `save-candidates.js` API to persist to Postgres
-   - Stores in `reviewer_suggestions` table with `selected=true`
-   - Creates researcher records if they don't exist
-2. **Export Selected** - Now functional
-   - Export Markdown: Full details with publications and COI warnings
-   - Export CSV: Tabular format for spreadsheets
-3. **My Candidates tab** - Now functional
-   - Fetches saved candidates grouped by proposal
-   - Shows Invited/Accepted status toggles
-   - Notes field for each candidate
-   - Remove from list functionality
+1. **Institution abbreviation matching** (`d74b2b1`)
+   - Added 30+ abbreviation mappings (UC, MIT, Georgia Tech, UCLA, etc.)
+   - "UC Berkeley" now correctly matches "University of California, Berkeley"
+2. **Fixed missing affiliations in database discoveries** (`6003874`)
+   - PubMed: Added `affiliation` alias for UI compatibility
+   - BioRxiv: Fixed extraction to use `article.institution` field
+3. **Optimized PubMed rate limiting** (`2a2814a`)
+   - Now uses `NCBI_API_KEY` for 4x faster searches (100ms vs 400ms)
+   - Removed redundant delays for ArXiv/BioRxiv (services have built-in delays)
+4. **Fixed false positive institution COI** (`191fb7d`)
+   - Bug: Greedy regex in `normalizeInstitution()` consumed entire string when no commas
+   - Example: "University of Michigan" was incorrectly matching "UC San Diego"
+   - Fix: Changed regex to require comma before removing department prefixes
 
 **Previous sessions:**
+- Session 6: Save/Export buttons, My Candidates tab (`f31ba87`)
 - Session 5: Debug logging cleanup, test consolidation (`2815905`)
 - Session 4: COI filtering fixes (`6ed9ae1`, `31b8f98`)
 - Session 3: Relevance filtering for Track B (`9dd137c`)
@@ -43,10 +45,12 @@ The Expert Reviewer Finder v2 has core functionality working:
 - Suggestions are verified via PubMed with name variant handling
 - Database discovery finds additional candidates (Track B)
 - Relevance filtering removes off-topic candidates
-- Institution COI filtering (same institution as PI)
+- Institution COI detection with abbreviation support (UC, MIT, etc.)
 - Coauthor COI detection (published together)
-- COI warnings displayed with red highlighting
-- Debug logging controlled via environment variable
+- COI warnings displayed with red highlighting (🏛️ and 🚨 icons)
+- Debug logging controlled via `DEBUG_REVIEWER_FINDER` env var
+- **Optimized rate limiting** - Uses `NCBI_API_KEY` for 4x faster PubMed searches
+- **Affiliations displayed** - PubMed and BioRxiv discoveries now show institutions
 - **Save to My Candidates** - Persist selections to database
 - **Export Markdown/CSV** - Download selected candidates
 - **My Candidates tab** - View/manage saved candidates
@@ -60,7 +64,7 @@ The Expert Reviewer Finder v2 has core functionality working:
 - [ ] Consider adding a summary stats card at top of results
 - [ ] Add bulk export from My Candidates tab
 
-### 2. Rate Limiting & Error Handling
+### 2. Error Handling & Robustness
 
 - [ ] Add retry logic with exponential backoff for PubMed rate limit errors
 - [ ] Batch COI checks to reduce API calls (currently one per candidate)
@@ -69,7 +73,7 @@ The Expert Reviewer Finder v2 has core functionality working:
 
 ### 3. Future Enhancements (Lower Priority)
 
-- [ ] Option 2 from earlier: Improve query specificity for Track B
+- [ ] Improve query specificity for Track B discoveries
 - [ ] Add Google Scholar integration (requires SERP_API_KEY)
 - [ ] Batch processing for multiple proposals
 - [ ] Remove old individual test scripts (keep only test-reviewer-finder.js)
