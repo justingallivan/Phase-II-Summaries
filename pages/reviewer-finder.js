@@ -109,8 +109,6 @@ function buildScholarSearchUrl(name, affiliation) {
 
 // Candidate card component
 function CandidateCard({ candidate, selected, onSelect }) {
-  const [expanded, setExpanded] = useState(false);
-
   const isClaudeSuggestion = candidate.isClaudeSuggestion || candidate.source === 'claude_suggestion';
   const reasoning = candidate.reasoning || candidate.generatedReasoning || 'No reasoning available';
 
@@ -232,7 +230,7 @@ function CandidateCard({ candidate, selected, onSelect }) {
           <div className="mt-2">
             <p className="text-sm text-gray-700">
               <span className="font-medium">Why: </span>
-              {expanded ? reasoning : reasoning.substring(0, 150) + (reasoning.length > 150 ? '...' : '')}
+              {reasoning}
             </p>
           </div>
 
