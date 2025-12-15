@@ -70,7 +70,7 @@ Suggest 10-15 potential expert reviewers. For each, provide detailed reasoning.
 **FORMAT (repeat for each reviewer):**
 
 REVIEWER:
-NAME: [Full name with title if known, e.g., "Dr. Jane Smith" or "Jane Smith"]
+NAME: [Full name in WESTERN ORDER: FirstName LastName, with optional title. Examples: "Dr. Kevin Weeks", "Ravi Allada", "Dr. Jane Smith". Do NOT use LastName FirstName order.]
 INSTITUTION: [Current university/research institution - required for verification]
 EXPERTISE: [2-4 specific areas based on their ACTUAL published work, comma-separated]
 SENIORITY: [Early-career / Mid-career / Senior]
@@ -196,11 +196,16 @@ export function parseAnalysisResponse(response) {
   // Parse reviewer suggestions
   const reviewerBlocks = response.split(/REVIEWER:/i).slice(1);
 
+  console.log('[parseAnalysisResponse] Found', reviewerBlocks.length, 'reviewer blocks');
+
   for (const block of reviewerBlocks) {
     const reviewer = {};
 
     const nameMatch = block.match(/NAME:\s*(.+?)(?:\n|$)/i);
-    if (nameMatch) reviewer.name = nameMatch[1].trim();
+    if (nameMatch) {
+      reviewer.name = nameMatch[1].trim();
+      console.log('[parseAnalysisResponse] Parsed name:', reviewer.name, '| Raw match:', nameMatch[1]);
+    }
 
     const institutionMatch = block.match(/INSTITUTION:\s*(.+?)(?:\n|$)/i);
     if (institutionMatch) reviewer.suggestedInstitution = institutionMatch[1].trim();
