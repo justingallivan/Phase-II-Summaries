@@ -109,6 +109,8 @@ function buildScholarSearchUrl(name, affiliation) {
 
 // Candidate card component
 function CandidateCard({ candidate, selected, onSelect }) {
+  const [expanded, setExpanded] = useState(false);  // For "View papers" toggle
+
   const isClaudeSuggestion = candidate.isClaudeSuggestion || candidate.source === 'claude_suggestion';
   const reasoning = candidate.reasoning || candidate.generatedReasoning || 'No reasoning available';
 
