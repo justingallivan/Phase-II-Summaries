@@ -65,6 +65,7 @@ Suggest 10-15 potential expert reviewers. For each, provide detailed reasoning.
 
 REVIEWER:
 NAME: [Full name with title if known, e.g., "Dr. Jane Smith" or "Jane Smith"]
+INSTITUTION: [Current university/research institution - required for verification]
 EXPERTISE: [2-4 specific areas of expertise, comma-separated]
 SENIORITY: [Early-career / Mid-career / Senior]
 REASONING: [2-3 sentences explaining WHY they are qualified to review this specific proposal. Reference their known work if possible.]
@@ -194,6 +195,9 @@ export function parseAnalysisResponse(response) {
 
     const nameMatch = block.match(/NAME:\s*(.+?)(?:\n|$)/i);
     if (nameMatch) reviewer.name = nameMatch[1].trim();
+
+    const institutionMatch = block.match(/INSTITUTION:\s*(.+?)(?:\n|$)/i);
+    if (institutionMatch) reviewer.suggestedInstitution = institutionMatch[1].trim();
 
     const expertiseMatch = block.match(/EXPERTISE:\s*(.+?)(?:\n|$)/i);
     if (expertiseMatch) {

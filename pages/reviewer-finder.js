@@ -197,6 +197,15 @@ function CandidateCard({ candidate, selected, onSelect }) {
             </div>
           )}
 
+          {/* Institution mismatch warning - may have verified wrong person */}
+          {candidate.institutionMismatch && candidate.suggestedInstitution && (
+            <div className="mt-2 p-2 bg-orange-100 border border-orange-300 rounded text-xs text-orange-800">
+              <span className="font-medium">⚠️ Institution mismatch:</span> Claude suggested <strong>{candidate.suggestedInstitution}</strong>,
+              but PubMed shows <strong>{candidate.affiliation?.split(',')[0] || 'different institution'}</strong>.
+              This may be a different person with the same name.
+            </div>
+          )}
+
           <div className="mt-2">
             <p className="text-sm text-gray-700">
               <span className="font-medium">Why: </span>
