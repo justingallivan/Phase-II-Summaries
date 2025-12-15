@@ -55,20 +55,26 @@ Suggest 10-15 potential expert reviewers. For each, provide detailed reasoning.
 
 **IMPORTANT CRITERIA:**
 - Must be established researchers (professors, senior scientists, PIs)
-- Should have relevant expertise to evaluate this specific proposal
+- Must have PUBLISHED WORK directly relevant to this proposal's methods or topics
 - Must NOT be from the author's institution
 - Include a mix of seniority levels (rising stars to senior experts)
 - For interdisciplinary work, cover all major areas
-- Look for names mentioned in references/citations who are relevant
+- Prioritize names from the proposal's references/citations
+
+**CRITICAL: ACCURACY REQUIREMENTS**
+- Only list expertise areas that you can verify from the researcher's actual publications
+- Do NOT guess or infer expertise - if you're unsure of someone's specific work, do not include them
+- The REASONING must reference specific, verifiable work (papers, techniques, organisms studied)
+- If you cannot name at least one relevant publication or research focus, do not suggest this person
 
 **FORMAT (repeat for each reviewer):**
 
 REVIEWER:
 NAME: [Full name with title if known, e.g., "Dr. Jane Smith" or "Jane Smith"]
 INSTITUTION: [Current university/research institution - required for verification]
-EXPERTISE: [2-4 specific areas of expertise, comma-separated]
+EXPERTISE: [2-4 specific areas based on their ACTUAL published work, comma-separated]
 SENIORITY: [Early-career / Mid-career / Senior]
-REASONING: [2-3 sentences explaining WHY they are qualified to review this specific proposal. Reference their known work if possible.]
+REASONING: [2-3 sentences citing SPECIFIC work: name a paper, technique, or research system they are known for. Do not fabricate.]
 POTENTIAL_CONCERNS: [Any COI concerns, or "None identified"]
 SOURCE: [Where you found this name: "References", "Known expert", or "Field leader"]
 

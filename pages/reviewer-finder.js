@@ -114,9 +114,15 @@ function CandidateCard({ candidate, selected, onSelect }) {
   const isClaudeSuggestion = candidate.isClaudeSuggestion || candidate.source === 'claude_suggestion';
   const reasoning = candidate.reasoning || candidate.generatedReasoning || 'No reasoning available';
 
-  // Check verification confidence - warn if low
+  // Check verification confidence - categorize into ranges
   const confidence = candidate.verificationConfidence;
-  const isLowConfidence = confidence !== undefined && confidence < 0.5;
+  const isLowConfidence = confidence !== undefined && confidence < 0.35;
+  const isWeakMatch = confidence !== undefined && confidence >= 0.35 && confidence < 0.65;
+
+  // Check for mismatches (wrong person or wrong expertise)
+  const hasInstitutionMismatch = candidate.institutionMismatch;
+  const hasExpertiseMismatch = candidate.expertiseMismatch;
+  const hasAnyMismatch = hasInstitutionMismatch || hasExpertiseMismatch;
 
   const hasCoauthorCOI = candidate.hasCoauthorCOI;
   const hasInstitutionCOI = candidate.hasInstitutionCOI;
@@ -127,7 +133,9 @@ function CandidateCard({ candidate, selected, onSelect }) {
       border rounded-lg p-4 transition-all duration-200
       ${selected ? 'border-blue-500 bg-blue-50' :
         hasAnyCOI ? 'border-red-300 bg-red-50' :
+        hasAnyMismatch ? 'border-orange-300 bg-orange-50' :
         isLowConfidence ? 'border-amber-300 bg-amber-50' :
+        isWeakMatch ? 'border-yellow-200 bg-yellow-50' :
         'border-gray-200 hover:border-gray-300'}
     `}>
       <div className="flex items-start gap-3">
@@ -189,20 +197,35 @@ function CandidateCard({ candidate, selected, onSelect }) {
             </div>
           )}
 
-          {/* Low confidence warning */}
+          {/* Low confidence warning (< 35%) */}
           {isLowConfidence && (
             <div className="mt-2 p-2 bg-amber-100 border border-amber-300 rounded text-xs text-amber-800">
-              <span className="font-medium">⚠️ Low match confidence ({Math.round(confidence * 100)}%):</span> The publications found may not match Claude's description.
-              This could be a different person with the same name. Please verify manually.
+              <span className="font-medium">⚠️ Low match ({Math.round(confidence * 100)}%):</span> Publications don't match Claude's description.
+              This could be a different person with the same name.
+            </div>
+          )}
+
+          {/* Weak match warning (35-65%) */}
+          {isWeakMatch && !hasAnyMismatch && (
+            <div className="mt-2 p-2 bg-yellow-50 border border-yellow-300 rounded text-xs text-yellow-800">
+              <span className="font-medium">⚡ Weak match ({Math.round(confidence * 100)}%):</span> Some publications match, but relevance is uncertain. Verify expertise manually.
             </div>
           )}
 
           {/* Institution mismatch warning - may have verified wrong person */}
-          {candidate.institutionMismatch && candidate.suggestedInstitution && (
+          {hasInstitutionMismatch && candidate.suggestedInstitution && (
             <div className="mt-2 p-2 bg-orange-100 border border-orange-300 rounded text-xs text-orange-800">
               <span className="font-medium">⚠️ Institution mismatch:</span> Claude suggested <strong>{candidate.suggestedInstitution}</strong>,
               but PubMed shows <strong>{candidate.affiliation?.split(',')[0] || 'different institution'}</strong>.
               This may be a different person with the same name.
+            </div>
+          )}
+
+          {/* Expertise mismatch warning - Claude may have fabricated expertise */}
+          {hasExpertiseMismatch && candidate.expertiseAreas && (
+            <div className="mt-2 p-2 bg-orange-100 border border-orange-300 rounded text-xs text-orange-800">
+              <span className="font-medium">⚠️ Expertise mismatch:</span> Claude claimed expertise in "{candidate.expertiseAreas.slice(0, 2).join(', ')}"
+              but no publications found with these specific terms. Actual research focus may differ.
             </div>
           )}
 
@@ -216,12 +239,22 @@ function CandidateCard({ candidate, selected, onSelect }) {
           <div className="mt-2 flex items-center flex-wrap gap-2 text-xs text-gray-500">
             {candidate.verified !== false && (
               <span className="flex items-center gap-1">
-                <span className={isLowConfidence ? 'text-amber-500' : 'text-green-500'}>
-                  {isLowConfidence ? '⚠' : '✓'}
+                <span className={
+                  hasAnyMismatch ? 'text-orange-500' :
+                  isLowConfidence ? 'text-amber-500' :
+                  isWeakMatch ? 'text-yellow-600' :
+                  'text-green-500'
+                }>
+                  {hasAnyMismatch ? '⚠' : isLowConfidence ? '⚠' : isWeakMatch ? '⚡' : '✓'}
                 </span>
                 {candidate.publicationCount5yr || candidate.publications?.length || 0} publications
                 {confidence !== undefined && (
-                  <span className="text-gray-400">
+                  <span className={
+                    hasAnyMismatch ? 'text-orange-500' :
+                    isLowConfidence ? 'text-amber-500' :
+                    isWeakMatch ? 'text-yellow-600' :
+                    'text-gray-400'
+                  }>
                     ({Math.round(confidence * 100)}% match)
                   </span>
                 )}
