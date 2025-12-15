@@ -88,15 +88,31 @@ function buildScholarSearchUrl(name, affiliation) {
   // We want just: "University of Minnesota"
   let cleanAffiliation = '';
   if (affiliation) {
-    // Split by comma and look for university/institute/college
-    const parts = affiliation.split(',').map(p => p.trim());
-    const institutionPart = parts.find(p =>
-      /university|institute|college|school of|laboratory|lab\b/i.test(p)
+    // Remove email addresses first
+    const affWithoutEmail = affiliation.replace(/\S+@\S+/g, '').trim();
+
+    // Split by comma and look for actual institution names (university/institute/college)
+    // Prioritize actual institutions over departments/schools
+    const parts = affWithoutEmail.split(',').map(p => p.trim()).filter(p => p.length > 0);
+
+    // First, look for "University" or "Institute" (actual institutions)
+    let institutionPart = parts.find(p =>
+      /\buniversity\b|\binstitute\b|\bcollege\b/i.test(p) &&
+      !/^(department|dept|division|school|faculty|center|centre)\s+of/i.test(p)
     );
+
+    // If not found, try "School of Medicine", "Medical School", etc. (standalone schools)
+    if (!institutionPart) {
+      institutionPart = parts.find(p =>
+        /\bschool\b|\blaboratory\b|\blab\b/i.test(p)
+      );
+    }
+
     cleanAffiliation = institutionPart || parts[0] || '';
-    // Remove department prefixes
+
+    // Remove department prefixes if they slipped through
     cleanAffiliation = cleanAffiliation
-      .replace(/^(department of|dept\.? of|division of|school of)\s+/i, '')
+      .replace(/^(department of|dept\.? of|division of|school of|faculty of|center for|centre for)\s+/i, '')
       .trim();
   }
 
