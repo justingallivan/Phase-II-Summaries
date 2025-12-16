@@ -14,6 +14,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
+import ApiSettingsPanel from '../shared/components/ApiSettingsPanel';
 
 // Tab component
 function Tab({ label, active, onClick, icon }) {
@@ -326,7 +327,7 @@ function CandidateCard({ candidate, selected, onSelect }) {
 }
 
 // New Search Tab content
-function NewSearchTab({ apiKey, onCandidatesSaved }) {
+function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [excludedNames, setExcludedNames] = useState('');
@@ -345,6 +346,17 @@ function NewSearchTab({ apiKey, onCandidatesSaved }) {
   const [selectedCandidates, setSelectedCandidates] = useState(new Set());
   const [error, setError] = useState(null);
   const [saveMessage, setSaveMessage] = useState(null);
+
+  // Contact enrichment state
+  const [isEnriching, setIsEnriching] = useState(false);
+  const [enrichmentProgress, setEnrichmentProgress] = useState(null);
+  const [enrichmentResults, setEnrichmentResults] = useState(null);
+  const [showEnrichmentModal, setShowEnrichmentModal] = useState(false);
+  const [enrichmentOptions, setEnrichmentOptions] = useState({
+    usePubmed: true,
+    useOrcid: true,
+    useClaudeSearch: false,
+  });
 
   const progressRef = useRef(null);
 
@@ -592,6 +604,71 @@ function NewSearchTab({ apiKey, onCandidatesSaved }) {
       });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Enrich selected candidates with contact information
+  const handleEnrichContacts = async () => {
+    const selected = getSelectedCandidateObjects();
+    if (selected.length === 0) return;
+
+    setIsEnriching(true);
+    setEnrichmentProgress(null);
+    setEnrichmentResults(null);
+    setShowEnrichmentModal(true);
+
+    try {
+      const response = await fetch('/api/reviewer-finder/enrich-contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          candidates: selected,
+          credentials: {
+            orcidClientId: apiSettings?.orcidClientId,
+            orcidClientSecret: apiSettings?.orcidClientSecret,
+            claudeApiKey: enrichmentOptions.useClaudeSearch ? apiKey : null,
+          },
+          options: enrichmentOptions,
+        }),
+      });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+
+              if (data.type === 'estimate') {
+                setEnrichmentProgress({ type: 'estimate', ...data.estimate });
+              } else if (data.type === 'progress') {
+                setEnrichmentProgress(prev => ({ ...prev, ...data }));
+              } else if (data.type === 'complete') {
+                setEnrichmentResults(data);
+                setEnrichmentProgress({ type: 'complete' });
+              } else if (data.type === 'error') {
+                setEnrichmentProgress({ type: 'error', message: data.message });
+              }
+            } catch (e) {
+              console.error('Parse error:', e);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      setEnrichmentProgress({ type: 'error', message: err.message });
+    } finally {
+      setIsEnriching(false);
     }
   };
 
@@ -931,6 +1008,13 @@ function NewSearchTab({ apiKey, onCandidatesSaved }) {
                 >
                   {isSaving ? 'Saving...' : `Save to My Candidates (${selectedCandidates.size})`}
                 </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowEnrichmentModal(true)}
+                  disabled={isEnriching}
+                >
+                  📧 Find Contact Info ({selectedCandidates.size})
+                </Button>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={exportAsMarkdown}>
                     Export Markdown
@@ -962,6 +1046,236 @@ function NewSearchTab({ apiKey, onCandidatesSaved }) {
             </div>
           </details>
         </Card>
+      )}
+
+      {/* Contact Enrichment Modal */}
+      {showEnrichmentModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  📧 Find Contact Information
+                </h3>
+                <button
+                  onClick={() => setShowEnrichmentModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {/* Pre-enrichment: Options */}
+              {!isEnriching && !enrichmentResults && (
+                <div className="space-y-6">
+                  <p className="text-sm text-gray-600">
+                    Find email addresses and websites for {selectedCandidates.size} selected candidate(s)
+                    using our tiered lookup system.
+                  </p>
+
+                  {/* Tier options */}
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-medium text-gray-700">Search Methods:</h4>
+
+                    <label className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded-lg cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={enrichmentOptions.usePubmed}
+                        onChange={(e) => setEnrichmentOptions(prev => ({ ...prev, usePubmed: e.target.checked }))}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <div className="font-medium text-green-800">Tier 1: PubMed</div>
+                        <div className="text-xs text-green-600">
+                          Extract emails from recent publication affiliations. <strong>Free</strong>
+                        </div>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded-lg cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={enrichmentOptions.useOrcid}
+                        onChange={(e) => setEnrichmentOptions(prev => ({ ...prev, useOrcid: e.target.checked }))}
+                        className="mt-0.5"
+                        disabled={!apiSettings?.orcidClientId || !apiSettings?.orcidClientSecret}
+                      />
+                      <div>
+                        <div className="font-medium text-green-800">Tier 2: ORCID</div>
+                        <div className="text-xs text-green-600">
+                          Look up email, website, and ORCID ID. <strong>Free</strong>
+                          {(!apiSettings?.orcidClientId || !apiSettings?.orcidClientSecret) && (
+                            <span className="ml-1 text-amber-600">(Configure ORCID credentials in API Settings)</span>
+                          )}
+                        </div>
+                      </div>
+                    </label>
+
+                    <label className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={enrichmentOptions.useClaudeSearch}
+                        onChange={(e) => setEnrichmentOptions(prev => ({ ...prev, useClaudeSearch: e.target.checked }))}
+                        className="mt-0.5"
+                        disabled={!apiKey}
+                      />
+                      <div>
+                        <div className="font-medium text-amber-800">Tier 3: Claude Web Search</div>
+                        <div className="text-xs text-amber-600">
+                          Search faculty pages and directories with AI. <strong>~$0.02 per candidate</strong>
+                          {!apiKey && (
+                            <span className="ml-1 text-red-600">(Requires Claude API key)</span>
+                          )}
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Cost estimate */}
+                  {enrichmentOptions.useClaudeSearch && (
+                    <div className="p-4 bg-gray-100 rounded-lg">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Estimated cost (worst case):</span>
+                        <span className="font-medium text-gray-900">
+                          ${(selectedCandidates.size * 0.02).toFixed(2)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Tier 3 only runs if Tiers 1-2 don't find contact info. Actual cost is usually lower.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* During enrichment: Progress */}
+              {isEnriching && enrichmentProgress && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="animate-spin text-2xl">⏳</div>
+                    <div>
+                      <div className="font-medium text-gray-900">
+                        {enrichmentProgress.overall?.candidate || 'Processing...'}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {enrichmentProgress.overall?.current || 0} of {enrichmentProgress.overall?.total || selectedCandidates.size}
+                      </div>
+                    </div>
+                  </div>
+
+                  {enrichmentProgress.tier && (
+                    <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
+                      Tier {enrichmentProgress.tier.tier}: {enrichmentProgress.tier.message}
+                    </div>
+                  )}
+
+                  {/* Progress bar */}
+                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 transition-all duration-300"
+                      style={{
+                        width: `${((enrichmentProgress.overall?.current || 0) / (enrichmentProgress.overall?.total || 1)) * 100}%`
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* After enrichment: Results */}
+              {enrichmentResults && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 text-green-600">
+                    <span className="text-2xl">✓</span>
+                    <span className="font-medium">Enrichment Complete</span>
+                  </div>
+
+                  {/* Stats */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center p-3 bg-gray-50 rounded-lg">
+                      <div className="text-2xl font-bold text-gray-900">{enrichmentResults.stats?.withEmail || 0}</div>
+                      <div className="text-xs text-gray-500">Emails Found</div>
+                    </div>
+                    <div className="text-center p-3 bg-gray-50 rounded-lg">
+                      <div className="text-2xl font-bold text-gray-900">{enrichmentResults.stats?.withWebsite || 0}</div>
+                      <div className="text-xs text-gray-500">Websites Found</div>
+                    </div>
+                    <div className="text-center p-3 bg-gray-50 rounded-lg">
+                      <div className="text-2xl font-bold text-gray-900">{enrichmentResults.stats?.withOrcid || 0}</div>
+                      <div className="text-xs text-gray-500">ORCID IDs</div>
+                    </div>
+                  </div>
+
+                  {/* Results list */}
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {enrichmentResults.results?.map((result, i) => (
+                      <div key={i} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                        <span className="font-medium truncate">{result.name}</span>
+                        <div className="flex items-center gap-2 text-xs">
+                          {result.contactEnrichment?.email && (
+                            <a href={`mailto:${result.contactEnrichment.email}`} className="text-blue-600 hover:underline">
+                              📧 {result.contactEnrichment.email}
+                            </a>
+                          )}
+                          {result.contactEnrichment?.website && (
+                            <a href={result.contactEnrichment.website} target="_blank" rel="noopener noreferrer" className="text-blue-600">
+                              🔗
+                            </a>
+                          )}
+                          {result.contactEnrichment?.orcidUrl && (
+                            <a href={result.contactEnrichment.orcidUrl} target="_blank" rel="noopener noreferrer" className="text-green-600">
+                              ORCID
+                            </a>
+                          )}
+                          {!result.contactEnrichment?.email && !result.contactEnrichment?.website && (
+                            <span className="text-gray-400">No contact found</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {enrichmentResults.stats?.actualCost > 0 && (
+                    <div className="text-sm text-gray-500 text-center">
+                      Actual cost: ${enrichmentResults.stats.actualCost.toFixed(2)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Error state */}
+              {enrichmentProgress?.type === 'error' && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+                  <div className="font-medium">Error</div>
+                  <div className="text-sm">{enrichmentProgress.message}</div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              {!isEnriching && !enrichmentResults && (
+                <>
+                  <Button variant="outline" onClick={() => setShowEnrichmentModal(false)}>
+                    Cancel
+                  </Button>
+                  <Button variant="primary" onClick={handleEnrichContacts}>
+                    Start Enrichment
+                  </Button>
+                </>
+              )}
+              {enrichmentResults && (
+                <Button variant="primary" onClick={() => {
+                  setShowEnrichmentModal(false);
+                  setEnrichmentResults(null);
+                  setEnrichmentProgress(null);
+                }}>
+                  Done
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1281,6 +1595,11 @@ export default function ReviewerFinderPage() {
   const [activeTab, setActiveTab] = useState('search');
   const [apiKey, setApiKey] = useState('');
   const [myCandidatesRefresh, setMyCandidatesRefresh] = useState(0);
+  const [apiSettings, setApiSettings] = useState({
+    orcidClientId: '',
+    orcidClientSecret: '',
+    ncbiApiKey: '',
+  });
 
   // Load API key from localStorage
   useEffect(() => {
@@ -1289,6 +1608,11 @@ export default function ReviewerFinderPage() {
       setApiKey(savedKey);
     }
   }, []);
+
+  // Handle API settings change from ApiSettingsPanel
+  const handleApiSettingsChange = (settings) => {
+    setApiSettings(settings);
+  };
 
   // Callback to trigger refresh of My Candidates tab
   const handleCandidatesSaved = () => {
@@ -1321,7 +1645,7 @@ export default function ReviewerFinderPage() {
       <div className="py-8 space-y-6">
         {/* API Key Input */}
         <Card>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 mb-4">
             <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
               Claude API Key:
             </label>
@@ -1336,6 +1660,9 @@ export default function ReviewerFinderPage() {
               <span className="text-green-500 text-sm">✓ Saved</span>
             )}
           </div>
+
+          {/* Optional API Settings (ORCID, NCBI) */}
+          <ApiSettingsPanel onSettingsChange={handleApiSettingsChange} />
         </Card>
 
         {/* Tab Navigation */}
@@ -1355,7 +1682,7 @@ export default function ReviewerFinderPage() {
 
         {/* Tab Content */}
         <div className="min-h-[400px]">
-          {activeTab === 'search' && <NewSearchTab apiKey={apiKey} onCandidatesSaved={handleCandidatesSaved} />}
+          {activeTab === 'search' && <NewSearchTab apiKey={apiKey} apiSettings={apiSettings} onCandidatesSaved={handleCandidatesSaved} />}
           {activeTab === 'candidates' && <MyCandidatesTab refreshTrigger={myCandidatesRefresh} />}
           {activeTab === 'database' && <DatabaseTab />}
         </div>
