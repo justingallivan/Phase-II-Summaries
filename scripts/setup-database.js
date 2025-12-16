@@ -174,6 +174,24 @@ const v2Alterations = [
   `ALTER TABLE publications ADD COLUMN IF NOT EXISTS url VARCHAR(500)`,
 ];
 
+// V3 column additions for contact enrichment
+const v3Alterations = [
+  // Contact enrichment fields for researchers
+  `ALTER TABLE researchers ADD COLUMN IF NOT EXISTS email_source VARCHAR(100)`,
+  `ALTER TABLE researchers ADD COLUMN IF NOT EXISTS email_year INTEGER`,
+  `ALTER TABLE researchers ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP`,
+  `ALTER TABLE researchers ADD COLUMN IF NOT EXISTS faculty_page_url VARCHAR(500)`,
+  `ALTER TABLE researchers ADD COLUMN IF NOT EXISTS contact_enriched_at TIMESTAMP`,
+  `ALTER TABLE researchers ADD COLUMN IF NOT EXISTS contact_enrichment_source VARCHAR(50)`,
+  // Outreach tracking for reviewer_suggestions
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS email_sent_at TIMESTAMP`,
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS email_opened_at TIMESTAMP`,
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS response_received_at TIMESTAMP`,
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS response_type VARCHAR(50)`,
+  // Additional indexes
+  `CREATE INDEX IF NOT EXISTS idx_researchers_contact_enriched ON researchers(contact_enriched_at)`,
+];
+
 async function runMigration() {
   try {
     console.log('Starting database migration for Expert Reviewer Finder v2...');
@@ -216,6 +234,25 @@ async function runMigration() {
       }
     }
 
+    // Run V3 column additions (contact enrichment)
+    console.log(`\nApplying v3 schema updates - contact enrichment (${v3Alterations.length} alterations)...`);
+    for (let i = 0; i < v3Alterations.length; i++) {
+      const statement = v3Alterations[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v3-${i + 1}/${v3Alterations.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists') || error.message.includes('duplicate column')) {
+          console.log(`[v3-${i + 1}/${v3Alterations.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v3-${i + 1}/${v3Alterations.length}] ✗ Error: ${error.message}`);
+          // Don't throw on alter table errors - continue with other alterations
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -229,7 +266,16 @@ async function runMigration() {
     console.log('  • researchers.orcid_url');
     console.log('  • researchers.metrics_updated_at');
     console.log('  • publications.url');
-    console.log('\nIndexes created: 16');
+    console.log('\nV3 column additions (contact enrichment):');
+    console.log('  • researchers.email_source');
+    console.log('  • researchers.email_year');
+    console.log('  • researchers.email_verified_at');
+    console.log('  • researchers.faculty_page_url');
+    console.log('  • researchers.contact_enriched_at');
+    console.log('  • researchers.contact_enrichment_source');
+    console.log('  • reviewer_suggestions.email_sent_at');
+    console.log('  • reviewer_suggestions.response_type');
+    console.log('\nIndexes created: 17');
 
   } catch (error) {
     console.error('\n✗ Migration failed:', error.message);
