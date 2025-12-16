@@ -621,5 +621,70 @@ Fully implemented multi-source reviewer finder. Searches real academic databases
 
 ---
 
-Last Updated: December 14, 2025
-Version: 2.6 (Expert Reviewer Finder v2 - Scholar links, Claude retry/fallback)
+### December 15, 2025 - Expert Reviewer Finder v2 Session 10
+
+**Features Implemented:**
+
+1. **Institution Mismatch Detection**
+   - Compares Claude's suggested institution with PubMed-verified affiliation
+   - Displays orange warning when institutions don't match (possible wrong person)
+   - Handles departmental vs institutional affiliations (e.g., "Center for Integrative Genomics" matches "University of Lausanne")
+   - Uses 50+ university abbreviation aliases
+   - File: `lib/services/discovery-service.js` - `checkInstitutionMismatch()`
+
+2. **Expertise Mismatch Detection**
+   - Checks if Claude's claimed expertise terms appear in candidate's publications
+   - Confidence thresholds: <35% (mismatch warning), 35-65% (weak match), >65% (good)
+   - Filters generic terms that would match everything (biology, research, molecular, etc.)
+   - File: `lib/services/discovery-service.js` - `checkExpertiseMismatch()`
+
+3. **Claude Prompt Improvements**
+   - Added INSTITUTION field requirement for verification
+   - Added SOURCE field ("Mentioned in proposal", "References", "Known expert", "Field leader")
+   - Fixed name order issue (Western order: FirstName LastName with examples)
+   - Added "WHERE TO FIND REVIEWERS" prioritization section
+   - Relaxed accuracy requirements to avoid missing proposal-mentioned candidates
+   - File: `shared/config/prompts/reviewer-finder.js`
+
+4. **UI Improvements**
+   - Orange warnings for institution/expertise mismatches
+   - Yellow indicator for weak matches (35-65% confidence)
+   - Full Claude reasoning displayed (removed 150-character truncation)
+   - Google Scholar URL now prefers university name over department name
+
+**Key Functions Added:**
+
+```javascript
+// Institution mismatch detection
+static checkInstitutionMismatch(verifiedAffiliation, suggestedInstitution) {
+  // Simple containment check first
+  if (verifiedLower.includes(suggestedLower)) return false;
+  // 50+ university aliases (UC system, MIT, Caltech, etc.)
+  // Pattern extraction for university names
+  // Word overlap fallback (>50% match)
+}
+
+// Expertise mismatch detection
+static checkExpertiseMismatch(publications, claimedExpertise) {
+  // Extract significant terms from claimed expertise
+  // Filter generic words (biology, research, molecular, etc.)
+  // Check if terms appear in publication titles
+  // Returns { hasMismatch, claimedTerms, matchedTerms }
+}
+```
+
+**Files Modified:**
+- `lib/services/discovery-service.js` - Added mismatch detection functions
+- `pages/reviewer-finder.js` - UI warnings, Scholar URL fix, full reasoning display
+- `shared/config/prompts/reviewer-finder.js` - Prompt improvements
+
+**Bugs Fixed:**
+- Name order reversed in Claude output (LastName FirstName → FirstName LastName)
+- Google Scholar URL using department name instead of university
+- Browser crash from missing `expanded` state variable
+- False positive institution mismatches for departmental affiliations
+
+---
+
+Last Updated: December 15, 2025
+Version: 2.7 (Expert Reviewer Finder v2 - Verification quality improvements)

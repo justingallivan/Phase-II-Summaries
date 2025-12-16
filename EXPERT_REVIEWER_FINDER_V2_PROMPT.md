@@ -14,22 +14,36 @@ Continue working on the Expert Reviewer Finder v2 app at:
 
 ## Context
 
-**Previous session (December 14, 2025 - Session 9):** Google Scholar links + Claude API retry logic
+**Previous session (December 15, 2025 - Session 10):** Verification quality improvements
 
-1. **Added Google Scholar profile search links** (`426b6d7`, `b094ee7`)
-   - Added 🎓 Scholar Profile link to CandidateCard and SavedCandidateCard
-   - Links open Google Scholar author search in new tab (free, no API needed)
-   - Cleaned up URLs: removes Dr./Prof. titles, extracts institution name from full affiliation
-   - Example: "Dr. Forest Rohwer, Department of Biology, San Diego State University, CA" → "Forest Rohwer San Diego State University"
+1. **Institution mismatch detection**
+   - Compares Claude's suggested institution with PubMed-verified affiliation
+   - Displays orange warning when institutions don't match (possible wrong person)
+   - Handles departmental vs institutional affiliations correctly
+   - Uses 50+ university abbreviation aliases (UC, MIT, Caltech, etc.)
+   - File: `lib/services/discovery-service.js` - `checkInstitutionMismatch()`
 
-2. **Added Claude API retry logic with fallback model** (`1cd7416`, `5efed48`)
-   - Retry up to 2 times with exponential backoff (1s, 2s delays)
-   - After retries exhausted, fall back to `claude-3-haiku-20240307`
-   - Only retry on overloaded/rate-limit errors (529, 503)
-   - `callClaude()` now returns `{ text, usedFallback, model }` object
-   - Progress events include 'fallback' status when backup model used
-   - UI shows fallback messages in amber with ⚠️ warning icon
-   - Candidates track `reasoningFromFallback` flag for transparency
+2. **Expertise mismatch detection**
+   - Checks if Claude's claimed expertise terms appear in candidate's publications
+   - Warns when claimed expertise doesn't match publication record
+   - Confidence levels: <35% (mismatch warning), 35-65% (weak match), >65% (good)
+   - Filters generic terms (biology, research, molecular, etc.)
+   - File: `lib/services/discovery-service.js` - `checkExpertiseMismatch()`
+
+3. **Claude prompt improvements**
+   - Added INSTITUTION field requirement for verification
+   - Added SOURCE field to track where reviewer was found
+   - Fixed name order requirement (Western order: FirstName LastName)
+   - Prioritizes names mentioned in proposal over fabricated suggestions
+   - File: `shared/config/prompts/reviewer-finder.js`
+
+4. **UI improvements**
+   - Orange warnings for institution/expertise mismatches
+   - Yellow indicator for weak matches (35-65% confidence)
+   - Full Claude reasoning displayed (removed 150-char truncation)
+   - Google Scholar URL now prefers university name over department
+
+**Session 9 (December 14, 2025):** Google Scholar links + Claude API retry logic
 
 **Session 8 (December 13, 2025):** Metadata parsing fixes (`67f93c5`)
 
@@ -66,29 +80,43 @@ The Expert Reviewer Finder v2 has core functionality working:
 - **My Candidates tab** - View/manage saved candidates
 - **🎓 Google Scholar links** - One-click profile lookup for h-index verification
 - **Claude API retry + fallback** - Automatic retry with Haiku fallback on overload
+- **Institution mismatch detection** - Warns when verified affiliation differs from Claude's suggestion
+- **Expertise mismatch detection** - Warns when claimed expertise doesn't appear in publications
+- **Weak match indicator** - Yellow warning for 35-65% confidence range
+- **Full reasoning display** - Shows complete Claude rationale (no truncation)
 
 ## Priority Tasks for Next Session
 
-### 1. UI/UX Improvements
+### 1. Testing & Validation
+
+- [ ] End-to-end test with real proposal to verify all Session 10 changes
+- [ ] Verify institution mismatch detection doesn't produce false positives
+- [ ] Verify expertise mismatch thresholds (35%/65%) are appropriate
+- [ ] Test Google Scholar URL generation with various affiliation formats
+
+### 2. UI/UX Improvements
 
 - [ ] Add "View COI Details" expandable section showing coauthored paper titles
 - [ ] Sort candidates with COI to bottom of list (or add toggle)
 - [ ] Consider adding a summary stats card at top of results
 - [ ] Add bulk export from My Candidates tab
 
-### 2. Error Handling & Robustness
+### 3. Error Handling & Robustness
 
 - [x] Add retry logic with exponential backoff for Claude API (implemented Session 9)
 - [x] Batch COI checks to reduce API calls (implemented Session 7)
+- [x] Institution mismatch detection (implemented Session 10)
+- [x] Expertise mismatch detection (implemented Session 10)
 - [ ] Add user-friendly error messages for PubMed failures
 - [ ] Consider caching COI results in database
 
-### 3. Future Enhancements
+### 4. Future Enhancements
 
 - [ ] Improve query specificity for Track B discoveries
 - [ ] Batch processing for multiple proposals
 - [ ] Remove old individual test scripts (keep only test-reviewer-finder.js)
 - [ ] Implement Database tab (browse all discovered researchers)
+- [ ] Remove debug logging from production (currently left in for troubleshooting)
 
 ## Key Files
 
