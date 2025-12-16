@@ -686,5 +686,95 @@ static checkExpertiseMismatch(publications, claimedExpertise) {
 
 ---
 
-Last Updated: December 15, 2025
-Version: 2.7 (Expert Reviewer Finder v2 - Verification quality improvements)
+### December 15-16, 2025 - Expert Reviewer Finder v2 Session 11 (Contact Enrichment)
+
+**Phase 3: Contact Enrichment - Implementation Complete**
+
+Implemented a tiered contact lookup system to find email addresses and faculty pages for verified candidates:
+
+**Tier System:**
+- **Tier 1: PubMed** (Free) - Extracts emails from recent publication affiliations
+- **Tier 2: ORCID** (Free) - Looks up email, website, and ORCID ID via API
+- **Tier 3: Claude Web Search** (Paid ~$0.015/candidate) - AI-powered faculty page search
+
+**Files Created:**
+
+1. **`shared/components/ApiSettingsPanel.js`** (NEW)
+   - Collapsible settings panel for optional API keys (ORCID Client ID/Secret, NCBI API Key)
+   - Keys stored in localStorage with base64 encoding
+   - Follows existing UI patterns from other apps in the suite
+
+2. **`lib/utils/contact-parser.js`** (NEW)
+   - Extracts emails from PubMed affiliation strings using regex
+   - Validates email recency (papers < 2 years old considered trustworthy)
+
+3. **`lib/services/orcid-service.js`** (NEW)
+   - ORCID API integration with OAuth 2.0 client credentials flow
+   - Token caching for efficiency
+   - Search by name + affiliation, fetch full profile
+
+4. **`lib/services/contact-enrichment-service.js`** (NEW)
+   - Orchestrates 3-tier lookup with fallback logic
+   - `isUsefulWebsiteUrl()` filter to exclude generic directory pages
+   - Cost estimation for Claude Web Search
+   - Database persistence of enriched contact info
+
+5. **`pages/api/reviewer-finder/enrich-contacts.js`** (NEW)
+   - SSE streaming endpoint for real-time progress updates
+   - Sends cost estimates, progress events, and final results
+
+6. **`lib/db/migrations/002_contact_enrichment.sql`** (NEW)
+   - Schema additions for contact tracking fields
+
+**Files Modified:**
+
+7. **`scripts/setup-database.js`**
+   - Added v3Alterations array for contact enrichment columns:
+     - `researchers.email_source`, `email_year`, `email_verified_at`
+     - `researchers.faculty_page_url`, `contact_enriched_at`, `contact_enrichment_source`
+     - `reviewer_suggestions.email_sent_at`, `response_type`
+
+8. **`pages/reviewer-finder.js`**
+   - Added ApiSettingsPanel integration
+   - Added enrichment state management
+   - Added "📧 Find Contact Info" button for selected candidates
+   - Added enrichment modal with tier options, cost estimate, progress display
+   - Fixed ORCID/Claude checkboxes to show unchecked when credentials unavailable
+
+**Bugs Fixed:**
+- `DatabaseService.upsertResearcher is not a function` → Changed to `createOrUpdateResearcher`
+- Claude API rate limit (30K input tokens/minute) → Switched to Haiku model, reduced prompt size
+- Progress UI unclear during enrichment → Added immediate tier status indicators
+- Unhelpful directory URLs (e.g., `?p=people`) → Added URL quality filter
+- ORCID checkbox couldn't be unchecked → Fixed checkbox to reflect credential availability
+
+**Key Implementation Details:**
+
+```javascript
+// URL quality filter
+static isUsefulWebsiteUrl(url) {
+  const genericPatterns = [
+    /[?&]p=people/,           // ?p=people parameters
+    /\/people\/?$/,           // ends with /people
+    /\/directory\/?$/,        // ends with /directory
+    /\/faculty\/?$/,          // ends with /faculty
+    // ... more patterns
+  ];
+  return !genericPatterns.some(pattern => pattern.test(url));
+}
+
+// Cost estimation
+const COSTS = {
+  PUBMED: 0,
+  ORCID: 0,
+  CLAUDE_WEB_SEARCH: 0.015,  // ~$0.01 search + ~$0.005 Haiku tokens
+};
+```
+
+**Database Migration:**
+Run `node scripts/setup-database.js` to apply v3 schema changes.
+
+---
+
+Last Updated: December 16, 2025
+Version: 2.8 (Expert Reviewer Finder v2 - Contact Enrichment Phase)
