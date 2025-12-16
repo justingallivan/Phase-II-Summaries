@@ -1124,7 +1124,7 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
                       <div>
                         <div className="font-medium text-amber-800">Tier 3: Claude Web Search</div>
                         <div className="text-xs text-amber-600">
-                          Search faculty pages and directories with AI. <strong>~$0.02 per candidate</strong>
+                          Search faculty pages and directories with AI. <strong>~$0.015 per candidate</strong>
                           {!apiKey && (
                             <span className="ml-1 text-red-600">(Requires Claude API key)</span>
                           )}
@@ -1139,7 +1139,7 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-gray-600">Estimated cost (worst case):</span>
                         <span className="font-medium text-gray-900">
-                          ${(selectedCandidates.size * 0.02).toFixed(2)}
+                          ${(selectedCandidates.size * 0.015).toFixed(2)}
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 mt-1">
