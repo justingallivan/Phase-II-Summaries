@@ -1151,35 +1151,66 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
               )}
 
               {/* During enrichment: Progress */}
-              {isEnriching && enrichmentProgress && (
+              {isEnriching && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
                     <div className="animate-spin text-2xl">⏳</div>
                     <div>
                       <div className="font-medium text-gray-900">
-                        {enrichmentProgress.overall?.candidate || 'Processing...'}
+                        {enrichmentProgress?.overall?.candidate || 'Starting enrichment...'}
                       </div>
                       <div className="text-sm text-gray-500">
-                        {enrichmentProgress.overall?.current || 0} of {enrichmentProgress.overall?.total || selectedCandidates.size}
+                        Candidate {enrichmentProgress?.overall?.current || 1} of {enrichmentProgress?.overall?.total || selectedCandidates.size}
                       </div>
                     </div>
                   </div>
 
-                  {enrichmentProgress.tier && (
-                    <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
-                      Tier {enrichmentProgress.tier.tier}: {enrichmentProgress.tier.message}
+                  {/* Current tier status */}
+                  <div className="space-y-2">
+                    <div className={`flex items-center gap-2 text-sm p-2 rounded ${
+                      enrichmentProgress?.tier?.tier === 1 ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-500'
+                    }`}>
+                      <span>{enrichmentProgress?.tier?.tier === 1 ? '🔄' : '⬜'}</span>
+                      <span className="font-medium">Tier 1: PubMed</span>
+                      {enrichmentProgress?.tier?.tier === 1 && (
+                        <span className="ml-auto text-xs">{enrichmentProgress.tier.message}</span>
+                      )}
                     </div>
-                  )}
+                    <div className={`flex items-center gap-2 text-sm p-2 rounded ${
+                      enrichmentProgress?.tier?.tier === 2 ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-500'
+                    }`}>
+                      <span>{enrichmentProgress?.tier?.tier === 2 ? '🔄' : '⬜'}</span>
+                      <span className="font-medium">Tier 2: ORCID</span>
+                      {enrichmentProgress?.tier?.tier === 2 && (
+                        <span className="ml-auto text-xs">{enrichmentProgress.tier.message}</span>
+                      )}
+                    </div>
+                    {enrichmentOptions.useClaudeSearch && (
+                      <div className={`flex items-center gap-2 text-sm p-2 rounded ${
+                        enrichmentProgress?.tier?.tier === 3 ? 'bg-amber-50 text-amber-700' : 'bg-gray-50 text-gray-500'
+                      }`}>
+                        <span>{enrichmentProgress?.tier?.tier === 3 ? '🔄' : '⬜'}</span>
+                        <span className="font-medium">Tier 3: Web Search</span>
+                        {enrichmentProgress?.tier?.tier === 3 && (
+                          <span className="ml-auto text-xs">{enrichmentProgress.tier.message}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Progress bar */}
                   <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-blue-500 transition-all duration-300"
                       style={{
-                        width: `${((enrichmentProgress.overall?.current || 0) / (enrichmentProgress.overall?.total || 1)) * 100}%`
+                        width: `${((enrichmentProgress?.overall?.current || 0) / (enrichmentProgress?.overall?.total || selectedCandidates.size)) * 100}%`
                       }}
                     />
                   </div>
+
+                  <p className="text-xs text-gray-400 text-center">
+                    Looking up contact information for each candidate...
+                  </p>
                 </div>
               )}
 
