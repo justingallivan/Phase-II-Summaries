@@ -1094,17 +1094,23 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
                       </div>
                     </label>
 
-                    <label className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded-lg cursor-pointer">
+                    <label className={`flex items-start gap-3 p-3 rounded-lg ${
+                      apiSettings?.orcidClientId && apiSettings?.orcidClientSecret
+                        ? 'bg-green-50 border border-green-200 cursor-pointer'
+                        : 'bg-gray-50 border border-gray-200 cursor-not-allowed opacity-60'
+                    }`}>
                       <input
                         type="checkbox"
-                        checked={enrichmentOptions.useOrcid}
+                        checked={enrichmentOptions.useOrcid && apiSettings?.orcidClientId && apiSettings?.orcidClientSecret}
                         onChange={(e) => setEnrichmentOptions(prev => ({ ...prev, useOrcid: e.target.checked }))}
                         className="mt-0.5"
                         disabled={!apiSettings?.orcidClientId || !apiSettings?.orcidClientSecret}
                       />
                       <div>
-                        <div className="font-medium text-green-800">Tier 2: ORCID</div>
-                        <div className="text-xs text-green-600">
+                        <div className={`font-medium ${apiSettings?.orcidClientId && apiSettings?.orcidClientSecret ? 'text-green-800' : 'text-gray-500'}`}>
+                          Tier 2: ORCID
+                        </div>
+                        <div className={`text-xs ${apiSettings?.orcidClientId && apiSettings?.orcidClientSecret ? 'text-green-600' : 'text-gray-500'}`}>
                           Look up email, website, and ORCID ID. <strong>Free</strong>
                           {(!apiSettings?.orcidClientId || !apiSettings?.orcidClientSecret) && (
                             <span className="ml-1 text-amber-600">(Configure ORCID credentials in API Settings)</span>
@@ -1113,17 +1119,23 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
                       </div>
                     </label>
 
-                    <label className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg cursor-pointer">
+                    <label className={`flex items-start gap-3 p-3 rounded-lg ${
+                      apiKey
+                        ? 'bg-amber-50 border border-amber-200 cursor-pointer'
+                        : 'bg-gray-50 border border-gray-200 cursor-not-allowed opacity-60'
+                    }`}>
                       <input
                         type="checkbox"
-                        checked={enrichmentOptions.useClaudeSearch}
+                        checked={enrichmentOptions.useClaudeSearch && !!apiKey}
                         onChange={(e) => setEnrichmentOptions(prev => ({ ...prev, useClaudeSearch: e.target.checked }))}
                         className="mt-0.5"
                         disabled={!apiKey}
                       />
                       <div>
-                        <div className="font-medium text-amber-800">Tier 3: Claude Web Search</div>
-                        <div className="text-xs text-amber-600">
+                        <div className={`font-medium ${apiKey ? 'text-amber-800' : 'text-gray-500'}`}>
+                          Tier 3: Claude Web Search
+                        </div>
+                        <div className={`text-xs ${apiKey ? 'text-amber-600' : 'text-gray-500'}`}>
                           Search faculty pages and directories with AI. <strong>~$0.015 per candidate</strong>
                           {!apiKey && (
                             <span className="ml-1 text-red-600">(Requires Claude API key)</span>
