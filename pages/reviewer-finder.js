@@ -692,6 +692,7 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
             orcidClientId: apiSettings?.orcidClientId,
             orcidClientSecret: apiSettings?.orcidClientSecret,
             claudeApiKey: enrichmentOptions.useClaudeSearch ? apiKey : null,
+            serpApiKey: enrichmentOptions.useSerpSearch ? apiSettings?.serpApiKey : null,
           },
           options: enrichmentOptions,
         }),
@@ -1252,8 +1253,11 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
                         </div>
                         <div className="text-xs text-blue-600">
                           Search Google for faculty pages and emails. <strong>~$0.005 per candidate</strong>
+                          {!apiSettings?.serpApiKey && (
+                            <span className="ml-1 text-amber-600">(Configure SerpAPI key in API Settings)</span>
+                          )}
                           <div className="mt-1 text-blue-500">
-                            Note: Requires SERP_API_KEY environment variable. Only runs if Tiers 1-3 don't find contact info.
+                            Only runs if Tiers 1-3 don't find contact info.
                           </div>
                         </div>
                       </div>

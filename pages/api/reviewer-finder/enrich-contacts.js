@@ -59,10 +59,11 @@ export default async function handler(req, res) {
     });
 
     // Enrich candidates with progress updates
+    // Client-provided serpApiKey takes priority over server env var
     const results = await ContactEnrichmentService.enrichCandidates(candidates, {
       credentials: {
         ...credentials,
-        serpApiKey: process.env.SERP_API_KEY,
+        serpApiKey: credentials.serpApiKey || process.env.SERP_API_KEY,
       },
       usePubmed: options.usePubmed !== false,
       useOrcid: options.useOrcid !== false,

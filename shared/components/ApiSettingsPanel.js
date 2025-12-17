@@ -16,6 +16,7 @@ const STORAGE_KEYS = {
   ORCID_CLIENT_ID: 'orcid_client_id_encrypted',
   ORCID_CLIENT_SECRET: 'orcid_client_secret_encrypted',
   NCBI_API_KEY: 'ncbi_api_key_encrypted',
+  SERP_API_KEY: 'serp_api_key_encrypted',
 };
 
 // Helper to mask sensitive values
@@ -88,6 +89,7 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
     orcidClientId: '',
     orcidClientSecret: '',
     ncbiApiKey: '',
+    serpApiKey: '',
   });
   const [hasStoredSettings, setHasStoredSettings] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null); // 'saved', 'error', null
@@ -98,12 +100,14 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
       orcidClientId: localStorage.getItem(STORAGE_KEYS.ORCID_CLIENT_ID),
       orcidClientSecret: localStorage.getItem(STORAGE_KEYS.ORCID_CLIENT_SECRET),
       ncbiApiKey: localStorage.getItem(STORAGE_KEYS.NCBI_API_KEY),
+      serpApiKey: localStorage.getItem(STORAGE_KEYS.SERP_API_KEY),
     };
 
     const decoded = {
       orcidClientId: stored.orcidClientId ? atob(stored.orcidClientId) : '',
       orcidClientSecret: stored.orcidClientSecret ? atob(stored.orcidClientSecret) : '',
       ncbiApiKey: stored.ncbiApiKey ? atob(stored.ncbiApiKey) : '',
+      serpApiKey: stored.serpApiKey ? atob(stored.serpApiKey) : '',
     };
 
     setSettings(decoded);
@@ -148,6 +152,12 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
         localStorage.removeItem(STORAGE_KEYS.NCBI_API_KEY);
       }
 
+      if (settings.serpApiKey) {
+        localStorage.setItem(STORAGE_KEYS.SERP_API_KEY, btoa(settings.serpApiKey));
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.SERP_API_KEY);
+      }
+
       const hasAny = Object.values(settings).some(v => v && v.length > 0);
       setHasStoredSettings(hasAny);
       setSaveStatus('saved');
@@ -179,6 +189,7 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
       orcidClientId: '',
       orcidClientSecret: '',
       ncbiApiKey: '',
+      serpApiKey: '',
     };
 
     setSettings(emptySettings);
@@ -197,6 +208,9 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
   }
   if (settings.ncbiApiKey) {
     configuredApis.push('NCBI');
+  }
+  if (settings.serpApiKey) {
+    configuredApis.push('SerpAPI');
   }
 
   return (
@@ -255,7 +269,7 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
           </div>
 
           {/* NCBI Section */}
-          <div className="mb-6">
+          <div className="mb-6 pb-6 border-b border-gray-100">
             <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
               <span className="text-blue-600">🔬</span>
               NCBI API Key
@@ -269,6 +283,24 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
               placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
               helpText="Increases PubMed rate limit from 3 to 10 requests/second."
               helpUrl="https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/"
+            />
+          </div>
+
+          {/* SerpAPI Section */}
+          <div className="mb-6">
+            <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+              <span className="text-blue-600">🔍</span>
+              SerpAPI Key
+              <span className="text-xs font-normal text-gray-500">(Paid - ~$0.005/search)</span>
+            </h4>
+
+            <ApiKeyField
+              label="API Key"
+              value={settings.serpApiKey}
+              onChange={(v) => updateSetting('serpApiKey', v)}
+              placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              helpText="Enables Google Search for faculty pages and contact info (Tier 4)."
+              helpUrl="https://serpapi.com/manage-api-key"
             />
           </div>
 
