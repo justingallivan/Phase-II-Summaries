@@ -764,6 +764,29 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
         markdown += `**Seniority:** ${candidate.seniorityEstimate}\n\n`;
       }
 
+      // Contact information (from enrichment)
+      if (candidate.contactEnrichment) {
+        const ce = candidate.contactEnrichment;
+        if (ce.email || ce.website || ce.orcidUrl) {
+          markdown += `**Contact:**\n`;
+          if (ce.email) {
+            markdown += `- Email: [${ce.email}](mailto:${ce.email})`;
+            if (ce.emailSource) markdown += ` _(from ${ce.emailSource}${ce.emailYear ? `, ${ce.emailYear}` : ''})_`;
+            markdown += '\n';
+          }
+          if (ce.website) {
+            markdown += `- Website: [${ce.website}](${ce.website})\n`;
+          }
+          if (ce.facultyPageUrl && ce.facultyPageUrl !== ce.website) {
+            markdown += `- Faculty Page: [${ce.facultyPageUrl}](${ce.facultyPageUrl})\n`;
+          }
+          if (ce.orcidUrl) {
+            markdown += `- ORCID: [${ce.orcidId || 'Profile'}](${ce.orcidUrl})\n`;
+          }
+          markdown += '\n';
+        }
+      }
+
       const reasoning = candidate.reasoning || candidate.generatedReasoning;
       if (reasoning) {
         markdown += `**Why this reviewer:** ${reasoning}\n\n`;
@@ -822,8 +845,8 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
 
     const proposalTitle = analysisResult?.proposalInfo?.title || 'Untitled Proposal';
 
-    // CSV header
-    let csv = 'Name,Affiliation,Source,Seniority,Publications_5yr,COI_Warning,Reasoning\n';
+    // CSV header - now includes contact info columns
+    let csv = 'Name,Affiliation,Email,Email_Source,Website,ORCID,Source,Seniority,Publications_5yr,COI_Warning,Reasoning\n';
 
     selected.forEach(candidate => {
       const isClaudeSuggestion = candidate.isClaudeSuggestion || candidate.source === 'claude_suggestion';
@@ -838,7 +861,14 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
 
       const reasoning = (candidate.reasoning || candidate.generatedReasoning || '').replace(/"/g, '""');
 
-      csv += `"${candidate.name}","${candidate.affiliation || ''}","${source}","${candidate.seniorityEstimate || ''}",${pubCount},"${coiWarning}","${reasoning}"\n`;
+      // Contact enrichment fields
+      const ce = candidate.contactEnrichment || {};
+      const email = ce.email || '';
+      const emailSource = ce.emailSource ? `${ce.emailSource}${ce.emailYear ? ` (${ce.emailYear})` : ''}` : '';
+      const website = ce.website || ce.facultyPageUrl || '';
+      const orcid = ce.orcidUrl || '';
+
+      csv += `"${candidate.name}","${candidate.affiliation || ''}","${email}","${emailSource}","${website}","${orcid}","${source}","${candidate.seniorityEstimate || ''}",${pubCount},"${coiWarning}","${reasoning}"\n`;
     });
 
     // Download the file
