@@ -393,6 +393,7 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
     usePubmed: true,
     useOrcid: true,
     useClaudeSearch: false,
+    useSerpSearch: false,
   });
 
   const progressRef = useRef(null);
@@ -1207,19 +1208,50 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
                         </div>
                       </div>
                     </label>
+
+                    <label className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={enrichmentOptions.useSerpSearch}
+                        onChange={(e) => setEnrichmentOptions(prev => ({ ...prev, useSerpSearch: e.target.checked }))}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <div className="font-medium text-blue-800">
+                          Tier 4: Google Search (SerpAPI)
+                        </div>
+                        <div className="text-xs text-blue-600">
+                          Search Google for faculty pages and emails. <strong>~$0.005 per candidate</strong>
+                          <div className="mt-1 text-blue-500">
+                            Note: Requires SERP_API_KEY environment variable. Only runs if Tiers 1-3 don't find contact info.
+                          </div>
+                        </div>
+                      </div>
+                    </label>
                   </div>
 
                   {/* Cost estimate */}
-                  {enrichmentOptions.useClaudeSearch && (
+                  {(enrichmentOptions.useClaudeSearch || enrichmentOptions.useSerpSearch) && (
                     <div className="p-4 bg-gray-100 rounded-lg">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-gray-600">Estimated cost (worst case):</span>
                         <span className="font-medium text-gray-900">
-                          ${(selectedCandidates.size * 0.015).toFixed(2)}
+                          ${(() => {
+                            let cost = 0;
+                            if (enrichmentOptions.useClaudeSearch) {
+                              cost += selectedCandidates.size * 0.015;
+                            }
+                            if (enrichmentOptions.useSerpSearch) {
+                              // If Claude search is enabled, only ~10% might need Tier 4
+                              const multiplier = enrichmentOptions.useClaudeSearch ? 0.1 : 0.5;
+                              cost += selectedCandidates.size * multiplier * 0.005;
+                            }
+                            return cost.toFixed(2);
+                          })()}
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 mt-1">
-                        Tier 3 only runs if Tiers 1-2 don't find contact info. Actual cost is usually lower.
+                        Paid tiers only run if free tiers don't find contact info. Actual cost is usually lower.
                       </p>
                     </div>
                   )}
@@ -1268,6 +1300,17 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
                         <span>{enrichmentProgress?.tier?.tier === 3 ? '🔄' : '⬜'}</span>
                         <span className="font-medium">Tier 3: Web Search</span>
                         {enrichmentProgress?.tier?.tier === 3 && (
+                          <span className="ml-auto text-xs">{enrichmentProgress.tier.message}</span>
+                        )}
+                      </div>
+                    )}
+                    {enrichmentOptions.useSerpSearch && (
+                      <div className={`flex items-center gap-2 text-sm p-2 rounded ${
+                        enrichmentProgress?.tier?.tier === 4 ? 'bg-blue-50 text-blue-700' : 'bg-gray-50 text-gray-500'
+                      }`}>
+                        <span>{enrichmentProgress?.tier?.tier === 4 ? '🔄' : '⬜'}</span>
+                        <span className="font-medium">Tier 4: Google Search</span>
+                        {enrichmentProgress?.tier?.tier === 4 && (
                           <span className="ml-auto text-xs">{enrichmentProgress.tier.message}</span>
                         )}
                       </div>

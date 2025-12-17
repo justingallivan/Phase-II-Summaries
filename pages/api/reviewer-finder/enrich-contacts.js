@@ -60,10 +60,14 @@ export default async function handler(req, res) {
 
     // Enrich candidates with progress updates
     const results = await ContactEnrichmentService.enrichCandidates(candidates, {
-      credentials,
+      credentials: {
+        ...credentials,
+        serpApiKey: process.env.SERP_API_KEY,
+      },
       usePubmed: options.usePubmed !== false,
       useOrcid: options.useOrcid !== false,
       useClaudeSearch: options.useClaudeSearch === true,
+      useSerpSearch: options.useSerpSearch === true,
       onProgress: (progress) => {
         sendEvent({
           type: 'progress',
