@@ -285,6 +285,43 @@ function CandidateCard({ candidate, selected, onSelect }) {
             </span>
           </div>
 
+          {/* Contact info (if enriched) */}
+          {candidate.contactEnrichment && (candidate.contactEnrichment.email || candidate.contactEnrichment.website || candidate.contactEnrichment.orcidUrl) && (
+            <div className="mt-2 flex items-center flex-wrap gap-2 text-xs">
+              {candidate.contactEnrichment.email && (
+                <a
+                  href={`mailto:${candidate.contactEnrichment.email}`}
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100"
+                  title={`Email (from ${candidate.contactEnrichment.emailSource || 'enrichment'}${candidate.contactEnrichment.emailYear ? `, ${candidate.contactEnrichment.emailYear}` : ''})`}
+                >
+                  📧 {candidate.contactEnrichment.email}
+                </a>
+              )}
+              {candidate.contactEnrichment.website && (
+                <a
+                  href={candidate.contactEnrichment.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 rounded hover:bg-green-100"
+                  title="Faculty/Personal website"
+                >
+                  🔗 Website
+                </a>
+              )}
+              {candidate.contactEnrichment.orcidUrl && (
+                <a
+                  href={candidate.contactEnrichment.orcidUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-700 rounded hover:bg-emerald-100"
+                  title="ORCID Profile"
+                >
+                  ORCID
+                </a>
+              )}
+            </div>
+          )}
+
           {/* Action buttons: View papers + Scholar lookup */}
           <div className="mt-2 flex items-center gap-3">
             {candidate.publications && candidate.publications.length > 0 && (
@@ -547,6 +584,33 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
   const allCandidates = discoveryResult?.ranked || [];
   const verifiedCount = discoveryResult?.verified?.length || 0;
   const discoveredCount = discoveryResult?.discovered?.length || 0;
+
+  // Apply enrichment results to candidates in discoveryResult
+  const applyEnrichmentResults = (enrichmentData) => {
+    if (!enrichmentData?.results || !discoveryResult) return;
+
+    // Create a map of enriched candidates by name for quick lookup
+    const enrichedMap = new Map();
+    enrichmentData.results.forEach(result => {
+      enrichedMap.set(result.name, result.contactEnrichment);
+    });
+
+    // Update the discoveryResult with enriched contact info
+    const updateCandidate = (candidate) => {
+      const enrichment = enrichedMap.get(candidate.name);
+      if (enrichment) {
+        return { ...candidate, contactEnrichment: enrichment };
+      }
+      return candidate;
+    };
+
+    setDiscoveryResult(prev => ({
+      ...prev,
+      ranked: prev.ranked?.map(updateCandidate) || [],
+      verified: prev.verified?.map(updateCandidate) || [],
+      discovered: prev.discovered?.map(updateCandidate) || [],
+    }));
+  };
 
   // Get selected candidate objects
   const getSelectedCandidateObjects = () => {
@@ -1309,11 +1373,13 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
               )}
               {enrichmentResults && (
                 <Button variant="primary" onClick={() => {
+                  // Apply enrichment results to candidates before closing
+                  applyEnrichmentResults(enrichmentResults);
                   setShowEnrichmentModal(false);
                   setEnrichmentResults(null);
                   setEnrichmentProgress(null);
                 }}>
-                  Done
+                  Save & Close
                 </Button>
               )}
             </div>
