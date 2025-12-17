@@ -1,6 +1,6 @@
-# Expert Reviewer Finder v2 - Session 13 Prompt
+# Expert Reviewer Finder v2 - Session 14 Prompt
 
-## Current State (as of December 16, 2025)
+## Current State (as of December 17, 2025)
 
 The Expert Reviewer Finder is a multi-stage tool that:
 1. **Claude Analysis** - Extracts proposal metadata and suggests 10-15 expert reviewers
@@ -13,65 +13,51 @@ The Expert Reviewer Finder is a multi-stage tool that:
 - Google Scholar profile links for all candidates
 - Claude retry logic with fallback to Haiku model on rate limits
 - Contact enrichment with 5-tier system (see below)
-- API settings panel for ORCID/NCBI credentials
+- API settings panel for ORCID, NCBI, and SerpAPI credentials
 - Enrichment modal with tier selection, cost estimate, and progress display
-- Export to Markdown/CSV now includes contact info
+- Export to Markdown/CSV includes contact info
 
-### Session 12 Work
+### Session 13 Work
 
-**Implemented Tier 4: SerpAPI Google Search**
-- Added `lib/services/serp-contact-service.js` - Google search via SerpAPI
-- Searches: `"FirstName LastName" institution email`
-- Extracts emails from snippets, finds faculty page URLs
-- Cost: ~$0.005 per search (cheaper than Claude's $0.015)
-- Blue-themed UI in enrichment modal
-
-**Fixed: Contact info not saving after enrichment**
-- Added `applyEnrichmentResults()` function to merge enriched data into UI state
-- Changed "Done" button to "Save & Close"
-- Contact info now displays on candidate cards (email, website, ORCID badges)
-
-**Fixed: Export not including contact info**
-- Markdown export now includes Contact section
-- CSV export now has Email, Email_Source, Website, ORCID columns
-
-**Fixed: Emails in affiliation strings not captured (Tier 0)**
-- Added check for embedded emails in affiliation field
-- PubMed often includes "Electronic address: email@domain.com"
-- Runs before all other tiers, returns immediately if found
+**Added SerpAPI Key to API Settings Panel**
+- Users can now configure SerpAPI key via UI (no server env var required)
+- Added to `ApiSettingsPanel.js` alongside ORCID and NCBI credentials
+- Client-provided key takes priority over `SERP_API_KEY` env var
+- Tier 4 option now shows "(Configure SerpAPI key in API Settings)" warning when not configured
+- Key stored in localStorage with base64 encoding (same as other credentials)
 
 ### Current Tier System
 
-| Tier | Source | Cost | Description |
-|------|--------|------|-------------|
-| 0 | Affiliation | Free | Extract email embedded in affiliation string |
-| 1 | PubMed | Free | Extract email from publication affiliations |
-| 2 | ORCID | Free | API lookup (requires credentials) |
-| 3 | Claude Web Search | ~$0.015 | AI-powered web search |
-| 4 | SerpAPI Google | ~$0.005 | Google search for faculty pages |
+| Tier | Source | Cost | Configuration |
+|------|--------|------|---------------|
+| 0 | Affiliation | Free | Automatic |
+| 1 | PubMed | Free | Automatic |
+| 2 | ORCID | Free | API Settings panel |
+| 3 | Claude Web Search | ~$0.015 | Uses main Claude API key |
+| 4 | SerpAPI Google | ~$0.005 | API Settings panel |
 
 ## Issues to Address Next Session
 
-### 1. SerpAPI Key Not in API Settings Panel
-The `ApiSettingsPanel.js` only shows ORCID and NCBI key fields. SerpAPI key is server-side only (`SERP_API_KEY` env var). Options:
-- Add to ApiSettingsPanel for client-side configuration
-- Or add status indicator showing if server has it configured
-
-### 2. Claude Web Search Temperature Settings
-The Claude call in Tier 3 (`contact-enrichment-service.js:claudeWebSearch()`) doesn't specify temperature. Should discuss:
+### 1. Claude Web Search Temperature Settings
+The Claude call in Tier 3 (`contact-enrichment-service.js:claudeWebSearch()`) doesn't specify temperature. Consider:
 - Optimal temperature for contact extraction (lower = more deterministic)
 - Whether to make it configurable
 - Current minimal prompt may benefit from tuning
+
+### 2. Potential Enhancements
+- Add success rate tracking for each tier (how often does each tier find contacts?)
+- Consider parallel enrichment for faster processing
+- Add "retry failed" button for candidates where enrichment found nothing
 
 ## Key Files Reference
 
 **Frontend:**
 - `pages/reviewer-finder.js` - Main page with all UI components
-- `shared/components/ApiSettingsPanel.js` - API key management panel
+- `shared/components/ApiSettingsPanel.js` - API key management panel (ORCID, NCBI, SerpAPI)
 
 **Services:**
 - `lib/services/contact-enrichment-service.js` - 5-tier contact lookup orchestration
-- `lib/services/serp-contact-service.js` - NEW: Google search via SerpAPI
+- `lib/services/serp-contact-service.js` - Google search via SerpAPI
 - `lib/services/claude-reviewer-service.js` - Claude analysis with retry/fallback
 - `lib/services/discovery-service.js` - Verification and mismatch detection
 - `lib/services/orcid-service.js` - ORCID API integration
@@ -91,13 +77,14 @@ The Claude call in Tier 3 (`contact-enrichment-service.js:claudeWebSearch()`) do
 ```
 CLAUDE_API_KEY=        # Required for analysis and Tier 3 search
 POSTGRES_URL=          # Auto-set by Vercel Postgres
-SERP_API_KEY=          # Optional: Tier 4 Google search + Google Scholar
+SERP_API_KEY=          # Optional fallback: Tier 4 Google search
 NCBI_API_KEY=          # Optional: Higher PubMed rate limits
 ```
 
-ORCID credentials stored in localStorage via ApiSettingsPanel:
+Client-side credentials stored in localStorage via ApiSettingsPanel:
 - ORCID Client ID
 - ORCID Client Secret
+- SerpAPI Key (new in Session 13)
 
 ## Running the App
 
@@ -109,9 +96,9 @@ npm run dev
 ## Git Status
 
 Branch: main
-Recent commits (Session 12):
+Recent commits:
+- `f6d75b0` Add SerpAPI key to API Settings panel
+- `5253d70` Update SESSION_PROMPT.md for Session 13
 - `056aa20` Extract emails from affiliation strings (Tier 0)
 - `03a6452` Include contact enrichment data in Markdown and CSV exports
-- `d47636e` Fix contact enrichment results not being saved to UI state
 - `4de0a13` Implement Tier 4: SerpAPI Google Search for contact enrichment
-- `da4502b` Refactor CLAUDE.md: split development log into separate file
