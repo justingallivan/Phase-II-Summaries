@@ -368,6 +368,7 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [excludedNames, setExcludedNames] = useState('');
+  const [temperature, setTemperature] = useState(0.3); // Default: conservative, predictable
   const [searchSources, setSearchSources] = useState({
     pubmed: true,
     arxiv: true,
@@ -453,7 +454,8 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
           apiKey,
           blobUrl: uploadedFiles[0].url,
           additionalNotes,
-          excludedNames: excludedNames.split(',').map(n => n.trim()).filter(Boolean)
+          excludedNames: excludedNames.split(',').map(n => n.trim()).filter(Boolean),
+          temperature
         })
       });
 
@@ -927,6 +929,31 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
               placeholder="John Smith, Jane Doe (comma-separated)"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Reviewer Diversity: {temperature.toFixed(1)}
+            </label>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500 w-20">Conservative</span>
+              <input
+                type="range"
+                min="0.3"
+                max="1.0"
+                step="0.1"
+                value={temperature}
+                onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              />
+              <span className="text-xs text-gray-500 w-16 text-right">Creative</span>
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              {temperature <= 0.4 ? 'More predictable, established reviewers' :
+               temperature <= 0.6 ? 'Balanced mix of established and diverse candidates' :
+               temperature <= 0.8 ? 'More diverse, potentially unconventional suggestions' :
+               'Maximum creativity, broader range of candidates'}
+            </p>
           </div>
 
           <div>
