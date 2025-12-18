@@ -472,13 +472,15 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let analysisData = null;
+      let buffer = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
         for (const line of lines) {
           if (line.startsWith('event: ')) {
@@ -499,9 +501,7 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
                 throw new Error(data.error || data.message);
               }
             } catch (e) {
-              if (e.message !== 'Unexpected end of JSON input') {
-                console.error('Parse error:', e);
-              }
+              // Silently ignore parse errors - likely incomplete chunks
             }
           }
         }
@@ -535,13 +535,15 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
 
       const discoverReader = discoverResponse.body.getReader();
       let discoveryData = null;
+      let discoverBuffer = '';
 
       while (true) {
         const { done, value } = await discoverReader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
+        discoverBuffer += decoder.decode(value, { stream: true });
+        const lines = discoverBuffer.split('\n');
+        discoverBuffer = lines.pop() || ''; // Keep incomplete line in buffer
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
@@ -559,9 +561,7 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
                 throw new Error(data.error || data.message);
               }
             } catch (e) {
-              if (e.message !== 'Unexpected end of JSON input') {
-                console.error('Parse error:', e);
-              }
+              // Silently ignore parse errors - likely incomplete chunks
             }
           }
         }
