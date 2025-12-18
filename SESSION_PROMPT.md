@@ -105,8 +105,8 @@ npm run dev
 
 Branch: main
 Recent commits:
+- `48ae63c` Fix SSE stream parsing with proper line buffering
 - `03bfe43` Improve My Candidates tab: contact display and bulk deletion
 - `0ff4f3d` Add configurable reviewer count slider and reorder UI
 - `ae89f0a` Add temperature control for Claude proposal analysis
 - `a5d9522` Update SESSION_PROMPT.md for Session 15
-- `283c6d8` Update SESSION_PROMPT.md for Session 14
