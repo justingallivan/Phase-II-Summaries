@@ -1,4 +1,4 @@
-# Expert Reviewer Finder v2 - Session 14 Prompt
+# Expert Reviewer Finder v2 - Session 15 Prompt
 
 ## Current State (as of December 17, 2025)
 
@@ -16,15 +16,22 @@ The Expert Reviewer Finder is a multi-stage tool that:
 - API settings panel for ORCID, NCBI, and SerpAPI credentials
 - Enrichment modal with tier selection, cost estimate, and progress display
 - Export to Markdown/CSV includes contact info
+- **Temperature control for proposal analysis** (new in Session 14)
 
-### Session 13 Work
+### Session 14 Work
 
-**Added SerpAPI Key to API Settings Panel**
-- Users can now configure SerpAPI key via UI (no server env var required)
-- Added to `ApiSettingsPanel.js` alongside ORCID and NCBI credentials
-- Client-provided key takes priority over `SERP_API_KEY` env var
-- Tier 4 option now shows "(Configure SerpAPI key in API Settings)" warning when not configured
-- Key stored in localStorage with base64 encoding (same as other credentials)
+**Added Temperature Control for Claude Proposal Analysis**
+- Added "Reviewer Diversity" slider to UI (range 0.3-1.0, default 0.3)
+- Labels: "Conservative" ↔ "Creative" with dynamic descriptions based on value
+- Temperature passed through API chain to Claude service
+- Set fixed low temperature (0.2) for Tier 3 contact enrichment (deterministic extraction)
+
+| Temperature | Behavior |
+|-------------|----------|
+| 0.3-0.4 | More predictable, established reviewers |
+| 0.5-0.6 | Balanced mix of established and diverse candidates |
+| 0.7-0.8 | More diverse, potentially unconventional suggestions |
+| 0.9-1.0 | Maximum creativity, broader range of candidates |
 
 ### Current Tier System
 
@@ -33,18 +40,12 @@ The Expert Reviewer Finder is a multi-stage tool that:
 | 0 | Affiliation | Free | Automatic |
 | 1 | PubMed | Free | Automatic |
 | 2 | ORCID | Free | API Settings panel |
-| 3 | Claude Web Search | ~$0.015 | Uses main Claude API key |
+| 3 | Claude Web Search | ~$0.015 | Uses main Claude API key (temp=0.2) |
 | 4 | SerpAPI Google | ~$0.005 | API Settings panel |
 
 ## Issues to Address Next Session
 
-### 1. Claude Web Search Temperature Settings
-The Claude call in Tier 3 (`contact-enrichment-service.js:claudeWebSearch()`) doesn't specify temperature. Consider:
-- Optimal temperature for contact extraction (lower = more deterministic)
-- Whether to make it configurable
-- Current minimal prompt may benefit from tuning
-
-### 2. Potential Enhancements
+### Potential Enhancements
 - Add success rate tracking for each tier (how often does each tier find contacts?)
 - Consider parallel enrichment for faster processing
 - Add "retry failed" button for candidates where enrichment found nothing
@@ -52,19 +53,19 @@ The Claude call in Tier 3 (`contact-enrichment-service.js:claudeWebSearch()`) do
 ## Key Files Reference
 
 **Frontend:**
-- `pages/reviewer-finder.js` - Main page with all UI components
+- `pages/reviewer-finder.js` - Main page with all UI components (includes temperature slider)
 - `shared/components/ApiSettingsPanel.js` - API key management panel (ORCID, NCBI, SerpAPI)
 
 **Services:**
-- `lib/services/contact-enrichment-service.js` - 5-tier contact lookup orchestration
+- `lib/services/contact-enrichment-service.js` - 5-tier contact lookup (Tier 3 uses temp=0.2)
 - `lib/services/serp-contact-service.js` - Google search via SerpAPI
-- `lib/services/claude-reviewer-service.js` - Claude analysis with retry/fallback
+- `lib/services/claude-reviewer-service.js` - Claude analysis with retry/fallback and temperature support
 - `lib/services/discovery-service.js` - Verification and mismatch detection
 - `lib/services/orcid-service.js` - ORCID API integration
 - `lib/services/pubmed-service.js` - PubMed API queries
 
 **API Endpoints:**
-- `pages/api/reviewer-finder/analyze.js` - Claude analysis
+- `pages/api/reviewer-finder/analyze.js` - Claude analysis (accepts temperature param)
 - `pages/api/reviewer-finder/discover.js` - Verification + discovery
 - `pages/api/reviewer-finder/enrich-contacts.js` - Contact enrichment (SSE)
 
@@ -84,7 +85,7 @@ NCBI_API_KEY=          # Optional: Higher PubMed rate limits
 Client-side credentials stored in localStorage via ApiSettingsPanel:
 - ORCID Client ID
 - ORCID Client Secret
-- SerpAPI Key (new in Session 13)
+- SerpAPI Key
 
 ## Running the App
 
@@ -97,8 +98,8 @@ npm run dev
 
 Branch: main
 Recent commits:
+- `ae89f0a` Add temperature control for Claude proposal analysis
+- `283c6d8` Update SESSION_PROMPT.md for Session 14
 - `f6d75b0` Add SerpAPI key to API Settings panel
 - `5253d70` Update SESSION_PROMPT.md for Session 13
 - `056aa20` Extract emails from affiliation strings (Tier 0)
-- `03a6452` Include contact enrichment data in Markdown and CSV exports
-- `4de0a13` Implement Tier 4: SerpAPI Google Search for contact enrichment
