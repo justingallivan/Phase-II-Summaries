@@ -11,7 +11,7 @@
  * Extracts proposal metadata, generates reviewer suggestions with reasoning,
  * and creates optimized search queries for academic databases.
  */
-export function createAnalysisPrompt(proposalText, additionalNotes = '', excludedNames = []) {
+export function createAnalysisPrompt(proposalText, additionalNotes = '', excludedNames = [], reviewerCount = 12) {
   const safeText = proposalText || 'No proposal text provided';
   const truncatedText = safeText.length > 15000
     ? safeText.substring(0, 15000) + '\n\n[...truncated for length...]'
@@ -51,7 +51,7 @@ KEYWORDS: [5-8 specific technical terms for database searching]
 
 ## PART 2: REVIEWER SUGGESTIONS
 
-Suggest 10-15 potential expert reviewers. For each, provide detailed reasoning.
+Suggest ${reviewerCount} potential expert reviewers. For each, provide detailed reasoning.
 
 **WHERE TO FIND REVIEWERS (in priority order):**
 1. **Names mentioned in the proposal** - Look for researchers cited or discussed as doing related work (e.g., "Smith et al. showed...", "Building on work by Jones..."). These are excellent candidates because the PI has already identified them as relevant peers.

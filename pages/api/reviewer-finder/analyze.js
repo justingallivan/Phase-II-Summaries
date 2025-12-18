@@ -39,7 +39,7 @@ export default async function handler(req, res) {
   };
 
   try {
-    const { apiKey, proposalText, blobUrl, additionalNotes, excludedNames, temperature } = req.body;
+    const { apiKey, proposalText, blobUrl, additionalNotes, excludedNames, temperature, reviewerCount } = req.body;
 
     if (!apiKey) {
       sendEvent('error', { message: 'API key is required' });
@@ -91,6 +91,7 @@ export default async function handler(req, res) {
       additionalNotes: additionalNotes || '',
       excludedNames: excludedNames || [],
       temperature: temperature !== undefined ? temperature : 0.3,
+      reviewerCount: reviewerCount || 12,
       onProgress: (progress) => {
         sendEvent('progress', progress);
       }

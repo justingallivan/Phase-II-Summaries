@@ -369,6 +369,7 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [excludedNames, setExcludedNames] = useState('');
   const [temperature, setTemperature] = useState(0.3); // Default: conservative, predictable
+  const [reviewerCount, setReviewerCount] = useState(12); // Default: 12 candidates
   const [searchSources, setSearchSources] = useState({
     pubmed: true,
     arxiv: true,
@@ -455,7 +456,8 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
           blobUrl: uploadedFiles[0].url,
           additionalNotes,
           excludedNames: excludedNames.split(',').map(n => n.trim()).filter(Boolean),
-          temperature
+          temperature,
+          reviewerCount
         })
       });
 
@@ -906,29 +908,41 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
 
         <div className="mt-4 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Additional Context (optional)
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Search Sources
             </label>
-            <textarea
-              value={additionalNotes}
-              onChange={(e) => setAdditionalNotes(e.target.value)}
-              placeholder="Any specific requirements or context for reviewer selection..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              rows={2}
-            />
+            <div className="flex gap-4">
+              {['pubmed', 'arxiv', 'biorxiv'].map((source) => (
+                <label key={source} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={searchSources[source]}
+                    onChange={(e) => setSearchSources(prev => ({ ...prev, [source]: e.target.checked }))}
+                    className="h-4 w-4 text-blue-600 rounded border-gray-300"
+                  />
+                  <span className="text-sm text-gray-700 capitalize">{source}</span>
+                </label>
+              ))}
+            </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Excluded Names (conflicts of interest)
+              Number of Candidates: {reviewerCount}
             </label>
-            <input
-              type="text"
-              value={excludedNames}
-              onChange={(e) => setExcludedNames(e.target.value)}
-              placeholder="John Smith, Jane Doe (comma-separated)"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500 w-8">1</span>
+              <input
+                type="range"
+                min="1"
+                max="25"
+                step="1"
+                value={reviewerCount}
+                onChange={(e) => setReviewerCount(parseInt(e.target.value, 10))}
+                className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              />
+              <span className="text-xs text-gray-500 w-8 text-right">25</span>
+            </div>
           </div>
 
           <div>
@@ -957,22 +971,29 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Search Sources
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Excluded Names (conflicts of interest)
             </label>
-            <div className="flex gap-4">
-              {['pubmed', 'arxiv', 'biorxiv'].map((source) => (
-                <label key={source} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={searchSources[source]}
-                    onChange={(e) => setSearchSources(prev => ({ ...prev, [source]: e.target.checked }))}
-                    className="h-4 w-4 text-blue-600 rounded border-gray-300"
-                  />
-                  <span className="text-sm text-gray-700 capitalize">{source}</span>
-                </label>
-              ))}
-            </div>
+            <input
+              type="text"
+              value={excludedNames}
+              onChange={(e) => setExcludedNames(e.target.value)}
+              placeholder="John Smith, Jane Doe (comma-separated)"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Additional Context (optional)
+            </label>
+            <textarea
+              value={additionalNotes}
+              onChange={(e) => setAdditionalNotes(e.target.value)}
+              placeholder="Any specific requirements or context for reviewer selection..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              rows={2}
+            />
           </div>
         </div>
 
