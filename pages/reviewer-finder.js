@@ -16,6 +16,14 @@ import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import ApiSettingsPanel from '../shared/components/ApiSettingsPanel';
 
+// Helper to extract email from affiliation string (fallback when email field is null)
+function extractEmailFromAffiliation(affiliation) {
+  if (!affiliation) return null;
+  // Match common email patterns in affiliation strings
+  const emailMatch = affiliation.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/);
+  return emailMatch ? emailMatch[0] : null;
+}
+
 // Tab component
 function Tab({ label, active, onClick, icon }) {
   return (
@@ -1516,7 +1524,7 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
 }
 
 // Saved Candidate Card (simpler than search results)
-function SavedCandidateCard({ candidate, onUpdate, onRemove }) {
+function SavedCandidateCard({ candidate, onUpdate, onRemove, isSelectedForDeletion, onToggleSelection }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [notes, setNotes] = useState(candidate.notes || '');
   const [isSavingNotes, setIsSavingNotes] = useState(false);
@@ -1539,9 +1547,22 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove }) {
   const hasInstitutionCOI = candidate.reasoning?.includes('Institution COI') || candidate.hasInstitutionCOI;
   const hasAnyCOI = hasCoauthorCOI || hasInstitutionCOI;
 
+  // Use email from database, or extract from affiliation as fallback
+  const displayEmail = candidate.email || extractEmailFromAffiliation(candidate.affiliation);
+
   return (
-    <div className={`border rounded-lg p-4 ${hasAnyCOI ? 'border-red-200 bg-red-50' : 'border-gray-200'}`}>
+    <div className={`border rounded-lg p-4 ${
+      isSelectedForDeletion ? 'border-red-400 bg-red-50' :
+      hasAnyCOI ? 'border-red-200 bg-red-50' : 'border-gray-200'
+    }`}>
       <div className="flex items-start justify-between gap-3">
+        <input
+          type="checkbox"
+          checked={isSelectedForDeletion}
+          onChange={onToggleSelection}
+          className="mt-1 h-4 w-4 text-red-600 rounded border-gray-300 flex-shrink-0"
+          title="Select for deletion"
+        />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h4 className="font-medium text-gray-900">{candidate.name}</h4>
@@ -1551,6 +1572,30 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove }) {
           </div>
           {candidate.affiliation && (
             <p className="text-sm text-gray-500 truncate">{candidate.affiliation}</p>
+          )}
+          {(displayEmail || candidate.website) && (
+            <div className="flex items-center gap-3 mt-1">
+              {displayEmail && (
+                <a
+                  href={`mailto:${displayEmail}`}
+                  className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                  title={displayEmail}
+                >
+                  ✉️ {displayEmail}
+                </a>
+              )}
+              {candidate.website && (
+                <a
+                  href={candidate.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                  title={candidate.website}
+                >
+                  🔗 Website
+                </a>
+              )}
+            </div>
           )}
           {hasAnyCOI && (
             <p className="text-xs text-red-600 mt-1">
@@ -1620,10 +1665,11 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove }) {
             </div>
           )}
 
-          {candidate.email && (
+          {displayEmail && (
             <p className="text-xs text-gray-500">
               <span className="font-medium">Email:</span>{' '}
-              <a href={`mailto:${candidate.email}`} className="text-blue-600">{candidate.email}</a>
+              <a href={`mailto:${displayEmail}`} className="text-blue-600">{displayEmail}</a>
+              {!candidate.email && <span className="text-gray-400 ml-1">(from affiliation)</span>}
             </p>
           )}
 
@@ -1670,10 +1716,13 @@ function MyCandidatesTab({ refreshTrigger }) {
   const [proposals, setProposals] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedForDeletion, setSelectedForDeletion] = useState(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchCandidates = async () => {
     setIsLoading(true);
     setError(null);
+    setSelectedForDeletion(new Set());
     try {
       const response = await fetch('/api/reviewer-finder/my-candidates');
       const data = await response.json();
@@ -1718,6 +1767,57 @@ function MyCandidatesTab({ refreshTrigger }) {
       fetchCandidates();
     } catch (err) {
       console.error('Remove failed:', err);
+    }
+  };
+
+  const handleToggleSelection = (suggestionId) => {
+    setSelectedForDeletion(prev => {
+      const next = new Set(prev);
+      if (next.has(suggestionId)) {
+        next.delete(suggestionId);
+      } else {
+        next.add(suggestionId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllInProposal = (proposal) => {
+    const allIds = proposal.candidates.map(c => c.suggestionId);
+    const allSelected = allIds.every(id => selectedForDeletion.has(id));
+
+    setSelectedForDeletion(prev => {
+      const next = new Set(prev);
+      if (allSelected) {
+        allIds.forEach(id => next.delete(id));
+      } else {
+        allIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedForDeletion.size === 0) return;
+    if (!confirm(`Remove ${selectedForDeletion.size} candidate(s) from your list?`)) return;
+
+    setIsDeleting(true);
+    try {
+      // Delete all selected candidates
+      await Promise.all(
+        Array.from(selectedForDeletion).map(suggestionId =>
+          fetch('/api/reviewer-finder/my-candidates', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ suggestionId })
+          })
+        )
+      );
+      fetchCandidates();
+    } catch (err) {
+      console.error('Bulk delete failed:', err);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -1771,35 +1871,64 @@ function MyCandidatesTab({ refreshTrigger }) {
               {totalCandidates} candidate(s) across {proposals.length} proposal(s)
             </p>
           </div>
-          <div className="flex gap-4 text-sm">
+          <div className="flex items-center gap-4 text-sm">
             <span className="text-blue-600">{invitedCount} invited</span>
             <span className="text-green-600">{acceptedCount} accepted</span>
+            {selectedForDeletion.size > 0 && (
+              <button
+                onClick={handleDeleteSelected}
+                disabled={isDeleting}
+                className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 disabled:opacity-50"
+              >
+                {isDeleting ? 'Deleting...' : `Delete Selected (${selectedForDeletion.size})`}
+              </button>
+            )}
           </div>
         </div>
       </Card>
 
       {/* Proposals with Candidates */}
-      {proposals.map((proposal) => (
-        <Card key={proposal.proposalId}>
-          <h4 className="font-medium text-gray-900 mb-1">
-            {proposal.proposalTitle}
-          </h4>
-          <p className="text-xs text-gray-400 mb-4">
-            {proposal.candidates.length} candidate(s)
-          </p>
+      {proposals.map((proposal) => {
+        const allIds = proposal.candidates.map(c => c.suggestionId);
+        const allSelected = allIds.length > 0 && allIds.every(id => selectedForDeletion.has(id));
+        const someSelected = allIds.some(id => selectedForDeletion.has(id));
 
-          <div className="space-y-3">
-            {proposal.candidates.map((candidate) => (
-              <SavedCandidateCard
-                key={candidate.suggestionId}
-                candidate={candidate}
-                onUpdate={handleUpdateCandidate}
-                onRemove={handleRemoveCandidate}
+        return (
+          <Card key={proposal.proposalId}>
+            <div className="flex items-center gap-3 mb-1">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={el => {
+                  if (el) el.indeterminate = someSelected && !allSelected;
+                }}
+                onChange={() => handleSelectAllInProposal(proposal)}
+                className="h-4 w-4 text-red-600 rounded border-gray-300"
+                title="Select all candidates in this proposal"
               />
-            ))}
-          </div>
-        </Card>
-      ))}
+              <h4 className="font-medium text-gray-900">
+                {proposal.proposalTitle}
+              </h4>
+            </div>
+            <p className="text-xs text-gray-400 mb-4 ml-7">
+              {proposal.candidates.length} candidate(s)
+            </p>
+
+            <div className="space-y-3">
+              {proposal.candidates.map((candidate) => (
+                <SavedCandidateCard
+                  key={candidate.suggestionId}
+                  candidate={candidate}
+                  onUpdate={handleUpdateCandidate}
+                  onRemove={handleRemoveCandidate}
+                  isSelectedForDeletion={selectedForDeletion.has(candidate.suggestionId)}
+                  onToggleSelection={() => handleToggleSelection(candidate.suggestionId)}
+                />
+              ))}
+            </div>
+          </Card>
+        );
+      })}
     </div>
   );
 }
