@@ -15,6 +15,7 @@ import { DEFAULT_TEMPLATE, replacePlaceholders, parseRecipientName, formatReview
 // Available placeholders grouped by category
 const PLACEHOLDERS = {
   recipient: [
+    { key: 'greeting', label: 'Greeting', example: 'Dear Dr. Smith' },
     { key: 'salutation', label: 'Salutation', example: 'Dr.' },
     { key: 'recipientLastName', label: 'Last Name', example: 'Smith' },
     { key: 'recipientName', label: 'Full Name', example: 'Jane Smith' },
@@ -35,6 +36,7 @@ const PLACEHOLDERS = {
 
 // Sample data for preview
 const SAMPLE_DATA = {
+  greeting: 'Dear Dr. Weeks',
   salutation: 'Dr.',
   recipientLastName: 'Weeks',
   recipientName: 'Kevin Weeks',
@@ -263,6 +265,7 @@ I am writing to invite you..."
         <div className="p-3 bg-gray-50 rounded-lg">
           <p className="text-xs font-medium text-gray-700 mb-2">Available Placeholders:</p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
+            <div><code>{'{{greeting}}'}</code> - "Dear Dr. Smith"</div>
             <div><code>{'{{salutation}}'}</code> - Dr. or Professor</div>
             <div><code>{'{{recipientLastName}}'}</code> - Recipient's last name</div>
             <div><code>{'{{proposalTitle}}'}</code> - Proposal title</div>
@@ -272,7 +275,6 @@ I am writing to invite you..."
             <div><code>{'{{programName}}'}</code> - Grant program name</div>
             <div><code>{'{{reviewDeadline}}'}</code> - Formatted deadline</div>
             <div><code>{'{{signature}}'}</code> - Your signature</div>
-            <div><code>{'{{customField:name}}'}</code> - Custom fields</div>
           </div>
         </div>
       )}

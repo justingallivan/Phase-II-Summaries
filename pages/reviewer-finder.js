@@ -632,12 +632,12 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
     return allCandidates.filter(c => selectedCandidates.has(c.name));
   };
 
-  // Generate a unique proposal ID from the title and timestamp
+  // Generate a consistent proposal ID from the title (no timestamp for deduplication)
   const generateProposalId = () => {
     const title = analysisResult?.proposalInfo?.title || 'untitled';
-    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 30);
-    const timestamp = Date.now();
-    return `${slug}-${timestamp}`;
+    // Create a deterministic slug from title - same title = same ID
+    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 50);
+    return slug;
   };
 
   // Save candidates to database
