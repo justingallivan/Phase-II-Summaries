@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { proposalId, proposalTitle, candidates } = req.body;
+    const { proposalId, proposalTitle, proposalAbstract, proposalAuthors, proposalInstitution, candidates } = req.body;
 
     if (!proposalId) {
       return res.status(400).json({ error: 'proposalId is required' });
@@ -105,6 +105,9 @@ export default async function handler(req, res) {
           INSERT INTO reviewer_suggestions (
             proposal_id,
             proposal_title,
+            proposal_abstract,
+            proposal_authors,
+            proposal_institution,
             researcher_id,
             relevance_score,
             match_reason,
@@ -114,6 +117,9 @@ export default async function handler(req, res) {
           VALUES (
             ${proposalId},
             ${proposalTitle || 'Untitled Proposal'},
+            ${proposalAbstract || null},
+            ${proposalAuthors || null},
+            ${proposalInstitution || null},
             ${researcherId},
             ${relevanceScore},
             ${matchReason},
@@ -123,6 +129,9 @@ export default async function handler(req, res) {
           ON CONFLICT (proposal_id, researcher_id)
           DO UPDATE SET
             selected = true,
+            proposal_abstract = COALESCE(${proposalAbstract}, reviewer_suggestions.proposal_abstract),
+            proposal_authors = COALESCE(${proposalAuthors}, reviewer_suggestions.proposal_authors),
+            proposal_institution = COALESCE(${proposalInstitution}, reviewer_suggestions.proposal_institution),
             relevance_score = ${relevanceScore},
             match_reason = ${matchReason},
             sources = ${sources},

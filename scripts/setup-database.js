@@ -192,6 +192,15 @@ const v3Alterations = [
   `CREATE INDEX IF NOT EXISTS idx_researchers_contact_enriched ON researchers(contact_enriched_at)`,
 ];
 
+// V4 column additions for email generation feature
+const v4Alterations = [
+  // Add proposal_abstract to reviewer_suggestions for email generation
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS proposal_abstract TEXT`,
+  // Add PI information for email templates
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS proposal_authors TEXT`,
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS proposal_institution TEXT`,
+];
+
 async function runMigration() {
   try {
     console.log('Starting database migration for Expert Reviewer Finder v2...');
@@ -253,6 +262,25 @@ async function runMigration() {
       }
     }
 
+    // Run V4 column additions (email generation)
+    console.log(`\nApplying v4 schema updates - email generation (${v4Alterations.length} alterations)...`);
+    for (let i = 0; i < v4Alterations.length; i++) {
+      const statement = v4Alterations[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v4-${i + 1}/${v4Alterations.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists') || error.message.includes('duplicate column')) {
+          console.log(`[v4-${i + 1}/${v4Alterations.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v4-${i + 1}/${v4Alterations.length}] ✗ Error: ${error.message}`);
+          // Don't throw on alter table errors - continue with other alterations
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -275,6 +303,10 @@ async function runMigration() {
     console.log('  • researchers.contact_enrichment_source');
     console.log('  • reviewer_suggestions.email_sent_at');
     console.log('  • reviewer_suggestions.response_type');
+    console.log('\nV4 column additions (email generation):');
+    console.log('  • reviewer_suggestions.proposal_abstract');
+    console.log('  • reviewer_suggestions.proposal_authors');
+    console.log('  • reviewer_suggestions.proposal_institution');
     console.log('\nIndexes created: 17');
 
   } catch (error) {

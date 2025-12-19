@@ -28,6 +28,9 @@ async function handleGet(req, res) {
         rs.id as suggestion_id,
         rs.proposal_id,
         rs.proposal_title,
+        rs.proposal_abstract,
+        rs.proposal_authors,
+        rs.proposal_institution,
         rs.relevance_score,
         rs.match_reason,
         rs.sources,
@@ -56,6 +59,9 @@ async function handleGet(req, res) {
         proposals[row.proposal_id] = {
           proposalId: row.proposal_id,
           proposalTitle: row.proposal_title,
+          proposalAbstract: row.proposal_abstract,
+          proposalAuthors: row.proposal_authors,
+          proposalInstitution: row.proposal_institution,
           candidates: []
         };
       }

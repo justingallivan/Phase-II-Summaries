@@ -46,6 +46,7 @@ PRIMARY_RESEARCH_AREA: [Main scientific discipline]
 SECONDARY_AREAS: [Comma-separated list of related fields]
 KEY_METHODOLOGIES: [Main techniques/approaches used]
 KEYWORDS: [5-8 specific technical terms for database searching]
+ABSTRACT: [The proposal abstract. Extract verbatim if present, otherwise write a 2-3 sentence summary of the proposed research]
 
 ---
 
@@ -177,7 +178,7 @@ export function parseAnalysisResponse(response) {
   // Parse proposal metadata
   const metadataFields = [
     'TITLE', 'PROPOSAL_AUTHORS', 'AUTHOR_INSTITUTION', 'PRIMARY_RESEARCH_AREA',
-    'SECONDARY_AREAS', 'KEY_METHODOLOGIES', 'KEYWORDS'
+    'SECONDARY_AREAS', 'KEY_METHODOLOGIES', 'KEYWORDS', 'ABSTRACT'
   ];
 
   for (const field of metadataFields) {
@@ -194,6 +195,16 @@ export function parseAnalysisResponse(response) {
       const cleanValue = match[1].trim().replace(/^\*+\s*/, '').replace(/\s*\*+$/, '');
       result.proposalInfo[camelKey] = cleanValue;
     }
+  }
+
+  // Special handling for ABSTRACT which may span multiple lines
+  // Look for ABSTRACT: followed by text until the next section header (---) or PART 2
+  const abstractMatch = response.match(/ABSTRACT:\s*([\s\S]*?)(?=\n---|\n##\s*PART\s*2|\nREVIEWER:)/i);
+  if (abstractMatch && abstractMatch[1].trim()) {
+    result.proposalInfo.abstract = abstractMatch[1].trim()
+      .replace(/^\*+\s*/, '')
+      .replace(/\s*\*+$/, '')
+      .replace(/\n{3,}/g, '\n\n'); // Normalize multiple newlines
   }
 
   // Parse reviewer suggestions

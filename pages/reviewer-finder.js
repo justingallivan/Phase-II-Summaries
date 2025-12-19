@@ -15,6 +15,8 @@ import { useState, useEffect, useRef } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import ApiSettingsPanel from '../shared/components/ApiSettingsPanel';
+import EmailSettingsPanel from '../shared/components/EmailSettingsPanel';
+import EmailGeneratorModal from '../shared/components/EmailGeneratorModal';
 
 // Helper to extract email from affiliation string (fallback when email field is null)
 function extractEmailFromAffiliation(affiliation) {
@@ -653,6 +655,9 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
         body: JSON.stringify({
           proposalId: generateProposalId(),
           proposalTitle: analysisResult?.proposalInfo?.title || 'Untitled Proposal',
+          proposalAbstract: analysisResult?.proposalInfo?.abstract || '',
+          proposalAuthors: analysisResult?.proposalInfo?.proposalAuthors || '',
+          proposalInstitution: analysisResult?.proposalInfo?.authorInstitution || '',
           candidates: selected
         })
       });
@@ -1712,12 +1717,14 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, isSelectedForDeleti
 }
 
 // My Candidates Tab
-function MyCandidatesTab({ refreshTrigger }) {
+function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
   const [proposals, setProposals] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedForDeletion, setSelectedForDeletion] = useState(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailModalData, setEmailModalData] = useState({ candidates: [], proposalInfo: {} });
 
   const fetchCandidates = async () => {
     setIsLoading(true);
@@ -1821,6 +1828,52 @@ function MyCandidatesTab({ refreshTrigger }) {
     }
   };
 
+  // Get selected candidate objects with their proposal info for email generation
+  const getSelectedCandidatesWithProposalInfo = () => {
+    const selectedCandidates = [];
+    let proposalInfo = {};
+
+    for (const proposal of proposals) {
+      const candidatesFromProposal = proposal.candidates.filter(c =>
+        selectedForDeletion.has(c.suggestionId)
+      );
+
+      if (candidatesFromProposal.length > 0) {
+        // Use first proposal's info if we have multiple
+        if (!proposalInfo.title) {
+          proposalInfo = {
+            title: proposal.proposalTitle,
+            abstract: proposal.proposalAbstract || '',
+            authors: proposal.proposalAuthors || '',
+            institution: proposal.proposalInstitution || ''
+          };
+        }
+
+        selectedCandidates.push(...candidatesFromProposal.map(c => ({
+          name: c.name,
+          email: c.email || extractEmailFromAffiliation(c.affiliation),
+          affiliation: c.affiliation,
+          expertise: c.expertiseAreas || [],
+          reasoning: c.reasoning
+        })));
+      }
+    }
+
+    return { selectedCandidates, proposalInfo };
+  };
+
+  // Open email modal with selected candidates
+  const handleOpenEmailModal = () => {
+    const { selectedCandidates, proposalInfo } = getSelectedCandidatesWithProposalInfo();
+    if (selectedCandidates.length === 0) return;
+
+    setEmailModalData({
+      candidates: selectedCandidates,
+      proposalInfo
+    });
+    setShowEmailModal(true);
+  };
+
   if (isLoading) {
     return (
       <Card className="text-center py-12">
@@ -1875,17 +1928,28 @@ function MyCandidatesTab({ refreshTrigger }) {
             <span className="text-blue-600">{invitedCount} invited</span>
             <span className="text-green-600">{acceptedCount} accepted</span>
             {selectedForDeletion.size > 0 && (
-              <button
-                onClick={handleDeleteSelected}
-                disabled={isDeleting}
-                className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 disabled:opacity-50"
-              >
-                {isDeleting ? 'Deleting...' : `Delete Selected (${selectedForDeletion.size})`}
-              </button>
+              <>
+                <button
+                  onClick={handleOpenEmailModal}
+                  className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                >
+                  ✉️ Email Selected ({selectedForDeletion.size})
+                </button>
+                <button
+                  onClick={handleDeleteSelected}
+                  disabled={isDeleting}
+                  className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 disabled:opacity-50"
+                >
+                  {isDeleting ? 'Deleting...' : `Delete Selected (${selectedForDeletion.size})`}
+                </button>
+              </>
             )}
           </div>
         </div>
       </Card>
+
+      {/* Email Settings (collapsible) */}
+      <EmailSettingsPanel />
 
       {/* Proposals with Candidates */}
       {proposals.map((proposal) => {
@@ -1929,6 +1993,17 @@ function MyCandidatesTab({ refreshTrigger }) {
           </Card>
         );
       })}
+
+      {/* Email Generator Modal */}
+      {showEmailModal && (
+        <EmailGeneratorModal
+          isOpen={showEmailModal}
+          onClose={() => setShowEmailModal(false)}
+          candidates={emailModalData.candidates}
+          proposalInfo={emailModalData.proposalInfo}
+          claudeApiKey={claudeApiKey}
+        />
+      )}
     </div>
   );
 }
@@ -2046,7 +2121,7 @@ export default function ReviewerFinderPage() {
         {/* Tab Content */}
         <div className="min-h-[400px]">
           {activeTab === 'search' && <NewSearchTab apiKey={apiKey} apiSettings={apiSettings} onCandidatesSaved={handleCandidatesSaved} />}
-          {activeTab === 'candidates' && <MyCandidatesTab refreshTrigger={myCandidatesRefresh} />}
+          {activeTab === 'candidates' && <MyCandidatesTab refreshTrigger={myCandidatesRefresh} claudeApiKey={apiKey} />}
           {activeTab === 'database' && <DatabaseTab />}
         </div>
       </div>
