@@ -1510,14 +1510,18 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
                 </>
               )}
               {enrichmentResults && (
-                <Button variant="primary" onClick={() => {
+                <Button variant="primary" onClick={async () => {
                   // Apply enrichment results to candidates before closing
                   applyEnrichmentResults(enrichmentResults);
+
+                  // Also save to My Candidates
+                  await handleSaveCandidates();
+
                   setShowEnrichmentModal(false);
                   setEnrichmentResults(null);
                   setEnrichmentProgress(null);
                 }}>
-                  Save & Close
+                  Save to My Candidates
                 </Button>
               )}
             </div>
