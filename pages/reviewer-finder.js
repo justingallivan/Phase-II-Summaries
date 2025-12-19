@@ -641,9 +641,32 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
   };
 
   // Save candidates to database
-  const handleSaveCandidates = async () => {
-    const selected = getSelectedCandidateObjects();
+  // Optional enrichmentData parameter allows saving with freshly enriched contact info
+  const handleSaveCandidates = async (enrichmentData = null) => {
+    let selected = getSelectedCandidateObjects();
     if (selected.length === 0) return;
+
+    // If enrichment data is provided, merge it into candidates before saving
+    if (enrichmentData?.results) {
+      const enrichedMap = new Map();
+      enrichmentData.results.forEach(result => {
+        enrichedMap.set(result.name, result.contactEnrichment);
+      });
+
+      selected = selected.map(candidate => {
+        const enrichment = enrichedMap.get(candidate.name);
+        if (enrichment) {
+          return {
+            ...candidate,
+            contactEnrichment: enrichment,
+            // Also set top-level email/website for database storage
+            email: enrichment.email || candidate.email,
+            website: enrichment.website || candidate.website
+          };
+        }
+        return candidate;
+      });
+    }
 
     setIsSaving(true);
     setSaveMessage(null);
@@ -1511,11 +1534,11 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
               )}
               {enrichmentResults && (
                 <Button variant="primary" onClick={async () => {
-                  // Apply enrichment results to candidates before closing
+                  // Apply enrichment results to candidates display
                   applyEnrichmentResults(enrichmentResults);
 
-                  // Also save to My Candidates
-                  await handleSaveCandidates();
+                  // Save to My Candidates with enrichment data
+                  await handleSaveCandidates(enrichmentResults);
 
                   setShowEnrichmentModal(false);
                   setEnrichmentResults(null);

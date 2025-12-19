@@ -37,6 +37,10 @@ export default async function handler(req, res) {
           .replace(/\s+/g, ' ')
           .trim();
 
+        // Extract email and website from candidate or contactEnrichment
+        const candidateEmail = candidate.email || candidate.contactEnrichment?.email || null;
+        const candidateWebsite = candidate.website || candidate.contactEnrichment?.website || null;
+
         // Check if researcher exists
         let researcherResult = await sql`
           SELECT id FROM researchers
@@ -48,13 +52,27 @@ export default async function handler(req, res) {
 
         if (researcherResult.rows.length > 0) {
           researcherId = researcherResult.rows[0].id;
+
+          // Update email/website if we have new info
+          if (candidateEmail || candidateWebsite) {
+            await sql`
+              UPDATE researchers
+              SET
+                email = COALESCE(${candidateEmail}, email),
+                website = COALESCE(${candidateWebsite}, website),
+                last_updated = CURRENT_TIMESTAMP
+              WHERE id = ${researcherId}
+            `;
+          }
         } else {
-          // Create new researcher
+          // Create new researcher with email/website
           const insertResult = await sql`
             INSERT INTO researchers (
               name,
               normalized_name,
               primary_affiliation,
+              email,
+              website,
               h_index,
               total_citations
             )
@@ -62,6 +80,8 @@ export default async function handler(req, res) {
               ${candidate.name},
               ${normalizedName},
               ${candidate.affiliation || null},
+              ${candidateEmail},
+              ${candidateWebsite},
               ${candidate.hIndex || null},
               ${candidate.totalCitations || null}
             )
