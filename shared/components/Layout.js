@@ -19,8 +19,6 @@ export default function Layout({
     { name: 'Batch Phase II', href: '/batch-proposal-summaries', icon: '📚' },
     { name: 'Batch Phase I', href: '/batch-phase-i-summaries', icon: '📑' },
     { name: 'Reviewer Finder', href: '/reviewer-finder', icon: '🎯' },
-    { name: 'Find Reviewers', href: '/find-reviewers', icon: '🔎' },
-    { name: 'Reviewers Pro', href: '/find-reviewers-pro', icon: '🔬' },
     { name: 'Peer Review Summary', href: '/peer-review-summarizer', icon: '📝' },
     { name: 'Expense Reporter', href: '/expense-reporter', icon: '💰' },
     { name: 'Funding Gap Analyzer', href: '/funding-gap-analyzer', icon: '💵' },
