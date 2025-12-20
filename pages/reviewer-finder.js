@@ -374,8 +374,20 @@ function CandidateCard({ candidate, selected, onSelect }) {
 }
 
 // New Search Tab content
-function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
-  const [uploadedFiles, setUploadedFiles] = useState([]);
+function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, setSearchState }) {
+  // Use lifted state from parent (persists across tab switches)
+  const { uploadedFiles, analysisResult, discoveryResult, selectedCandidates } = searchState;
+
+  // Helper to update lifted state
+  const setUploadedFiles = (files) => setSearchState(prev => ({ ...prev, uploadedFiles: files }));
+  const setAnalysisResult = (result) => setSearchState(prev => ({ ...prev, analysisResult: result }));
+  const setDiscoveryResult = (result) => setSearchState(prev => ({ ...prev, discoveryResult: result }));
+  const setSelectedCandidates = (candidates) => setSearchState(prev => ({
+    ...prev,
+    selectedCandidates: typeof candidates === 'function' ? candidates(prev.selectedCandidates) : candidates
+  }));
+
+  // Local state (OK to reset on tab switch)
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [excludedNames, setExcludedNames] = useState('');
   const [temperature, setTemperature] = useState(0.3); // Default: conservative, predictable
@@ -390,9 +402,6 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved }) {
   const [isSaving, setIsSaving] = useState(false);
   const [currentStage, setCurrentStage] = useState(null);
   const [progressMessages, setProgressMessages] = useState([]);
-  const [analysisResult, setAnalysisResult] = useState(null);
-  const [discoveryResult, setDiscoveryResult] = useState(null);
-  const [selectedCandidates, setSelectedCandidates] = useState(new Set());
   const [error, setError] = useState(null);
   const [saveMessage, setSaveMessage] = useState(null);
 
@@ -2066,6 +2075,14 @@ export default function ReviewerFinderPage() {
     ncbiApiKey: '',
   });
 
+  // Lifted state from NewSearchTab to persist across tab switches
+  const [searchState, setSearchState] = useState({
+    uploadedFiles: [],
+    analysisResult: null,
+    discoveryResult: null,
+    selectedCandidates: new Set(),
+  });
+
   // Load API key from localStorage
   useEffect(() => {
     const savedKey = localStorage.getItem('claudeApiKey');
@@ -2147,7 +2164,7 @@ export default function ReviewerFinderPage() {
 
         {/* Tab Content */}
         <div className="min-h-[400px]">
-          {activeTab === 'search' && <NewSearchTab apiKey={apiKey} apiSettings={apiSettings} onCandidatesSaved={handleCandidatesSaved} />}
+          {activeTab === 'search' && <NewSearchTab apiKey={apiKey} apiSettings={apiSettings} onCandidatesSaved={handleCandidatesSaved} searchState={searchState} setSearchState={setSearchState} />}
           {activeTab === 'candidates' && <MyCandidatesTab refreshTrigger={myCandidatesRefresh} claudeApiKey={apiKey} />}
           {activeTab === 'database' && <DatabaseTab />}
         </div>
