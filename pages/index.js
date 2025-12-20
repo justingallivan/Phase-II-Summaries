@@ -58,24 +58,6 @@ const apps = [
     path: '/reviewer-finder'
   },
   {
-    id: 'find-reviewers',
-    title: 'Find Reviewers (Classic)',
-    description: 'Identify and match expert reviewers for grant proposals based on expertise and research areas',
-    icon: '🔎',
-    status: 'active',
-    features: ['Expert Matching', 'Research Area Analysis', 'Reviewer Profiles', 'Conflict Detection'],
-    path: '/find-reviewers'
-  },
-  {
-    id: 'find-reviewers-pro',
-    title: 'Find Reviewers Pro (Beta)',
-    description: 'Search academic databases (PubMed, ArXiv, BioRxiv, Google Scholar) to find expert reviewers with real publication data',
-    icon: '🔬',
-    status: 'active',
-    features: ['Multi-Source Search', 'h-Index Ranking', 'Publication History', 'Smart Deduplication'],
-    path: '/find-reviewers-pro'
-  },
-  {
     id: 'peer-review-summarizer',
     title: 'Summarize Peer Reviews',
     description: 'Synthesize and analyze peer review feedback with actionable insights and recommendations',
