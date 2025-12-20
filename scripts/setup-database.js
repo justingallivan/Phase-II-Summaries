@@ -201,6 +201,60 @@ const v4Alterations = [
   `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS proposal_institution TEXT`,
 ];
 
+// V5 data migration: merge duplicate proposals based on title
+async function mergeDuplicateProposals() {
+  console.log('\nChecking for duplicate proposals to merge...');
+
+  // Find proposals with duplicate titles
+  const duplicates = await sql`
+    SELECT proposal_title, array_agg(DISTINCT proposal_id) as proposal_ids, COUNT(DISTINCT proposal_id) as count
+    FROM reviewer_suggestions
+    WHERE proposal_title IS NOT NULL
+    GROUP BY proposal_title
+    HAVING COUNT(DISTINCT proposal_id) > 1
+  `;
+
+  if (duplicates.rows.length === 0) {
+    console.log('  No duplicate proposals found.');
+    return;
+  }
+
+  console.log(`  Found ${duplicates.rows.length} proposal(s) with duplicate entries.`);
+
+  for (const row of duplicates.rows) {
+    const title = row.proposal_title;
+    const proposalIds = row.proposal_ids;
+
+    // Generate canonical proposal ID from title
+    const canonicalId = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 50);
+
+    console.log(`  Merging ${proposalIds.length} entries for: "${title.substring(0, 40)}..."`);
+    console.log(`    New ID: ${canonicalId}`);
+
+    // First, delete duplicate researcher entries for the same title
+    // Keep only the most recent entry for each researcher
+    await sql`
+      DELETE FROM reviewer_suggestions
+      WHERE id NOT IN (
+        SELECT DISTINCT ON (researcher_id) id
+        FROM reviewer_suggestions
+        WHERE proposal_title = ${title}
+        ORDER BY researcher_id, suggested_at DESC
+      )
+      AND proposal_title = ${title}
+    `;
+
+    // Now update all remaining entries to use the canonical ID
+    await sql`
+      UPDATE reviewer_suggestions
+      SET proposal_id = ${canonicalId}
+      WHERE proposal_title = ${title}
+    `;
+  }
+
+  console.log('  Duplicate proposals merged successfully.');
+}
+
 async function runMigration() {
   try {
     console.log('Starting database migration for Expert Reviewer Finder v2...');
@@ -280,6 +334,9 @@ async function runMigration() {
         }
       }
     }
+
+    // Run V5 data migration (merge duplicate proposals)
+    await mergeDuplicateProposals();
 
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
