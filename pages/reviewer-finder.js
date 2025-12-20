@@ -2328,11 +2328,11 @@ export default function ReviewerFinderPage() {
 
   return (
     <Layout
-      title="Expert Reviewer Finder"
+      title="Reviewer Finder"
       description="Find qualified peer reviewers using AI analysis and academic database verification"
     >
       <PageHeader
-        title="Expert Reviewer Finder"
+        title="Reviewer Finder"
         subtitle="Combine Claude's analytical reasoning with real database verification to find qualified reviewers"
         icon="🎯"
       />
