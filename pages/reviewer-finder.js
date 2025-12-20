@@ -2117,7 +2117,7 @@ export default function ReviewerFinderPage() {
   };
 
   const tabs = [
-    { id: 'search', label: 'New Search', icon: '🔍' },
+    { id: 'search', label: 'Search', icon: '🔍' },
     { id: 'candidates', label: 'My Candidates', icon: '📋' },
     { id: 'database', label: 'Database', icon: '🗄️' }
   ];
