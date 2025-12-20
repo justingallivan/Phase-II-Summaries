@@ -13,7 +13,6 @@ export default function Layout({
 
   const navigationItems = [
     { name: 'Home', href: '/', icon: '🏠' },
-    { name: 'Document Analyzer', href: '/document-analyzer', icon: '🔍' },
     { name: 'Phase II Writeup', href: '/proposal-summarizer', icon: '🔬' },
     { name: 'Phase I Writeup', href: '/phase-i-writeup', icon: '✍️' },
     { name: 'Batch Phase II', href: '/batch-proposal-summaries', icon: '📚' },

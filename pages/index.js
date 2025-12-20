@@ -4,15 +4,6 @@ import Link from 'next/link';
 
 const apps = [
   {
-    id: 'document-analyzer',
-    title: 'Document Analyzer',
-    description: 'Comprehensive AI-powered document analysis with insights, themes, and structured data extraction',
-    icon: '🔍',
-    status: 'active',
-    features: ['AI Analysis', 'Theme Extraction', 'Structured Data', 'Multi-Format Export'],
-    path: '/document-analyzer'
-  },
-  {
     id: 'proposal-summarizer',
     title: 'Create Phase II Writeup Draft',
     description: 'Generate standardized writeup drafts from PDF research proposals using Claude AI',
