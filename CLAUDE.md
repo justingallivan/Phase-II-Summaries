@@ -40,14 +40,35 @@ A multi-application document processing system using Claude AI for grant-related
 
 ## Applications
 
-| App | Page | API Endpoint | Description |
-|-----|------|--------------|-------------|
-| Batch Proposal Summaries | `batch-proposal-summaries.js` | `/api/process` | Batch document summarization with configurable length/level |
-| Expert Reviewer Finder v2 | `reviewer-finder.js` | `/api/reviewer-finder/*` | AI + database search for expert reviewers with contact enrichment |
-| Funding Gap Analyzer | `funding-gap-analyzer.js` | `/api/analyze-funding-gap` | NSF API integration for federal funding analysis |
-| Expense Reporter | `expense-reporter.js` | `/api/process-expenses` | Receipt/invoice processing with CSV export |
-| Find Reviewers (Legacy) | `find-reviewers.js` | `/api/find-reviewers` | Original Claude-only reviewer finder |
-| Find Reviewers Pro | `find-reviewers-pro.js` | `/api/search-reviewers-pro` | Multi-database academic search |
+| App | Page | API Endpoint | Status | Description |
+|-----|------|--------------|--------|-------------|
+| **Expert Reviewer Finder v2** | `reviewer-finder.js` | `/api/reviewer-finder/*` | **Production Ready** | AI + database search for expert reviewers with contact enrichment and email generation |
+| Batch Proposal Summaries | `batch-proposal-summaries.js` | `/api/process` | Stable | Batch document summarization with configurable length/level |
+| Funding Gap Analyzer | `funding-gap-analyzer.js` | `/api/analyze-funding-gap` | Stable | NSF API integration for federal funding analysis |
+| Expense Reporter | `expense-reporter.js` | `/api/process-expenses` | Stable | Receipt/invoice processing with CSV export |
+| Find Reviewers (Legacy) | `find-reviewers.js` | `/api/find-reviewers` | Deprecated | Original Claude-only reviewer finder (superseded by v2) |
+| Find Reviewers Pro | `find-reviewers-pro.js` | `/api/search-reviewers-pro` | Deprecated | Multi-database academic search (merged into v2) |
+
+### Expert Reviewer Finder v2 - Feature Summary
+
+The flagship application. Complete pipeline for finding and contacting expert reviewers:
+
+**Core Pipeline:**
+1. **Claude Analysis** - Extract proposal metadata (title, abstract, PI, institution) and suggest reviewers
+2. **Database Discovery** - Search 4 academic databases: PubMed, ArXiv, BioRxiv, ChemRxiv
+3. **Contact Enrichment** - 5-tier system to find email addresses and faculty pages
+4. **Email Generation** - Create .eml invitation files with optional AI personalization
+
+**Key Features:**
+- Institution/expertise mismatch warnings
+- Google Scholar profile links for all candidates
+- PI/author self-suggestion prevention
+- Claude retry logic with Haiku fallback on rate limits
+- Temperature control (0.3-1.0) and configurable reviewer count
+- Save candidates to database with edit capability
+- Multi-select operations (save, delete, email)
+
+**Roadmap:** See [ROADMAP_DATABASE_TAB.md](./ROADMAP_DATABASE_TAB.md) for next planned feature.
 
 ## Tech Stack
 
@@ -105,12 +126,17 @@ Located in `shared/components/`:
 ### Service Classes
 
 Located in `lib/services/`:
-- `claude-reviewer-service.js` - Claude API with retry/fallback
-- `pubmed-service.js` - NCBI E-utilities
-- `orcid-service.js` - ORCID API
-- `discovery-service.js` - Reviewer verification logic
-- `contact-enrichment-service.js` - Multi-tier contact lookup
+- `claude-reviewer-service.js` - Claude API with retry/fallback to Haiku
+- `discovery-service.js` - Multi-database search orchestration
+- `deduplication-service.js` - Name matching, COI filtering, PI exclusion
+- `contact-enrichment-service.js` - 5-tier contact lookup
 - `database-service.js` - Vercel Postgres operations
+- `pubmed-service.js` - NCBI E-utilities API
+- `arxiv-service.js` - ArXiv Atom feed API
+- `biorxiv-service.js` - BioRxiv API
+- `chemrxiv-service.js` - ChemRxiv Public API
+- `orcid-service.js` - ORCID API
+- `serp-contact-service.js` - Google/Scholar search via SerpAPI
 
 ## API Endpoints
 
@@ -120,11 +146,14 @@ Located in `lib/services/`:
 - `POST /api/refine` - Summary refinement
 
 ### Expert Reviewer Finder v2
-- `POST /api/reviewer-finder/analyze` - Extract proposal metadata
+- `POST /api/reviewer-finder/analyze` - Extract proposal metadata and abstract
 - `POST /api/reviewer-finder/discover` - Find and verify candidates (streaming)
-- `POST /api/reviewer-finder/save-candidates` - Save to database
+- `POST /api/reviewer-finder/save-candidates` - Save candidates to database
 - `GET /api/reviewer-finder/my-candidates` - Retrieve saved candidates
+- `PATCH /api/reviewer-finder/my-candidates` - Update candidate info (invited, notes, researcher fields)
+- `DELETE /api/reviewer-finder/my-candidates` - Delete candidates
 - `POST /api/reviewer-finder/enrich-contacts` - Contact lookup (streaming)
+- `POST /api/reviewer-finder/generate-emails` - Generate .eml invitation files (streaming)
 
 ### Other
 - `POST /api/analyze-funding-gap` - Federal funding analysis (streaming)
@@ -147,4 +176,4 @@ For detailed session-by-session development history, see [DEVELOPMENT_LOG.md](./
 
 ---
 
-Last Updated: December 16, 2025
+Last Updated: December 20, 2025

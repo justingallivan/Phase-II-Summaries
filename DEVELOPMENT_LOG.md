@@ -751,4 +751,47 @@ Added comprehensive logging to all four database search methods to help debug wh
 
 ---
 
-Last Updated: December 19, 2025
+## December 20, 2025 - Expert Reviewer Finder v2 Session 18
+
+**Documentation & Planning Session**
+
+With the Expert Reviewer Finder v2 now stable and production-ready, this session focused on documentation updates and planning the next major feature.
+
+### Documentation Updates
+
+1. **Created `ROADMAP_DATABASE_TAB.md`**
+   - Detailed implementation plan for the Database Tab feature
+   - 4-phase approach: Browse/Search → Details → Management → Advanced
+   - API endpoint design and UI mockup
+   - File changes outlined
+
+2. **Updated `CLAUDE.md`**
+   - Added application status column (Production Ready, Stable, Deprecated)
+   - Added Expert Reviewer Finder v2 feature summary section
+   - Updated service classes list (added ChemRxiv, deduplication, etc.)
+   - Updated API endpoints (added PATCH, DELETE, generate-emails)
+   - Marked legacy reviewer apps as deprecated
+   - Added roadmap link
+
+3. **Updated `DEVELOPMENT_LOG.md`**
+   - Session 18 summary (this entry)
+
+### Expert Reviewer Finder v2 - Current State
+
+The application is now feature-complete for the core workflow:
+
+**Working Features:**
+- PDF upload → Claude analysis → 4-database search → Results display
+- Contact enrichment (5 tiers: affiliation, PubMed, ORCID, Claude Web, SerpAPI)
+- Email generation with .eml files and optional AI personalization
+- Save/edit/delete candidates in database
+- Multi-select operations
+- Search results persist across tab switches
+
+**Next Priority: Database Tab Implementation**
+
+See `ROADMAP_DATABASE_TAB.md` for detailed plan to browse/search all researchers in the database independent of proposals.
+
+---
+
+Last Updated: December 20, 2025
