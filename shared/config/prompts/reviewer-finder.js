@@ -109,6 +109,10 @@ BIORXIV_QUERIES:
 1. [query focused on experimental biology/preprints]
 2. [second query]
 
+CHEMRXIV_QUERIES:
+1. [query focused on chemistry/chemical research preprints]
+2. [second query]
+
 ---
 
 Now analyze the proposal and provide all three parts:`;
@@ -161,7 +165,7 @@ export function parseAnalysisResponse(response) {
     return {
       proposalInfo: {},
       reviewerSuggestions: [],
-      searchQueries: { pubmed: [], arxiv: [], biorxiv: [] }
+      searchQueries: { pubmed: [], arxiv: [], biorxiv: [], chemrxiv: [] }
     };
   }
 
@@ -171,7 +175,8 @@ export function parseAnalysisResponse(response) {
     searchQueries: {
       pubmed: [],
       arxiv: [],
-      biorxiv: []
+      biorxiv: [],
+      chemrxiv: []
     }
   };
 
@@ -248,7 +253,7 @@ export function parseAnalysisResponse(response) {
 
   // Parse search queries
   const parseQueries = (section, key) => {
-    const sectionRegex = new RegExp(`${section}:([\\s\\S]*?)(?=(?:ARXIV_QUERIES|BIORXIV_QUERIES|$))`, 'i');
+    const sectionRegex = new RegExp(`${section}:([\\s\\S]*?)(?=(?:ARXIV_QUERIES|BIORXIV_QUERIES|CHEMRXIV_QUERIES|---|$))`, 'i');
     const sectionMatch = response.match(sectionRegex);
     if (sectionMatch) {
       const lines = sectionMatch[1].split('\n');
@@ -264,6 +269,7 @@ export function parseAnalysisResponse(response) {
   parseQueries('PUBMED_QUERIES', 'pubmed');
   parseQueries('ARXIV_QUERIES', 'arxiv');
   parseQueries('BIORXIV_QUERIES', 'biorxiv');
+  parseQueries('CHEMRXIV_QUERIES', 'chemrxiv');
 
   return result;
 }
@@ -351,7 +357,8 @@ export function validateAnalysisResult(result) {
   const allQueries = [
     ...result.searchQueries?.pubmed || [],
     ...result.searchQueries?.arxiv || [],
-    ...result.searchQueries?.biorxiv || []
+    ...result.searchQueries?.biorxiv || [],
+    ...result.searchQueries?.chemrxiv || []
   ];
 
   if (allQueries.length === 0) {

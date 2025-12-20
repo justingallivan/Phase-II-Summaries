@@ -404,7 +404,8 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
   const [searchSources, setSearchSources] = useState({
     pubmed: true,
     arxiv: true,
-    biorxiv: true
+    biorxiv: true,
+    chemrxiv: true
   });
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -548,6 +549,7 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
             searchPubmed: searchSources.pubmed,
             searchArxiv: searchSources.arxiv,
             searchBiorxiv: searchSources.biorxiv,
+            searchChemrxiv: searchSources.chemrxiv,
             generateReasoning: true
           }
         })
@@ -965,8 +967,8 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Search Sources
             </label>
-            <div className="flex gap-4">
-              {['pubmed', 'arxiv', 'biorxiv'].map((source) => (
+            <div className="flex gap-4 flex-wrap">
+              {['pubmed', 'arxiv', 'biorxiv', 'chemrxiv'].map((source) => (
                 <label key={source} className="flex items-center gap-2">
                   <input
                     type="checkbox"

@@ -60,6 +60,7 @@ export default async function handler(req, res) {
       searchPubmed = true,
       searchArxiv = true,
       searchBiorxiv = true,
+      searchChemrxiv = true,
       generateReasoning = true
     } = options;
 
@@ -82,7 +83,7 @@ export default async function handler(req, res) {
     sendEvent('progress', {
       stage: 'discovery',
       message: 'Starting database discovery...',
-      options: { searchPubmed, searchArxiv, searchBiorxiv }
+      options: { searchPubmed, searchArxiv, searchBiorxiv, searchChemrxiv }
     });
 
     // Import discovery service
@@ -93,6 +94,7 @@ export default async function handler(req, res) {
       searchPubmed,
       searchArxiv,
       searchBiorxiv,
+      searchChemrxiv,
       onProgress: (progress) => {
         sendEvent('progress', progress);
       }
