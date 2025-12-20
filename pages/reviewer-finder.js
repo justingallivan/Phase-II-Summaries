@@ -967,17 +967,27 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Search Sources
             </label>
-            <div className="flex gap-4 flex-wrap">
-              {['pubmed', 'arxiv', 'biorxiv', 'chemrxiv'].map((source) => (
-                <label key={source} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={searchSources[source]}
-                    onChange={(e) => setSearchSources(prev => ({ ...prev, [source]: e.target.checked }))}
-                    className="h-4 w-4 text-blue-600 rounded border-gray-300"
-                  />
-                  <span className="text-sm text-gray-700 capitalize">{source}</span>
-                </label>
+            <div className="flex gap-3 flex-wrap">
+              {[
+                { key: 'pubmed', label: 'PubMed', icon: '📚', desc: 'Biomedical literature' },
+                { key: 'arxiv', label: 'ArXiv', icon: '📄', desc: 'Physics, math, CS' },
+                { key: 'biorxiv', label: 'BioRxiv', icon: '🧬', desc: 'Life sciences' },
+                { key: 'chemrxiv', label: 'ChemRxiv', icon: '🧪', desc: 'Chemistry' },
+              ].map(({ key, label, icon, desc }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSearchSources(prev => ({ ...prev, [key]: !prev[key] }))}
+                  className={`px-3 py-2 rounded-lg border transition-all flex flex-col items-center min-w-[90px] ${
+                    searchSources[key]
+                      ? 'bg-blue-50 border-blue-300 text-blue-700'
+                      : 'bg-gray-50 border-gray-200 text-gray-400'
+                  }`}
+                >
+                  <span className="text-lg">{icon}</span>
+                  <span className="font-medium text-sm">{label}</span>
+                  <span className="text-xs opacity-75">{desc}</span>
+                </button>
               ))}
             </div>
           </div>
