@@ -100,34 +100,91 @@ async function handleGet(req, res) {
 
 async function handlePatch(req, res) {
   try {
-    const { suggestionId, invited, accepted, notes } = req.body;
+    const {
+      suggestionId,
+      // Suggestion fields (existing)
+      invited,
+      accepted,
+      notes,
+      // Researcher fields (new)
+      name,
+      affiliation,
+      email,
+      website,
+      hIndex
+    } = req.body;
 
     if (!suggestionId) {
       return res.status(400).json({ error: 'suggestionId is required' });
     }
 
-    // Build dynamic update query
-    const updates = [];
-    const values = [];
+    // Check if we have any researcher fields to update
+    const hasResearcherFields = name !== undefined || affiliation !== undefined ||
+      email !== undefined || website !== undefined || hIndex !== undefined;
 
-    if (invited !== undefined) {
-      updates.push('invited');
-      values.push(invited);
-    }
-    if (accepted !== undefined) {
-      updates.push('accepted');
-      values.push(accepted);
-    }
-    if (notes !== undefined) {
-      updates.push('notes');
-      values.push(notes);
-    }
+    // Check if we have any suggestion fields to update
+    const hasSuggestionFields = invited !== undefined || accepted !== undefined || notes !== undefined;
 
-    if (updates.length === 0) {
+    if (!hasResearcherFields && !hasSuggestionFields) {
       return res.status(400).json({ error: 'No fields to update' });
     }
 
-    // Use separate update statements for each field to avoid dynamic SQL issues
+    let researcherId = null;
+
+    // If updating researcher fields, get the researcherId first
+    if (hasResearcherFields) {
+      const suggestionResult = await sql`
+        SELECT researcher_id FROM reviewer_suggestions WHERE id = ${suggestionId}
+      `;
+
+      if (suggestionResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Suggestion not found' });
+      }
+
+      researcherId = suggestionResult.rows[0].researcher_id;
+
+      // Update researcher fields
+      if (name !== undefined) {
+        await sql`
+          UPDATE researchers
+          SET name = ${name}, normalized_name = ${name.toLowerCase()}
+          WHERE id = ${researcherId}
+        `;
+      }
+      if (affiliation !== undefined) {
+        await sql`
+          UPDATE researchers
+          SET primary_affiliation = ${affiliation}
+          WHERE id = ${researcherId}
+        `;
+      }
+      if (email !== undefined) {
+        // When email is manually edited, track the source as 'manual'
+        await sql`
+          UPDATE researchers
+          SET email = ${email || null},
+              email_source = 'manual',
+              contact_enriched_at = NOW()
+          WHERE id = ${researcherId}
+        `;
+      }
+      if (website !== undefined) {
+        await sql`
+          UPDATE researchers
+          SET website = ${website || null}
+          WHERE id = ${researcherId}
+        `;
+      }
+      if (hIndex !== undefined) {
+        await sql`
+          UPDATE researchers
+          SET h_index = ${hIndex}
+          WHERE id = ${researcherId}
+        `;
+      }
+    }
+
+    // Update suggestion fields (existing logic)
     if (invited !== undefined) {
       await sql`
         UPDATE reviewer_suggestions
@@ -152,7 +209,21 @@ async function handlePatch(req, res) {
 
     return res.status(200).json({
       success: true,
-      message: 'Candidate updated'
+      message: 'Candidate updated',
+      updated: {
+        suggestionId,
+        researcherId,
+        fields: {
+          ...(name !== undefined && { name }),
+          ...(affiliation !== undefined && { affiliation }),
+          ...(email !== undefined && { email }),
+          ...(website !== undefined && { website }),
+          ...(hIndex !== undefined && { hIndex }),
+          ...(invited !== undefined && { invited }),
+          ...(accepted !== undefined && { accepted }),
+          ...(notes !== undefined && { notes })
+        }
+      }
     });
   } catch (error) {
     console.error('Update candidate error:', error);

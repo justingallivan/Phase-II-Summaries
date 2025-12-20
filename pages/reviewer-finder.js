@@ -1573,8 +1573,180 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
   );
 }
 
+// Edit Candidate Modal
+function EditCandidateModal({ isOpen, candidate, onClose, onSave }) {
+  const [formData, setFormData] = useState({
+    name: '',
+    affiliation: '',
+    email: '',
+    website: '',
+    hIndex: ''
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Reset form when candidate changes
+  useEffect(() => {
+    if (candidate) {
+      setFormData({
+        name: candidate.name || '',
+        affiliation: candidate.affiliation || '',
+        email: candidate.email || '',
+        website: candidate.website || '',
+        hIndex: candidate.hIndex || ''
+      });
+      setError(null);
+    }
+  }, [candidate]);
+
+  if (!isOpen || !candidate) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      // Build update payload with only changed fields
+      const updates = {};
+      if (formData.name !== candidate.name) updates.name = formData.name;
+      if (formData.affiliation !== candidate.affiliation) updates.affiliation = formData.affiliation;
+      if (formData.email !== (candidate.email || '')) updates.email = formData.email;
+      if (formData.website !== (candidate.website || '')) updates.website = formData.website;
+      if (formData.hIndex !== (candidate.hIndex || '')) {
+        updates.hIndex = formData.hIndex ? parseInt(formData.hIndex, 10) : null;
+      }
+
+      if (Object.keys(updates).length === 0) {
+        onClose();
+        return;
+      }
+
+      const response = await fetch('/api/reviewer-finder/my-candidates', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          suggestionId: candidate.suggestionId,
+          ...updates
+        })
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to update candidate');
+      }
+
+      // Call parent callback with updated data
+      await onSave(candidate.suggestionId, updates);
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <h3 className="font-semibold text-gray-900">Edit Candidate</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            ✕
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Affiliation</label>
+            <input
+              type="text"
+              value={formData.affiliation}
+              onChange={(e) => setFormData({ ...formData, affiliation: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              placeholder="researcher@university.edu"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
+            <input
+              type="url"
+              value={formData.website}
+              onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              placeholder="https://..."
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">h-index</label>
+            <input
+              type="number"
+              value={formData.hIndex}
+              onChange={(e) => setFormData({ ...formData, hIndex: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              min="0"
+              placeholder="e.g., 25"
+            />
+          </div>
+
+          <p className="text-xs text-gray-500">
+            Changes apply to all proposals containing this researcher.
+          </p>
+
+          {error && (
+            <p className="text-sm text-red-600">{error}</p>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isSaving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // Saved Candidate Card (simpler than search results)
-function SavedCandidateCard({ candidate, onUpdate, onRemove, isSelectedForDeletion, onToggleSelection }) {
+function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedForDeletion, onToggleSelection }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [notes, setNotes] = useState(candidate.notes || '');
   const [isSavingNotes, setIsSavingNotes] = useState(false);
@@ -1678,6 +1850,13 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, isSelectedForDeleti
             {candidate.accepted ? '✓ Accepted' : 'Accepted'}
           </button>
           <button
+            onClick={() => onEdit(candidate)}
+            className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-500 hover:bg-blue-100 hover:text-blue-600"
+            title="Edit candidate info"
+          >
+            ✏️
+          </button>
+          <button
             onClick={() => onRemove(candidate.suggestionId)}
             className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-500 hover:bg-red-100 hover:text-red-600"
             title="Remove from list"
@@ -1770,6 +1949,7 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailModalData, setEmailModalData] = useState({ candidates: [], proposalInfo: {} });
+  const [editingCandidate, setEditingCandidate] = useState(null);
 
   const fetchCandidates = async () => {
     setIsLoading(true);
@@ -2030,6 +2210,7 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
                   candidate={candidate}
                   onUpdate={handleUpdateCandidate}
                   onRemove={handleRemoveCandidate}
+                  onEdit={setEditingCandidate}
                   isSelectedForDeletion={selectedForDeletion.has(candidate.suggestionId)}
                   onToggleSelection={() => handleToggleSelection(candidate.suggestionId)}
                 />
@@ -2049,6 +2230,17 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
           claudeApiKey={claudeApiKey}
         />
       )}
+
+      {/* Edit Candidate Modal */}
+      <EditCandidateModal
+        isOpen={!!editingCandidate}
+        candidate={editingCandidate}
+        onClose={() => setEditingCandidate(null)}
+        onSave={async (suggestionId, updates) => {
+          // Refresh to get updated data from database
+          await fetchCandidates();
+        }}
+      />
     </div>
   );
 }
