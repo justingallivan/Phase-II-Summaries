@@ -647,4 +647,108 @@ const candidateWebsite = candidate.website || candidate.contactEnrichment?.websi
 
 ---
 
+## December 19, 2025 - Expert Reviewer Finder v2 Session 17
+
+**Features Implemented & Bugs Fixed**
+
+### 1. Google Scholar Profiles API Deprecation Fix (`16af684`)
+
+The `google_scholar_profiles` SerpAPI engine has been deprecated and returns errors. Fixed by removing the deprecated API call and using the existing Google search fallback directly.
+
+**File Modified:**
+- `lib/services/serp-contact-service.js` - `findScholarProfile()` now calls `findScholarProfileViaGoogle()` directly
+
+### 2. Edit Saved Candidates Feature (`8b92201`)
+
+Added ability to edit researcher information for saved candidates in the My Candidates tab. Edits update the shared `researchers` table, affecting all proposals that include that researcher.
+
+**Editable Fields:**
+- Name, Affiliation, Email, Website, h-index
+
+**Files Modified:**
+- `pages/api/reviewer-finder/my-candidates.js` - Extended PATCH handler to update researchers table
+- `pages/reviewer-finder.js` - Added `EditCandidateModal` component and edit button on `SavedCandidateCard`
+
+**API Changes:**
+```javascript
+// Extended PATCH /api/reviewer-finder/my-candidates
+{
+  suggestionId: number,
+  // Existing fields
+  invited?: boolean,
+  accepted?: boolean,
+  notes?: string,
+  // NEW: researcher fields
+  name?: string,
+  affiliation?: string,
+  email?: string,
+  website?: string,
+  hIndex?: number
+}
+```
+
+When email is edited, `email_source` is set to `'manual'` and `contact_enriched_at` is updated.
+
+### 3. PI/Author Self-Suggestion Bug Fix (`3b9fbaf`)
+
+Fixed issue where proposal authors (PI and co-PIs) were being suggested as reviewers for their own proposals.
+
+**Implementation:**
+- Added `filterProposalAuthors()` to `DeduplicationService` with fuzzy name matching via `areNamesSimilar()`
+- Uses 85% string similarity threshold + initials matching
+- Applied filter in `discover.js` to both verified and discovered candidates
+
+**Files Modified:**
+- `lib/services/deduplication-service.js` - Added `filterProposalAuthors()` and `areNamesSimilar()` methods
+- `pages/api/reviewer-finder/discover.js` - Applied PI/author filter to both tracks
+
+### 4. ChemRxiv Integration (`a01b7e4`, `1e18d24`)
+
+Added ChemRxiv (chemistry preprints) as a new database search source alongside PubMed, ArXiv, and BioRxiv.
+
+**Files Created:**
+- `lib/services/chemrxiv-service.js` - Complete ChemRxiv Public API v1 integration
+  - Base URL: `https://chemrxiv.org/engage/chemrxiv/public-api/v1`
+  - `search()`, `parseResponse()`, `searchByAuthor()` methods
+  - `isRelevantForChemRxiv()` - Keyword matching for chemistry-related proposals
+
+**Files Modified:**
+- `shared/config/prompts/reviewer-finder.js` - Added CHEMRXIV_QUERIES section to prompt
+- `lib/services/discovery-service.js` - Added `searchChemRxiv` option and method
+- `pages/reviewer-finder.js` - Added ChemRxiv toggle to search sources UI
+- `pages/api/reviewer-finder/discover.js` - Added `searchChemrxiv` option
+
+**ChemRxiv API Details:**
+- Supports keyword search via `term` parameter
+- Sort by relevance: `RELEVANT_DESC`
+- Rate limit: 429 response indicates throttling needed
+- Returns authors with corresponding author and institution data
+
+### 5. Search Result Logging Enhancement (`8ef30b7`)
+
+Added comprehensive logging to all four database search methods to help debug which searches return results.
+
+**Log Format:**
+```
+[Discovery] PubMed search complete: 150 candidates from 3 queries
+[Discovery] PubMed unique authors: 87 Smith J, Jones A, Brown M, Wilson K, Lee S...
+[ChemRxiv] Query "cyanide donors synthesis..." → 12 total, 12 returned
+[ChemRxiv] Sample authors: Pluth M, Smith J, Lee K
+```
+
+**Files Modified:**
+- `lib/services/discovery-service.js` - Added logging to `searchPubMed()`, `searchArXiv()`, `searchBioRxiv()`, `searchChemRxiv()`
+- `lib/services/chemrxiv-service.js` - Added per-query logging with total/returned counts
+
+### Git Commits
+
+- `16af684` Remove deprecated Google Scholar Profiles API
+- `8b92201` Add edit saved candidates feature
+- `3b9fbaf` Fix PI self-suggestion as reviewer bug
+- `a01b7e4` Add ChemRxiv database search integration
+- `1e18d24` Fix ChemRxiv API 400 errors (sort parameter)
+- `8ef30b7` Add search result logging for all database sources
+
+---
+
 Last Updated: December 19, 2025
