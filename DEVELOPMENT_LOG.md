@@ -526,4 +526,125 @@ Run `node scripts/setup-database.js` to apply v3 schema changes.
 
 ---
 
-Last Updated: December 16, 2025
+## December 18-19, 2025 - Expert Reviewer Finder v2 Session 16
+
+**Phase 4: Email Reviewers Feature + Contact Enrichment Improvements**
+
+This session focused on implementing the Email Reviewers feature and fixing several issues with data persistence and contact enrichment.
+
+### Features Implemented
+
+**1. Email Reviewers Feature**
+
+Created a complete system to generate .eml invitation files for reviewer candidates:
+
+**Files Created:**
+- `lib/utils/email-generator.js` - EML file generation with placeholder substitution
+- `shared/components/EmailSettingsPanel.js` - Sender info and grant cycle settings
+- `shared/components/EmailTemplateEditor.js` - Template editing with placeholder insertion
+- `shared/components/EmailGeneratorModal.js` - Multi-step generation workflow
+- `pages/api/reviewer-finder/generate-emails.js` - SSE endpoint for email generation
+- `shared/config/prompts/email-reviewer.js` - Claude prompt for email personalization
+
+**Placeholder System:**
+| Placeholder | Source |
+|-------------|--------|
+| `{{greeting}}` | "Dear Dr. LastName" |
+| `{{recipientName}}` | Candidate full name |
+| `{{recipientLastName}}` | Parsed last name |
+| `{{salutation}}` | "Dr." or "Professor" |
+| `{{proposalTitle}}` | From proposal analysis |
+| `{{proposalAbstract}}` | From proposal analysis |
+| `{{piName}}` | PI name(s) |
+| `{{piInstitution}}` | PI institution |
+| `{{programName}}` | From grant cycle settings |
+| `{{reviewDeadline}}` | Formatted date |
+| `{{signature}}` | User's signature block |
+
+**2. Abstract Extraction**
+- Modified `shared/config/prompts/reviewer-finder.js` to extract abstract during analysis
+- Updated `pages/api/reviewer-finder/analyze.js` to return `proposalAbstract`
+- Updated `pages/api/reviewer-finder/save-candidates.js` to store abstract with proposals
+
+### Bugs Fixed
+
+**1. PI and Abstract Missing from Generated Emails**
+- `handleSaveCandidates()` wasn't passing `proposalAbstract`, `proposalAuthors`, `proposalInstitution`
+- Fixed by adding these fields to the save request in `pages/reviewer-finder.js`
+
+**2. Enriched Contact Info Not Saving to Database**
+- Two issues: async state update race condition and missing extraction from `contactEnrichment` object
+- Fixed `save-candidates.js` to extract email/website from nested `contactEnrichment` object:
+```javascript
+const candidateEmail = candidate.email || candidate.contactEnrichment?.email || null;
+const candidateWebsite = candidate.website || candidate.contactEnrichment?.website || null;
+```
+
+**3. Duplicate Proposals in Database**
+- `generateProposalId()` used timestamps, creating unique IDs each save
+- Changed to deterministic ID based only on title slug
+- Added V5 database migration to merge existing duplicates
+
+**4. Missing Salutation in Emails**
+- Added `{{greeting}}` placeholder that combines "Dear Dr. LastName"
+- Updated default template to use `{{greeting}}`
+
+**5. Search Results Clearing on Tab Switch**
+- Lifted state from `NewSearchTab` to parent `ReviewerFinderPage`
+- Persists: `uploadedFiles`, `analysisResult`, `discoveryResult`, `selectedCandidates`
+
+**6. State Clearing on Save**
+- Wrapper functions didn't support callback pattern `setState(prev => ...)`
+- Fixed by checking if argument is function and calling it with previous value
+
+**7. Google Scholar API 400 Errors**
+- `google_scholar_profiles` SerpAPI engine returning 400 errors
+- Added `findScholarProfileViaGoogle()` fallback using regular Google search with `site:scholar.google.com`
+
+### Contact Enrichment Improvements
+
+**Expanded Faculty Page URL Detection:**
+- More path patterns: `/research/`, `/lab/`, `/group/`, `/member/`, `/team/`, `/investigator/`, etc.
+- International domain support: `.ac.uk`, `.ac.jp`, `.edu.au`, `.uni-`, `.u-`, etc.
+- Research organization patterns: `nih.gov`, `nsf.gov`, `researchgate.net/profile`, `orcid.org`
+
+**Multiple SerpAPI Fallback Queries:**
+1. Primary: `"Name" institution email`
+2. Fallback: `"Name" institution faculty`
+3. Fallback: `"Name" site:.edu institution`
+4. Fallback: `"Name" institution lab research`
+5. Fallback: `"Name" institution profile`
+
+**Google Scholar Profile Extraction:**
+- New `findScholarProfile()` method for SerpAPI Scholar profiles
+- Fallback `findScholarProfileViaGoogle()` for when Scholar API fails
+- Returns: `scholarProfileUrl`, `scholarId`, `scholarName`, `scholarAffiliation`, `scholarCitedBy`
+
+### UI Changes
+
+- Renamed "New Search" tab to "Search"
+- Search results now persist when switching between tabs
+
+### Files Modified
+
+- `pages/reviewer-finder.js` - State lifting, email integration, tab rename
+- `pages/api/reviewer-finder/save-candidates.js` - Email/website extraction from enrichment
+- `pages/api/reviewer-finder/analyze.js` - Abstract extraction
+- `lib/services/serp-contact-service.js` - Enhanced URL detection, Scholar fallback
+- `lib/utils/contact-parser.js` - `isInternationalAcademicDomain()`, improved `isUsefulWebsiteUrl()`
+- `lib/utils/email-generator.js` - Added `{{greeting}}` placeholder
+- `shared/config/prompts/reviewer-finder.js` - Added abstract extraction
+- `scripts/setup-database.js` - V5 migration for duplicate merging
+
+### Test Scripts Added
+
+- `scripts/test-contact-enrichment.js` - Tests Claude web search, ORCID, and SerpAPI services
+
+### Git Commits
+
+- `6187951` Add fallback for Google Scholar API 400 errors
+- (Previous commits in session: email feature, state persistence, duplicate fix, etc.)
+
+---
+
+Last Updated: December 19, 2025
