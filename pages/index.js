@@ -5,7 +5,7 @@ import Link from 'next/link';
 const apps = [
   {
     id: 'proposal-summarizer',
-    title: 'Create Phase II Writeup Draft',
+    title: 'Phase II Writeup',
     description: 'Generate standardized writeup drafts from PDF research proposals using Claude AI',
     icon: '🔬',
     status: 'active',
