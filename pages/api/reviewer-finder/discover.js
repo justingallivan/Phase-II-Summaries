@@ -108,10 +108,46 @@ export default async function handler(req, res) {
       }
     });
 
+    const { DeduplicationService } = require('../../../lib/services/deduplication-service');
+
+    // Filter out proposal authors (PI and co-authors) - they should never be reviewers
+    const proposalAuthorsRaw = analysisResult.proposalInfo?.proposalAuthors;
+    let verifiedCandidates = discoveryResults.verified;
+
+    if (proposalAuthorsRaw && proposalAuthorsRaw.toLowerCase() !== 'not specified') {
+      const proposalAuthors = proposalAuthorsRaw
+        .split(',')
+        .map(a => a.trim())
+        .filter(a => a.length > 0);
+
+      if (proposalAuthors.length > 0) {
+        const authorFilterResult = DeduplicationService.filterProposalAuthors(
+          verifiedCandidates,
+          proposalAuthors
+        );
+
+        if (authorFilterResult.excluded.length > 0) {
+          console.log('[Discover API] Excluded proposal authors:',
+            authorFilterResult.excluded.map(c => c.name));
+
+          sendEvent('progress', {
+            stage: 'author_filter',
+            status: 'excluded',
+            message: `Excluded ${authorFilterResult.excluded.length} candidate(s) who are proposal authors`,
+            excluded: authorFilterResult.excluded.map(c => ({
+              name: c.name,
+              reason: c.excludedReason
+            }))
+          });
+        }
+
+        verifiedCandidates = authorFilterResult.filtered;
+      }
+    }
+
     // Mark institution COI (same institution as PI) - flag, don't filter
     const authorInstitution = analysisResult.proposalInfo?.authorInstitution;
-    let verifiedWithCOI = discoveryResults.verified;
-    const { DeduplicationService } = require('../../../lib/services/deduplication-service');
+    let verifiedWithCOI = verifiedCandidates;
 
     if (authorInstitution) {
       verifiedWithCOI = DeduplicationService.markInstitutionCOI(verifiedWithCOI, authorInstitution);
@@ -126,11 +162,8 @@ export default async function handler(req, res) {
       }
     }
 
-    // Check for coauthor COI if we have proposal authors
-    const proposalAuthorsRaw = analysisResult.proposalInfo?.proposalAuthors;
-
+    // Check for coauthor COI if we have proposal authors (reuse parsed array from earlier)
     if (proposalAuthorsRaw && proposalAuthorsRaw.toLowerCase() !== 'not specified') {
-      // Parse proposal authors (comma-separated)
       const proposalAuthors = proposalAuthorsRaw
         .split(',')
         .map(a => a.trim())
@@ -200,6 +233,34 @@ export default async function handler(req, res) {
           stage: 'filtering',
           message: `Filtered out ${filtered} irrelevant candidates from database discoveries`
         });
+      }
+    }
+
+    // Filter out proposal authors from discovered candidates too
+    if (proposalAuthorsRaw && proposalAuthorsRaw.toLowerCase() !== 'not specified' && enhancedDiscovered.length > 0) {
+      const proposalAuthors = proposalAuthorsRaw
+        .split(',')
+        .map(a => a.trim())
+        .filter(a => a.length > 0);
+
+      if (proposalAuthors.length > 0) {
+        const discoveredFilterResult = DeduplicationService.filterProposalAuthors(
+          enhancedDiscovered,
+          proposalAuthors
+        );
+
+        if (discoveredFilterResult.excluded.length > 0) {
+          console.log('[Discover API] Excluded proposal authors from discovered:',
+            discoveredFilterResult.excluded.map(c => c.name));
+
+          sendEvent('progress', {
+            stage: 'author_filter',
+            status: 'excluded_discovered',
+            message: `Excluded ${discoveredFilterResult.excluded.length} discovered candidate(s) who are proposal authors`
+          });
+        }
+
+        enhancedDiscovered = discoveredFilterResult.filtered;
       }
     }
 
