@@ -378,13 +378,22 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
   // Use lifted state from parent (persists across tab switches)
   const { uploadedFiles, analysisResult, discoveryResult, selectedCandidates } = searchState;
 
-  // Helper to update lifted state
-  const setUploadedFiles = (files) => setSearchState(prev => ({ ...prev, uploadedFiles: files }));
-  const setAnalysisResult = (result) => setSearchState(prev => ({ ...prev, analysisResult: result }));
-  const setDiscoveryResult = (result) => setSearchState(prev => ({ ...prev, discoveryResult: result }));
-  const setSelectedCandidates = (candidates) => setSearchState(prev => ({
+  // Helper to update lifted state (support both direct values and callback functions)
+  const setUploadedFiles = (filesOrFn) => setSearchState(prev => ({
     ...prev,
-    selectedCandidates: typeof candidates === 'function' ? candidates(prev.selectedCandidates) : candidates
+    uploadedFiles: typeof filesOrFn === 'function' ? filesOrFn(prev.uploadedFiles) : filesOrFn
+  }));
+  const setAnalysisResult = (resultOrFn) => setSearchState(prev => ({
+    ...prev,
+    analysisResult: typeof resultOrFn === 'function' ? resultOrFn(prev.analysisResult) : resultOrFn
+  }));
+  const setDiscoveryResult = (resultOrFn) => setSearchState(prev => ({
+    ...prev,
+    discoveryResult: typeof resultOrFn === 'function' ? resultOrFn(prev.discoveryResult) : resultOrFn
+  }));
+  const setSelectedCandidates = (candidatesOrFn) => setSearchState(prev => ({
+    ...prev,
+    selectedCandidates: typeof candidatesOrFn === 'function' ? candidatesOrFn(prev.selectedCandidates) : candidatesOrFn
   }));
 
   // Local state (OK to reset on tab switch)
