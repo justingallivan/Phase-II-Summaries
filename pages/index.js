@@ -245,22 +245,10 @@ function AppCard({ app }) {
       </div>
       
       {/* Description */}
-      <p className="text-gray-600 text-sm leading-relaxed mb-4 group-hover:text-gray-700">
+      <p className="text-gray-600 text-sm leading-relaxed mb-6 flex-grow group-hover:text-gray-700">
         {app.description}
       </p>
-      
-      {/* Features */}
-      <div className="flex flex-wrap gap-2 mb-6 flex-grow">
-        {app.features.map((feature, index) => (
-          <span 
-            key={index} 
-            className="inline-flex items-center px-2 py-1 bg-gray-50 text-gray-600 text-xs rounded border border-gray-200"
-          >
-            {feature}
-          </span>
-        ))}
-      </div>
-      
+
       {/* Action Button */}
       <div className="mt-auto">
         {isActive ? (
