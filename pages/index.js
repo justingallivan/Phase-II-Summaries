@@ -68,7 +68,7 @@ const apps = [
   },
   {
     id: 'funding-gap-analyzer',
-    title: 'Funding Gap Analyzer',
+    title: 'Funding Analysis',
     description: 'Analyze federal funding landscapes for research proposals using NSF, NIH, and USAspending.gov data',
     icon: '💵',
     status: 'active',

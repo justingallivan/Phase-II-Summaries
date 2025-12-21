@@ -213,11 +213,11 @@ export default function FundingGapAnalyzer() {
 
   return (
     <Layout
-      title="Federal Funding Gap Analyzer"
+      title="Funding Analysis"
       description="Analyze federal funding landscapes and identify potential gaps for research proposals"
     >
       <PageHeader
-        title="Federal Funding Gap Analyzer"
+        title="Funding Analysis"
         subtitle="Analyze NSF awards and federal funding opportunities for research proposals"
         icon="💵"
       />

@@ -20,7 +20,7 @@ export default function Layout({
     { name: 'Reviewer Finder', href: '/reviewer-finder', icon: '🎯' },
     { name: 'Peer Review Summary', href: '/peer-review-summarizer', icon: '📝' },
     { name: 'Expense Reporter', href: '/expense-reporter', icon: '💰' },
-    { name: 'Funding Gap Analyzer', href: '/funding-gap-analyzer', icon: '💵' },
+    { name: 'Funding Analysis', href: '/funding-gap-analyzer', icon: '💵' },
   ];
 
   return (
