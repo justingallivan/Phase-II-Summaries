@@ -46,7 +46,7 @@ const apps = [
   {
     id: 'proposal-summarizer',
     title: 'Create Phase II Writeup Draft',
-    description: 'Generate standardized writeup drafts from PDF research proposals using Claude AI',
+    description: 'Generate Keck Foundation Phase II writeup drafts with standardized formatting',
     icon: '✍️',
     status: 'active',
     categories: ['phase-ii'],
