@@ -66,7 +66,7 @@ const apps = [
   {
     id: 'peer-review-summarizer',
     title: 'Summarize Peer Reviews',
-    description: 'Synthesize and analyze peer review feedback with actionable insights and recommendations',
+    description: 'Analyze peer review feedback and generate site visit questions',
     icon: '📝',
     status: 'active',
     categories: ['phase-ii'],
