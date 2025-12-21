@@ -143,7 +143,7 @@ export default function BatchProposalSummaries() {
   const exportAllAsMarkdown = () => {
     if (!results || Object.keys(results).length === 0) return;
 
-    let content = `# Batch Proposal Summaries\n\n`;
+    let content = `# Batch Phase II Summaries\n\n`;
     content += `Generated on: ${new Date().toLocaleDateString()}\n`;
     content += `Summary Length: ${summaryLength} pages\n`;
     content += `Technical Level: ${summaryLevel}\n`;
@@ -174,11 +174,11 @@ export default function BatchProposalSummaries() {
 
   return (
     <Layout 
-      title="Batch Proposal Summaries"
+      title="Batch Phase II Summaries"
       description="Process multiple proposals at once with customizable summary length"
     >
       <PageHeader 
-        title="Batch Proposal Summaries"
+        title="Batch Phase II Summaries"
         subtitle="Process multiple research proposals simultaneously with customizable summary length and technical level"
         icon="📚"
       />

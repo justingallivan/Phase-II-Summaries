@@ -23,7 +23,7 @@ const apps = [
   },
   {
     id: 'batch-proposal-summaries',
-    title: 'Batch Proposal Summaries',
+    title: 'Batch Phase II Summaries',
     description: 'Process multiple proposals at once with customizable summary length (1-5 pages)',
     icon: '📚',
     status: 'active',
