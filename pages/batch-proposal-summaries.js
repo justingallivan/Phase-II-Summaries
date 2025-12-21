@@ -180,7 +180,7 @@ export default function BatchProposalSummaries() {
       <PageHeader 
         title="Batch Phase II Summaries"
         subtitle="Process multiple research proposals simultaneously with customizable summary length and technical level"
-        icon="📚"
+        icon="📑"
       />
 
       <Card className="mb-8">

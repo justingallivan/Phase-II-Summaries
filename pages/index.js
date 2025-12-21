@@ -25,7 +25,7 @@ const apps = [
     id: 'batch-proposal-summaries',
     title: 'Batch Phase II Summaries',
     description: 'Process multiple proposals at once with customizable summary length (1-5 pages)',
-    icon: '📚',
+    icon: '📑',
     status: 'active',
     features: ['Batch Processing', 'Custom Length', 'Multi-File Upload', 'Bulk Export'],
     path: '/batch-proposal-summaries'
