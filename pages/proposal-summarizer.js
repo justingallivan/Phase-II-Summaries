@@ -253,7 +253,7 @@ export default function ProposalSummarizer() {
       <PageHeader
         title="Create Phase II Writeup Draft"
         subtitle="Generate standardized writeup drafts from PDF research proposals using Claude AI"
-        icon="🔬"
+        icon="✍️"
       />
 
       <Card className="mb-8">

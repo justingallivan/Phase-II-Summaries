@@ -7,7 +7,7 @@ const apps = [
     id: 'proposal-summarizer',
     title: 'Create Phase II Writeup Draft',
     description: 'Generate standardized writeup drafts from PDF research proposals using Claude AI',
-    icon: '🔬',
+    icon: '✍️',
     status: 'active',
     features: ['PDF Analysis', 'Claude AI Drafts', 'Q&A Chat', 'Export Options'],
     path: '/proposal-summarizer'

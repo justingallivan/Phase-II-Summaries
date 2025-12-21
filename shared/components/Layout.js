@@ -13,7 +13,7 @@ export default function Layout({
 
   const navigationItems = [
     { name: 'Home', href: '/', icon: '🏠' },
-    { name: 'Create Phase II Writeup Draft', href: '/proposal-summarizer', icon: '🔬' },
+    { name: 'Create Phase II Writeup Draft', href: '/proposal-summarizer', icon: '✍️' },
     { name: 'Phase I Writeup', href: '/phase-i-writeup', icon: '✍️' },
     { name: 'Batch Phase II', href: '/batch-proposal-summaries', icon: '📚' },
     { name: 'Batch Phase I', href: '/batch-phase-i-summaries', icon: '📑' },
