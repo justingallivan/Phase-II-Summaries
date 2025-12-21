@@ -104,7 +104,7 @@ export default function Layout({
         <div className={`max-w-${maxWidth} mx-auto px-4 py-8`}>
           <div className="text-center">
             <p className="text-gray-600 mb-4">
-              Built with Claude AI • Powered by Next.js • Deployed on Vercel
+              Written by <a href="mailto:justingallivan@me.com" className="hover:text-gray-800">Justin Gallivan</a> • Built with Claude AI • Powered by Next.js • Deployed on Vercel
             </p>
             <div className="flex justify-center items-center gap-4">
               <a 
