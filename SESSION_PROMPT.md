@@ -1,163 +1,119 @@
-# Expert Reviewer Finder v2 - Session 18 Prompt
+# Document Processing Suite - Session 19 Prompt
 
-## Current State (as of December 19, 2025)
+## Current State (as of December 20, 2025)
 
-The Expert Reviewer Finder is a multi-stage tool that:
-1. **Claude Analysis** - Extracts proposal metadata (title, abstract, PI, institution) and suggests reviewers
-2. **Database Discovery** - Searches PubMed, ArXiv, BioRxiv, and ChemRxiv for candidates
-3. **Contact Enrichment** - 5-tier system to find email addresses and faculty pages
-4. **Email Generation** - Creates .eml invitation files for selected candidates
+### App Suite Overview
 
-### What's Working
+The suite now has 9 apps organized into categories:
 
-**Core Pipeline:**
-- Upload PDF → Claude analysis → Multi-database verification → Results display
-- **4 database sources:** PubMed, ArXiv, BioRxiv, ChemRxiv (NEW in Session 17)
-- Institution/expertise mismatch warnings for potentially wrong-person matches
-- Google Scholar profile links for all candidates
-- PI/author self-suggestion prevention (won't suggest the proposal authors as reviewers)
-- Claude retry logic with fallback to Haiku model on rate limits
-- Temperature control (0.3-1.0) and configurable reviewer count (1-25)
-- Comprehensive search result logging in dev console
+| Category | Apps |
+|----------|------|
+| **Phase I** | Batch Phase I Summaries, Funding Analysis, Create Phase I Writeup Draft, Reviewer Finder |
+| **Phase II** | Batch Phase II Summaries, Funding Analysis, Create Phase II Writeup Draft, Reviewer Finder, Summarize Peer Reviews |
+| **Other Tools** | Expense Reporter, Literature Analyzer (coming soon) |
 
-**Contact Enrichment (5-tier):**
-| Tier | Source | Cost | Status |
-|------|--------|------|--------|
-| 0 | Affiliation parsing | Free | ✅ Working |
-| 1 | PubMed | Free | ✅ Working |
-| 2 | ORCID | Free | ✅ Working (needs credentials) |
-| 3 | Claude Web Search | ~$0.015 | ✅ Working |
-| 4 | SerpAPI Google | ~$0.005 | ✅ Working with Scholar fallback |
+### Session 18 Summary (Documentation & UI Cleanup)
 
-**Email Reviewers Feature:**
-- Email settings panel (sender name, email, signature, grant cycle info)
-- Template editor with placeholder insertion buttons
-- Placeholders: `{{greeting}}`, `{{recipientName}}`, `{{proposalTitle}}`, `{{proposalAbstract}}`, `{{piName}}`, `{{programName}}`, `{{reviewDeadline}}`, `{{signature}}`
-- Optional Claude personalization per email
-- Generate .eml files for download (individual or ZIP bundle)
+**Apps Deprecated:**
+- document-analyzer (duplicate of proposal-summarizer)
+- find-reviewers (superseded by Reviewer Finder)
+- find-reviewers-pro (merged into Reviewer Finder)
 
-**My Candidates Tab:**
-- Saved candidates with emails/websites visible on cards
-- **Edit candidate info** (name, affiliation, email, website, h-index) - NEW in Session 17
-- Multi-select deletion with checkboxes
-- "Email Selected" button opens generation modal
+**UI Consistency Updates:**
+- Renamed apps for consistency (e.g., "Funding Gap Analyzer" → "Funding Analysis")
+- Unified icons (✍️ for writeups, 📑 for batch)
+- Reordered apps on landing page and navigation
+- Changed filters from "Available/Coming Soon" to "Phase I/Phase II/Other Tools"
+- Removed redundant header logo and feature keywords
+- Added author credit to footer with mailto link
 
-**State Persistence:**
-- Search results persist when switching between tabs
-- Deterministic proposal IDs prevent duplicates in database
+### Reviewer Finder - Production Ready
 
-### Session 17 Work Summary
+Complete pipeline for finding expert reviewers:
+1. **Claude Analysis** - Extract proposal metadata and suggest reviewers
+2. **Database Discovery** - Search PubMed, ArXiv, BioRxiv, ChemRxiv
+3. **Contact Enrichment** - 5-tier system for emails and faculty pages
+4. **Email Generation** - Create .eml invitation files
 
-**Features Added:**
-1. **Edit Saved Candidates** - Modal to update name, affiliation, email, website, h-index
-2. **ChemRxiv Integration** - New chemistry preprint database source
-3. **Search Result Logging** - Console shows candidate counts and sample names for each database
-4. **Google Scholar Profiles API fix** - Removed deprecated API, uses Google search fallback
+**Key Features:**
+- Icon toggle buttons for database sources
+- Institution/expertise mismatch warnings
+- Google Scholar profile links
+- PI/author self-suggestion prevention
+- Save/edit/delete candidates in database
+- Multi-select operations
 
-**Bugs Fixed:**
-1. PI/Author self-suggestion as reviewer (fuzzy name matching filter)
-2. ChemRxiv API 400 errors (fixed sort parameter: `RELEVANT_DESC`)
-3. Google Scholar Profiles API deprecation
+## Suggested Next Steps (Priority Order)
 
-### Potential Next Steps
+### 1. Database Tab Implementation (High Priority)
+Browse/search all researchers in the database independent of proposals.
+- See `ROADMAP_DATABASE_TAB.md` for detailed plan
+- Phase 1: Basic browse & search with pagination
+- Phase 2: Researcher detail views
+- Phase 3: Edit/delete/merge operations
 
-1. **Test ChemRxiv Integration**
-   - Verify chemistry proposals get relevant ChemRxiv candidates
-   - Check if results are being properly deduplicated
+### 2. Re-enrich Contacts Button
+- Add button in My Candidates tab to re-run contact enrichment
+- Currently must re-run full search to update contacts
 
-2. **Re-enrich Contacts Button**
-   - Currently must re-run full search to re-enrich saved candidates
-   - Add button in My Candidates to re-run contact enrichment
+### 3. Contact Enrichment Tracking
+- Track which tier found each contact
+- Display enrichment source on candidate cards
+- Useful for optimizing enrichment strategy
 
-3. **Database Tab Implementation**
-   - Browse all researchers in database
-   - Search/filter by name, institution, expertise
+### 4. Email Tracking
+- Mark candidates as "email sent"
+- Track response status (accepted, declined, no response)
 
-4. **Contact Enrichment Success Tracking**
-   - Track which tiers find contacts (for optimization)
-   - Display tier source on candidate cards
+### 5. Bulk Operations
+- Export selected candidates to CSV
+- Bulk status updates
 
-5. **Email Tracking**
-   - Mark candidates as "email sent"
-   - Track response status (accepted, declined, no response)
-
-6. **Bulk Operations**
-   - Bulk invite/accept toggle for multiple candidates
-   - Export selected candidates to CSV
+### 6. Literature Analyzer App
+- Currently "coming soon" placeholder
+- Paper synthesis and citation analysis
 
 ## Key Files Reference
 
-**ChemRxiv (NEW):**
-- `lib/services/chemrxiv-service.js` - ChemRxiv API integration
-
-**Email Feature:**
-- `lib/utils/email-generator.js` - EML generation and placeholders
-- `shared/components/EmailSettingsPanel.js` - Sender/grant cycle settings
-- `shared/components/EmailTemplateEditor.js` - Template editing UI
-- `shared/components/EmailGeneratorModal.js` - Generation workflow
-- `pages/api/reviewer-finder/generate-emails.js` - SSE generation endpoint
-- `shared/config/prompts/email-reviewer.js` - Claude personalization prompt
-
-**Core Services:**
+**Reviewer Finder:**
+- `pages/reviewer-finder.js` - Main page with tabs
+- `lib/services/discovery-service.js` - Multi-database search
 - `lib/services/contact-enrichment-service.js` - 5-tier contact lookup
-- `lib/services/claude-reviewer-service.js` - Claude analysis
-- `lib/services/discovery-service.js` - Multi-database verification (PubMed, ArXiv, BioRxiv, ChemRxiv)
-- `lib/services/deduplication-service.js` - Name matching, COI filtering, PI exclusion
-- `lib/services/serp-contact-service.js` - Google/Scholar search via SerpAPI
-- `lib/services/orcid-service.js` - ORCID API
+- `lib/services/database-service.js` - Vercel Postgres operations
+- `ROADMAP_DATABASE_TAB.md` - Database Tab implementation plan
 
-**Frontend:**
-- `pages/reviewer-finder.js` - Main page with tabs (Search, My Candidates, Database)
-- `shared/components/ApiSettingsPanel.js` - API key management
+**Phase I/II Writeups:**
+- `pages/proposal-summarizer.js` - Phase II writeup
+- `pages/phase-i-writeup.js` - Phase I writeup
+- `shared/config/prompts/proposal-summarizer.js` - Phase II prompts
+- `shared/config/prompts/phase-i-summaries.js` - Phase I prompts with Keck alignment
 
-**API Endpoints:**
-- `pages/api/reviewer-finder/analyze.js` - Claude analysis
-- `pages/api/reviewer-finder/discover.js` - Verification
-- `pages/api/reviewer-finder/enrich-contacts.js` - Contact enrichment (SSE)
-- `pages/api/reviewer-finder/save-candidates.js` - Save to database
-- `pages/api/reviewer-finder/my-candidates.js` - CRUD for saved candidates (PATCH extended for editing)
-- `pages/api/reviewer-finder/generate-emails.js` - Email generation (SSE)
-
-**Prompts:**
-- `shared/config/prompts/reviewer-finder.js` - Analysis prompt (includes ChemRxiv queries)
-- `shared/config/prompts/email-reviewer.js` - Email personalization
-
-**Database:**
-- `scripts/setup-database.js` - Migrations (currently at V5)
-- `lib/services/database-service.js` - Database operations
-
-**Test Scripts:**
-- `scripts/test-contact-enrichment.js` - Test enrichment services
-- `scripts/test-reviewer-finder.js` - Test reviewer discovery
-- `scripts/debug-reviewer-finder.js` - Debug specific issues
+**Shared Components:**
+- `shared/components/Layout.js` - Navigation and footer
+- `pages/index.js` - Landing page with category filters
 
 ## Environment Variables
 
 ```
-CLAUDE_API_KEY=        # Required for analysis and Tier 3 search
+CLAUDE_API_KEY=        # Required
 POSTGRES_URL=          # Auto-set by Vercel Postgres
-SERP_API_KEY=          # Tier 4 Google/Scholar search
-NCBI_API_KEY=          # Optional: Higher PubMed rate limits
+SERP_API_KEY=          # Google/Scholar search (optional)
+NCBI_API_KEY=          # Higher PubMed rate limits (optional)
 ```
-
-Client-side credentials stored in localStorage via ApiSettingsPanel:
-- ORCID Client ID / Secret
-- SerpAPI Key (also used server-side for Tier 4)
 
 ## Running the App
 
 ```bash
 npm run dev
-# Access at http://localhost:3000/reviewer-finder
+# Access at http://localhost:3000
 ```
 
 ## Git Status
 
 Branch: main
-Recent commits:
-- `8ef30b7` Add search result logging for all database sources
-- `1e18d24` Fix ChemRxiv API 400 errors (sort parameter)
-- `a01b7e4` Add ChemRxiv database search integration
-- `3b9fbaf` Fix PI self-suggestion as reviewer bug
-- `8b92201` Add edit saved candidates feature
-- `16af684` Remove deprecated Google Scholar Profiles API
+Recent Session 18 commits include:
+- UI consistency updates (app renaming, icons, navigation order)
+- App deprecation (document-analyzer, find-reviewers, find-reviewers-pro)
+- Landing page updates (category filters, app ordering, descriptions)
+- Footer author credit
+- Documentation updates

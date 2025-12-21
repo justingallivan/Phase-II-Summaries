@@ -40,16 +40,29 @@ A multi-application document processing system using Claude AI for grant-related
 
 ## Applications
 
-| App | Page | API Endpoint | Status | Description |
-|-----|------|--------------|--------|-------------|
-| **Expert Reviewer Finder v2** | `reviewer-finder.js` | `/api/reviewer-finder/*` | **Production Ready** | AI + database search for expert reviewers with contact enrichment and email generation |
-| Batch Proposal Summaries | `batch-proposal-summaries.js` | `/api/process` | Stable | Batch document summarization with configurable length/level |
-| Funding Gap Analyzer | `funding-gap-analyzer.js` | `/api/analyze-funding-gap` | Stable | NSF API integration for federal funding analysis |
-| Expense Reporter | `expense-reporter.js` | `/api/process-expenses` | Stable | Receipt/invoice processing with CSV export |
-| Find Reviewers (Legacy) | `find-reviewers.js` | `/api/find-reviewers` | Deprecated | Original Claude-only reviewer finder (superseded by v2) |
-| Find Reviewers Pro | `find-reviewers-pro.js` | `/api/search-reviewers-pro` | Deprecated | Multi-database academic search (merged into v2) |
+### Active Apps (in landing page order)
 
-### Expert Reviewer Finder v2 - Feature Summary
+| App | Page | API Endpoint | Categories | Description |
+|-----|------|--------------|------------|-------------|
+| Batch Phase I Summaries | `batch-phase-i-summaries.js` | `/api/process-phase-i` | Phase I | Batch Phase I proposal processing with Keck alignment evaluation |
+| Batch Phase II Summaries | `batch-proposal-summaries.js` | `/api/process` | Phase II | Batch Phase II proposal processing with customizable length |
+| Funding Analysis | `funding-gap-analyzer.js` | `/api/analyze-funding-gap` | Phase I, II | NSF API integration for federal funding analysis |
+| Create Phase I Writeup Draft | `phase-i-writeup.js` | `/api/process-phase-i` | Phase I | Single Phase I writeup with Keck formatting |
+| Create Phase II Writeup Draft | `proposal-summarizer.js` | `/api/process` | Phase II | Single Phase II writeup with Q&A and refinement |
+| **Reviewer Finder** | `reviewer-finder.js` | `/api/reviewer-finder/*` | Phase I, II | **Production Ready** - AI + database search with contact enrichment |
+| Summarize Peer Reviews | `peer-review-summarizer.js` | `/api/summarize-reviews` | Phase II | Analyze peer reviews and generate site visit questions |
+| Expense Reporter | `expense-reporter.js` | `/api/process-expenses` | Other | Receipt/invoice processing with CSV export |
+| Literature Analyzer | `literature-analyzer.js` | - | Other | Coming soon - Paper synthesis and citation analysis |
+
+### Deprecated Apps (hidden from UI, files retained)
+
+| App | Reason |
+|-----|--------|
+| document-analyzer | Duplicate of proposal-summarizer with worse UX |
+| find-reviewers | Superseded by Reviewer Finder |
+| find-reviewers-pro | Merged into Reviewer Finder |
+
+### Reviewer Finder - Feature Summary
 
 The flagship application. Complete pipeline for finding and contacting expert reviewers:
 
@@ -68,7 +81,7 @@ The flagship application. Complete pipeline for finding and contacting expert re
 - Save candidates to database with edit capability
 - Multi-select operations (save, delete, email)
 
-**Roadmap:** See [ROADMAP_DATABASE_TAB.md](./ROADMAP_DATABASE_TAB.md) for next planned feature.
+**Next Feature:** Database Tab - browse/search all researchers. See [ROADMAP_DATABASE_TAB.md](./ROADMAP_DATABASE_TAB.md).
 
 ## Tech Stack
 

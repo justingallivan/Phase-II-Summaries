@@ -751,46 +751,72 @@ Added comprehensive logging to all four database search methods to help debug wh
 
 ---
 
-## December 20, 2025 - Expert Reviewer Finder v2 Session 18
+## December 20, 2025 - Session 18: Documentation & UI Cleanup
 
-**Documentation & Planning Session**
+**Documentation, App Consolidation, and UI Polish Session**
 
-With the Expert Reviewer Finder v2 now stable and production-ready, this session focused on documentation updates and planning the next major feature.
+With the Reviewer Finder now stable and production-ready, this session focused on documentation, deprecating redundant apps, and polishing the overall UI consistency.
 
-### Documentation Updates
+### Part 1: Documentation & Planning
 
 1. **Created `ROADMAP_DATABASE_TAB.md`**
    - Detailed implementation plan for the Database Tab feature
    - 4-phase approach: Browse/Search → Details → Management → Advanced
    - API endpoint design and UI mockup
-   - File changes outlined
 
-2. **Updated `CLAUDE.md`**
-   - Added application status column (Production Ready, Stable, Deprecated)
-   - Added Expert Reviewer Finder v2 feature summary section
-   - Updated service classes list (added ChemRxiv, deduplication, etc.)
-   - Updated API endpoints (added PATCH, DELETE, generate-emails)
-   - Marked legacy reviewer apps as deprecated
-   - Added roadmap link
+2. **Updated project documentation**
+   - Updated CLAUDE.md with current app state and categories
+   - Added Session 18 summary to DEVELOPMENT_LOG.md
 
-3. **Updated `DEVELOPMENT_LOG.md`**
-   - Session 18 summary (this entry)
+### Part 2: App Deprecation
 
-### Expert Reviewer Finder v2 - Current State
+Deprecated 3 redundant apps (hidden from UI, files retained):
 
-The application is now feature-complete for the core workflow:
+| App | Reason |
+|-----|--------|
+| document-analyzer | Duplicate of proposal-summarizer with worse UX |
+| find-reviewers | Superseded by Reviewer Finder |
+| find-reviewers-pro | Merged into Reviewer Finder |
 
-**Working Features:**
-- PDF upload → Claude analysis → 4-database search → Results display
-- Contact enrichment (5 tiers: affiliation, PubMed, ORCID, Claude Web, SerpAPI)
-- Email generation with .eml files and optional AI personalization
+### Part 3: UI Consistency Updates
+
+**App Renaming:**
+- "Expert Reviewer Finder v2" → "Reviewer Finder"
+- "Batch Proposal Summaries" → "Batch Phase II Summaries"
+- "Funding Gap Analyzer" → "Funding Analysis"
+- "Phase II Writeup" → "Create Phase II Writeup Draft"
+- "Phase I Writeup" → "Create Phase I Writeup Draft"
+- "Peer Review Summary" → "Summarize Peer Reviews"
+
+**Icon Consistency:**
+- ✍️ for both writeup apps (Phase I and Phase II)
+- 📑 for both batch apps (Phase I and Phase II)
+- Migrated icon toggle buttons from find-reviewers-pro to Reviewer Finder
+
+**Landing Page Updates:**
+- Reordered apps: Batch Phase I, Batch Phase II, Funding Analysis, Create Phase I, Create Phase II, Reviewer Finder, Summarize Peer Reviews, Expense Reporter, Literature Analyzer
+- Changed category filters from "Available/Coming Soon" to "Phase I/Phase II/Other Tools"
+- Removed redundant feature keywords from app cards
+- Updated app descriptions for consistency
+
+**Header Updates:**
+- Removed redundant "Document Processing Suite" logo (Home link serves same purpose)
+- Updated navigation order to match landing page
+- Added Literature Analyzer to navigation
+
+**Footer Updates:**
+- Added author credit: "Written by Justin Gallivan" with mailto link
+
+### Reviewer Finder - Current State
+
+The application is feature-complete for the core workflow:
+- PDF upload → Claude analysis → 4-database search (PubMed, ArXiv, BioRxiv, ChemRxiv)
+- Contact enrichment (5 tiers)
+- Email generation with .eml files
 - Save/edit/delete candidates in database
 - Multi-select operations
-- Search results persist across tab switches
 
-**Next Priority: Database Tab Implementation**
-
-See `ROADMAP_DATABASE_TAB.md` for detailed plan to browse/search all researchers in the database independent of proposals.
+**Next Priority:** Database Tab Implementation (see ROADMAP_DATABASE_TAB.md)
 
 ---
 
