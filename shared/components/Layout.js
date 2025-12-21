@@ -13,14 +13,15 @@ export default function Layout({
 
   const navigationItems = [
     { name: 'Home', href: '/', icon: '🏠' },
-    { name: 'Create Phase II Writeup Draft', href: '/proposal-summarizer', icon: '✍️' },
-    { name: 'Phase I Writeup', href: '/phase-i-writeup', icon: '✍️' },
-    { name: 'Batch Phase II', href: '/batch-proposal-summaries', icon: '📑' },
-    { name: 'Batch Phase I', href: '/batch-phase-i-summaries', icon: '📑' },
-    { name: 'Reviewer Finder', href: '/reviewer-finder', icon: '🎯' },
-    { name: 'Peer Review Summary', href: '/peer-review-summarizer', icon: '📝' },
-    { name: 'Expense Reporter', href: '/expense-reporter', icon: '💰' },
+    { name: 'Batch Phase I Summaries', href: '/batch-phase-i-summaries', icon: '📑' },
+    { name: 'Batch Phase II Summaries', href: '/batch-proposal-summaries', icon: '📑' },
     { name: 'Funding Analysis', href: '/funding-gap-analyzer', icon: '💵' },
+    { name: 'Create Phase I Writeup Draft', href: '/phase-i-writeup', icon: '✍️' },
+    { name: 'Create Phase II Writeup Draft', href: '/proposal-summarizer', icon: '✍️' },
+    { name: 'Reviewer Finder', href: '/reviewer-finder', icon: '🎯' },
+    { name: 'Summarize Peer Reviews', href: '/peer-review-summarizer', icon: '📝' },
+    { name: 'Expense Reporter', href: '/expense-reporter', icon: '💰' },
+    { name: 'Literature Analyzer', href: '/literature-analyzer', icon: '📖' },
   ];
 
   return (
