@@ -36,16 +36,9 @@ export default function Layout({
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className={`max-w-${maxWidth} mx-auto px-4`}>
           <div className="flex justify-between items-center py-4">
-            {/* Logo */}
-            <Link href="/" className="flex items-center gap-3 text-xl font-bold text-gray-900 hover:text-gray-700 transition-colors">
-              <span>📄</span>
-              <span className="hidden sm:inline">Document Processing Suite</span>
-              <span className="sm:hidden">Doc Suite</span>
-            </Link>
-
             {/* Desktop Navigation */}
             {showNavigation && (
-              <nav className="hidden md:flex items-center gap-1">
+              <nav className="hidden md:flex items-center gap-1 flex-wrap">
                 {navigationItems.map((item) => (
                   <Link
                     key={item.href}
