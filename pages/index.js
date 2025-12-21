@@ -56,7 +56,7 @@ const apps = [
   {
     id: 'reviewer-finder',
     title: 'Reviewer Finder',
-    description: 'Find qualified peer reviewers using Claude AI analysis combined with real database verification (PubMed, ArXiv, BioRxiv)',
+    description: 'Find qualified peer reviewers using Claude AI analysis combined with real database verification (PubMed, ArXiv, BioRxiv, ChemRxiv)',
     icon: '🎯',
     status: 'active',
     categories: ['phase-i', 'phase-ii'],
