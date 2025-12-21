@@ -246,12 +246,12 @@ export default function ProposalSummarizer() {
   };
 
   return (
-    <Layout 
-      title="Phase II Writeup"
+    <Layout
+      title="Create Phase II Writeup Draft"
       description="Generate standardized writeup drafts from PDF research proposals using Claude AI"
     >
-      <PageHeader 
-        title="Phase II Writeup"
+      <PageHeader
+        title="Create Phase II Writeup Draft"
         subtitle="Generate standardized writeup drafts from PDF research proposals using Claude AI"
         icon="🔬"
       />
