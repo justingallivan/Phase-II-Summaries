@@ -9,6 +9,7 @@ const apps = [
     description: 'Process multiple Phase I proposals simultaneously with customizable summary length',
     icon: '📑',
     status: 'active',
+    categories: ['phase-i'],
     features: ['Batch Processing', 'Phase I Specific', 'Custom Length', 'Bulk Export'],
     path: '/batch-phase-i-summaries'
   },
@@ -18,6 +19,7 @@ const apps = [
     description: 'Process multiple proposals at once with customizable summary length (1-5 pages)',
     icon: '📑',
     status: 'active',
+    categories: ['phase-ii'],
     features: ['Batch Processing', 'Custom Length', 'Multi-File Upload', 'Bulk Export'],
     path: '/batch-proposal-summaries'
   },
@@ -27,6 +29,7 @@ const apps = [
     description: 'Analyze federal funding landscapes for research proposals using NSF, NIH, and USAspending.gov data',
     icon: '💵',
     status: 'active',
+    categories: ['phase-i', 'phase-ii'],
     features: ['NSF Awards API', 'NIH RePORTER', 'USAspending.gov', 'Funding Gap Analysis'],
     path: '/funding-gap-analyzer'
   },
@@ -36,6 +39,7 @@ const apps = [
     description: 'Generate Keck Foundation Phase I writeup drafts with standardized formatting',
     icon: '✍️',
     status: 'active',
+    categories: ['phase-i'],
     features: ['PDF Analysis', '1-Page Format', 'Institution Detection', 'Export Options'],
     path: '/phase-i-writeup'
   },
@@ -45,6 +49,7 @@ const apps = [
     description: 'Generate standardized writeup drafts from PDF research proposals using Claude AI',
     icon: '✍️',
     status: 'active',
+    categories: ['phase-ii'],
     features: ['PDF Analysis', 'Claude AI Drafts', 'Q&A Chat', 'Export Options'],
     path: '/proposal-summarizer'
   },
@@ -54,6 +59,7 @@ const apps = [
     description: 'Find qualified peer reviewers using Claude AI analysis combined with real database verification (PubMed, ArXiv, BioRxiv)',
     icon: '🎯',
     status: 'active',
+    categories: ['phase-i', 'phase-ii'],
     features: ['Claude AI Analysis', 'Database Verification', 'Publication Links', 'Reasoning Explanations'],
     path: '/reviewer-finder'
   },
@@ -63,6 +69,7 @@ const apps = [
     description: 'Synthesize and analyze peer review feedback with actionable insights and recommendations',
     icon: '📝',
     status: 'active',
+    categories: ['phase-ii'],
     features: ['Review Analysis', 'Common Themes', 'Action Items', 'Response Templates'],
     path: '/peer-review-summarizer'
   },
@@ -72,6 +79,7 @@ const apps = [
     description: 'Extract and organize expense data from receipts and invoices with automated categorization',
     icon: '💰',
     status: 'active',
+    categories: ['other'],
     features: ['Receipt OCR', 'Image Processing', 'Auto-Categorization', 'Excel/CSV Export'],
     path: '/expense-reporter'
   },
@@ -81,6 +89,7 @@ const apps = [
     description: 'Comprehensive analysis and synthesis of research papers and academic literature',
     icon: '📖',
     status: 'coming-soon',
+    categories: ['other'],
     features: ['Paper Synthesis', 'Citation Analysis', 'Theme Extraction', 'Knowledge Mapping'],
     path: '/literature-analyzer'
   }
@@ -91,9 +100,7 @@ export default function LandingPage() {
 
   const filteredApps = apps.filter(app => {
     if (selectedCategory === 'all') return true;
-    if (selectedCategory === 'active') return app.status === 'active';
-    if (selectedCategory === 'coming-soon') return app.status === 'coming-soon';
-    return true;
+    return app.categories.includes(selectedCategory);
   });
 
   return (
@@ -123,35 +130,45 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex justify-center">
             <div className="flex flex-col sm:flex-row gap-2 bg-gray-100 p-2 rounded-lg">
-              <button 
+              <button
                 className={`px-6 py-3 font-semibold rounded-lg transition-all duration-200 ${
-                  selectedCategory === 'all' 
-                    ? 'bg-white text-gray-900 shadow-sm' 
+                  selectedCategory === 'all'
+                    ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                 }`}
                 onClick={() => setSelectedCategory('all')}
               >
                 All Apps ({apps.length})
               </button>
-              <button 
+              <button
                 className={`px-6 py-3 font-semibold rounded-lg transition-all duration-200 ${
-                  selectedCategory === 'active' 
-                    ? 'bg-white text-gray-900 shadow-sm' 
+                  selectedCategory === 'phase-i'
+                    ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                 }`}
-                onClick={() => setSelectedCategory('active')}
+                onClick={() => setSelectedCategory('phase-i')}
               >
-                Available ({apps.filter(a => a.status === 'active').length})
+                Phase I ({apps.filter(a => a.categories.includes('phase-i')).length})
               </button>
-              <button 
+              <button
                 className={`px-6 py-3 font-semibold rounded-lg transition-all duration-200 ${
-                  selectedCategory === 'coming-soon' 
-                    ? 'bg-white text-gray-900 shadow-sm' 
+                  selectedCategory === 'phase-ii'
+                    ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                 }`}
-                onClick={() => setSelectedCategory('coming-soon')}
+                onClick={() => setSelectedCategory('phase-ii')}
               >
-                Coming Soon ({apps.filter(a => a.status === 'coming-soon').length})
+                Phase II ({apps.filter(a => a.categories.includes('phase-ii')).length})
+              </button>
+              <button
+                className={`px-6 py-3 font-semibold rounded-lg transition-all duration-200 ${
+                  selectedCategory === 'other'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+                onClick={() => setSelectedCategory('other')}
+              >
+                Other Tools ({apps.filter(a => a.categories.includes('other')).length})
               </button>
             </div>
           </div>
