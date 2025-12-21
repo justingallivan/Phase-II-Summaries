@@ -4,22 +4,13 @@ import Link from 'next/link';
 
 const apps = [
   {
-    id: 'proposal-summarizer',
-    title: 'Create Phase II Writeup Draft',
-    description: 'Generate standardized writeup drafts from PDF research proposals using Claude AI',
-    icon: '✍️',
+    id: 'batch-phase-i-summaries',
+    title: 'Batch Phase I Summaries',
+    description: 'Process multiple Phase I proposals simultaneously with customizable summary length',
+    icon: '📑',
     status: 'active',
-    features: ['PDF Analysis', 'Claude AI Drafts', 'Q&A Chat', 'Export Options'],
-    path: '/proposal-summarizer'
-  },
-  {
-    id: 'phase-i-writeup',
-    title: 'Create Phase I Writeup Draft',
-    description: 'Generate Keck Foundation Phase I writeup drafts with standardized formatting',
-    icon: '✍️',
-    status: 'active',
-    features: ['PDF Analysis', '1-Page Format', 'Institution Detection', 'Export Options'],
-    path: '/phase-i-writeup'
+    features: ['Batch Processing', 'Phase I Specific', 'Custom Length', 'Bulk Export'],
+    path: '/batch-phase-i-summaries'
   },
   {
     id: 'batch-proposal-summaries',
@@ -31,13 +22,31 @@ const apps = [
     path: '/batch-proposal-summaries'
   },
   {
-    id: 'batch-phase-i-summaries',
-    title: 'Batch Phase I Summaries',
-    description: 'Process multiple Phase I proposals simultaneously with customizable summary length',
-    icon: '📑',
+    id: 'funding-gap-analyzer',
+    title: 'Funding Analysis',
+    description: 'Analyze federal funding landscapes for research proposals using NSF, NIH, and USAspending.gov data',
+    icon: '💵',
     status: 'active',
-    features: ['Batch Processing', 'Phase I Specific', 'Custom Length', 'Bulk Export'],
-    path: '/batch-phase-i-summaries'
+    features: ['NSF Awards API', 'NIH RePORTER', 'USAspending.gov', 'Funding Gap Analysis'],
+    path: '/funding-gap-analyzer'
+  },
+  {
+    id: 'phase-i-writeup',
+    title: 'Create Phase I Writeup Draft',
+    description: 'Generate Keck Foundation Phase I writeup drafts with standardized formatting',
+    icon: '✍️',
+    status: 'active',
+    features: ['PDF Analysis', '1-Page Format', 'Institution Detection', 'Export Options'],
+    path: '/phase-i-writeup'
+  },
+  {
+    id: 'proposal-summarizer',
+    title: 'Create Phase II Writeup Draft',
+    description: 'Generate standardized writeup drafts from PDF research proposals using Claude AI',
+    icon: '✍️',
+    status: 'active',
+    features: ['PDF Analysis', 'Claude AI Drafts', 'Q&A Chat', 'Export Options'],
+    path: '/proposal-summarizer'
   },
   {
     id: 'reviewer-finder',
@@ -65,15 +74,6 @@ const apps = [
     status: 'active',
     features: ['Receipt OCR', 'Image Processing', 'Auto-Categorization', 'Excel/CSV Export'],
     path: '/expense-reporter'
-  },
-  {
-    id: 'funding-gap-analyzer',
-    title: 'Funding Analysis',
-    description: 'Analyze federal funding landscapes for research proposals using NSF, NIH, and USAspending.gov data',
-    icon: '💵',
-    status: 'active',
-    features: ['NSF Awards API', 'NIH RePORTER', 'USAspending.gov', 'Funding Gap Analysis'],
-    path: '/funding-gap-analyzer'
   },
   {
     id: 'literature-analyzer',
