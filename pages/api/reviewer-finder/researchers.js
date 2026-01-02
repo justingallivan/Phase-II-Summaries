@@ -11,6 +11,8 @@
  *   offset: number       - Default: 0
  *   hasEmail: boolean    - Filter: only with email
  *   hasWebsite: boolean  - Filter: only with website
+ *   keywords: string     - Comma-separated keywords to filter by
+ *   mode: string         - 'keywords' to return keyword list instead of researchers
  */
 
 import { sql } from '@vercel/postgres';
@@ -29,7 +31,28 @@ export default async function handler(req, res) {
       offset = '0',
       hasEmail,
       hasWebsite,
+      keywords,
+      mode,
     } = req.query;
+
+    // Mode: return keyword list for filter dropdown
+    if (mode === 'keywords') {
+      const keywordsResult = await sql`
+        SELECT keyword, COUNT(DISTINCT researcher_id) as count
+        FROM researcher_keywords
+        GROUP BY keyword
+        ORDER BY count DESC, keyword ASC
+        LIMIT 200
+      `;
+
+      return res.status(200).json({
+        success: true,
+        keywords: keywordsResult.rows.map(row => ({
+          keyword: row.keyword,
+          count: parseInt(row.count)
+        }))
+      });
+    }
 
     // Parse and validate pagination
     const limitNum = Math.min(Math.max(parseInt(limit) || 50, 1), 100);
@@ -77,6 +100,20 @@ export default async function handler(req, res) {
       conditions.push(`website IS NOT NULL AND website != ''`);
     }
 
+    // Keyword filter - match researchers with ANY of the specified keywords
+    if (keywords) {
+      const keywordList = keywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k);
+      if (keywordList.length > 0) {
+        conditions.push(`id IN (
+          SELECT DISTINCT researcher_id
+          FROM researcher_keywords
+          WHERE keyword = ANY($${paramIndex}::text[])
+        )`);
+        params.push(keywordList);
+        paramIndex++;
+      }
+    }
+
     // Build WHERE clause
     const whereClause = conditions.length > 0
       ? `WHERE ${conditions.join(' AND ')}`
@@ -118,7 +155,32 @@ export default async function handler(req, res) {
 
     const dataResult = await sql.query(dataQuery, [...params, limitNum, offsetNum]);
 
-    // Transform rows to camelCase
+    // Fetch keywords for all researchers in one query
+    const researcherIds = dataResult.rows.map(r => r.id);
+    let keywordsByResearcher = {};
+
+    if (researcherIds.length > 0) {
+      const keywordsResult = await sql`
+        SELECT researcher_id, keyword, relevance_score, source
+        FROM researcher_keywords
+        WHERE researcher_id = ANY(${researcherIds})
+        ORDER BY relevance_score DESC
+      `;
+
+      // Group keywords by researcher
+      for (const row of keywordsResult.rows) {
+        if (!keywordsByResearcher[row.researcher_id]) {
+          keywordsByResearcher[row.researcher_id] = [];
+        }
+        keywordsByResearcher[row.researcher_id].push({
+          keyword: row.keyword,
+          relevanceScore: row.relevance_score,
+          source: row.source
+        });
+      }
+    }
+
+    // Transform rows to camelCase and add keywords
     const researchers = dataResult.rows.map(row => ({
       id: row.id,
       name: row.name,
@@ -137,6 +199,7 @@ export default async function handler(req, res) {
       contactEnrichedAt: row.contact_enriched_at,
       createdAt: row.created_at,
       lastUpdated: row.last_updated,
+      keywords: keywordsByResearcher[row.id] || [],
     }));
 
     return res.status(200).json({

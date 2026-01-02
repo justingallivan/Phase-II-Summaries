@@ -7,6 +7,7 @@
  */
 
 import { sql } from '@vercel/postgres';
+import { DatabaseService } from '../../../lib/services/database-service';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -157,6 +158,32 @@ export default async function handler(req, res) {
             sources = ${sources},
             suggested_at = CURRENT_TIMESTAMP
         `;
+
+        // Step 6: Save keywords/tags for the researcher
+        // Add expertise areas from Claude analysis
+        if (candidate.expertiseAreas && Array.isArray(candidate.expertiseAreas)) {
+          for (const area of candidate.expertiseAreas) {
+            if (area && area.trim()) {
+              await DatabaseService.addKeywordWithRelevance(
+                researcherId,
+                area.trim(),
+                0.9,  // High relevance - Claude identified these
+                'claude'
+              );
+            }
+          }
+        }
+
+        // Add discovery source as a tag
+        const discoverySource = candidate.source || candidate.verificationSource;
+        if (discoverySource && discoverySource !== 'unknown' && discoverySource !== 'claude_suggestion') {
+          await DatabaseService.addKeywordWithRelevance(
+            researcherId,
+            `source:${discoverySource}`,
+            1.0,
+            discoverySource
+          );
+        }
 
         savedCount++;
       } catch (candidateError) {

@@ -2268,12 +2268,30 @@ function DatabaseTab() {
   const [sortOrder, setSortOrder] = useState('desc');
   const [hasEmailFilter, setHasEmailFilter] = useState(false);
   const [hasWebsiteFilter, setHasWebsiteFilter] = useState(false);
+  const [keywordFilter, setKeywordFilter] = useState([]);
+  const [availableKeywords, setAvailableKeywords] = useState([]);
   const [pagination, setPagination] = useState({
     total: 0,
     limit: 50,
     offset: 0,
     hasMore: false,
   });
+
+  // Fetch available keywords for filter dropdown
+  useEffect(() => {
+    const fetchKeywords = async () => {
+      try {
+        const response = await fetch('/api/reviewer-finder/researchers?mode=keywords');
+        const data = await response.json();
+        if (data.success) {
+          setAvailableKeywords(data.keywords);
+        }
+      } catch (err) {
+        console.error('Failed to fetch keywords:', err);
+      }
+    };
+    fetchKeywords();
+  }, []);
 
   // Debounce search input
   useEffect(() => {
@@ -2300,6 +2318,7 @@ function DatabaseTab() {
 
       if (hasEmailFilter) params.set('hasEmail', 'true');
       if (hasWebsiteFilter) params.set('hasWebsite', 'true');
+      if (keywordFilter.length > 0) params.set('keywords', keywordFilter.join(','));
 
       const response = await fetch(`/api/reviewer-finder/researchers?${params}`);
       const data = await response.json();
@@ -2323,7 +2342,7 @@ function DatabaseTab() {
 
   useEffect(() => {
     fetchResearchers();
-  }, [debouncedSearch, sortBy, sortOrder, hasEmailFilter, hasWebsiteFilter, pagination.offset]);
+  }, [debouncedSearch, sortBy, sortOrder, hasEmailFilter, hasWebsiteFilter, keywordFilter, pagination.offset]);
 
   // Handle sort change
   const handleSort = (column) => {
@@ -2408,6 +2427,30 @@ function DatabaseTab() {
               />
               Has Website
             </label>
+
+            {/* Keyword Filter Dropdown */}
+            {availableKeywords.length > 0 && (
+              <select
+                value=""
+                onChange={(e) => {
+                  if (e.target.value && !keywordFilter.includes(e.target.value)) {
+                    setKeywordFilter([...keywordFilter, e.target.value]);
+                    setPagination(prev => ({ ...prev, offset: 0 }));
+                  }
+                }}
+                className="text-sm border border-gray-300 rounded px-2 py-1"
+              >
+                <option value="">+ Add tag filter...</option>
+                {availableKeywords
+                  .filter(kw => !keywordFilter.includes(kw.keyword))
+                  .map(kw => (
+                    <option key={kw.keyword} value={kw.keyword}>
+                      {kw.keyword} ({kw.count})
+                    </option>
+                  ))
+                }
+              </select>
+            )}
           </div>
 
           {/* Stats */}
@@ -2415,6 +2458,42 @@ function DatabaseTab() {
             {pagination.total} researcher{pagination.total !== 1 ? 's' : ''}
           </div>
         </div>
+
+        {/* Active Keyword Filters */}
+        {keywordFilter.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100">
+            <span className="text-xs text-gray-500">Active filters:</span>
+            {keywordFilter.map(kw => (
+              <span
+                key={kw}
+                className={`
+                  inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full
+                  ${kw.startsWith('source:') ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}
+                `}
+              >
+                {kw.replace('source:', '')}
+                <button
+                  onClick={() => {
+                    setKeywordFilter(keywordFilter.filter(k => k !== kw));
+                    setPagination(prev => ({ ...prev, offset: 0 }));
+                  }}
+                  className="hover:opacity-70 ml-0.5"
+                >
+                  x
+                </button>
+              </span>
+            ))}
+            <button
+              onClick={() => {
+                setKeywordFilter([]);
+                setPagination(prev => ({ ...prev, offset: 0 }));
+              }}
+              className="text-xs text-gray-500 hover:text-gray-700 underline"
+            >
+              Clear all
+            </button>
+          </div>
+        )}
       </Card>
 
       {/* Table */}
@@ -2429,7 +2508,7 @@ function DatabaseTab() {
             <div className="text-6xl mb-4">🔬</div>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">No Researchers Found</h3>
             <p className="text-gray-500 max-w-md mx-auto">
-              {debouncedSearch || hasEmailFilter || hasWebsiteFilter
+              {debouncedSearch || hasEmailFilter || hasWebsiteFilter || keywordFilter.length > 0
                 ? 'Try adjusting your search or filters.'
                 : 'Run a search to discover and save researchers to the database.'}
             </p>
@@ -2553,6 +2632,30 @@ function ResearcherRow({ researcher }) {
             </a>
           )}
         </div>
+        {/* Keywords/Tags */}
+        {researcher.keywords && researcher.keywords.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {researcher.keywords.slice(0, 5).map((kw, i) => (
+              <span
+                key={i}
+                className={`
+                  inline-flex items-center px-1.5 py-0.5 text-xs rounded
+                  ${kw.source === 'claude' ? 'bg-purple-100 text-purple-700' :
+                    kw.keyword.startsWith('source:') ? 'bg-green-100 text-green-700' :
+                    'bg-gray-100 text-gray-600'}
+                `}
+                title={`Source: ${kw.source}`}
+              >
+                {kw.keyword.replace('source:', '')}
+              </span>
+            ))}
+            {researcher.keywords.length > 5 && (
+              <span className="text-xs text-gray-400">
+                +{researcher.keywords.length - 5}
+              </span>
+            )}
+          </div>
+        )}
       </td>
       <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate" title={researcher.affiliation}>
         {researcher.affiliation || '-'}
