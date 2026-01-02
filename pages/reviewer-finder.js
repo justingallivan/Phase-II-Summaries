@@ -7,8 +7,8 @@
  *
  * Three-tab interface:
  * - Tab 1: New Search - Upload proposal and find reviewers
- * - Tab 2: My Candidates - Saved/selected candidates (placeholder)
- * - Tab 3: Database - Browse researcher database (placeholder)
+ * - Tab 2: My Candidates - Saved/selected candidates with email generation
+ * - Tab 3: Database - Browse/search all researchers with filtering & pagination
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -2257,23 +2257,347 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
   );
 }
 
-// Database Tab (placeholder)
+// Database Tab - Browse all researchers
 function DatabaseTab() {
+  const [researchers, setResearchers] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [sortBy, setSortBy] = useState('last_updated');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [hasEmailFilter, setHasEmailFilter] = useState(false);
+  const [hasWebsiteFilter, setHasWebsiteFilter] = useState(false);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    limit: 50,
+    offset: 0,
+    hasMore: false,
+  });
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPagination(prev => ({ ...prev, offset: 0 })); // Reset to first page on search
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Fetch researchers
+  const fetchResearchers = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const params = new URLSearchParams({
+        search: debouncedSearch,
+        sortBy,
+        sortOrder,
+        limit: pagination.limit.toString(),
+        offset: pagination.offset.toString(),
+      });
+
+      if (hasEmailFilter) params.set('hasEmail', 'true');
+      if (hasWebsiteFilter) params.set('hasWebsite', 'true');
+
+      const response = await fetch(`/api/reviewer-finder/researchers?${params}`);
+      const data = await response.json();
+
+      if (data.success) {
+        setResearchers(data.researchers);
+        setPagination(prev => ({
+          ...prev,
+          total: data.total,
+          hasMore: data.hasMore,
+        }));
+      } else {
+        setError(data.error || 'Failed to fetch researchers');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchResearchers();
+  }, [debouncedSearch, sortBy, sortOrder, hasEmailFilter, hasWebsiteFilter, pagination.offset]);
+
+  // Handle sort change
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(column);
+      setSortOrder(column === 'h_index' ? 'desc' : 'asc');
+    }
+    setPagination(prev => ({ ...prev, offset: 0 }));
+  };
+
+  // Pagination handlers
+  const goToPage = (newOffset) => {
+    setPagination(prev => ({ ...prev, offset: newOffset }));
+  };
+
+  const currentPage = Math.floor(pagination.offset / pagination.limit) + 1;
+  const totalPages = Math.ceil(pagination.total / pagination.limit);
+
+  // Sort indicator
+  const SortIndicator = ({ column }) => {
+    if (sortBy !== column) return <span className="text-gray-300 ml-1">↕</span>;
+    return <span className="text-blue-600 ml-1">{sortOrder === 'asc' ? '↑' : '↓'}</span>;
+  };
+
+  if (error) {
+    return (
+      <Card className="text-center py-12">
+        <div className="text-4xl mb-4">⚠️</div>
+        <h3 className="text-xl font-semibold text-gray-900 mb-2">Error</h3>
+        <p className="text-red-600">{error}</p>
+        <Button onClick={fetchResearchers} className="mt-4">Retry</Button>
+      </Card>
+    );
+  }
+
   return (
-    <Card className="text-center py-12">
-      <div className="text-6xl mb-4">🗄️</div>
-      <h3 className="text-xl font-semibold text-gray-900 mb-2">Researcher Database</h3>
-      <p className="text-gray-500 max-w-md mx-auto">
-        Browse and search the growing database of researchers discovered
-        across your searches. This feature is coming soon in Phase 4.
-      </p>
-      <div className="mt-6">
-        <span className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-full text-sm">
-          <span className="w-2 h-2 bg-amber-400 rounded-full"></span>
-          Coming Soon
-        </span>
-      </div>
-    </Card>
+    <div className="space-y-4">
+      {/* Search and Filters */}
+      <Card>
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Search Input */}
+          <div className="flex-1 min-w-64">
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                🔍
+              </span>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name, affiliation, or email..."
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hasEmailFilter}
+                onChange={(e) => {
+                  setHasEmailFilter(e.target.checked);
+                  setPagination(prev => ({ ...prev, offset: 0 }));
+                }}
+                className="rounded border-gray-300 text-blue-600"
+              />
+              Has Email
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hasWebsiteFilter}
+                onChange={(e) => {
+                  setHasWebsiteFilter(e.target.checked);
+                  setPagination(prev => ({ ...prev, offset: 0 }));
+                }}
+                className="rounded border-gray-300 text-blue-600"
+              />
+              Has Website
+            </label>
+          </div>
+
+          {/* Stats */}
+          <div className="text-sm text-gray-500">
+            {pagination.total} researcher{pagination.total !== 1 ? 's' : ''}
+          </div>
+        </div>
+      </Card>
+
+      {/* Table */}
+      <Card className="overflow-hidden">
+        {isLoading && researchers.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="animate-spin text-4xl mb-4">⏳</div>
+            <p className="text-gray-500">Loading researchers...</p>
+          </div>
+        ) : researchers.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">🔬</div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">No Researchers Found</h3>
+            <p className="text-gray-500 max-w-md mx-auto">
+              {debouncedSearch || hasEmailFilter || hasWebsiteFilter
+                ? 'Try adjusting your search or filters.'
+                : 'Run a search to discover and save researchers to the database.'}
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th
+                      onClick={() => handleSort('name')}
+                      className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    >
+                      Name <SortIndicator column="name" />
+                    </th>
+                    <th
+                      onClick={() => handleSort('affiliation')}
+                      className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    >
+                      Affiliation <SortIndicator column="affiliation" />
+                    </th>
+                    <th
+                      onClick={() => handleSort('h_index')}
+                      className="text-center px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    >
+                      h-index <SortIndicator column="h_index" />
+                    </th>
+                    <th className="text-center px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Contact
+                    </th>
+                    <th
+                      onClick={() => handleSort('last_updated')}
+                      className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                    >
+                      Updated <SortIndicator column="last_updated" />
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {researchers.map((researcher) => (
+                    <ResearcherRow key={researcher.id} researcher={researcher} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
+                <div className="text-sm text-gray-500">
+                  Showing {pagination.offset + 1}-{Math.min(pagination.offset + pagination.limit, pagination.total)} of {pagination.total}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => goToPage(0)}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 text-sm border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    First
+                  </button>
+                  <button
+                    onClick={() => goToPage(Math.max(0, pagination.offset - pagination.limit))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 text-sm border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Prev
+                  </button>
+                  <span className="px-3 py-1 text-sm">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => goToPage(pagination.offset + pagination.limit)}
+                    disabled={!pagination.hasMore}
+                    className="px-3 py-1 text-sm border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                  <button
+                    onClick={() => goToPage((totalPages - 1) * pagination.limit)}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 text-sm border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Last
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// Row component for researcher table
+function ResearcherRow({ researcher }) {
+  const scholarUrl = researcher.googleScholarUrl ||
+    (researcher.name ? `https://scholar.google.com/citations?view_op=search_authors&mauthors=${encodeURIComponent(researcher.name)}` : null);
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  return (
+    <tr className="hover:bg-gray-50">
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-gray-900">{researcher.name}</span>
+          {scholarUrl && (
+            <a
+              href={scholarUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-500 hover:text-blue-700"
+              title="Google Scholar"
+            >
+              🎓
+            </a>
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate" title={researcher.affiliation}>
+        {researcher.affiliation || '-'}
+      </td>
+      <td className="px-4 py-3 text-center">
+        {researcher.hIndex ? (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+            {researcher.hIndex}
+          </span>
+        ) : (
+          <span className="text-gray-400">-</span>
+        )}
+      </td>
+      <td className="px-4 py-3 text-center">
+        <div className="flex items-center justify-center gap-2">
+          {researcher.email ? (
+            <a
+              href={`mailto:${researcher.email}`}
+              className="text-green-600 hover:text-green-800"
+              title={researcher.email}
+            >
+              ✉️
+            </a>
+          ) : (
+            <span className="text-gray-300" title="No email">✉️</span>
+          )}
+          {researcher.website || researcher.facultyPageUrl ? (
+            <a
+              href={researcher.website || researcher.facultyPageUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:text-blue-800"
+              title={researcher.website || researcher.facultyPageUrl}
+            >
+              🔗
+            </a>
+          ) : (
+            <span className="text-gray-300" title="No website">🔗</span>
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-3 text-sm text-gray-500">
+        {formatDate(researcher.lastUpdated)}
+      </td>
+    </tr>
   );
 }
 

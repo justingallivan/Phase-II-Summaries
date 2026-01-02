@@ -4,7 +4,7 @@
 
 The Database Tab will provide a browsable interface to view and manage all researchers saved in the Vercel Postgres database. Currently, researchers can only be viewed in the context of specific proposals via the "My Candidates" tab.
 
-## Priority: High (Next Major Feature)
+## Status: Phase 1 Complete (January 2, 2026)
 
 ## Current Database Schema
 
@@ -23,23 +23,27 @@ Related tables:
 
 ## Implementation Plan
 
-### Phase 1: Basic Browse & Search
+### Phase 1: Basic Browse & Search ✅ COMPLETE
 
 **Goal:** Display all researchers in a searchable, sortable table.
 
-**Tasks:**
-1. Create API endpoint `GET /api/reviewer-finder/researchers`
-   - Pagination support (limit/offset)
-   - Sort options: name, affiliation, h_index, updated_at
-   - Search filter: name, affiliation, email
+**Implemented:**
+1. ✅ API endpoint `GET /api/reviewer-finder/researchers`
+   - Pagination support (limit/offset, default 50 per page)
+   - Sort options: name, affiliation, h_index, last_updated
+   - Search filter: name, affiliation, email (ILIKE search)
+   - Filters: hasEmail, hasWebsite
 
-2. Create `DatabaseTab` component in `pages/reviewer-finder.js`
-   - Table view with columns: Name, Affiliation, h-index, Email, Website
-   - Search input field
-   - Sort dropdown
-   - Pagination controls
+2. ✅ `DatabaseTab` component in `pages/reviewer-finder.js`
+   - Table view with columns: Name, Affiliation, h-index, Contact, Updated
+   - Debounced search input (300ms)
+   - Click-to-sort column headers with indicators
+   - Checkbox filters for email/website
+   - Full pagination (First, Prev, Page X of Y, Next, Last)
+   - Google Scholar links for each researcher
+   - Email/website icons with hover tooltips
 
-3. Wire up to existing tab navigation
+3. ✅ Wired to existing tab navigation
 
 ### Phase 2: Researcher Details
 
@@ -140,17 +144,15 @@ Returns all proposals where this researcher was suggested.
 - Existing `EditCandidateModal` component (reusable)
 - Existing table styling patterns from other apps
 
-## Files to Create/Modify
+## Files Created/Modified
 
-**New Files:**
-- `pages/api/reviewer-finder/researchers.js` - CRUD endpoint
-- `shared/components/ResearchersTable.js` - Table component (optional)
+**New Files (Phase 1):**
+- `pages/api/reviewer-finder/researchers.js` - GET endpoint with search, sort, pagination
 
-**Modified Files:**
-- `pages/reviewer-finder.js` - Add DatabaseTab
-- `lib/services/database-service.js` - Add researcher query methods
+**Modified Files (Phase 1):**
+- `pages/reviewer-finder.js` - Implemented full DatabaseTab component with ResearcherRow
 
 ---
 
 Created: December 20, 2025
-Status: Planned
+Phase 1 Complete: January 2, 2026
