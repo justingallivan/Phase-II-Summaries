@@ -9,6 +9,63 @@
 import { sql } from '@vercel/postgres';
 import { DatabaseService } from '../../../lib/services/database-service';
 
+/**
+ * Find existing researcher using multi-field matching.
+ * Check order (first match wins):
+ * 1. ORCID match (most reliable unique identifier)
+ * 2. Email match (after enrichment provides it)
+ * 3. Google Scholar ID match
+ * 4. Normalized name match (fallback)
+ *
+ * Returns { id, matchedBy } or null if no match found.
+ */
+async function findExistingResearcher(candidate, normalizedName) {
+  // Extract identifiers from candidate or contactEnrichment
+  const orcid = candidate.orcid || candidate.contactEnrichment?.orcid || null;
+  const email = candidate.email || candidate.contactEnrichment?.email || null;
+  const googleScholarId = candidate.googleScholarId || candidate.contactEnrichment?.googleScholarId || null;
+
+  // 1. Try ORCID match (most reliable)
+  if (orcid) {
+    const result = await sql`
+      SELECT id FROM researchers WHERE orcid = ${orcid} LIMIT 1
+    `;
+    if (result.rows.length > 0) {
+      return { id: result.rows[0].id, matchedBy: 'orcid' };
+    }
+  }
+
+  // 2. Try email match
+  if (email) {
+    const result = await sql`
+      SELECT id FROM researchers WHERE email = ${email} LIMIT 1
+    `;
+    if (result.rows.length > 0) {
+      return { id: result.rows[0].id, matchedBy: 'email' };
+    }
+  }
+
+  // 3. Try Google Scholar ID match
+  if (googleScholarId) {
+    const result = await sql`
+      SELECT id FROM researchers WHERE google_scholar_id = ${googleScholarId} LIMIT 1
+    `;
+    if (result.rows.length > 0) {
+      return { id: result.rows[0].id, matchedBy: 'google_scholar_id' };
+    }
+  }
+
+  // 4. Fall back to normalized name match
+  const result = await sql`
+    SELECT id FROM researchers WHERE normalized_name = ${normalizedName} LIMIT 1
+  `;
+  if (result.rows.length > 0) {
+    return { id: result.rows[0].id, matchedBy: 'normalized_name' };
+  }
+
+  return null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -38,35 +95,35 @@ export default async function handler(req, res) {
           .replace(/\s+/g, ' ')
           .trim();
 
-        // Extract email and website from candidate or contactEnrichment
+        // Extract all identifiers from candidate or contactEnrichment
         const candidateEmail = candidate.email || candidate.contactEnrichment?.email || null;
         const candidateWebsite = candidate.website || candidate.contactEnrichment?.website || null;
+        const candidateOrcid = candidate.orcid || candidate.contactEnrichment?.orcid || null;
+        const candidateGoogleScholarId = candidate.googleScholarId || candidate.contactEnrichment?.googleScholarId || null;
 
-        // Check if researcher exists
-        let researcherResult = await sql`
-          SELECT id FROM researchers
-          WHERE normalized_name = ${normalizedName}
-          LIMIT 1
-        `;
+        // Check if researcher exists using multi-field matching
+        const existingResearcher = await findExistingResearcher(candidate, normalizedName);
 
         let researcherId;
 
-        if (researcherResult.rows.length > 0) {
-          researcherId = researcherResult.rows[0].id;
+        if (existingResearcher) {
+          researcherId = existingResearcher.id;
 
-          // Update email/website if we have new info
-          if (candidateEmail || candidateWebsite) {
-            await sql`
-              UPDATE researchers
-              SET
-                email = COALESCE(${candidateEmail}, email),
-                website = COALESCE(${candidateWebsite}, website),
-                last_updated = CURRENT_TIMESTAMP
-              WHERE id = ${researcherId}
-            `;
-          }
+          // Merge new data into existing record (only update null fields)
+          await sql`
+            UPDATE researchers
+            SET
+              email = COALESCE(${candidateEmail}, email),
+              website = COALESCE(${candidateWebsite}, website),
+              orcid = COALESCE(${candidateOrcid}, orcid),
+              google_scholar_id = COALESCE(${candidateGoogleScholarId}, google_scholar_id),
+              h_index = COALESCE(${candidate.hIndex || null}, h_index),
+              total_citations = COALESCE(${candidate.totalCitations || null}, total_citations),
+              last_updated = CURRENT_TIMESTAMP
+            WHERE id = ${researcherId}
+          `;
         } else {
-          // Create new researcher with email/website
+          // Create new researcher with all available data
           const insertResult = await sql`
             INSERT INTO researchers (
               name,
@@ -74,6 +131,8 @@ export default async function handler(req, res) {
               primary_affiliation,
               email,
               website,
+              orcid,
+              google_scholar_id,
               h_index,
               total_citations
             )
@@ -83,6 +142,8 @@ export default async function handler(req, res) {
               ${candidate.affiliation || null},
               ${candidateEmail},
               ${candidateWebsite},
+              ${candidateOrcid},
+              ${candidateGoogleScholarId},
               ${candidate.hIndex || null},
               ${candidate.totalCitations || null}
             )

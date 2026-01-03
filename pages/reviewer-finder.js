@@ -1213,17 +1213,10 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
               <div className="flex flex-wrap gap-3">
                 <Button
                   variant="primary"
-                  onClick={handleSaveCandidates}
-                  disabled={isSaving}
-                >
-                  {isSaving ? 'Saving...' : `Save to My Candidates (${selectedCandidates.size})`}
-                </Button>
-                <Button
-                  variant="secondary"
                   onClick={() => setShowEnrichmentModal(true)}
                   disabled={isEnriching}
                 >
-                  📧 Find Contact Info ({selectedCandidates.size})
+                  📧 Find Contacts & Save ({selectedCandidates.size})
                 </Button>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={exportAsMarkdown}>
@@ -1265,7 +1258,7 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-900">
-                  📧 Find Contact Information
+                  📧 Find Contacts & Save
                 </h3>
                 <button
                   onClick={() => setShowEnrichmentModal(false)}
