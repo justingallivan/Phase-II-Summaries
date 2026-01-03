@@ -1750,6 +1750,332 @@ function EditCandidateModal({ isOpen, candidate, onClose, onSave }) {
   );
 }
 
+// Researcher Detail Modal (for Database Tab)
+function ResearcherDetailModal({ researcherId, onClose }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!researcherId) return;
+
+    const fetchDetails = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(`/api/reviewer-finder/researchers?id=${researcherId}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch researcher details');
+        }
+        const result = await response.json();
+        setData(result);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDetails();
+  }, [researcherId]);
+
+  // Handle escape key to close
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
+
+  if (!researcherId) return null;
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return null;
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric'
+    });
+  };
+
+  // Group keywords by source
+  const groupKeywordsBySource = (keywords) => {
+    const groups = {};
+    keywords.forEach(kw => {
+      const source = kw.source || 'other';
+      if (!groups[source]) groups[source] = [];
+      groups[source].push(kw);
+    });
+    return groups;
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50">
+          <div>
+            {loading ? (
+              <div className="h-6 w-48 bg-gray-200 rounded animate-pulse" />
+            ) : data?.researcher ? (
+              <>
+                <h2 className="text-lg font-semibold text-gray-900">{data.researcher.name}</h2>
+                {data.researcher.affiliation && (
+                  <p className="text-sm text-gray-600">{data.researcher.affiliation}</p>
+                )}
+              </>
+            ) : null}
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-xl"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="overflow-y-auto flex-1 p-6 space-y-6">
+          {loading && (
+            <div className="space-y-4">
+              <div className="h-4 w-full bg-gray-200 rounded animate-pulse" />
+              <div className="h-4 w-3/4 bg-gray-200 rounded animate-pulse" />
+              <div className="h-4 w-1/2 bg-gray-200 rounded animate-pulse" />
+            </div>
+          )}
+
+          {error && (
+            <div className="text-red-600 bg-red-50 p-4 rounded-lg">
+              {error}
+            </div>
+          )}
+
+          {data?.researcher && (
+            <>
+              {/* Contact Information */}
+              <section>
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                  Contact Information
+                </h3>
+                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                  {data.researcher.email ? (
+                    <div className="flex items-start gap-2">
+                      <span className="text-green-600">✉️</span>
+                      <div>
+                        <a href={`mailto:${data.researcher.email}`} className="text-blue-600 hover:underline">
+                          {data.researcher.email}
+                        </a>
+                        {data.researcher.emailSource && (
+                          <span className="text-xs text-gray-500 ml-2">
+                            from {data.researcher.emailSource}
+                            {data.researcher.emailYear && ` (${data.researcher.emailYear})`}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-gray-400">
+                      <span>✉️</span>
+                      <span>No email on file</span>
+                    </div>
+                  )}
+
+                  {(data.researcher.website || data.researcher.facultyPageUrl) && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-blue-600">🔗</span>
+                      <a
+                        href={data.researcher.website || data.researcher.facultyPageUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline truncate"
+                      >
+                        {data.researcher.website || data.researcher.facultyPageUrl}
+                      </a>
+                    </div>
+                  )}
+
+                  {data.researcher.orcid && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-green-700">🆔</span>
+                      <a
+                        href={data.researcher.orcidUrl || `https://orcid.org/${data.researcher.orcid}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        ORCID: {data.researcher.orcid}
+                      </a>
+                    </div>
+                  )}
+
+                  {data.researcher.googleScholarUrl && (
+                    <div className="flex items-center gap-2">
+                      <span>🎓</span>
+                      <a
+                        href={data.researcher.googleScholarUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        Google Scholar Profile
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              {/* Metrics */}
+              {(data.researcher.hIndex || data.researcher.i10Index || data.researcher.totalCitations) && (
+                <section>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                    Metrics
+                  </h3>
+                  <div className="flex gap-4">
+                    {data.researcher.hIndex && (
+                      <div className="bg-purple-50 rounded-lg px-4 py-2 text-center">
+                        <div className="text-2xl font-bold text-purple-700">{data.researcher.hIndex}</div>
+                        <div className="text-xs text-purple-600">h-index</div>
+                      </div>
+                    )}
+                    {data.researcher.i10Index && (
+                      <div className="bg-blue-50 rounded-lg px-4 py-2 text-center">
+                        <div className="text-2xl font-bold text-blue-700">{data.researcher.i10Index}</div>
+                        <div className="text-xs text-blue-600">i10-index</div>
+                      </div>
+                    )}
+                    {data.researcher.totalCitations && (
+                      <div className="bg-green-50 rounded-lg px-4 py-2 text-center">
+                        <div className="text-2xl font-bold text-green-700">
+                          {data.researcher.totalCitations.toLocaleString()}
+                        </div>
+                        <div className="text-xs text-green-600">Citations</div>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
+
+              {/* Expertise Keywords */}
+              {data.keywords && data.keywords.length > 0 && (
+                <section>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                    Expertise ({data.keywords.length} keywords)
+                  </h3>
+                  <div className="space-y-3">
+                    {Object.entries(groupKeywordsBySource(data.keywords)).map(([source, keywords]) => (
+                      <div key={source}>
+                        <div className="text-xs text-gray-500 mb-1 capitalize">
+                          {source === 'claude' ? 'From Claude Analysis' :
+                           source.startsWith('source:') ? source :
+                           source === 'publications' ? 'From Publications' :
+                           source}
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {keywords.map((kw, i) => (
+                            <span
+                              key={i}
+                              className={`
+                                inline-flex items-center px-2 py-1 text-xs rounded
+                                ${source === 'claude' ? 'bg-purple-100 text-purple-700' :
+                                  kw.keyword.startsWith('source:') ? 'bg-green-100 text-green-700' :
+                                  'bg-gray-100 text-gray-700'}
+                              `}
+                              title={`Relevance: ${(kw.relevanceScore * 100).toFixed(0)}%`}
+                            >
+                              {kw.keyword.replace('source:', '')}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Proposal Associations */}
+              <section>
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                  Proposal Associations ({data.proposals?.length || 0})
+                </h3>
+                {data.proposals && data.proposals.length > 0 ? (
+                  <div className="space-y-3">
+                    {data.proposals.map((proposal, i) => (
+                      <div key={i} className="bg-gray-50 rounded-lg p-3">
+                        <div className="font-medium text-gray-900 text-sm">
+                          {proposal.proposalTitle}
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 text-xs">
+                          <span className="text-gray-500">
+                            Score: {(proposal.relevanceScore * 100).toFixed(0)}%
+                          </span>
+                          {proposal.selected && (
+                            <span className="text-green-600">✓ Selected</span>
+                          )}
+                          {proposal.invited && (
+                            <span className="text-blue-600">📧 Invited</span>
+                          )}
+                          {proposal.suggestedAt && (
+                            <span className="text-gray-400">
+                              {formatDate(proposal.suggestedAt)}
+                            </span>
+                          )}
+                        </div>
+                        {proposal.matchReason && (
+                          <p className="text-xs text-gray-600 mt-2 italic">
+                            "{proposal.matchReason.slice(0, 200)}{proposal.matchReason.length > 200 ? '...' : ''}"
+                          </p>
+                        )}
+                        {proposal.notes && (
+                          <p className="text-xs text-gray-700 mt-1 bg-yellow-50 p-2 rounded">
+                            Note: {proposal.notes}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-sm italic">
+                    Not associated with any proposals yet.
+                  </p>
+                )}
+              </section>
+
+              {/* Timestamps */}
+              <section className="text-xs text-gray-400 pt-4 border-t">
+                <div className="flex gap-4">
+                  {data.researcher.createdAt && (
+                    <span>Added: {formatDate(data.researcher.createdAt)}</span>
+                  )}
+                  {data.researcher.lastUpdated && (
+                    <span>Updated: {formatDate(data.researcher.lastUpdated)}</span>
+                  )}
+                  {data.researcher.contactEnrichedAt && (
+                    <span>Contacts enriched: {formatDate(data.researcher.contactEnrichedAt)}</span>
+                  )}
+                </div>
+              </section>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t bg-gray-50 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Saved Candidate Card (simpler than search results)
 function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedForDeletion, onToggleSelection }) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -2263,6 +2589,7 @@ function DatabaseTab() {
   const [hasWebsiteFilter, setHasWebsiteFilter] = useState(false);
   const [keywordFilter, setKeywordFilter] = useState([]);
   const [availableKeywords, setAvailableKeywords] = useState([]);
+  const [selectedResearcherId, setSelectedResearcherId] = useState(null);
   const [pagination, setPagination] = useState({
     total: 0,
     limit: 50,
@@ -2543,7 +2870,11 @@ function DatabaseTab() {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {researchers.map((researcher) => (
-                    <ResearcherRow key={researcher.id} researcher={researcher} />
+                    <ResearcherRow
+                      key={researcher.id}
+                      researcher={researcher}
+                      onClick={() => setSelectedResearcherId(researcher.id)}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -2593,12 +2924,20 @@ function DatabaseTab() {
           </>
         )}
       </Card>
+
+      {/* Researcher Detail Modal */}
+      {selectedResearcherId && (
+        <ResearcherDetailModal
+          researcherId={selectedResearcherId}
+          onClose={() => setSelectedResearcherId(null)}
+        />
+      )}
     </div>
   );
 }
 
 // Row component for researcher table
-function ResearcherRow({ researcher }) {
+function ResearcherRow({ researcher, onClick }) {
   const scholarUrl = researcher.googleScholarUrl ||
     (researcher.name ? `https://scholar.google.com/citations?view_op=search_authors&mauthors=${encodeURIComponent(researcher.name)}` : null);
 
@@ -2609,7 +2948,10 @@ function ResearcherRow({ researcher }) {
   };
 
   return (
-    <tr className="hover:bg-gray-50">
+    <tr
+      className="hover:bg-blue-50 cursor-pointer transition-colors"
+      onClick={onClick}
+    >
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="font-medium text-gray-900">{researcher.name}</span>
