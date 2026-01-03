@@ -80,8 +80,14 @@ The flagship application. Complete pipeline for finding and contacting expert re
 - Temperature control (0.3-1.0) and configurable reviewer count
 - Save candidates to database with edit capability
 - Multi-select operations (save, delete, email)
+- **Database Tab** - Browse/search all saved researchers with tag filtering
 
-**Next Feature:** Database Tab - browse/search all researchers. See [ROADMAP_DATABASE_TAB.md](./ROADMAP_DATABASE_TAB.md).
+**Database Tab Features:**
+- Search by name, affiliation, or email
+- Filter by "Has Email", "Has Website", or expertise tags
+- Sort by name, affiliation, h-index, or last updated
+- Auto-generated tags from discovery (expertise areas, source database)
+- Pagination for large datasets
 
 ## Tech Stack
 
@@ -116,6 +122,22 @@ npm install              # Install dependencies
 npm run dev              # Run development server
 npm run build            # Build for production
 node scripts/setup-database.js  # Run database migrations
+```
+
+## Database Utility Scripts
+
+Located in `scripts/`:
+
+| Script | Description |
+|--------|-------------|
+| `setup-database.js` | Run database migrations, create tables and indexes |
+| `cleanup-database.js` | Remove researchers missing email OR website (keeps high-quality entries) |
+| `clear-all-database.js` | Delete ALL data from all tables for a fresh start |
+
+Usage:
+```bash
+node scripts/cleanup-database.js      # Clean up incomplete entries
+node scripts/clear-all-database.js    # Full reset
 ```
 
 ## Key Conventions
@@ -165,6 +187,7 @@ Located in `lib/services/`:
 - `GET /api/reviewer-finder/my-candidates` - Retrieve saved candidates
 - `PATCH /api/reviewer-finder/my-candidates` - Update candidate info (invited, notes, researcher fields)
 - `DELETE /api/reviewer-finder/my-candidates` - Delete candidates
+- `GET /api/reviewer-finder/researchers` - Browse all researchers (with search, sort, filter, pagination)
 - `POST /api/reviewer-finder/enrich-contacts` - Contact lookup (streaming)
 - `POST /api/reviewer-finder/generate-emails` - Generate .eml invitation files (streaming)
 
@@ -189,4 +212,4 @@ For detailed session-by-session development history, see [DEVELOPMENT_LOG.md](./
 
 ---
 
-Last Updated: December 20, 2025
+Last Updated: January 2, 2026
