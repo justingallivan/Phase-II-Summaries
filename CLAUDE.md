@@ -88,6 +88,11 @@ The flagship application. Complete pipeline for finding and contacting expert re
 - Sort by name, affiliation, h-index, or last updated
 - Auto-generated tags from discovery (expertise areas, source database)
 - Pagination for large datasets
+- **Detail Modal** - Click any row to view full researcher info:
+  - Contact info with source (e.g., "from PubMed 2024")
+  - Metrics: h-index, i10-index, total citations
+  - All expertise keywords grouped by source
+  - Proposal associations with status and notes
 
 ## Tech Stack
 
@@ -183,11 +188,11 @@ Located in `lib/services/`:
 ### Expert Reviewer Finder v2
 - `POST /api/reviewer-finder/analyze` - Extract proposal metadata and abstract
 - `POST /api/reviewer-finder/discover` - Find and verify candidates (streaming)
-- `POST /api/reviewer-finder/save-candidates` - Save candidates to database
+- `POST /api/reviewer-finder/save-candidates` - Save candidates with multi-field duplicate detection (ORCID, email, Scholar ID, name)
 - `GET /api/reviewer-finder/my-candidates` - Retrieve saved candidates
 - `PATCH /api/reviewer-finder/my-candidates` - Update candidate info (invited, notes, researcher fields)
 - `DELETE /api/reviewer-finder/my-candidates` - Delete candidates
-- `GET /api/reviewer-finder/researchers` - Browse all researchers (with search, sort, filter, pagination)
+- `GET /api/reviewer-finder/researchers` - Browse all researchers (with search, sort, filter, pagination); use `?id=` for single researcher with full details
 - `POST /api/reviewer-finder/enrich-contacts` - Contact lookup (streaming)
 - `POST /api/reviewer-finder/generate-emails` - Generate .eml invitation files (streaming)
 
@@ -212,4 +217,4 @@ For detailed session-by-session development history, see [DEVELOPMENT_LOG.md](./
 
 ---
 
-Last Updated: January 2, 2026
+Last Updated: January 6, 2026

@@ -1,6 +1,6 @@
-# Document Processing Suite - Session 20 Prompt
+# Document Processing Suite - Session 21 Prompt
 
-## Current State (as of January 2, 2026)
+## Current State (as of January 6, 2026)
 
 ### App Suite Overview
 
@@ -12,88 +12,91 @@ The suite has 9 apps organized into categories:
 | **Phase II** | Batch Phase II Summaries, Funding Analysis, Create Phase II Writeup Draft, Reviewer Finder, Summarize Peer Reviews |
 | **Other Tools** | Expense Reporter, Literature Analyzer (coming soon) |
 
-### Session 19 Summary (Database Tab & Tagging)
+### Session 20 Summary
 
-**Database Tab - Phase 1 Complete:**
-- Browse/search all saved researchers in the Database tab
-- Search by name, affiliation, or email
-- Sort by name, affiliation, h-index, or last updated
-- Filter by "Has Email", "Has Website", or expertise tags
-- Pagination with 50 researchers per page
-- API: `GET /api/reviewer-finder/researchers`
+**Simplified Save Flow:**
+- Removed standalone "Save to My Candidates" button
+- Renamed "Find Contact Info" to "Find Contacts & Save"
+- Contact enrichment is now required before saving candidates
+- Single streamlined path: Select → Enrich → Save
 
-**Auto-Generated Researcher Tags:**
-- Expertise areas extracted from Claude analysis (purple tags)
-- Discovery source tags like `source:pubmed` (green tags)
-- Tags saved to `researcher_keywords` table during save
-- Filter dropdown populated from available tags
+**Multi-Field Duplicate Detection:**
+- Added robust duplicate checking when saving researchers
+- Check order (first match wins):
+  1. ORCID match (most reliable)
+  2. Email match
+  3. Google Scholar ID match
+  4. Normalized name match (fallback)
+- Existing records are updated with new data rather than creating duplicates
 
-**Database Behavior Fix:**
-- Researchers are now ONLY added to database when user clicks "Save"
-- Removed auto-save from discovery/deduplication process
-- Contact enrichment only updates existing researchers
+**Database Tab Phase 2 - Detail Modal:**
+- Click any researcher row to open detail modal
+- Contact Information section with email source (e.g., "from PubMed 2024")
+- Metrics display: h-index, i10-index, total citations
+- All expertise keywords grouped by source with relevance tooltips
+- Proposal associations showing title, score, status, notes
+- Keyboard support (Escape to close), click-outside-to-close
 
-**New Utility Scripts:**
-- `scripts/cleanup-database.js` - Remove researchers missing email or website
-- `scripts/clear-all-database.js` - Delete all data for fresh start
+**API Enhancement:**
+- `GET /api/reviewer-finder/researchers?id=123` returns single researcher with full details
+- Includes all keywords and proposal associations
 
-### Reviewer Finder - Feature Complete
+### Reviewer Finder - Current State
 
 Complete pipeline for finding expert reviewers:
 1. **Claude Analysis** - Extract proposal metadata and suggest reviewers
 2. **Database Discovery** - Search PubMed, ArXiv, BioRxiv, ChemRxiv
-3. **Contact Enrichment** - 5-tier system for emails and faculty pages
+3. **Contact Enrichment** - 5-tier system for emails and faculty pages (now required before save)
 4. **Email Generation** - Create .eml invitation files
-5. **Database Tab** - Browse/search all saved researchers
+5. **Database Tab** - Browse/search all saved researchers with detail modal
 
 **Key Features:**
 - Institution/expertise mismatch warnings
 - Google Scholar profile links
 - PI/author self-suggestion prevention
-- Save/edit/delete candidates in database
+- Multi-field duplicate detection on save
 - Multi-select operations (save, delete, email)
 - Tag-based filtering in Database tab
+- Click-to-view researcher detail modal
 
 ## Suggested Next Steps (Priority Order)
 
-### 1. Database Tab Phase 2 - Researcher Details
-- Expandable rows or detail modal for full researcher info
-- Show all contact info, publications, proposal associations
-- Link from My Candidates to Database view
-
-### 2. Database Tab Phase 3 - Management
+### 1. Database Tab Phase 3 - Management
 - Edit researcher info directly in Database tab
 - Delete researchers (with confirmation)
 - Merge duplicate researchers
 - Bulk export to CSV
 
-### 3. Re-enrich Contacts Button
+### 2. Re-enrich Contacts Button
 - Add button in My Candidates tab to re-run contact enrichment
 - Currently must re-run full search to update contacts
 
-### 4. Email Tracking
+### 3. Email Tracking
 - Mark candidates as "email sent"
 - Track response status (accepted, declined, no response)
 - Use existing `email_sent_at`, `response_type` columns
 
-### 5. Literature Analyzer App
+### 4. Literature Analyzer App
 - Currently "coming soon" placeholder
 - Paper synthesis and citation analysis
+
+### 5. Link My Candidates to Database
+- From My Candidates tab, link to researcher in Database tab
+- Or open detail modal directly from My Candidates
 
 ## Key Files Reference
 
 **Database Tab:**
-- `pages/reviewer-finder.js` - DatabaseTab and ResearcherRow components
-- `pages/api/reviewer-finder/researchers.js` - GET endpoint with filtering
+- `pages/reviewer-finder.js` - DatabaseTab, ResearcherRow, ResearcherDetailModal components
+- `pages/api/reviewer-finder/researchers.js` - GET endpoint with `?id=` for single researcher
 - `lib/services/database-service.js` - Keyword methods
-- `ROADMAP_DATABASE_TAB.md` - Implementation plan (Phase 1 complete)
 
 **Reviewer Finder:**
 - `pages/reviewer-finder.js` - Main page with 3 tabs
 - `lib/services/discovery-service.js` - Multi-database search
 - `lib/services/contact-enrichment-service.js` - 5-tier contact lookup
 - `lib/services/deduplication-service.js` - Name matching, COI filtering
-- `pages/api/reviewer-finder/save-candidates.js` - Save with keyword extraction
+- `pages/api/reviewer-finder/save-candidates.js` - Save with multi-field duplicate detection
 
 **Utility Scripts:**
 - `scripts/setup-database.js` - Database migrations
@@ -119,9 +122,6 @@ npm run dev
 ## Git Status
 
 Branch: main
-Session 19 commits:
-- Database Tab Phase 1 implementation
-- Auto-generated researcher tags from discovery
-- Fix: Only add researchers when explicitly saved
-- Database utility scripts
-- Documentation updates
+Session 20 commits:
+- Simplify save flow: require contact enrichment before saving
+- Add researcher detail modal to Database Tab (Phase 2)
