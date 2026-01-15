@@ -26,6 +26,7 @@ const PLACEHOLDERS = {
     { key: 'proposalAbstract', label: 'Abstract', example: '[Proposal abstract text...]' },
     { key: 'piName', label: 'PI Name', example: 'Dr. John Doe' },
     { key: 'piInstitution', label: 'PI Institution', example: 'Stanford University' },
+    { key: 'investigatorTeam', label: 'Investigator Team', example: 'the PI Dr. John Doe and 2 co-investigators (Dr. Jane Roe, Dr. Bob Lee)' },
     { key: 'coInvestigators', label: 'Co-PIs', example: 'Dr. Jane Roe, Dr. Bob Lee' },
     { key: 'coInvestigatorCount', label: 'Co-PI Count', example: '2' },
   ],
@@ -47,6 +48,7 @@ const SAMPLE_DATA = {
   proposalAbstract: 'This proposal seeks to develop new computational methods for analyzing RNA structure data from chemical probing experiments. We will combine machine learning approaches with thermodynamic modeling to improve prediction accuracy...',
   piName: 'Dr. Sarah Chen',
   piInstitution: 'MIT',
+  investigatorTeam: 'the PI Dr. Sarah Chen and 2 co-investigators (Dr. James Wilson, Dr. Maria Garcia)',
   coInvestigators: 'Dr. James Wilson, Dr. Maria Garcia',
   coInvestigatorCount: '2',
   programName: 'W. M. Keck Foundation',
@@ -281,8 +283,7 @@ I am writing to invite you..."
             <div><code>{'{{proposalAbstract}}'}</code> - Abstract text</div>
             <div><code>{'{{piName}}'}</code> - PI name</div>
             <div><code>{'{{piInstitution}}'}</code> - PI institution</div>
-            <div><code>{'{{coInvestigators}}'}</code> - Co-PI names</div>
-            <div><code>{'{{coInvestigatorCount}}'}</code> - Number of Co-PIs</div>
+            <div><code>{'{{investigatorTeam}}'}</code> - PI and Co-PIs formatted</div>
             <div><code>{'{{programName}}'}</code> - Grant program name</div>
             <div><code>{'{{reviewDeadline}}'}</code> - Formatted deadline</div>
             <div><code>{'{{signature}}'}</code> - Your signature</div>
