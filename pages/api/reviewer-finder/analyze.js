@@ -7,6 +7,7 @@
  * - Proposal metadata
  * - Reviewer suggestions with reasoning
  * - Optimized search queries for databases
+ * - Summary page extraction (if PDF and summaryPages specified)
  *
  * Uses streaming SSE for real-time progress updates.
  */
@@ -19,7 +20,7 @@ export const config = {
       sizeLimit: '10mb',
     },
   },
-  maxDuration: 60, // Allow up to 60 seconds for Claude analysis
+  maxDuration: 90, // Allow up to 90 seconds for Claude analysis + PDF extraction
 };
 
 export default async function handler(req, res) {
@@ -38,8 +39,12 @@ export default async function handler(req, res) {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
+  // Track extracted summary info
+  let summaryBlobUrl = null;
+  let summaryFilename = null;
+
   try {
-    const { apiKey, proposalText, blobUrl, additionalNotes, excludedNames, temperature, reviewerCount } = req.body;
+    const { apiKey, proposalText, blobUrl, additionalNotes, excludedNames, temperature, reviewerCount, summaryPages } = req.body;
 
     if (!apiKey) {
       sendEvent('error', { message: 'API key is required' });
@@ -48,6 +53,7 @@ export default async function handler(req, res) {
 
     // Get proposal text
     let text = proposalText;
+    let pdfBuffer = null;
 
     if (!text && blobUrl) {
       sendEvent('progress', { stage: 'upload', message: 'Fetching uploaded file...' });
@@ -64,9 +70,41 @@ export default async function handler(req, res) {
         // Parse PDF
         sendEvent('progress', { stage: 'processing', message: 'Extracting text from PDF...' });
         const pdfParse = (await import('pdf-parse')).default;
-        const buffer = Buffer.from(await blobResponse.arrayBuffer());
-        const pdfData = await pdfParse(buffer);
+        pdfBuffer = Buffer.from(await blobResponse.arrayBuffer());
+        const pdfData = await pdfParse(pdfBuffer);
         text = pdfData.text;
+
+        // Extract summary pages if specified and we have a PDF buffer
+        if (summaryPages && pdfBuffer) {
+          try {
+            sendEvent('progress', { stage: 'extraction', message: `Extracting summary page(s): ${summaryPages}...` });
+            const { extractPages } = require('../../../lib/utils/pdf-extractor');
+            const extraction = await extractPages(pdfBuffer, summaryPages);
+
+            // Upload extracted pages to Vercel Blob
+            const timestamp = Date.now();
+            summaryFilename = `summary_${timestamp}.pdf`;
+            const blob = await put(summaryFilename, extraction.buffer, {
+              access: 'public',
+              contentType: 'application/pdf'
+            });
+            summaryBlobUrl = blob.url;
+
+            sendEvent('progress', {
+              stage: 'extraction',
+              message: `Extracted ${extraction.pageCount} page(s) from ${extraction.totalSourcePages}-page document`,
+              summaryBlobUrl
+            });
+          } catch (extractError) {
+            console.error('Summary extraction error:', extractError);
+            sendEvent('progress', {
+              stage: 'extraction',
+              message: `Warning: Could not extract summary pages: ${extractError.message}`,
+              error: true
+            });
+            // Continue with analysis even if extraction fails
+          }
+        }
       } else {
         // Plain text
         text = await blobResponse.text();
@@ -110,18 +148,21 @@ export default async function handler(req, res) {
       return res.end();
     }
 
-    // Send results
+    // Send results (include summary blob URL if extraction succeeded)
     sendEvent('result', {
       proposalInfo: result.proposalInfo,
       reviewerSuggestions: result.reviewerSuggestions,
       searchQueries: result.searchQueries,
-      validation: result.validation
+      validation: result.validation,
+      summaryBlobUrl: summaryBlobUrl,
+      summaryFilename: summaryFilename
     });
 
     sendEvent('complete', {
       message: 'Analysis complete',
       suggestionCount: result.reviewerSuggestions?.length || 0,
-      queryCount: Object.values(result.searchQueries || {}).flat().length
+      queryCount: Object.values(result.searchQueries || {}).flat().length,
+      summaryExtracted: !!summaryBlobUrl
     });
 
   } catch (error) {

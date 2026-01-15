@@ -15,6 +15,8 @@ import { useState, useEffect } from 'react';
 const STORAGE_KEYS = {
   EMAIL_SETTINGS: 'email_reviewer_settings',
   EMAIL_TEMPLATE: 'email_reviewer_template',
+  GRANT_CYCLE: 'email_grant_cycle',
+  SENDER_INFO: 'email_sender_info',
 };
 
 // Default settings

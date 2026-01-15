@@ -17,6 +17,7 @@ import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import ApiSettingsPanel from '../shared/components/ApiSettingsPanel';
 import EmailSettingsPanel from '../shared/components/EmailSettingsPanel';
 import EmailGeneratorModal from '../shared/components/EmailGeneratorModal';
+import SettingsModal from '../shared/components/SettingsModal';
 
 // Helper to extract email from affiliation string (fallback when email field is null)
 function extractEmailFromAffiliation(affiliation) {
@@ -477,6 +478,20 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
       // Stage 1: Claude Analysis
       addProgressMessage('Starting Claude analysis...');
 
+      // Get summary pages setting from localStorage (for PDF extraction)
+      let summaryPages = '2'; // Default to page 2
+      try {
+        const grantCycleStored = localStorage.getItem('email_grant_cycle');
+        if (grantCycleStored) {
+          const grantCycle = JSON.parse(atob(grantCycleStored));
+          if (grantCycle.summaryPages) {
+            summaryPages = grantCycle.summaryPages;
+          }
+        }
+      } catch (e) {
+        console.warn('Could not read summary pages setting:', e);
+      }
+
       const response = await fetch('/api/reviewer-finder/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -486,7 +501,8 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
           additionalNotes,
           excludedNames: excludedNames.split(',').map(n => n.trim()).filter(Boolean),
           temperature,
-          reviewerCount
+          reviewerCount,
+          summaryPages
         })
       });
 
@@ -3044,6 +3060,7 @@ export default function ReviewerFinderPage() {
   const [activeTab, setActiveTab] = useState('search');
   const [apiKey, setApiKey] = useState('');
   const [myCandidatesRefresh, setMyCandidatesRefresh] = useState(0);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [apiSettings, setApiSettings] = useState({
     orcidClientId: '',
     orcidClientSecret: '',
@@ -3124,16 +3141,29 @@ export default function ReviewerFinderPage() {
 
         {/* Tab Navigation */}
         <div className="border-b border-gray-200">
-          <div className="flex">
-            {tabs.map((tab) => (
-              <Tab
-                key={tab.id}
-                label={tab.label}
-                icon={tab.icon}
-                active={activeTab === tab.id}
-                onClick={() => setActiveTab(tab.id)}
-              />
-            ))}
+          <div className="flex items-center justify-between">
+            <div className="flex">
+              {tabs.map((tab) => (
+                <Tab
+                  key={tab.id}
+                  label={tab.label}
+                  icon={tab.icon}
+                  active={activeTab === tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                />
+              ))}
+            </div>
+            {/* Settings Gear Icon */}
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors mr-2"
+              title="Settings"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -3144,6 +3174,12 @@ export default function ReviewerFinderPage() {
           {activeTab === 'database' && <DatabaseTab />}
         </div>
       </div>
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+      />
     </Layout>
   );
 }
