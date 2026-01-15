@@ -2,7 +2,7 @@
  * API Route: /api/reviewer-finder/generate-emails
  *
  * Generates .eml files for reviewer invitation emails.
- * Supports optional Claude personalization via SSE streaming.
+ * Supports optional Claude personalization and file attachments via SSE streaming.
  *
  * POST body:
  * - candidates: Array of candidates with name, email, affiliation
@@ -10,10 +10,12 @@
  * - settings: { senderName, senderEmail, signature, grantCycle }
  * - proposalInfo: { title, abstract, authors, institution }
  * - options: { useClaudePersonalization, claudeApiKey }
+ * - attachments: { summaryBlobUrl, reviewTemplateBlobUrl } - URLs to fetch and attach
  */
 
 import {
   generateEmlContent,
+  generateEmlContentWithAttachments,
   replacePlaceholders,
   buildTemplateData,
   createFilename
@@ -24,7 +26,7 @@ import { createPersonalizationPrompt } from '../../../shared/config/prompts/emai
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '4mb',
+      sizeLimit: '10mb', // Increased for attachments
     },
   },
   maxDuration: 300, // 5 minutes for large batches
@@ -52,7 +54,8 @@ export default async function handler(req, res) {
       template,
       settings,
       proposalInfo,
-      options = {}
+      options = {},
+      attachments: attachmentConfig = {}
     } = req.body;
 
     // Validate inputs
@@ -82,11 +85,79 @@ export default async function handler(req, res) {
       return res.end();
     }
 
+    // Fetch attachments if provided
+    const emailAttachments = [];
+    const { summaryBlobUrl, reviewTemplateBlobUrl } = attachmentConfig;
+
+    if (summaryBlobUrl || reviewTemplateBlobUrl) {
+      sendEvent('progress', {
+        stage: 'fetching_attachments',
+        message: 'Fetching attachment files...'
+      });
+
+      // Fetch project summary PDF
+      if (summaryBlobUrl) {
+        try {
+          const summaryResponse = await fetch(summaryBlobUrl);
+          if (summaryResponse.ok) {
+            const buffer = Buffer.from(await summaryResponse.arrayBuffer());
+            emailAttachments.push({
+              filename: 'Project_Summary.pdf',
+              contentType: 'application/pdf',
+              content: buffer
+            });
+            sendEvent('progress', {
+              stage: 'fetching_attachments',
+              message: 'Fetched project summary PDF'
+            });
+          } else {
+            console.warn('Failed to fetch summary PDF:', summaryResponse.status);
+          }
+        } catch (err) {
+          console.error('Error fetching summary PDF:', err.message);
+        }
+      }
+
+      // Fetch review template
+      if (reviewTemplateBlobUrl) {
+        try {
+          const templateResponse = await fetch(reviewTemplateBlobUrl);
+          if (templateResponse.ok) {
+            const buffer = Buffer.from(await templateResponse.arrayBuffer());
+            // Determine filename and content type from URL or default to PDF
+            const urlPath = new URL(reviewTemplateBlobUrl).pathname;
+            const ext = urlPath.split('.').pop()?.toLowerCase() || 'pdf';
+            const contentType = ext === 'docx'
+              ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+              : ext === 'doc'
+              ? 'application/msword'
+              : 'application/pdf';
+            emailAttachments.push({
+              filename: `Review_Template.${ext}`,
+              contentType,
+              content: buffer
+            });
+            sendEvent('progress', {
+              stage: 'fetching_attachments',
+              message: 'Fetched review template'
+            });
+          } else {
+            console.warn('Failed to fetch review template:', templateResponse.status);
+          }
+        } catch (err) {
+          console.error('Error fetching review template:', err.message);
+        }
+      }
+    }
+
+    const hasAttachments = emailAttachments.length > 0;
+
     sendEvent('progress', {
       stage: 'starting',
-      message: `Generating ${validCandidates.length} emails...`,
+      message: `Generating ${validCandidates.length} emails${hasAttachments ? ` with ${emailAttachments.length} attachment(s)` : ''}...`,
       total: validCandidates.length,
-      skipped: skippedCount
+      skipped: skippedCount,
+      attachmentCount: emailAttachments.length
     });
 
     const generatedEmails = [];
@@ -137,13 +208,21 @@ export default async function handler(req, res) {
           ? `${settings.senderName} <${settings.senderEmail}>`
           : settings.senderEmail;
 
-        // Generate EML content
-        const emlContent = generateEmlContent({
-          from,
-          to: candidate.email,
-          subject,
-          body
-        });
+        // Generate EML content (with or without attachments)
+        const emlContent = hasAttachments
+          ? generateEmlContentWithAttachments({
+              from,
+              to: candidate.email,
+              subject,
+              body,
+              attachments: emailAttachments
+            })
+          : generateEmlContent({
+              from,
+              to: candidate.email,
+              subject,
+              body
+            });
 
         const filename = createFilename(candidate.name);
 

@@ -37,10 +37,15 @@ export default function EmailGeneratorModal({
   const [errors, setErrors] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
+  const [attachmentConfig, setAttachmentConfig] = useState({
+    reviewTemplateBlobUrl: '',
+    reviewTemplateFilename: '',
+    summaryBlobUrl: '' // Populated from proposalInfo
+  });
 
   const abortControllerRef = useRef(null);
 
-  // Load settings and template from localStorage
+  // Load settings, template, and attachment config from localStorage
   useEffect(() => {
     try {
       const storedSettings = localStorage.getItem(STORAGE_KEYS.EMAIL_SETTINGS);
@@ -51,6 +56,17 @@ export default function EmailGeneratorModal({
       const storedTemplate = localStorage.getItem(STORAGE_KEYS.EMAIL_TEMPLATE);
       if (storedTemplate) {
         setTemplate(JSON.parse(atob(storedTemplate)));
+      }
+
+      // Load grant cycle settings for review template attachment
+      const storedGrantCycle = localStorage.getItem(STORAGE_KEYS.GRANT_CYCLE);
+      if (storedGrantCycle) {
+        const grantCycle = JSON.parse(atob(storedGrantCycle));
+        setAttachmentConfig(prev => ({
+          ...prev,
+          reviewTemplateBlobUrl: grantCycle.reviewTemplateBlobUrl || '',
+          reviewTemplateFilename: grantCycle.reviewTemplateFilename || ''
+        }));
       }
     } catch (error) {
       console.error('Failed to load email settings:', error);
@@ -66,8 +82,15 @@ export default function EmailGeneratorModal({
       setErrors([]);
       setIsGenerating(false);
       setShowTemplateEditor(false);
+      // Set summary blob URL from proposalInfo if available
+      if (proposalInfo?.summaryBlobUrl) {
+        setAttachmentConfig(prev => ({
+          ...prev,
+          summaryBlobUrl: proposalInfo.summaryBlobUrl
+        }));
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, proposalInfo?.summaryBlobUrl]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -101,6 +124,15 @@ export default function EmailGeneratorModal({
     abortControllerRef.current = new AbortController();
 
     try {
+      // Build attachments config for the API
+      const attachments = {};
+      if (attachmentConfig.summaryBlobUrl) {
+        attachments.summaryBlobUrl = attachmentConfig.summaryBlobUrl;
+      }
+      if (attachmentConfig.reviewTemplateBlobUrl) {
+        attachments.reviewTemplateBlobUrl = attachmentConfig.reviewTemplateBlobUrl;
+      }
+
       const response = await fetch('/api/reviewer-finder/generate-emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -112,7 +144,8 @@ export default function EmailGeneratorModal({
           options: {
             useClaudePersonalization: usePersonalization,
             claudeApiKey: usePersonalization ? claudeApiKey : null
-          }
+          },
+          attachments: Object.keys(attachments).length > 0 ? attachments : undefined
         }),
         signal: abortControllerRef.current.signal
       });
@@ -348,6 +381,40 @@ export default function EmailGeneratorModal({
                       {template.body.substring(0, 200)}...
                     </div>
                   </div>
+                )}
+              </div>
+
+              {/* Attachments Summary */}
+              <div className="p-4 bg-gray-50 rounded-lg text-sm">
+                <h4 className="font-medium text-gray-700 mb-2">Attachments:</h4>
+                <div className="space-y-1">
+                  {attachmentConfig.reviewTemplateBlobUrl ? (
+                    <div className="flex items-center gap-2 text-green-600">
+                      <span>✓</span>
+                      <span>Review Template ({attachmentConfig.reviewTemplateFilename || 'Review_Template.pdf'})</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-gray-400">
+                      <span>○</span>
+                      <span>No review template configured</span>
+                    </div>
+                  )}
+                  {attachmentConfig.summaryBlobUrl ? (
+                    <div className="flex items-center gap-2 text-green-600">
+                      <span>✓</span>
+                      <span>Project Summary (auto-extracted from proposal)</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-gray-400">
+                      <span>○</span>
+                      <span>No project summary available</span>
+                    </div>
+                  )}
+                </div>
+                {!attachmentConfig.reviewTemplateBlobUrl && !attachmentConfig.summaryBlobUrl && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Configure attachments in Settings (gear icon)
+                  </p>
                 )}
               </div>
 

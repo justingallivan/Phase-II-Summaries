@@ -72,7 +72,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { proposalId, proposalTitle, proposalAbstract, proposalAuthors, proposalInstitution, candidates } = req.body;
+    const { proposalId, proposalTitle, proposalAbstract, proposalAuthors, proposalInstitution, summaryBlobUrl, candidates } = req.body;
 
     if (!proposalId) {
       return res.status(400).json({ error: 'proposalId is required' });
@@ -190,6 +190,7 @@ export default async function handler(req, res) {
             proposal_abstract,
             proposal_authors,
             proposal_institution,
+            summary_blob_url,
             researcher_id,
             relevance_score,
             match_reason,
@@ -202,6 +203,7 @@ export default async function handler(req, res) {
             ${proposalAbstract || null},
             ${proposalAuthors || null},
             ${proposalInstitution || null},
+            ${summaryBlobUrl || null},
             ${researcherId},
             ${relevanceScore},
             ${matchReason},
@@ -214,6 +216,7 @@ export default async function handler(req, res) {
             proposal_abstract = COALESCE(${proposalAbstract}, reviewer_suggestions.proposal_abstract),
             proposal_authors = COALESCE(${proposalAuthors}, reviewer_suggestions.proposal_authors),
             proposal_institution = COALESCE(${proposalInstitution}, reviewer_suggestions.proposal_institution),
+            summary_blob_url = COALESCE(${summaryBlobUrl}, reviewer_suggestions.summary_blob_url),
             relevance_score = ${relevanceScore},
             match_reason = ${matchReason},
             sources = ${sources},

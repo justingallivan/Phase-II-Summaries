@@ -717,6 +717,7 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
           proposalAbstract: analysisResult?.proposalInfo?.abstract || '',
           proposalAuthors: analysisResult?.proposalInfo?.proposalAuthors || '',
           proposalInstitution: analysisResult?.proposalInfo?.authorInstitution || '',
+          summaryBlobUrl: analysisResult?.summaryBlobUrl || null,
           candidates: selected
         })
       });
@@ -2417,7 +2418,8 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
             title: proposal.proposalTitle,
             abstract: proposal.proposalAbstract || '',
             authors: proposal.proposalAuthors || '',
-            institution: proposal.proposalInstitution || ''
+            institution: proposal.proposalInstitution || '',
+            summaryBlobUrl: proposal.summaryBlobUrl || ''
           };
         }
 

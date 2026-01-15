@@ -215,6 +215,8 @@ const v6Alterations = [
   // Also add to reviewer_suggestions for email generation
   `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS co_investigators TEXT`,
   `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS co_investigator_count INTEGER`,
+  // Summary blob URL in reviewer_suggestions (for My Candidates email generation)
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS summary_blob_url VARCHAR(500)`,
 ];
 
 // V5 data migration: merge duplicate proposals based on title
@@ -408,6 +410,7 @@ async function runMigration() {
     console.log('  • proposal_searches.co_investigator_count');
     console.log('  • reviewer_suggestions.co_investigators');
     console.log('  • reviewer_suggestions.co_investigator_count');
+    console.log('  • reviewer_suggestions.summary_blob_url');
     console.log('\nIndexes created: 17');
 
   } catch (error) {

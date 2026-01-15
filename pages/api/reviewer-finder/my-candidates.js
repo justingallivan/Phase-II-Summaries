@@ -31,6 +31,7 @@ async function handleGet(req, res) {
         rs.proposal_abstract,
         rs.proposal_authors,
         rs.proposal_institution,
+        rs.summary_blob_url,
         rs.relevance_score,
         rs.match_reason,
         rs.sources,
@@ -62,6 +63,7 @@ async function handleGet(req, res) {
           proposalAbstract: row.proposal_abstract,
           proposalAuthors: row.proposal_authors,
           proposalInstitution: row.proposal_institution,
+          summaryBlobUrl: row.summary_blob_url,
           candidates: []
         };
       }

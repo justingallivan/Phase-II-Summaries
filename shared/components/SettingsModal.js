@@ -16,6 +16,8 @@ const DEFAULT_GRANT_CYCLE = {
   programName: 'W. M. Keck Foundation',
   reviewDeadline: '',
   summaryPages: '2', // Default to page 2 for Keck proposals
+  reviewTemplateBlobUrl: '', // URL to uploaded review template file
+  reviewTemplateFilename: '', // Original filename
   customFields: {
     proposalDueDate: '',
     honorarium: '250',
@@ -36,6 +38,7 @@ export default function SettingsModal({ isOpen, onClose }) {
   const [grantCycle, setGrantCycle] = useState(DEFAULT_GRANT_CYCLE);
   const [sender, setSender] = useState(DEFAULT_SENDER);
   const [saveStatus, setSaveStatus] = useState(null);
+  const [uploadingTemplate, setUploadingTemplate] = useState(false);
 
   // Load settings on mount
   useEffect(() => {
@@ -94,6 +97,60 @@ export default function SettingsModal({ isOpen, onClose }) {
     setSaveStatus(null);
   };
 
+  // Handle review template upload
+  const handleTemplateUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload a PDF or Word document (.pdf, .doc, .docx)');
+      return;
+    }
+
+    setUploadingTemplate(true);
+    try {
+      // Upload to Vercel Blob via the upload handler
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/upload-handler', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const { url } = await response.json();
+
+      // Update grant cycle with the blob URL
+      setGrantCycle(prev => ({
+        ...prev,
+        reviewTemplateBlobUrl: url,
+        reviewTemplateFilename: file.name
+      }));
+      setSaveStatus(null);
+    } catch (error) {
+      console.error('Template upload failed:', error);
+      alert('Failed to upload template. Please try again.');
+    } finally {
+      setUploadingTemplate(false);
+    }
+  };
+
+  // Handle review template removal
+  const handleRemoveTemplate = () => {
+    setGrantCycle(prev => ({
+      ...prev,
+      reviewTemplateBlobUrl: '',
+      reviewTemplateFilename: ''
+    }));
+    setSaveStatus(null);
+  };
+
   // Handle escape key
   useEffect(() => {
     const handleEscape = (e) => {
@@ -109,6 +166,7 @@ export default function SettingsModal({ isOpen, onClose }) {
 
   const sections = [
     { id: 'grant-cycle', label: 'Grant Cycle', icon: '📅' },
+    { id: 'attachments', label: 'Attachments', icon: '📎' },
     { id: 'sender', label: 'Sender Info', icon: '👤' },
     { id: 'template', label: 'Email Template', icon: '✉️' },
   ];
@@ -276,6 +334,97 @@ export default function SettingsModal({ isOpen, onClose }) {
                         />
                       </div>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Attachments Section */}
+              {activeSection === 'attachments' && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">Email Attachments</h3>
+                    <p className="text-sm text-gray-500 mb-6">
+                      Configure files to attach to reviewer invitation emails. The project summary is automatically
+                      extracted from uploaded proposals based on the Summary Pages setting.
+                    </p>
+                  </div>
+
+                  {/* Review Template Upload */}
+                  <div className="p-4 border border-gray-200 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Review Template</h4>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Upload a review template (PDF or Word document) that will be attached to all invitation emails.
+                    </p>
+
+                    {grantCycle.reviewTemplateBlobUrl ? (
+                      <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <span className="text-green-600">📄</span>
+                          <span className="text-sm text-green-800">
+                            {grantCycle.reviewTemplateFilename || 'Review_Template.pdf'}
+                          </span>
+                        </div>
+                        <button
+                          onClick={handleRemoveTemplate}
+                          className="text-sm text-red-600 hover:text-red-800"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <label className="flex-1">
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx"
+                            onChange={handleTemplateUpload}
+                            className="hidden"
+                          />
+                          <div className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                            <span className="text-gray-400">📎</span>
+                            <span className="text-sm text-gray-600">
+                              {uploadingTemplate ? 'Uploading...' : 'Click to upload review template'}
+                            </span>
+                          </div>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Project Summary Info */}
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <h4 className="text-sm font-medium text-blue-800 mb-2">Project Summary (Auto-extracted)</h4>
+                    <p className="text-xs text-blue-600 mb-2">
+                      The project summary is automatically extracted from each uploaded proposal based on the
+                      "Summary Pages" setting in Grant Cycle. Currently set to extract page(s): <strong>{grantCycle.summaryPages || '2'}</strong>
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      To change which pages are extracted, go to the Grant Cycle section.
+                    </p>
+                  </div>
+
+                  {/* Attachment Preview */}
+                  <div className="p-4 bg-gray-50 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Attachments Preview</h4>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Each generated email will include:
+                    </p>
+                    <ul className="text-sm text-gray-600 space-y-1">
+                      <li className="flex items-center gap-2">
+                        <span className={grantCycle.reviewTemplateBlobUrl ? 'text-green-500' : 'text-gray-300'}>
+                          {grantCycle.reviewTemplateBlobUrl ? '✓' : '○'}
+                        </span>
+                        <span>Review_Template.{grantCycle.reviewTemplateFilename?.split('.').pop() || 'pdf'}</span>
+                        {!grantCycle.reviewTemplateBlobUrl && (
+                          <span className="text-xs text-gray-400">(not uploaded)</span>
+                        )}
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <span className="text-blue-500">○</span>
+                        <span>Project_Summary.pdf</span>
+                        <span className="text-xs text-gray-400">(per-proposal, auto-extracted)</span>
+                      </li>
+                    </ul>
                   </div>
                 </div>
               )}
