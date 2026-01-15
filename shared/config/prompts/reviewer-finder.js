@@ -40,9 +40,14 @@ Analyze this proposal and provide THREE types of output:
 Extract key information about the proposal:
 
 TITLE: [Complete proposal title]
-PROPOSAL_AUTHORS: [Name of the PRIMARY Investigator (PI) only - the lead author. Extract from title page or author attribution. If not found, write "Not specified"]
-CO_INVESTIGATORS: [Names of Co-Investigators/Co-PIs, comma-separated. These are additional investigators listed after the PI. If none, write "None"]
-CO_INVESTIGATOR_COUNT: [Number of Co-Investigators as a digit, e.g., "0", "1", "2", "3". If none, write "0"]
+PROPOSAL_AUTHORS: [Name of the PRIMARY Investigator (PI) only - the lead author. Extract from title page, cover page, or author attribution. If not found, write "Not specified"]
+CO_INVESTIGATORS: [Names of Co-Investigators/Co-PIs, comma-separated. Look for these in:
+  - Title/cover page author lists (names after the first/lead author)
+  - "Co-Investigator", "Co-PI", "Co-Principal Investigator" labels
+  - "Senior Personnel" or "Key Personnel" sections
+  - Author affiliations lists
+  Include full names with titles if available (e.g., "Dr. Jane Smith, Dr. John Doe"). If none found, write "None"]
+CO_INVESTIGATOR_COUNT: [Number of Co-Investigators as a digit, e.g., "0", "1", "2", "3". Must match the number of names in CO_INVESTIGATORS. If none, write "0"]
 AUTHOR_INSTITUTION: [University or organization name of the PI, or "Not specified"]
 PRIMARY_RESEARCH_AREA: [Main scientific discipline]
 SECONDARY_AREAS: [Comma-separated list of related fields]
