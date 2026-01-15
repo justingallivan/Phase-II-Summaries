@@ -40,7 +40,8 @@ export default function EmailGeneratorModal({
   const [attachmentConfig, setAttachmentConfig] = useState({
     reviewTemplateBlobUrl: '',
     reviewTemplateFilename: '',
-    summaryBlobUrl: '' // Populated from proposalInfo
+    summaryBlobUrl: '', // Populated from proposalInfo
+    additionalAttachments: [] // Array of {blobUrl, filename, contentType}
   });
 
   const abortControllerRef = useRef(null);
@@ -68,7 +69,8 @@ export default function EmailGeneratorModal({
         setAttachmentConfig(prev => ({
           ...prev,
           reviewTemplateBlobUrl: grantCycle.reviewTemplateBlobUrl || '',
-          reviewTemplateFilename: grantCycle.reviewTemplateFilename || ''
+          reviewTemplateFilename: grantCycle.reviewTemplateFilename || '',
+          additionalAttachments: grantCycle.additionalAttachments || []
         }));
       }
 
@@ -150,6 +152,9 @@ export default function EmailGeneratorModal({
       }
       if (attachmentConfig.reviewTemplateBlobUrl) {
         attachments.reviewTemplateBlobUrl = attachmentConfig.reviewTemplateBlobUrl;
+      }
+      if (attachmentConfig.additionalAttachments?.length > 0) {
+        attachments.additionalAttachments = attachmentConfig.additionalAttachments;
       }
 
       const response = await fetch('/api/reviewer-finder/generate-emails', {
@@ -429,8 +434,14 @@ export default function EmailGeneratorModal({
                       <span>No project summary available</span>
                     </div>
                   )}
+                  {attachmentConfig.additionalAttachments?.map((attachment, index) => (
+                    <div key={index} className="flex items-center gap-2 text-green-600">
+                      <span>✓</span>
+                      <span>{attachment.filename}</span>
+                    </div>
+                  ))}
                 </div>
-                {!attachmentConfig.reviewTemplateBlobUrl && !attachmentConfig.summaryBlobUrl && (
+                {!attachmentConfig.reviewTemplateBlobUrl && !attachmentConfig.summaryBlobUrl && !attachmentConfig.additionalAttachments?.length && (
                   <p className="mt-2 text-xs text-gray-500">
                     Configure attachments in Settings (gear icon)
                   </p>

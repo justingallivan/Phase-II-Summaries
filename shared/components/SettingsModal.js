@@ -18,6 +18,7 @@ const DEFAULT_GRANT_CYCLE = {
   summaryPages: '2', // Default to page 2 for Keck proposals
   reviewTemplateBlobUrl: '', // URL to uploaded review template file
   reviewTemplateFilename: '', // Original filename
+  additionalAttachments: [], // Array of {blobUrl, filename, contentType}
   customFields: {
     proposalDueDate: '',
     honorarium: '250',
@@ -39,6 +40,7 @@ export default function SettingsModal({ isOpen, onClose }) {
   const [sender, setSender] = useState(DEFAULT_SENDER);
   const [saveStatus, setSaveStatus] = useState(null);
   const [uploadingTemplate, setUploadingTemplate] = useState(false);
+  const [uploadingAdditional, setUploadingAdditional] = useState(false);
 
   // Load settings on mount
   useEffect(() => {
@@ -147,6 +149,59 @@ export default function SettingsModal({ isOpen, onClose }) {
       ...prev,
       reviewTemplateBlobUrl: '',
       reviewTemplateFilename: ''
+    }));
+    setSaveStatus(null);
+  };
+
+  // Handle additional attachment upload
+  const handleAdditionalUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingAdditional(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/upload-file', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const { url } = await response.json();
+
+      // Add to additional attachments array
+      setGrantCycle(prev => ({
+        ...prev,
+        additionalAttachments: [
+          ...(prev.additionalAttachments || []),
+          {
+            blobUrl: url,
+            filename: file.name,
+            contentType: file.type || 'application/octet-stream'
+          }
+        ]
+      }));
+      setSaveStatus(null);
+    } catch (error) {
+      console.error('Additional attachment upload failed:', error);
+      alert('Failed to upload file. Please try again.');
+    } finally {
+      setUploadingAdditional(false);
+      // Reset the input so the same file can be uploaded again if needed
+      e.target.value = '';
+    }
+  };
+
+  // Handle additional attachment removal
+  const handleRemoveAdditional = (index) => {
+    setGrantCycle(prev => ({
+      ...prev,
+      additionalAttachments: prev.additionalAttachments.filter((_, i) => i !== index)
     }));
     setSaveStatus(null);
   };
@@ -403,6 +458,52 @@ export default function SettingsModal({ isOpen, onClose }) {
                     </p>
                   </div>
 
+                  {/* Additional Attachments */}
+                  <div className="p-4 border border-gray-200 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Additional Attachments (Optional)</h4>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Upload additional files to include with all invitation emails.
+                    </p>
+
+                    {/* List of uploaded additional attachments */}
+                    {grantCycle.additionalAttachments?.length > 0 && (
+                      <div className="space-y-2 mb-3">
+                        {grantCycle.additionalAttachments.map((attachment, index) => (
+                          <div key={index} className="flex items-center justify-between p-2 bg-gray-50 border border-gray-200 rounded-lg">
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-500">📄</span>
+                              <span className="text-sm text-gray-700 truncate max-w-[200px]">
+                                {attachment.filename}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => handleRemoveAdditional(index)}
+                              className="text-sm text-red-600 hover:text-red-800"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Upload button */}
+                    <label className="block">
+                      <input
+                        type="file"
+                        onChange={handleAdditionalUpload}
+                        className="hidden"
+                        disabled={uploadingAdditional}
+                      />
+                      <div className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                        <span className="text-gray-400">+</span>
+                        <span className="text-sm text-gray-600">
+                          {uploadingAdditional ? 'Uploading...' : 'Add attachment'}
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+
                   {/* Attachment Preview */}
                   <div className="p-4 bg-gray-50 rounded-lg">
                     <h4 className="text-sm font-medium text-gray-700 mb-2">Attachments Preview</h4>
@@ -424,6 +525,12 @@ export default function SettingsModal({ isOpen, onClose }) {
                         <span>Project_Summary.pdf</span>
                         <span className="text-xs text-gray-400">(per-proposal, auto-extracted)</span>
                       </li>
+                      {grantCycle.additionalAttachments?.map((attachment, index) => (
+                        <li key={index} className="flex items-center gap-2">
+                          <span className="text-green-500">✓</span>
+                          <span>{attachment.filename}</span>
+                        </li>
+                      ))}
                     </ul>
                   </div>
                 </div>

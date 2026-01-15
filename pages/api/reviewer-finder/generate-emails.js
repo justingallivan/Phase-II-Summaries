@@ -87,9 +87,9 @@ export default async function handler(req, res) {
 
     // Fetch attachments if provided
     const emailAttachments = [];
-    const { summaryBlobUrl, reviewTemplateBlobUrl } = attachmentConfig;
+    const { summaryBlobUrl, reviewTemplateBlobUrl, additionalAttachments = [] } = attachmentConfig;
 
-    if (summaryBlobUrl || reviewTemplateBlobUrl) {
+    if (summaryBlobUrl || reviewTemplateBlobUrl || additionalAttachments.length > 0) {
       sendEvent('progress', {
         stage: 'fetching_attachments',
         message: 'Fetching attachment files...'
@@ -146,6 +146,30 @@ export default async function handler(req, res) {
           }
         } catch (err) {
           console.error('Error fetching review template:', err.message);
+        }
+      }
+
+      // Fetch additional attachments
+      for (const attachment of additionalAttachments) {
+        if (!attachment.blobUrl) continue;
+        try {
+          const response = await fetch(attachment.blobUrl);
+          if (response.ok) {
+            const buffer = Buffer.from(await response.arrayBuffer());
+            emailAttachments.push({
+              filename: attachment.filename || 'Attachment.pdf',
+              contentType: attachment.contentType || 'application/octet-stream',
+              content: buffer
+            });
+            sendEvent('progress', {
+              stage: 'fetching_attachments',
+              message: `Fetched ${attachment.filename}`
+            });
+          } else {
+            console.warn(`Failed to fetch additional attachment ${attachment.filename}:`, response.status);
+          }
+        } catch (err) {
+          console.error(`Error fetching additional attachment ${attachment.filename}:`, err.message);
         }
       }
     }
