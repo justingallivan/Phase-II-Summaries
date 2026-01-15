@@ -48,25 +48,44 @@ export default function EmailGeneratorModal({
   // Load settings, template, and attachment config from localStorage
   useEffect(() => {
     try {
+      // Load base settings (sender info)
+      let loadedSettings = { ...DEFAULT_SETTINGS };
       const storedSettings = localStorage.getItem(STORAGE_KEYS.EMAIL_SETTINGS);
       if (storedSettings) {
-        setSettings(JSON.parse(atob(storedSettings)));
+        loadedSettings = { ...loadedSettings, ...JSON.parse(atob(storedSettings)) };
       }
 
-      const storedTemplate = localStorage.getItem(STORAGE_KEYS.EMAIL_TEMPLATE);
-      if (storedTemplate) {
-        setTemplate(JSON.parse(atob(storedTemplate)));
-      }
-
-      // Load grant cycle settings for review template attachment
+      // Load grant cycle settings and merge into settings
       const storedGrantCycle = localStorage.getItem(STORAGE_KEYS.GRANT_CYCLE);
       if (storedGrantCycle) {
         const grantCycle = JSON.parse(atob(storedGrantCycle));
+        // Merge grant cycle into settings.grantCycle
+        loadedSettings.grantCycle = {
+          ...loadedSettings.grantCycle,
+          ...grantCycle
+        };
+        // Also set attachment config
         setAttachmentConfig(prev => ({
           ...prev,
           reviewTemplateBlobUrl: grantCycle.reviewTemplateBlobUrl || '',
           reviewTemplateFilename: grantCycle.reviewTemplateFilename || ''
         }));
+      }
+
+      // Load sender info from separate storage
+      const storedSender = localStorage.getItem(STORAGE_KEYS.SENDER_INFO);
+      if (storedSender) {
+        const sender = JSON.parse(atob(storedSender));
+        loadedSettings.senderName = sender.name || loadedSettings.senderName;
+        loadedSettings.senderEmail = sender.email || loadedSettings.senderEmail;
+        loadedSettings.signature = sender.signature || loadedSettings.signature;
+      }
+
+      setSettings(loadedSettings);
+
+      const storedTemplate = localStorage.getItem(STORAGE_KEYS.EMAIL_TEMPLATE);
+      if (storedTemplate) {
+        setTemplate(JSON.parse(atob(storedTemplate)));
       }
     } catch (error) {
       console.error('Failed to load email settings:', error);
