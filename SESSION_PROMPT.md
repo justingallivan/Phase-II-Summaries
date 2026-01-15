@@ -1,6 +1,6 @@
-# Document Processing Suite - Session 21 Prompt
+# Document Processing Suite - Session 23 Prompt
 
-## Current State (as of January 6, 2026)
+## Current State (as of January 14, 2026)
 
 ### App Suite Overview
 
@@ -12,42 +12,45 @@ The suite has 9 apps organized into categories:
 | **Phase II** | Batch Phase II Summaries, Funding Analysis, Create Phase II Writeup Draft, Reviewer Finder, Summarize Peer Reviews |
 | **Other Tools** | Expense Reporter, Literature Analyzer (coming soon) |
 
-### Session 20 Summary
+### Session 22 Summary
 
-**Simplified Save Flow:**
-- Removed standalone "Save to My Candidates" button
-- Renamed "Find Contact Info" to "Find Contacts & Save"
-- Contact enrichment is now required before saving candidates
-- Single streamlined path: Select → Enrich → Save
+**Email Generation V6 - Complete:**
 
-**Multi-Field Duplicate Detection:**
-- Added robust duplicate checking when saving researchers
-- Check order (first match wins):
-  1. ORCID match (most reliable)
-  2. Email match
-  3. Google Scholar ID match
-  4. Normalized name match (fallback)
-- Existing records are updated with new data rather than creating duplicates
+1. **Settings Modal Overhaul**
+   - Reordered: Sender Info → Grant Cycle → Email Template → Attachments
+   - Additional Attachments section for optional files
+   - Review template upload via Vercel Blob
+   - Grant cycle custom fields (proposalDueDate, honorarium, proposalSendDate, commitDate)
 
-**Database Tab Phase 2 - Detail Modal:**
-- Click any researcher row to open detail modal
-- Contact Information section with email source (e.g., "from PubMed 2024")
-- Metrics display: h-index, i10-index, total citations
-- All expertise keywords grouped by source with relevance tooltips
-- Proposal associations showing title, score, status, notes
-- Keyboard support (Escape to close), click-outside-to-close
+2. **Email Attachment Support**
+   - MIME multipart/mixed format for .eml files
+   - Auto-extracted project summary from proposal PDFs (pdf-lib)
+   - Review template + additional attachments
+   - Re-extract summary button in My Candidates tab
 
-**API Enhancement:**
-- `GET /api/reviewer-finder/researchers?id=123` returns single researcher with full details
-- Includes all keywords and proposal associations
+3. **Investigator Team Formatting**
+   - `{{investigatorTeam}}` - formats PI + Co-PIs gracefully
+   - `{{investigatorVerb}}` - "was" (singular) or "were" (plural)
+   - Enhanced Co-PI extraction from proposals
+
+4. **Bug Fixes**
+   - Custom field date formatting (ISO → readable)
+   - Template literal escaping for `${{...}}`
+   - Extract summary API buffer handling
+   - Subject-verb agreement
+
+5. **Email Workflow Documentation**
+   - .eml files open as "received" messages (format limitation)
+   - Instructions: Forward and remove "Fwd:", or copy/paste
+   - Future consideration documented for CRM/email service integration
 
 ### Reviewer Finder - Current State
 
 Complete pipeline for finding expert reviewers:
-1. **Claude Analysis** - Extract proposal metadata and suggest reviewers
+1. **Claude Analysis** - Extract proposal metadata (PI, Co-PIs, abstract) and suggest reviewers
 2. **Database Discovery** - Search PubMed, ArXiv, BioRxiv, ChemRxiv
-3. **Contact Enrichment** - 5-tier system for emails and faculty pages (now required before save)
-4. **Email Generation** - Create .eml invitation files
+3. **Contact Enrichment** - 5-tier system for emails and faculty pages
+4. **Email Generation** - Create .eml files with attachments
 5. **Database Tab** - Browse/search all saved researchers with detail modal
 
 **Key Features:**
@@ -57,7 +60,8 @@ Complete pipeline for finding expert reviewers:
 - Multi-field duplicate detection on save
 - Multi-select operations (save, delete, email)
 - Tag-based filtering in Database tab
-- Click-to-view researcher detail modal
+- Settings gear icon (accessible before proposal upload)
+- `{{investigatorTeam}}` and `{{investigatorVerb}}` placeholders
 
 ## Suggested Next Steps (Priority Order)
 
@@ -67,39 +71,52 @@ Complete pipeline for finding expert reviewers:
 - Merge duplicate researchers
 - Bulk export to CSV
 
-### 2. Re-enrich Contacts Button
-- Add button in My Candidates tab to re-run contact enrichment
-- Currently must re-run full search to update contacts
-
-### 3. Email Tracking
+### 2. Email Tracking
 - Mark candidates as "email sent"
 - Track response status (accepted, declined, no response)
 - Use existing `email_sent_at`, `response_type` columns
+
+### 3. Re-enrich Contacts Button
+- Add button in My Candidates tab to re-run contact enrichment
+- Currently must re-run full search to update contacts
 
 ### 4. Literature Analyzer App
 - Currently "coming soon" placeholder
 - Paper synthesis and citation analysis
 
-### 5. Link My Candidates to Database
-- From My Candidates tab, link to researcher in Database tab
-- Or open detail modal directly from My Candidates
+### 5. CRM Integration (Future)
+- Direct email sending via SendGrid/AWS SES
+- Skip .eml workflow when CRM available
+- See CLAUDE.md "Future Considerations" section
 
 ## Key Files Reference
 
+**Email Generation:**
+- `lib/utils/email-generator.js` - EML generation, investigatorTeam, date formatting
+- `shared/components/EmailGeneratorModal.js` - Multi-step email workflow
+- `shared/components/SettingsModal.js` - Settings UI with 4 sections
+- `shared/components/EmailTemplateEditor.js` - Template editing with placeholders
+- `pages/api/reviewer-finder/generate-emails.js` - SSE endpoint
+
+**PDF Processing:**
+- `lib/utils/pdf-extractor.js` - Page extraction using pdf-lib
+- `pages/api/reviewer-finder/extract-summary.js` - Re-extract summary pages
+- `pages/api/upload-file.js` - Direct FormData upload to Vercel Blob
+
 **Database Tab:**
-- `pages/reviewer-finder.js` - DatabaseTab, ResearcherRow, ResearcherDetailModal components
-- `pages/api/reviewer-finder/researchers.js` - GET endpoint with `?id=` for single researcher
+- `pages/reviewer-finder.js` - DatabaseTab, ResearcherRow, ResearcherDetailModal
+- `pages/api/reviewer-finder/researchers.js` - GET endpoint with `?id=` for details
 - `lib/services/database-service.js` - Keyword methods
 
-**Reviewer Finder:**
+**Reviewer Finder Core:**
 - `pages/reviewer-finder.js` - Main page with 3 tabs
 - `lib/services/discovery-service.js` - Multi-database search
 - `lib/services/contact-enrichment-service.js` - 5-tier contact lookup
 - `lib/services/deduplication-service.js` - Name matching, COI filtering
-- `pages/api/reviewer-finder/save-candidates.js` - Save with multi-field duplicate detection
+- `shared/config/prompts/reviewer-finder.js` - Analysis prompt with Co-PI extraction
 
 **Utility Scripts:**
-- `scripts/setup-database.js` - Database migrations
+- `scripts/setup-database.js` - Database migrations (V1-V6)
 - `scripts/cleanup-database.js` - Remove incomplete entries
 - `scripts/clear-all-database.js` - Full database reset
 
@@ -122,6 +139,11 @@ npm run dev
 ## Git Status
 
 Branch: main
-Session 20 commits:
-- Simplify save flow: require contact enrichment before saving
-- Add researcher detail modal to Database Tab (Phase 2)
+Session 22 commits:
+- Format custom date fields in email template
+- Reorder Settings modal menu sections
+- Add additional attachments support
+- Add investigatorTeam/investigatorVerb placeholders
+- Enhance Co-PI extraction and fallback handling
+- Fix extract-summary API buffer handling
+- Add email workflow instructions and documentation

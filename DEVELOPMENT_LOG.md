@@ -820,4 +820,96 @@ The application is feature-complete for the core workflow:
 
 ---
 
-Last Updated: December 20, 2025
+## January 14, 2026 - Session 22: Email Generation V6 & Settings UI
+
+**Major Feature: Email Generation with Attachments and Settings Modal**
+
+This session completed the email generation workflow with proper attachment support, settings UI, and various bug fixes.
+
+### Features Implemented
+
+**1. Settings Modal Overhaul**
+- Reordered sections: Sender Info → Grant Cycle → Email Template → Attachments
+- Added "Additional Attachments" section for optional files
+- Review template upload via Vercel Blob storage
+- Grant cycle custom fields (proposalDueDate, honorarium, proposalSendDate, commitDate)
+- Summary page extraction configuration
+
+**2. Email Attachment Support**
+- MIME multipart/mixed format for .eml files with attachments
+- Automatic project summary extraction from proposal PDFs (using pdf-lib)
+- Review template attachment (user-uploaded)
+- Additional attachments (multiple optional files)
+- Re-extract summary button in My Candidates tab
+
+**3. Investigator Team Formatting**
+- New `{{investigatorTeam}}` placeholder handles PI + Co-PI formatting gracefully:
+  - 0 Co-PIs: "the PI Dr. Smith"
+  - 1 Co-PI: "the PI Dr. Smith and co-investigator Dr. Jones"
+  - 2+ Co-PIs: "the PI Dr. Smith and 2 co-investigators (Dr. Jones, Dr. Lee)"
+- New `{{investigatorVerb}}` for subject-verb agreement ("was" vs "were")
+
+**4. Enhanced Co-PI Extraction**
+- Updated Claude prompt with detailed guidance for finding Co-PIs
+- Looks in: title/cover pages, "Senior Personnel" sections, author lists
+- Graceful fallback to just PI name when Co-PIs not found
+
+**5. Custom Field Date Formatting**
+- `formatCustomFields()` converts ISO dates (2026-01-29) to readable format (January 29, 2026)
+- Auto-detects date fields by name pattern or ISO format
+
+### Bug Fixes
+
+- **Webpack cache errors**: Fixed by clearing .next/cache directory
+- **Template literal interpretation**: Escaped `${{customField:...}}` to prevent JS interpolation
+- **Upload handler mismatch**: Created `/api/upload-file` for direct FormData uploads
+- **Custom fields not populating**: Fixed EmailGeneratorModal to merge all localStorage sources
+- **Extract summary API error**: Fixed to pass `Buffer.from(extraction.buffer)` instead of object
+- **Verb agreement**: "the PI Dr. Smith were" → "the PI Dr. Smith was"
+
+### Email Workflow Documentation
+
+Generated .eml files open as "received" messages in email clients. To send:
+1. Open the .eml file
+2. Forward to recipient (remove "Fwd:" from subject), OR
+3. Copy content into a new message
+
+**Future Consideration:** When integrated with CRM, implement direct email sending via SendGrid, AWS SES, or similar service.
+
+### Files Created/Modified
+
+**New Files:**
+- `pages/api/upload-file.js` - Direct FormData upload to Vercel Blob
+- `pages/api/reviewer-finder/extract-summary.js` - Re-extract summary pages
+- `lib/utils/pdf-extractor.js` - PDF page extraction using pdf-lib
+
+**Modified Files:**
+- `lib/utils/email-generator.js` - Attachment support, investigatorTeam, date formatting
+- `shared/components/SettingsModal.js` - Reordered sections, additional attachments
+- `shared/components/EmailGeneratorModal.js` - Load settings from multiple sources
+- `shared/components/EmailTemplateEditor.js` - New placeholder options
+- `shared/config/prompts/reviewer-finder.js` - Enhanced Co-PI extraction
+- `CLAUDE.md` - Updated documentation with email workflow and future considerations
+
+### Database Schema
+
+**V6 Additions:**
+- `reviewer_suggestions.summary_blob_url` - URL to extracted summary PDF
+
+### Git Commits
+
+- Format custom date fields in email template
+- Reorder Settings modal menu sections
+- Add additional attachments support to Settings modal
+- Add investigatorTeam placeholder for better PI/Co-PI formatting
+- Enhance Co-PI extraction and improve fallback handling
+- Fix extract-summary API: pass buffer not object to Vercel Blob
+- Add investigatorVerb for proper subject-verb agreement
+- Add X-Unsent header to .eml files for draft mode
+- Add Apple Mail draft header and remove Date for draft .eml files
+- Update email workflow instructions for Outlook compatibility
+- Add email workflow instructions and document future CRM integration
+
+---
+
+Last Updated: January 14, 2026
