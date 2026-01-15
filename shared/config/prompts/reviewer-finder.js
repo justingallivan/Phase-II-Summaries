@@ -40,8 +40,10 @@ Analyze this proposal and provide THREE types of output:
 Extract key information about the proposal:
 
 TITLE: [Complete proposal title]
-PROPOSAL_AUTHORS: [Names of the proposal author(s), comma-separated if multiple. Extract from title page, abstract, or any author attribution. If not found, write "Not specified"]
-AUTHOR_INSTITUTION: [University or organization name, or "Not specified"]
+PROPOSAL_AUTHORS: [Name of the PRIMARY Investigator (PI) only - the lead author. Extract from title page or author attribution. If not found, write "Not specified"]
+CO_INVESTIGATORS: [Names of Co-Investigators/Co-PIs, comma-separated. These are additional investigators listed after the PI. If none, write "None"]
+CO_INVESTIGATOR_COUNT: [Number of Co-Investigators as a digit, e.g., "0", "1", "2", "3". If none, write "0"]
+AUTHOR_INSTITUTION: [University or organization name of the PI, or "Not specified"]
 PRIMARY_RESEARCH_AREA: [Main scientific discipline]
 SECONDARY_AREAS: [Comma-separated list of related fields]
 KEY_METHODOLOGIES: [Main techniques/approaches used]
@@ -182,8 +184,9 @@ export function parseAnalysisResponse(response) {
 
   // Parse proposal metadata
   const metadataFields = [
-    'TITLE', 'PROPOSAL_AUTHORS', 'AUTHOR_INSTITUTION', 'PRIMARY_RESEARCH_AREA',
-    'SECONDARY_AREAS', 'KEY_METHODOLOGIES', 'KEYWORDS', 'ABSTRACT'
+    'TITLE', 'PROPOSAL_AUTHORS', 'CO_INVESTIGATORS', 'CO_INVESTIGATOR_COUNT',
+    'AUTHOR_INSTITUTION', 'PRIMARY_RESEARCH_AREA', 'SECONDARY_AREAS',
+    'KEY_METHODOLOGIES', 'KEYWORDS', 'ABSTRACT'
   ];
 
   for (const field of metadataFields) {

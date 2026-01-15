@@ -97,7 +97,44 @@ CREATE TABLE IF NOT EXISTS reviewer_suggestions (
   invited BOOLEAN DEFAULT FALSE,  -- Did you send invitation?
   accepted BOOLEAN,  -- Did they accept?
   notes TEXT,
+  -- V4: Email generation fields
+  proposal_abstract TEXT,
+  proposal_authors TEXT,
+  proposal_institution TEXT,
+  -- V6: Co-PI information for email templates
+  co_investigators TEXT,  -- Comma-separated Co-PI names
+  co_investigator_count INTEGER,
+  -- V3: Outreach tracking
+  email_sent_at TIMESTAMP,
+  email_opened_at TIMESTAMP,
+  response_received_at TIMESTAMP,
+  response_type VARCHAR(50),  -- 'accepted', 'declined', 'no_response'
   UNIQUE(proposal_id, researcher_id)
+);
+
+-- ============================================
+-- PROPOSAL SEARCHES TABLE
+-- Track proposal analysis history and extracted data
+-- ============================================
+CREATE TABLE IF NOT EXISTS proposal_searches (
+  id SERIAL PRIMARY KEY,
+  proposal_title TEXT,
+  proposal_hash VARCHAR(64),
+  author_institution VARCHAR(255),
+  claude_suggestions JSONB,
+  search_queries JSONB,
+  verified_count INTEGER DEFAULT 0,
+  discovered_count INTEGER DEFAULT 0,
+  selected_candidates INTEGER[],
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  -- V6: Summary attachments and Co-PI tracking
+  summary_blob_url VARCHAR(500),  -- Vercel Blob URL for extracted summary page(s)
+  summary_filename VARCHAR(255),
+  summary_pages VARCHAR(50),  -- e.g., "2" or "1,2"
+  full_proposal_blob_url VARCHAR(500),  -- Original uploaded proposal
+  co_investigators TEXT,  -- Comma-separated Co-PI names
+  co_investigator_count INTEGER
 );
 
 -- ============================================

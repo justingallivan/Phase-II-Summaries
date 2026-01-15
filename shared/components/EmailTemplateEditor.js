@@ -26,6 +26,8 @@ const PLACEHOLDERS = {
     { key: 'proposalAbstract', label: 'Abstract', example: '[Proposal abstract text...]' },
     { key: 'piName', label: 'PI Name', example: 'Dr. John Doe' },
     { key: 'piInstitution', label: 'PI Institution', example: 'Stanford University' },
+    { key: 'coInvestigators', label: 'Co-PIs', example: 'Dr. Jane Roe, Dr. Bob Lee' },
+    { key: 'coInvestigatorCount', label: 'Co-PI Count', example: '2' },
   ],
   settings: [
     { key: 'programName', label: 'Program', example: 'Research Excellence 2025' },
@@ -45,10 +47,17 @@ const SAMPLE_DATA = {
   proposalAbstract: 'This proposal seeks to develop new computational methods for analyzing RNA structure data from chemical probing experiments. We will combine machine learning approaches with thermodynamic modeling to improve prediction accuracy...',
   piName: 'Dr. Sarah Chen',
   piInstitution: 'MIT',
-  programName: 'Research Excellence Program 2025',
-  reviewDeadline: 'February 15, 2025',
-  signature: 'Best regards,\n\nDr. Jane Smith\nProgram Officer',
-  customFields: {}
+  coInvestigators: 'Dr. James Wilson, Dr. Maria Garcia',
+  coInvestigatorCount: '2',
+  programName: 'W. M. Keck Foundation',
+  reviewDeadline: 'February 15, 2026',
+  signature: 'Best regards,\n\nJohn Smith\nSenior Program Director | W. M. Keck Foundation',
+  customFields: {
+    proposalDueDate: 'January 31, 2026',
+    honorarium: '250',
+    proposalSendDate: 'February 1, 2026',
+    commitDate: 'January 20, 2026'
+  }
 };
 
 export default function EmailTemplateEditor({
@@ -270,11 +279,14 @@ I am writing to invite you..."
             <div><code>{'{{recipientLastName}}'}</code> - Recipient's last name</div>
             <div><code>{'{{proposalTitle}}'}</code> - Proposal title</div>
             <div><code>{'{{proposalAbstract}}'}</code> - Abstract text</div>
-            <div><code>{'{{piName}}'}</code> - PI name(s)</div>
+            <div><code>{'{{piName}}'}</code> - PI name</div>
             <div><code>{'{{piInstitution}}'}</code> - PI institution</div>
+            <div><code>{'{{coInvestigators}}'}</code> - Co-PI names</div>
+            <div><code>{'{{coInvestigatorCount}}'}</code> - Number of Co-PIs</div>
             <div><code>{'{{programName}}'}</code> - Grant program name</div>
             <div><code>{'{{reviewDeadline}}'}</code> - Formatted deadline</div>
             <div><code>{'{{signature}}'}</code> - Your signature</div>
+            <div><code>{'{{customField:name}}'}</code> - Custom fields</div>
           </div>
         </div>
       )}

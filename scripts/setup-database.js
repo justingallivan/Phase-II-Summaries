@@ -201,6 +201,22 @@ const v4Alterations = [
   `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS proposal_institution TEXT`,
 ];
 
+// V6 column additions for proposal summary attachments and Co-PI tracking
+const v6Alterations = [
+  // Summary page extraction - store extracted page(s) in Vercel Blob
+  `ALTER TABLE proposal_searches ADD COLUMN IF NOT EXISTS summary_blob_url VARCHAR(500)`,
+  `ALTER TABLE proposal_searches ADD COLUMN IF NOT EXISTS summary_filename VARCHAR(255)`,
+  `ALTER TABLE proposal_searches ADD COLUMN IF NOT EXISTS summary_pages VARCHAR(50)`, // e.g., "2" or "1,2"
+  // Full proposal blob URL (already uploaded via existing flow)
+  `ALTER TABLE proposal_searches ADD COLUMN IF NOT EXISTS full_proposal_blob_url VARCHAR(500)`,
+  // Co-PI information for email templates
+  `ALTER TABLE proposal_searches ADD COLUMN IF NOT EXISTS co_investigators TEXT`, // comma-separated names
+  `ALTER TABLE proposal_searches ADD COLUMN IF NOT EXISTS co_investigator_count INTEGER`,
+  // Also add to reviewer_suggestions for email generation
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS co_investigators TEXT`,
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS co_investigator_count INTEGER`,
+];
+
 // V5 data migration: merge duplicate proposals based on title
 async function mergeDuplicateProposals() {
   console.log('\nChecking for duplicate proposals to merge...');
@@ -338,6 +354,25 @@ async function runMigration() {
     // Run V5 data migration (merge duplicate proposals)
     await mergeDuplicateProposals();
 
+    // Run V6 column additions (proposal summary attachments & Co-PI)
+    console.log(`\nApplying v6 schema updates - summary attachments & Co-PI (${v6Alterations.length} alterations)...`);
+    for (let i = 0; i < v6Alterations.length; i++) {
+      const statement = v6Alterations[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v6-${i + 1}/${v6Alterations.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists') || error.message.includes('duplicate column')) {
+          console.log(`[v6-${i + 1}/${v6Alterations.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v6-${i + 1}/${v6Alterations.length}] ✗ Error: ${error.message}`);
+          // Don't throw on alter table errors - continue with other alterations
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -364,6 +399,15 @@ async function runMigration() {
     console.log('  • reviewer_suggestions.proposal_abstract');
     console.log('  • reviewer_suggestions.proposal_authors');
     console.log('  • reviewer_suggestions.proposal_institution');
+    console.log('\nV6 column additions (summary attachments & Co-PI):');
+    console.log('  • proposal_searches.summary_blob_url');
+    console.log('  • proposal_searches.summary_filename');
+    console.log('  • proposal_searches.summary_pages');
+    console.log('  • proposal_searches.full_proposal_blob_url');
+    console.log('  • proposal_searches.co_investigators');
+    console.log('  • proposal_searches.co_investigator_count');
+    console.log('  • reviewer_suggestions.co_investigators');
+    console.log('  • reviewer_suggestions.co_investigator_count');
     console.log('\nIndexes created: 17');
 
   } catch (error) {
