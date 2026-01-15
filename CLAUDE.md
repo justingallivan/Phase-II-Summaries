@@ -94,6 +94,77 @@ The flagship application. Complete pipeline for finding and contacting expert re
   - All expertise keywords grouped by source
   - Proposal associations with status and notes
 
+### Email Generation Workflow
+
+The Reviewer Finder includes a complete email generation system for sending reviewer invitations:
+
+#### Setup (Before First Grant Cycle)
+
+1. **Click the gear icon (⚙️)** next to the tab navigation to open Settings
+2. **Configure Grant Cycle settings:**
+   - Program Name (e.g., "W. M. Keck Foundation")
+   - Review Deadline
+   - Summary Pages - which page(s) to extract from proposals (default: "2")
+   - Custom date fields (Proposal Due Date, Send Date, Commit Date, Honorarium)
+3. **Upload Review Template** in Attachments section (PDF or Word document)
+4. **Configure Sender Info:**
+   - Your Name
+   - Your Email
+   - Signature block
+5. **Customize Email Template** (optional - default is Keck Foundation format)
+
+#### Email Generation Process
+
+1. **Upload Proposal** - Summary page(s) are automatically extracted based on settings
+2. **Find Reviewers** - Run discovery to find candidates
+3. **Enrich Contacts** - Get email addresses for selected candidates
+4. **Save Candidates** - Store to My Candidates with summary attachment link
+5. **Generate Emails:**
+   - Select candidates in My Candidates tab
+   - Click "Email Selected"
+   - Review options (Claude personalization available)
+   - Click Generate → Download .eml files
+   - Open in email client and send
+
+#### Re-extracting Summaries
+
+If you need to change which pages are extracted:
+1. Update "Summary Pages" in Settings → Grant Cycle
+2. Go to My Candidates tab
+3. Click "Re-extract" or "Extract Summary" button on the proposal card
+4. Upload the proposal PDF again
+5. New summary will be extracted using updated settings
+
+#### Template Placeholders
+
+Available placeholders for email templates:
+
+| Placeholder | Description |
+|-------------|-------------|
+| `{{greeting}}` | "Dear Dr. LastName" |
+| `{{recipientName}}` | Full name without honorific |
+| `{{recipientFirstName}}` | First name |
+| `{{recipientLastName}}` | Last name |
+| `{{salutation}}` | "Dr." or detected honorific |
+| `{{recipientAffiliation}}` | Institution |
+| `{{proposalTitle}}` | Proposal title |
+| `{{piName}}` | Principal Investigator name |
+| `{{piInstitution}}` | PI institution |
+| `{{coInvestigators}}` | Co-PI names (comma-separated) |
+| `{{coInvestigatorCount}}` | Number of Co-PIs |
+| `{{programName}}` | From Grant Cycle settings |
+| `{{reviewDeadline}}` | Formatted deadline date |
+| `{{signature}}` | Sender signature block |
+| `{{customField:fieldName}}` | Custom field from Grant Cycle |
+
+#### Email Attachments
+
+Each generated email can include:
+- **Review Template** - Uploaded via Settings → Attachments
+- **Project Summary** - Auto-extracted from proposal during analysis
+
+Attachments are encoded in MIME multipart/mixed format, compatible with all major email clients.
+
 ## Tech Stack
 
 - **Frontend**: Next.js 14, React 18, Tailwind CSS 3.4
@@ -186,15 +257,16 @@ Located in `lib/services/`:
 - `POST /api/refine` - Summary refinement
 
 ### Expert Reviewer Finder v2
-- `POST /api/reviewer-finder/analyze` - Extract proposal metadata and abstract
+- `POST /api/reviewer-finder/analyze` - Extract proposal metadata, abstract, and summary pages
 - `POST /api/reviewer-finder/discover` - Find and verify candidates (streaming)
 - `POST /api/reviewer-finder/save-candidates` - Save candidates with multi-field duplicate detection (ORCID, email, Scholar ID, name)
-- `GET /api/reviewer-finder/my-candidates` - Retrieve saved candidates
+- `GET /api/reviewer-finder/my-candidates` - Retrieve saved candidates with summary URLs
 - `PATCH /api/reviewer-finder/my-candidates` - Update candidate info (invited, notes, researcher fields)
 - `DELETE /api/reviewer-finder/my-candidates` - Delete candidates
 - `GET /api/reviewer-finder/researchers` - Browse all researchers (with search, sort, filter, pagination); use `?id=` for single researcher with full details
 - `POST /api/reviewer-finder/enrich-contacts` - Contact lookup (streaming)
-- `POST /api/reviewer-finder/generate-emails` - Generate .eml invitation files (streaming)
+- `POST /api/reviewer-finder/generate-emails` - Generate .eml invitation files with attachments (streaming)
+- `POST /api/reviewer-finder/extract-summary` - Re-extract summary pages from proposal PDF
 
 ### Other
 - `POST /api/analyze-funding-gap` - Federal funding analysis (streaming)
@@ -217,4 +289,4 @@ For detailed session-by-session development history, see [DEVELOPMENT_LOG.md](./
 
 ---
 
-Last Updated: January 6, 2026
+Last Updated: January 14, 2026
