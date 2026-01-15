@@ -40,9 +40,9 @@ export default async function handler(req, res) {
     const pages = summaryPages || '2';
 
     // Extract the specified pages
-    const extractedPdf = await extractPages(file, pages);
+    const extraction = await extractPages(file, pages);
 
-    if (!extractedPdf) {
+    if (!extraction || !extraction.buffer) {
       return res.status(400).json({
         error: 'Failed to extract pages',
         message: 'Could not extract the specified pages from the PDF'
@@ -51,7 +51,7 @@ export default async function handler(req, res) {
 
     // Upload to Vercel Blob
     const filename = `summary_${proposalId}_${Date.now()}.pdf`;
-    const blob = await put(filename, extractedPdf, {
+    const blob = await put(filename, Buffer.from(extraction.buffer), {
       access: 'public',
       contentType: 'application/pdf'
     });
@@ -66,8 +66,9 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       summaryBlobUrl: blob.url,
-      pagesExtracted: pages,
-      message: 'Summary extracted and saved successfully'
+      pagesExtracted: extraction.extractedPages,
+      pageCount: extraction.pageCount,
+      message: `Extracted ${extraction.pageCount} page(s) from ${extraction.totalSourcePages}-page document`
     });
 
   } catch (error) {
