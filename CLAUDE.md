@@ -152,6 +152,8 @@ Available placeholders for email templates:
 | `{{piInstitution}}` | PI institution |
 | `{{coInvestigators}}` | Co-PI names (comma-separated) |
 | `{{coInvestigatorCount}}` | Number of Co-PIs |
+| `{{investigatorTeam}}` | Formatted PI + Co-PIs (e.g., "the PI Dr. Smith and 2 co-investigators...") |
+| `{{investigatorVerb}}` | "was" (singular PI) or "were" (PI + Co-PIs) for verb agreement |
 | `{{programName}}` | From Grant Cycle settings |
 | `{{reviewDeadline}}` | Formatted deadline date |
 | `{{signature}}` | Sender signature block |
@@ -162,8 +164,27 @@ Available placeholders for email templates:
 Each generated email can include:
 - **Review Template** - Uploaded via Settings → Attachments
 - **Project Summary** - Auto-extracted from proposal during analysis
+- **Additional Attachments** - Optional files uploaded via Settings → Attachments
 
 Attachments are encoded in MIME multipart/mixed format, compatible with all major email clients.
+
+#### Email Workflow Note
+
+Generated .eml files open as "received" messages in email clients (Apple Mail, Outlook). To send:
+1. Open the .eml file
+2. Use **"Edit as New Message"** (Outlook) or **"Send Again"** / **"Redirect"** (Apple Mail)
+3. Review and click Send
+
+This is a limitation of the .eml format - it's designed for message import/export, not drafts.
+
+#### Future Considerations: Direct Email Sending
+
+When this app is integrated with a CRM or email service, consider implementing direct email sending:
+- **Email Service APIs**: SendGrid, AWS SES, Mailgun, Postmark
+- **CRM Integration**: Salesforce, HubSpot, or custom CRM APIs
+- **Benefits**: Skip the .eml workflow, send directly from the app with tracking
+- **Requirements**: SMTP credentials or API keys, sender verification, bounce handling
+- **Privacy**: Consider data handling implications when sending through third-party services
 
 ## Tech Stack
 

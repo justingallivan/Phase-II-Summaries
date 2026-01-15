@@ -523,6 +523,15 @@ export default function EmailGeneratorModal({
                 </button>
               )}
 
+              {/* Workflow Instructions */}
+              {generatedEmails.length > 0 && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                  <strong>To send:</strong> Open the .eml file, then use{' '}
+                  <em>"Edit as New Message"</em> (Outlook) or <em>"Send Again"</em> (Apple Mail)
+                  to create a sendable draft.
+                </div>
+              )}
+
               {/* Individual Downloads */}
               {generatedEmails.length > 0 && (
                 <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto">
