@@ -34,7 +34,7 @@ const DEFAULT_SENDER = {
 };
 
 export default function SettingsModal({ isOpen, onClose }) {
-  const [activeSection, setActiveSection] = useState('grant-cycle');
+  const [activeSection, setActiveSection] = useState('sender');
   const [grantCycle, setGrantCycle] = useState(DEFAULT_GRANT_CYCLE);
   const [sender, setSender] = useState(DEFAULT_SENDER);
   const [saveStatus, setSaveStatus] = useState(null);
@@ -165,10 +165,10 @@ export default function SettingsModal({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   const sections = [
-    { id: 'grant-cycle', label: 'Grant Cycle', icon: '📅' },
-    { id: 'attachments', label: 'Attachments', icon: '📎' },
     { id: 'sender', label: 'Sender Info', icon: '👤' },
+    { id: 'grant-cycle', label: 'Grant Cycle', icon: '📅' },
     { id: 'template', label: 'Email Template', icon: '✉️' },
+    { id: 'attachments', label: 'Attachments', icon: '📎' },
   ];
 
   return (
