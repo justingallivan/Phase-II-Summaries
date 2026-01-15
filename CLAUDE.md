@@ -170,10 +170,10 @@ Attachments are encoded in MIME multipart/mixed format, compatible with all majo
 
 #### Email Workflow Note
 
-Generated .eml files open as "received" messages in email clients (Apple Mail, Outlook). To send:
+Generated .eml files open as "received" messages in email clients. To send:
 1. Open the .eml file
-2. Use **"Edit as New Message"** (Outlook) or **"Send Again"** / **"Redirect"** (Apple Mail)
-3. Review and click Send
+2. **Forward** to the recipient and remove "Fwd:" from the subject line, OR
+3. Copy the email content into a new message
 
 This is a limitation of the .eml format - it's designed for message import/export, not drafts.
 

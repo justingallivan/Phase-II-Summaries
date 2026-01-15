@@ -526,9 +526,8 @@ export default function EmailGeneratorModal({
               {/* Workflow Instructions */}
               {generatedEmails.length > 0 && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-                  <strong>To send:</strong> Open the .eml file, then use{' '}
-                  <em>"Edit as New Message"</em> (Outlook) or <em>"Send Again"</em> (Apple Mail)
-                  to create a sendable draft.
+                  <strong>To send:</strong> Open the .eml file, then <em>Forward</em> to the
+                  recipient (remove "Fwd:" from subject) or copy the content into a new message.
                 </div>
               )}
 
