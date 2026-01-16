@@ -22,36 +22,115 @@ export default async function handler(req, res) {
 
 async function handleGet(req, res) {
   try {
-    // Get all saved candidates with researcher details, grouped by proposal
-    const result = await sql`
-      SELECT
-        rs.id as suggestion_id,
-        rs.proposal_id,
-        rs.proposal_title,
-        rs.proposal_abstract,
-        rs.proposal_authors,
-        rs.proposal_institution,
-        rs.summary_blob_url,
-        rs.relevance_score,
-        rs.match_reason,
-        rs.sources,
-        rs.selected,
-        rs.invited,
-        rs.accepted,
-        rs.notes,
-        rs.suggested_at,
-        r.id as researcher_id,
-        r.name,
-        r.primary_affiliation as affiliation,
-        r.email,
-        r.website,
-        r.h_index,
-        r.total_citations
-      FROM reviewer_suggestions rs
-      JOIN researchers r ON rs.researcher_id = r.id
-      WHERE rs.selected = true
-      ORDER BY rs.suggested_at DESC
-    `;
+    const { cycleId } = req.query;
+
+    // Build query based on cycleId filter
+    let result;
+    if (cycleId === 'unassigned') {
+      // Only unassigned proposals (grant_cycle_id IS NULL)
+      result = await sql`
+        SELECT
+          rs.id as suggestion_id,
+          rs.proposal_id,
+          rs.proposal_title,
+          rs.proposal_abstract,
+          rs.proposal_authors,
+          rs.proposal_institution,
+          rs.summary_blob_url,
+          rs.grant_cycle_id,
+          rs.relevance_score,
+          rs.match_reason,
+          rs.sources,
+          rs.selected,
+          rs.invited,
+          rs.accepted,
+          rs.notes,
+          rs.suggested_at,
+          r.id as researcher_id,
+          r.name,
+          r.primary_affiliation as affiliation,
+          r.email,
+          r.website,
+          r.h_index,
+          r.total_citations,
+          NULL as cycle_name,
+          NULL as cycle_short_code
+        FROM reviewer_suggestions rs
+        JOIN researchers r ON rs.researcher_id = r.id
+        WHERE rs.selected = true AND rs.grant_cycle_id IS NULL
+        ORDER BY rs.suggested_at DESC
+      `;
+    } else if (cycleId && cycleId !== 'all') {
+      // Filter by specific cycle
+      result = await sql`
+        SELECT
+          rs.id as suggestion_id,
+          rs.proposal_id,
+          rs.proposal_title,
+          rs.proposal_abstract,
+          rs.proposal_authors,
+          rs.proposal_institution,
+          rs.summary_blob_url,
+          rs.grant_cycle_id,
+          rs.relevance_score,
+          rs.match_reason,
+          rs.sources,
+          rs.selected,
+          rs.invited,
+          rs.accepted,
+          rs.notes,
+          rs.suggested_at,
+          r.id as researcher_id,
+          r.name,
+          r.primary_affiliation as affiliation,
+          r.email,
+          r.website,
+          r.h_index,
+          r.total_citations,
+          gc.name as cycle_name,
+          gc.short_code as cycle_short_code
+        FROM reviewer_suggestions rs
+        JOIN researchers r ON rs.researcher_id = r.id
+        LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
+        WHERE rs.selected = true AND rs.grant_cycle_id = ${parseInt(cycleId, 10)}
+        ORDER BY rs.suggested_at DESC
+      `;
+    } else {
+      // Get all saved candidates (cycleId === 'all' or not specified)
+      result = await sql`
+        SELECT
+          rs.id as suggestion_id,
+          rs.proposal_id,
+          rs.proposal_title,
+          rs.proposal_abstract,
+          rs.proposal_authors,
+          rs.proposal_institution,
+          rs.summary_blob_url,
+          rs.grant_cycle_id,
+          rs.relevance_score,
+          rs.match_reason,
+          rs.sources,
+          rs.selected,
+          rs.invited,
+          rs.accepted,
+          rs.notes,
+          rs.suggested_at,
+          r.id as researcher_id,
+          r.name,
+          r.primary_affiliation as affiliation,
+          r.email,
+          r.website,
+          r.h_index,
+          r.total_citations,
+          gc.name as cycle_name,
+          gc.short_code as cycle_short_code
+        FROM reviewer_suggestions rs
+        JOIN researchers r ON rs.researcher_id = r.id
+        LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
+        WHERE rs.selected = true
+        ORDER BY rs.suggested_at DESC
+      `;
+    }
 
     // Group by proposal
     const proposals = {};
@@ -64,6 +143,9 @@ async function handleGet(req, res) {
           proposalAuthors: row.proposal_authors,
           proposalInstitution: row.proposal_institution,
           summaryBlobUrl: row.summary_blob_url,
+          grantCycleId: row.grant_cycle_id,
+          grantCycleName: row.cycle_name,
+          grantCycleShortCode: row.cycle_short_code,
           candidates: []
         };
       }
@@ -104,6 +186,8 @@ async function handlePatch(req, res) {
   try {
     const {
       suggestionId,
+      proposalId,       // For bulk cycle assignment
+      grantCycleId,     // Assign to cycle (null to unassign)
       // Suggestion fields (existing)
       invited,
       accepted,
@@ -115,6 +199,33 @@ async function handlePatch(req, res) {
       website,
       hIndex
     } = req.body;
+
+    // Handle bulk cycle assignment by proposalId
+    if (proposalId !== undefined && grantCycleId !== undefined) {
+      // Assign all candidates for this proposal to the specified cycle
+      const cycleValue = grantCycleId === null ? null : parseInt(grantCycleId, 10);
+
+      await sql`
+        UPDATE reviewer_suggestions
+        SET grant_cycle_id = ${cycleValue}
+        WHERE proposal_id = ${proposalId} AND selected = true
+      `;
+
+      // Also update proposal_searches if it exists
+      await sql`
+        UPDATE proposal_searches
+        SET grant_cycle_id = ${cycleValue}
+        WHERE proposal_title = (
+          SELECT proposal_title FROM reviewer_suggestions WHERE proposal_id = ${proposalId} LIMIT 1
+        )
+      `;
+
+      return res.status(200).json({
+        success: true,
+        message: 'Proposal assigned to cycle',
+        updated: { proposalId, grantCycleId: cycleValue }
+      });
+    }
 
     if (!suggestionId) {
       return res.status(400).json({ error: 'suggestionId is required' });

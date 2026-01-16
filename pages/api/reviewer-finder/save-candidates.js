@@ -72,7 +72,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { proposalId, proposalTitle, proposalAbstract, proposalAuthors, proposalInstitution, summaryBlobUrl, candidates } = req.body;
+    const { proposalId, proposalTitle, proposalAbstract, proposalAuthors, proposalInstitution, summaryBlobUrl, grantCycleId, candidates } = req.body;
 
     if (!proposalId) {
       return res.status(400).json({ error: 'proposalId is required' });
@@ -183,6 +183,9 @@ export default async function handler(req, res) {
         }
 
         // Step 5: Insert/update reviewer suggestion
+        // Parse grantCycleId (may be string from request body)
+        const cycleIdValue = grantCycleId ? parseInt(grantCycleId, 10) : null;
+
         await sql`
           INSERT INTO reviewer_suggestions (
             proposal_id,
@@ -191,6 +194,7 @@ export default async function handler(req, res) {
             proposal_authors,
             proposal_institution,
             summary_blob_url,
+            grant_cycle_id,
             researcher_id,
             relevance_score,
             match_reason,
@@ -204,6 +208,7 @@ export default async function handler(req, res) {
             ${proposalAuthors || null},
             ${proposalInstitution || null},
             ${summaryBlobUrl || null},
+            ${cycleIdValue},
             ${researcherId},
             ${relevanceScore},
             ${matchReason},
@@ -217,6 +222,7 @@ export default async function handler(req, res) {
             proposal_authors = COALESCE(${proposalAuthors}, reviewer_suggestions.proposal_authors),
             proposal_institution = COALESCE(${proposalInstitution}, reviewer_suggestions.proposal_institution),
             summary_blob_url = COALESCE(${summaryBlobUrl}, reviewer_suggestions.summary_blob_url),
+            grant_cycle_id = COALESCE(${cycleIdValue}, reviewer_suggestions.grant_cycle_id),
             relevance_score = ${relevanceScore},
             match_reason = ${matchReason},
             sources = ${sources},

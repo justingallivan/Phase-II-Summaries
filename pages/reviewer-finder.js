@@ -428,6 +428,31 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
     useSerpSearch: false,
   });
 
+  // Current cycle state
+  const [currentCycleInfo, setCurrentCycleInfo] = useState(null);
+
+  // Load current cycle info on mount
+  useEffect(() => {
+    const loadCurrentCycle = async () => {
+      try {
+        const storedCycleId = localStorage.getItem(CURRENT_CYCLE_KEY);
+        if (storedCycleId) {
+          const response = await fetch('/api/reviewer-finder/grant-cycles');
+          if (response.ok) {
+            const data = await response.json();
+            const cycle = data.cycles?.find(c => c.id === parseInt(storedCycleId, 10));
+            if (cycle) {
+              setCurrentCycleInfo(cycle);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load current cycle:', err);
+      }
+    };
+    loadCurrentCycle();
+  }, []);
+
   const progressRef = useRef(null);
 
   const stages = [
@@ -718,6 +743,7 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
           proposalAuthors: analysisResult?.proposalInfo?.proposalAuthors || '',
           proposalInstitution: analysisResult?.proposalInfo?.authorInstitution || '',
           summaryBlobUrl: analysisResult?.summaryBlobUrl || null,
+          grantCycleId: currentCycleInfo?.id || null,
           candidates: selected
         })
       });
@@ -971,7 +997,22 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
     <div className="space-y-6">
       {/* Configuration Section */}
       <Card>
-        <h3 className="text-lg font-semibold mb-4">Upload Proposal</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Upload Proposal</h3>
+          {/* Current Cycle Indicator */}
+          {currentCycleInfo ? (
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-gray-500">Adding to:</span>
+              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded font-medium">
+                {currentCycleInfo.shortCode || currentCycleInfo.name}
+              </span>
+            </div>
+          ) : (
+            <div className="text-sm text-amber-600">
+              No cycle selected - proposals will be unassigned
+            </div>
+          )}
+        </div>
 
         <FileUploaderSimple
           onFilesUploaded={handleFilesUploaded}
@@ -2288,6 +2329,9 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
   );
 }
 
+// Storage key for current cycle
+const CURRENT_CYCLE_KEY = 'reviewer_finder_current_cycle';
+
 // My Candidates Tab
 function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
   const [proposals, setProposals] = useState([]);
@@ -2300,12 +2344,48 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
   const [editingCandidate, setEditingCandidate] = useState(null);
   const [extractingProposal, setExtractingProposal] = useState(null); // proposalId being re-extracted
 
+  // Grant cycles state
+  const [cycles, setCycles] = useState([]);
+  const [selectedCycleId, setSelectedCycleId] = useState(() => {
+    // Load from localStorage
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(CURRENT_CYCLE_KEY);
+      return stored ? parseInt(stored, 10) : 'all';
+    }
+    return 'all';
+  });
+  const [expandedProposals, setExpandedProposals] = useState(new Set());
+  const [unassignedCount, setUnassignedCount] = useState({ proposals: 0, candidates: 0 });
+
+  // Fetch grant cycles
+  const fetchCycles = async () => {
+    try {
+      const response = await fetch('/api/reviewer-finder/grant-cycles');
+      if (response.ok) {
+        const data = await response.json();
+        setCycles(data.cycles || []);
+        setUnassignedCount({
+          proposals: data.unassigned?.proposalCount || 0,
+          candidates: data.unassigned?.candidateCount || 0
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch cycles:', err);
+    }
+  };
+
   const fetchCandidates = async () => {
     setIsLoading(true);
     setError(null);
     setSelectedForDeletion(new Set());
     try {
-      const response = await fetch('/api/reviewer-finder/my-candidates');
+      // Build URL with cycle filter
+      let url = '/api/reviewer-finder/my-candidates';
+      if (selectedCycleId && selectedCycleId !== 'all') {
+        url += `?cycleId=${selectedCycleId}`;
+      }
+
+      const response = await fetch(url);
       const data = await response.json();
       if (data.success) {
         setProposals(data.proposals);
@@ -2320,8 +2400,130 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
   };
 
   useEffect(() => {
+    fetchCycles();
+  }, []);
+
+  useEffect(() => {
     fetchCandidates();
-  }, [refreshTrigger]);
+  }, [refreshTrigger, selectedCycleId]);
+
+  // Handle cycle filter change
+  const handleCycleChange = (value) => {
+    setSelectedCycleId(value);
+    setExpandedProposals(new Set()); // Collapse all when switching cycles
+  };
+
+  // Toggle proposal expanded state
+  const toggleProposalExpanded = (proposalId) => {
+    setExpandedProposals(prev => {
+      const next = new Set(prev);
+      if (next.has(proposalId)) {
+        next.delete(proposalId);
+      } else {
+        next.add(proposalId);
+      }
+      return next;
+    });
+  };
+
+  // Expand all proposals
+  const expandAll = () => {
+    setExpandedProposals(new Set(proposals.map(p => p.proposalId)));
+  };
+
+  // Collapse all proposals
+  const collapseAll = () => {
+    setExpandedProposals(new Set());
+  };
+
+  // Onboarding modal state
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingCycleName, setOnboardingCycleName] = useState('');
+  const [onboardingShortCode, setOnboardingShortCode] = useState('');
+  const [isCreatingCycle, setIsCreatingCycle] = useState(false);
+
+  // Check if we should show onboarding (unassigned proposals + no cycles)
+  useEffect(() => {
+    const shouldShowOnboarding =
+      !isLoading &&
+      cycles.length === 0 &&
+      unassignedCount.candidates > 0 &&
+      !localStorage.getItem('reviewer_finder_onboarding_dismissed');
+
+    if (shouldShowOnboarding) {
+      setShowOnboarding(true);
+      // Pre-fill with suggested cycle name
+      const now = new Date();
+      const month = now.getMonth() < 6 ? 'June' : 'December';
+      const year = now.getFullYear();
+      const shortCode = `${month === 'June' ? 'J' : 'D'}${year.toString().slice(-2)}`;
+      setOnboardingCycleName(`${month} ${year}`);
+      setOnboardingShortCode(shortCode);
+    }
+  }, [isLoading, cycles.length, unassignedCount.candidates]);
+
+  // Create cycle and assign unassigned proposals
+  const handleOnboardingCreate = async () => {
+    if (!onboardingCycleName.trim()) return;
+
+    setIsCreatingCycle(true);
+    try {
+      // Create the cycle
+      const createResponse = await fetch('/api/reviewer-finder/grant-cycles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: onboardingCycleName.trim(),
+          shortCode: onboardingShortCode.trim() || null,
+          programName: 'W. M. Keck Foundation',
+        }),
+      });
+
+      if (createResponse.ok) {
+        const { cycle } = await createResponse.json();
+
+        // Assign all unassigned proposals to this cycle
+        const unassignedResponse = await fetch('/api/reviewer-finder/my-candidates?cycleId=unassigned');
+        const unassignedData = await unassignedResponse.json();
+
+        if (unassignedData.proposals?.length > 0) {
+          // Assign each proposal to the new cycle
+          await Promise.all(
+            unassignedData.proposals.map(proposal =>
+              fetch('/api/reviewer-finder/my-candidates', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  proposalId: proposal.proposalId,
+                  grantCycleId: cycle.id,
+                }),
+              })
+            )
+          );
+        }
+
+        // Set as current cycle
+        localStorage.setItem(CURRENT_CYCLE_KEY, cycle.id.toString());
+        setSelectedCycleId(cycle.id);
+
+        // Refresh data
+        await fetchCycles();
+        await fetchCandidates();
+      }
+    } catch (err) {
+      console.error('Failed to create cycle:', err);
+      alert('Failed to create cycle. Please try again.');
+    } finally {
+      setIsCreatingCycle(false);
+      setShowOnboarding(false);
+    }
+  };
+
+  // Dismiss onboarding
+  const handleOnboardingDismiss = () => {
+    localStorage.setItem('reviewer_finder_onboarding_dismissed', 'true');
+    setShowOnboarding(false);
+  };
 
   const handleUpdateCandidate = async (suggestionId, updates) => {
     try {
@@ -2553,7 +2755,7 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
                   onClick={handleOpenEmailModal}
                   className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
                 >
-                  ✉️ Email Selected ({selectedForDeletion.size})
+                  Email Selected ({selectedForDeletion.size})
                 </button>
                 <button
                   onClick={handleDeleteSelected}
@@ -2566,6 +2768,45 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
             )}
           </div>
         </div>
+
+        {/* Cycle Filter & Expand/Collapse Controls */}
+        <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+          <div className="flex items-center gap-3">
+            <label className="text-sm text-gray-600">Grant Cycle:</label>
+            <select
+              value={selectedCycleId}
+              onChange={(e) => handleCycleChange(e.target.value === 'all' ? 'all' : e.target.value === 'unassigned' ? 'unassigned' : parseInt(e.target.value, 10))}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Cycles</option>
+              {unassignedCount.candidates > 0 && (
+                <option value="unassigned">Unassigned ({unassignedCount.candidates})</option>
+              )}
+              {cycles.filter(c => c.isActive).map(cycle => (
+                <option key={cycle.id} value={cycle.id}>
+                  {cycle.shortCode ? `${cycle.shortCode} - ` : ''}{cycle.name} ({cycle.candidateCount})
+                </option>
+              ))}
+            </select>
+          </div>
+          {proposals.length > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={expandAll}
+                className="text-xs text-gray-500 hover:text-gray-700"
+              >
+                Expand All
+              </button>
+              <span className="text-gray-300">|</span>
+              <button
+                onClick={collapseAll}
+                className="text-xs text-gray-500 hover:text-gray-700"
+              >
+                Collapse All
+              </button>
+            </div>
+          )}
+        </div>
       </Card>
 
       {/* Email Settings (collapsible) */}
@@ -2576,30 +2817,52 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
         const allIds = proposal.candidates.map(c => c.suggestionId);
         const allSelected = allIds.length > 0 && allIds.every(id => selectedForDeletion.has(id));
         const someSelected = allIds.some(id => selectedForDeletion.has(id));
+        const isExpanded = expandedProposals.has(proposal.proposalId);
 
         return (
           <Card key={proposal.proposalId}>
-            <div className="flex items-center justify-between mb-1">
+            {/* Collapsible Header */}
+            <div
+              className="flex items-center justify-between cursor-pointer"
+              onClick={() => toggleProposalExpanded(proposal.proposalId)}
+            >
               <div className="flex items-center gap-3">
+                <span className="text-gray-400 text-sm w-4">
+                  {isExpanded ? '▼' : '▶'}
+                </span>
                 <input
                   type="checkbox"
                   checked={allSelected}
                   ref={el => {
                     if (el) el.indeterminate = someSelected && !allSelected;
                   }}
-                  onChange={() => handleSelectAllInProposal(proposal)}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    handleSelectAllInProposal(proposal);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
                   className="h-4 w-4 text-red-600 rounded border-gray-300"
                   title="Select all candidates in this proposal"
                 />
-                <h4 className="font-medium text-gray-900">
-                  {proposal.proposalTitle}
-                </h4>
+                <div>
+                  <h4 className="font-medium text-gray-900">
+                    {proposal.proposalTitle}
+                  </h4>
+                  <p className="text-xs text-gray-400">
+                    {proposal.candidates.length} candidate(s)
+                    {proposal.grantCycleShortCode && (
+                      <span className="ml-2 px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+                        {proposal.grantCycleShortCode}
+                      </span>
+                    )}
+                  </p>
+                </div>
               </div>
               {/* Summary Status & Re-extract */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                 {proposal.summaryBlobUrl ? (
                   <span className="text-xs text-green-600 flex items-center gap-1">
-                    <span>✓</span> Summary extracted
+                    <span>✓</span> Summary
                   </span>
                 ) : (
                   <span className="text-xs text-gray-400">No summary</span>
@@ -2626,28 +2889,28 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
                   >
                     {extractingProposal === proposal.proposalId
                       ? 'Extracting...'
-                      : proposal.summaryBlobUrl ? 'Re-extract' : 'Extract Summary'}
+                      : proposal.summaryBlobUrl ? 'Re-extract' : 'Extract'}
                   </span>
                 </label>
               </div>
             </div>
-            <p className="text-xs text-gray-400 mb-4 ml-7">
-              {proposal.candidates.length} candidate(s)
-            </p>
 
-            <div className="space-y-3">
-              {proposal.candidates.map((candidate) => (
-                <SavedCandidateCard
-                  key={candidate.suggestionId}
-                  candidate={candidate}
-                  onUpdate={handleUpdateCandidate}
-                  onRemove={handleRemoveCandidate}
-                  onEdit={setEditingCandidate}
-                  isSelectedForDeletion={selectedForDeletion.has(candidate.suggestionId)}
-                  onToggleSelection={() => handleToggleSelection(candidate.suggestionId)}
-                />
-              ))}
-            </div>
+            {/* Collapsible Content */}
+            {isExpanded && (
+              <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
+                {proposal.candidates.map((candidate) => (
+                  <SavedCandidateCard
+                    key={candidate.suggestionId}
+                    candidate={candidate}
+                    onUpdate={handleUpdateCandidate}
+                    onRemove={handleRemoveCandidate}
+                    onEdit={setEditingCandidate}
+                    isSelectedForDeletion={selectedForDeletion.has(candidate.suggestionId)}
+                    onToggleSelection={() => handleToggleSelection(candidate.suggestionId)}
+                  />
+                ))}
+              </div>
+            )}
           </Card>
         );
       })}
@@ -2673,6 +2936,74 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
           await fetchCandidates();
         }}
       />
+
+      {/* Onboarding Modal for Unassigned Proposals */}
+      {showOnboarding && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={handleOnboardingDismiss}
+          />
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div
+              className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Organize Your Candidates
+              </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                You have <strong>{unassignedCount.candidates}</strong> candidate(s) across{' '}
+                <strong>{unassignedCount.proposals}</strong> proposal(s) that aren&apos;t assigned
+                to a grant cycle. Create a cycle to organize them.
+              </p>
+
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Cycle Name
+                  </label>
+                  <input
+                    type="text"
+                    value={onboardingCycleName}
+                    onChange={(e) => setOnboardingCycleName(e.target.value)}
+                    placeholder="June 2026"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Short Code (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={onboardingShortCode}
+                    onChange={(e) => setOnboardingShortCode(e.target.value)}
+                    placeholder="J26"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleOnboardingCreate}
+                  disabled={!onboardingCycleName.trim() || isCreatingCycle}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isCreatingCycle ? 'Creating...' : 'Create & Assign All'}
+                </button>
+                <button
+                  onClick={handleOnboardingDismiss}
+                  className="px-4 py-2 text-gray-600 text-sm hover:text-gray-800"
+                >
+                  Skip for Now
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -201,6 +201,40 @@ const v4Alterations = [
   `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS proposal_institution TEXT`,
 ];
 
+// V7: Grant cycles table and foreign keys
+const v7Statements = [
+  // Table: grant_cycles
+  `CREATE TABLE IF NOT EXISTS grant_cycles (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    short_code VARCHAR(10),
+    program_name VARCHAR(255),
+    review_deadline DATE,
+    summary_pages VARCHAR(50) DEFAULT '2',
+    review_template_blob_url VARCHAR(500),
+    review_template_filename VARCHAR(255),
+    additional_attachments JSONB,
+    custom_fields JSONB,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+  // Indexes for grant_cycles
+  `CREATE INDEX IF NOT EXISTS idx_grant_cycles_active ON grant_cycles(is_active)`,
+  `CREATE INDEX IF NOT EXISTS idx_grant_cycles_created ON grant_cycles(created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_grant_cycles_short_code ON grant_cycles(short_code)`,
+];
+
+const v7Alterations = [
+  // Add grant_cycle_id FK to proposal_searches
+  `ALTER TABLE proposal_searches ADD COLUMN IF NOT EXISTS grant_cycle_id INTEGER REFERENCES grant_cycles(id) ON DELETE SET NULL`,
+  // Add grant_cycle_id FK to reviewer_suggestions
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS grant_cycle_id INTEGER REFERENCES grant_cycles(id) ON DELETE SET NULL`,
+  // Indexes for FK columns
+  `CREATE INDEX IF NOT EXISTS idx_proposal_searches_cycle ON proposal_searches(grant_cycle_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_suggestions_cycle ON reviewer_suggestions(grant_cycle_id)`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -375,6 +409,44 @@ async function runMigration() {
       }
     }
 
+    // Run V7 table creation (grant_cycles)
+    console.log(`\nApplying v7 schema updates - grant cycles table (${v7Statements.length} statements)...`);
+    for (let i = 0; i < v7Statements.length; i++) {
+      const statement = v7Statements[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v7-${i + 1}/${v7Statements.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v7-${i + 1}/${v7Statements.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v7-${i + 1}/${v7Statements.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
+      }
+    }
+
+    // Run V7 column additions (FK columns)
+    console.log(`\nApplying v7 schema updates - grant cycle FK columns (${v7Alterations.length} alterations)...`);
+    for (let i = 0; i < v7Alterations.length; i++) {
+      const statement = v7Alterations[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v7-${i + 1}/${v7Alterations.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists') || error.message.includes('duplicate column')) {
+          console.log(`[v7-${i + 1}/${v7Alterations.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v7-${i + 1}/${v7Alterations.length}] ✗ Error: ${error.message}`);
+          // Don't throw on alter table errors - continue with other alterations
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -411,7 +483,14 @@ async function runMigration() {
     console.log('  • reviewer_suggestions.co_investigators');
     console.log('  • reviewer_suggestions.co_investigator_count');
     console.log('  • reviewer_suggestions.summary_blob_url');
-    console.log('\nIndexes created: 17');
+    console.log('\nV7 new table: grant_cycles');
+    console.log('  • grant_cycles (id, name, short_code, program_name, review_deadline,');
+    console.log('    summary_pages, review_template_blob_url, additional_attachments,');
+    console.log('    custom_fields, is_active, created_at, updated_at)');
+    console.log('\nV7 column additions (grant cycle FK):');
+    console.log('  • proposal_searches.grant_cycle_id');
+    console.log('  • reviewer_suggestions.grant_cycle_id');
+    console.log('\nIndexes created: 21');
 
   } catch (error) {
     console.error('\n✗ Migration failed:', error.message);

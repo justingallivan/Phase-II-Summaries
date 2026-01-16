@@ -34,7 +34,10 @@ const DEFAULT_SENDER = {
   signature: ''
 };
 
-export default function SettingsModal({ isOpen, onClose }) {
+// Storage key for current cycle ID
+const CURRENT_CYCLE_KEY = 'reviewer_finder_current_cycle';
+
+export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
   const [activeSection, setActiveSection] = useState('sender');
   const [grantCycle, setGrantCycle] = useState(DEFAULT_GRANT_CYCLE);
   const [sender, setSender] = useState(DEFAULT_SENDER);
@@ -42,16 +45,25 @@ export default function SettingsModal({ isOpen, onClose }) {
   const [uploadingTemplate, setUploadingTemplate] = useState(false);
   const [uploadingAdditional, setUploadingAdditional] = useState(false);
 
+  // Grant cycles management state
+  const [cycles, setCycles] = useState([]);
+  const [cyclesLoading, setCyclesLoading] = useState(false);
+  const [currentCycleId, setCurrentCycleId] = useState(null);
+  const [editingCycle, setEditingCycle] = useState(null); // null = not editing, {} = new cycle
+  const [cycleFormData, setCycleFormData] = useState({});
+  const [savingCycle, setSavingCycle] = useState(false);
+
   // Load settings on mount
   useEffect(() => {
     if (isOpen) {
       loadSettings();
+      loadCycles();
     }
   }, [isOpen]);
 
   const loadSettings = () => {
     try {
-      // Load grant cycle
+      // Load grant cycle (legacy localStorage settings)
       const storedCycle = localStorage.getItem(STORAGE_KEYS.GRANT_CYCLE);
       if (storedCycle) {
         const decoded = JSON.parse(atob(storedCycle));
@@ -64,9 +76,138 @@ export default function SettingsModal({ isOpen, onClose }) {
         const decoded = JSON.parse(atob(storedSender));
         setSender({ ...DEFAULT_SENDER, ...decoded });
       }
+
+      // Load current cycle ID
+      const storedCycleId = localStorage.getItem(CURRENT_CYCLE_KEY);
+      if (storedCycleId) {
+        setCurrentCycleId(parseInt(storedCycleId, 10));
+      }
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
+  };
+
+  // Fetch grant cycles from API
+  const loadCycles = async () => {
+    setCyclesLoading(true);
+    try {
+      const response = await fetch('/api/reviewer-finder/grant-cycles?includeArchived=true');
+      if (response.ok) {
+        const data = await response.json();
+        setCycles(data.cycles || []);
+      }
+    } catch (error) {
+      console.error('Failed to load grant cycles:', error);
+    } finally {
+      setCyclesLoading(false);
+    }
+  };
+
+  // Create or update a grant cycle
+  const saveCycleToApi = async () => {
+    setSavingCycle(true);
+    try {
+      const isNew = !cycleFormData.id;
+      const method = isNew ? 'POST' : 'PATCH';
+
+      const response = await fetch('/api/reviewer-finder/grant-cycles', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cycleFormData),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        await loadCycles();
+        setEditingCycle(null);
+        setCycleFormData({});
+
+        // If this was a new cycle and there's no current cycle set, make it current
+        if (isNew && !currentCycleId) {
+          handleSetCurrentCycle(data.cycle.id);
+        }
+      } else {
+        const error = await response.json();
+        alert(`Failed to save cycle: ${error.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Failed to save cycle:', error);
+      alert('Failed to save cycle. Please try again.');
+    } finally {
+      setSavingCycle(false);
+    }
+  };
+
+  // Archive a grant cycle
+  const archiveCycle = async (cycleId) => {
+    if (!confirm('Archive this grant cycle? It will be hidden from the cycle selector but data will be preserved.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/reviewer-finder/grant-cycles', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: cycleId }),
+      });
+
+      if (response.ok) {
+        await loadCycles();
+        // If the archived cycle was the current one, clear it
+        if (currentCycleId === cycleId) {
+          handleSetCurrentCycle(null);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to archive cycle:', error);
+    }
+  };
+
+  // Set current cycle
+  const handleSetCurrentCycle = (cycleId) => {
+    setCurrentCycleId(cycleId);
+    if (cycleId) {
+      localStorage.setItem(CURRENT_CYCLE_KEY, cycleId.toString());
+    } else {
+      localStorage.removeItem(CURRENT_CYCLE_KEY);
+    }
+    // Notify parent component
+    if (onCycleChange) {
+      onCycleChange(cycleId);
+    }
+  };
+
+  // Generate short code from date
+  const generateShortCode = (month, year) => {
+    const monthLetter = month === 'june' ? 'J' : 'D';
+    const yearShort = year.toString().slice(-2);
+    return `${monthLetter}${yearShort}`;
+  };
+
+  // Quick create a cycle for June or December
+  const quickCreateCycle = (month) => {
+    const now = new Date();
+    let year = now.getFullYear();
+    const currentMonth = now.getMonth();
+
+    // If we're past the month, use next year
+    if (month === 'june' && currentMonth > 5) {
+      year += 1;
+    } else if (month === 'december' && currentMonth > 11) {
+      year += 1;
+    }
+
+    const shortCode = generateShortCode(month, year);
+    const fullName = `${month === 'june' ? 'June' : 'December'} ${year}`;
+
+    setCycleFormData({
+      name: fullName,
+      shortCode,
+      programName: grantCycle.programName || 'W. M. Keck Foundation',
+      reviewDeadline: '',
+      summaryPages: '2',
+    });
+    setEditingCycle({});
   };
 
   const saveSettings = () => {
@@ -221,7 +362,8 @@ export default function SettingsModal({ isOpen, onClose }) {
 
   const sections = [
     { id: 'sender', label: 'Sender Info', icon: '👤' },
-    { id: 'grant-cycle', label: 'Grant Cycle', icon: '📅' },
+    { id: 'cycles', label: 'Grant Cycles', icon: '📆' },
+    { id: 'grant-cycle', label: 'Cycle Settings', icon: '📅' },
     { id: 'template', label: 'Email Template', icon: '✉️' },
     { id: 'attachments', label: 'Attachments', icon: '📎' },
   ];
@@ -282,7 +424,216 @@ export default function SettingsModal({ isOpen, onClose }) {
 
             {/* Main Content */}
             <div className="flex-1 overflow-y-auto p-6">
-              {/* Grant Cycle Section */}
+              {/* Grant Cycles Management Section */}
+              {activeSection === 'cycles' && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">Grant Cycles</h3>
+                    <p className="text-sm text-gray-500 mb-4">
+                      Manage your grant review cycles. Each cycle can have its own settings and proposals.
+                    </p>
+                  </div>
+
+                  {/* Current Cycle Selector */}
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <label className="block text-sm font-medium text-blue-800 mb-2">
+                      Current Cycle (for new proposals)
+                    </label>
+                    <select
+                      value={currentCycleId || ''}
+                      onChange={(e) => handleSetCurrentCycle(e.target.value ? parseInt(e.target.value, 10) : null)}
+                      className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">-- No cycle selected --</option>
+                      {cycles.filter(c => c.isActive).map(cycle => (
+                        <option key={cycle.id} value={cycle.id}>
+                          {cycle.shortCode ? `${cycle.shortCode} - ` : ''}{cycle.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-blue-600 mt-1">
+                      New proposals will be automatically assigned to this cycle.
+                    </p>
+                  </div>
+
+                  {/* Quick Create Buttons */}
+                  {!editingCycle && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-gray-600">Quick create:</span>
+                      <button
+                        onClick={() => quickCreateCycle('june')}
+                        className="px-3 py-1.5 bg-green-100 text-green-700 text-sm rounded-lg hover:bg-green-200"
+                      >
+                        June Cycle
+                      </button>
+                      <button
+                        onClick={() => quickCreateCycle('december')}
+                        className="px-3 py-1.5 bg-purple-100 text-purple-700 text-sm rounded-lg hover:bg-purple-200"
+                      >
+                        December Cycle
+                      </button>
+                      <button
+                        onClick={() => {
+                          setCycleFormData({});
+                          setEditingCycle({});
+                        }}
+                        className="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded-lg hover:bg-gray-200"
+                      >
+                        Custom...
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Cycle Edit Form */}
+                  {editingCycle !== null && (
+                    <div className="p-4 border border-gray-200 rounded-lg bg-gray-50">
+                      <h4 className="text-sm font-medium text-gray-700 mb-4">
+                        {cycleFormData.id ? 'Edit Cycle' : 'Create New Cycle'}
+                      </h4>
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Cycle Name *</label>
+                          <input
+                            type="text"
+                            value={cycleFormData.name || ''}
+                            onChange={(e) => setCycleFormData(prev => ({ ...prev, name: e.target.value }))}
+                            placeholder="June 2026"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Short Code</label>
+                          <input
+                            type="text"
+                            value={cycleFormData.shortCode || ''}
+                            onChange={(e) => setCycleFormData(prev => ({ ...prev, shortCode: e.target.value }))}
+                            placeholder="J26"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Program Name</label>
+                          <input
+                            type="text"
+                            value={cycleFormData.programName || ''}
+                            onChange={(e) => setCycleFormData(prev => ({ ...prev, programName: e.target.value }))}
+                            placeholder="W. M. Keck Foundation"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Review Deadline</label>
+                          <input
+                            type="date"
+                            value={cycleFormData.reviewDeadline || ''}
+                            onChange={(e) => setCycleFormData(prev => ({ ...prev, reviewDeadline: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={saveCycleToApi}
+                          disabled={!cycleFormData.name || savingCycle}
+                          className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {savingCycle ? 'Saving...' : (cycleFormData.id ? 'Update' : 'Create')}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingCycle(null);
+                            setCycleFormData({});
+                          }}
+                          className="px-4 py-2 text-gray-600 text-sm hover:text-gray-800"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cycles List */}
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">
+                      {cyclesLoading ? 'Loading cycles...' : `All Cycles (${cycles.length})`}
+                    </h4>
+                    {cycles.length === 0 && !cyclesLoading ? (
+                      <p className="text-sm text-gray-500 italic">No cycles created yet.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {cycles.map(cycle => (
+                          <div
+                            key={cycle.id}
+                            className={`
+                              flex items-center justify-between p-3 rounded-lg border
+                              ${cycle.isActive ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100 opacity-60'}
+                              ${currentCycleId === cycle.id ? 'ring-2 ring-blue-300' : ''}
+                            `}
+                          >
+                            <div className="flex items-center gap-3">
+                              {cycle.shortCode && (
+                                <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs font-mono rounded">
+                                  {cycle.shortCode}
+                                </span>
+                              )}
+                              <div>
+                                <div className="text-sm font-medium text-gray-800">
+                                  {cycle.name}
+                                  {currentCycleId === cycle.id && (
+                                    <span className="ml-2 text-xs text-blue-600">(current)</span>
+                                  )}
+                                  {!cycle.isActive && (
+                                    <span className="ml-2 text-xs text-gray-400">(archived)</span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {cycle.proposalCount} proposals, {cycle.candidateCount} candidates
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {cycle.isActive && currentCycleId !== cycle.id && (
+                                <button
+                                  onClick={() => handleSetCurrentCycle(cycle.id)}
+                                  className="text-xs text-blue-600 hover:text-blue-800"
+                                >
+                                  Set Current
+                                </button>
+                              )}
+                              <button
+                                onClick={() => {
+                                  setCycleFormData({
+                                    id: cycle.id,
+                                    name: cycle.name,
+                                    shortCode: cycle.shortCode || '',
+                                    programName: cycle.programName || '',
+                                    reviewDeadline: cycle.reviewDeadline || '',
+                                    summaryPages: cycle.summaryPages || '2',
+                                  });
+                                  setEditingCycle(cycle);
+                                }}
+                                className="text-xs text-gray-600 hover:text-gray-800"
+                              >
+                                Edit
+                              </button>
+                              {cycle.isActive && (
+                                <button
+                                  onClick={() => archiveCycle(cycle.id)}
+                                  className="text-xs text-red-600 hover:text-red-800"
+                                >
+                                  Archive
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Grant Cycle Section (legacy settings) */}
               {activeSection === 'grant-cycle' && (
                 <div className="space-y-6">
                   <div>
