@@ -430,28 +430,105 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
 
   // Current cycle state
   const [currentCycleInfo, setCurrentCycleInfo] = useState(null);
+  const [availableCycles, setAvailableCycles] = useState([]);
 
-  // Load current cycle info on mount
+  // Generate cycle options for current year and next year (18 months coverage)
+  const generateCycleOptions = () => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const nextYear = currentYear + 1;
+    const yy = (currentYear % 100).toString();
+    const yyNext = (nextYear % 100).toString();
+
+    return [
+      { shortCode: `J${yy}`, name: `June ${currentYear}` },
+      { shortCode: `D${yy}`, name: `December ${currentYear}` },
+      { shortCode: `J${yyNext}`, name: `June ${nextYear}` },
+      { shortCode: `D${yyNext}`, name: `December ${nextYear}` },
+    ];
+  };
+
+  // Load cycles and ensure current+next year cycles exist
   useEffect(() => {
-    const loadCurrentCycle = async () => {
+    const loadAndEnsureCycles = async () => {
       try {
-        const storedCycleId = localStorage.getItem(CURRENT_CYCLE_KEY);
-        if (storedCycleId) {
-          const response = await fetch('/api/reviewer-finder/grant-cycles');
-          if (response.ok) {
-            const data = await response.json();
-            const cycle = data.cycles?.find(c => c.id === parseInt(storedCycleId, 10));
-            if (cycle) {
-              setCurrentCycleInfo(cycle);
+        const response = await fetch('/api/reviewer-finder/grant-cycles');
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const existingCycles = data.cycles || [];
+        const neededCycles = generateCycleOptions();
+
+        // Find which cycles need to be created
+        const cyclesToCreate = neededCycles.filter(
+          needed => !existingCycles.some(existing => existing.shortCode === needed.shortCode)
+        );
+
+        // Create missing cycles
+        for (const cycle of cyclesToCreate) {
+          await fetch('/api/reviewer-finder/grant-cycles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: cycle.name,
+              shortCode: cycle.shortCode,
+              programName: 'W. M. Keck Foundation',
+            }),
+          });
+        }
+
+        // Re-fetch to get all cycles with IDs
+        const refreshResponse = await fetch('/api/reviewer-finder/grant-cycles');
+        if (refreshResponse.ok) {
+          const refreshData = await refreshResponse.json();
+          const allCycles = refreshData.cycles || [];
+
+          // Filter to only show current+next year cycles in dropdown
+          const relevantShortCodes = neededCycles.map(c => c.shortCode);
+          const relevantCycles = allCycles.filter(c =>
+            relevantShortCodes.includes(c.shortCode) && c.isActive
+          );
+
+          // Sort: current year first, then by J before D
+          relevantCycles.sort((a, b) => {
+            const aYear = parseInt(a.shortCode.slice(1), 10);
+            const bYear = parseInt(b.shortCode.slice(1), 10);
+            if (aYear !== bYear) return aYear - bYear;
+            return a.shortCode[0] === 'J' ? -1 : 1;
+          });
+
+          setAvailableCycles(relevantCycles);
+
+          // Set current cycle from localStorage or default to first option
+          const storedCycleId = localStorage.getItem(CURRENT_CYCLE_KEY);
+          if (storedCycleId) {
+            const storedCycle = allCycles.find(c => c.id === parseInt(storedCycleId, 10));
+            if (storedCycle) {
+              setCurrentCycleInfo(storedCycle);
+            } else if (relevantCycles.length > 0) {
+              setCurrentCycleInfo(relevantCycles[0]);
+              localStorage.setItem(CURRENT_CYCLE_KEY, relevantCycles[0].id.toString());
             }
+          } else if (relevantCycles.length > 0) {
+            setCurrentCycleInfo(relevantCycles[0]);
+            localStorage.setItem(CURRENT_CYCLE_KEY, relevantCycles[0].id.toString());
           }
         }
       } catch (err) {
-        console.error('Failed to load current cycle:', err);
+        console.error('Failed to load/create cycles:', err);
       }
     };
-    loadCurrentCycle();
+    loadAndEnsureCycles();
   }, []);
+
+  // Handle cycle selection change
+  const handleCycleChange = (cycleId) => {
+    const cycle = availableCycles.find(c => c.id === parseInt(cycleId, 10));
+    if (cycle) {
+      setCurrentCycleInfo(cycle);
+      localStorage.setItem(CURRENT_CYCLE_KEY, cycle.id.toString());
+    }
+  };
 
   const progressRef = useRef(null);
 
@@ -1000,19 +1077,27 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Upload Proposal</h3>
-          {/* Current Cycle Indicator */}
-          {currentCycleInfo ? (
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-gray-500">Adding to:</span>
-              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded font-medium">
-                {currentCycleInfo.shortCode || currentCycleInfo.name}
-              </span>
-            </div>
-          ) : (
-            <div className="text-sm text-amber-600">
-              No cycle selected - proposals will be unassigned
-            </div>
-          )}
+          {/* Grant Cycle Selector */}
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-gray-500">Grant Cycle:</span>
+            <select
+              value={currentCycleInfo?.id || ''}
+              onChange={(e) => handleCycleChange(e.target.value)}
+              className="px-3 py-1.5 bg-purple-50 text-purple-700 rounded font-medium border-0 cursor-pointer appearance-none pr-8"
+              style={{
+                backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3E%3Cpath stroke=\'%237c3aed\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'m6 8 4 4 4-4\'/%3E%3C/svg%3E")',
+                backgroundPosition: 'right 0.5rem center',
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: '1rem'
+              }}
+            >
+              {availableCycles.map(cycle => (
+                <option key={cycle.id} value={cycle.id}>
+                  {cycle.shortCode} - {cycle.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <FileUploaderSimple
