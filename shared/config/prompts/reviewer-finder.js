@@ -37,18 +37,14 @@ Analyze this proposal and provide THREE types of output:
 
 ## PART 1: PROPOSAL METADATA
 
-Extract key information about the proposal:
+Extract key information from the proposal. The cover page typically contains "Project Leader", "Co-Principal Investigators", and "Program" fields.
 
 TITLE: [Complete proposal title]
-PROPOSAL_AUTHORS: [Name of the PRIMARY Investigator (PI) only - the lead author. Extract from title page, cover page, or author attribution. If not found, write "Not specified"]
-CO_INVESTIGATORS: [Names of Co-Investigators/Co-PIs, comma-separated. Look for these in:
-  - Title/cover page author lists (names after the first/lead author)
-  - "Co-Investigator", "Co-PI", "Co-Principal Investigator" labels
-  - "Senior Personnel" or "Key Personnel" sections
-  - Author affiliations lists
-  Include full names with titles if available (e.g., "Dr. Jane Smith, Dr. John Doe"). If none found, write "None"]
+PROGRAM_AREA: [The Keck Foundation program. Look for "Program:" on the cover page. Must be one of: "Science and Engineering Research Program" or "Medical Research Program". If not found or unclear, write "Not specified"]
+PRINCIPAL_INVESTIGATOR: [The Project Leader / PI - extract ONE name only from the "Project Leader" field on the cover page. Example: "Dr. Jane Smith" or "John Doe". If not found, write "Not specified"]
+CO_INVESTIGATORS: [Names from "Co-Principal Investigators" field on cover page, comma-separated. Include full names (e.g., "Dr. Jane Smith, Dr. John Doe"). If none listed or field is empty, write "None"]
 CO_INVESTIGATOR_COUNT: [Number of Co-Investigators as a digit, e.g., "0", "1", "2", "3". Must match the number of names in CO_INVESTIGATORS. If none, write "0"]
-AUTHOR_INSTITUTION: [University or organization name of the PI, or "Not specified"]
+AUTHOR_INSTITUTION: [University or organization name of the PI from cover page, or "Not specified"]
 PRIMARY_RESEARCH_AREA: [Main scientific discipline]
 SECONDARY_AREAS: [Comma-separated list of related fields]
 KEY_METHODOLOGIES: [Main techniques/approaches used]
@@ -188,8 +184,9 @@ export function parseAnalysisResponse(response) {
   };
 
   // Parse proposal metadata
+  // Note: PRINCIPAL_INVESTIGATOR replaces PROPOSAL_AUTHORS but we check both for backward compatibility
   const metadataFields = [
-    'TITLE', 'PROPOSAL_AUTHORS', 'CO_INVESTIGATORS', 'CO_INVESTIGATOR_COUNT',
+    'TITLE', 'PROGRAM_AREA', 'PRINCIPAL_INVESTIGATOR', 'PROPOSAL_AUTHORS', 'CO_INVESTIGATORS', 'CO_INVESTIGATOR_COUNT',
     'AUTHOR_INSTITUTION', 'PRIMARY_RESEARCH_AREA', 'SECONDARY_AREAS',
     'KEY_METHODOLOGIES', 'KEYWORDS', 'ABSTRACT'
   ];
@@ -208,6 +205,12 @@ export function parseAnalysisResponse(response) {
       const cleanValue = match[1].trim().replace(/^\*+\s*/, '').replace(/\s*\*+$/, '');
       result.proposalInfo[camelKey] = cleanValue;
     }
+  }
+
+  // Normalize PI field: prefer principalInvestigator, fall back to proposalAuthors
+  // Store as proposalAuthors for backward compatibility with existing code
+  if (result.proposalInfo.principalInvestigator) {
+    result.proposalInfo.proposalAuthors = result.proposalInfo.principalInvestigator;
   }
 
   // Special handling for ABSTRACT which may span multiple lines

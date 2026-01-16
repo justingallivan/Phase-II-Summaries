@@ -235,6 +235,16 @@ const v7Alterations = [
   `CREATE INDEX IF NOT EXISTS idx_suggestions_cycle ON reviewer_suggestions(grant_cycle_id)`,
 ];
 
+// V8: Add declined status for reviewer suggestions
+const v8Alterations = [
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS declined BOOLEAN DEFAULT FALSE`,
+];
+
+// V9: Add program_area for Keck Foundation programs
+const v9Alterations = [
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS program_area VARCHAR(100)`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -443,6 +453,42 @@ async function runMigration() {
         } else {
           console.error(`[v7-${i + 1}/${v7Alterations.length}] ✗ Error: ${error.message}`);
           // Don't throw on alter table errors - continue with other alterations
+        }
+      }
+    }
+
+    // Run V8 column additions (declined status)
+    console.log(`\nApplying v8 schema updates - declined status (${v8Alterations.length} alterations)...`);
+    for (let i = 0; i < v8Alterations.length; i++) {
+      const statement = v8Alterations[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v8-${i + 1}/${v8Alterations.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists') || error.message.includes('duplicate column')) {
+          console.log(`[v8-${i + 1}/${v8Alterations.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v8-${i + 1}/${v8Alterations.length}] ✗ Error: ${error.message}`);
+        }
+      }
+    }
+
+    // Run V9 column additions (program_area)
+    console.log(`\nApplying v9 schema updates - program area (${v9Alterations.length} alterations)...`);
+    for (let i = 0; i < v9Alterations.length; i++) {
+      const statement = v9Alterations[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v9-${i + 1}/${v9Alterations.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists') || error.message.includes('duplicate column')) {
+          console.log(`[v9-${i + 1}/${v9Alterations.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v9-${i + 1}/${v9Alterations.length}] ✗ Error: ${error.message}`);
         }
       }
     }

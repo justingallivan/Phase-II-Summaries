@@ -72,7 +72,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { proposalId, proposalTitle, proposalAbstract, proposalAuthors, proposalInstitution, summaryBlobUrl, grantCycleId, candidates } = req.body;
+    const { proposalId, proposalTitle, proposalAbstract, proposalAuthors, proposalInstitution, programArea, summaryBlobUrl, grantCycleId, candidates } = req.body;
 
     if (!proposalId) {
       return res.status(400).json({ error: 'proposalId is required' });
@@ -193,6 +193,7 @@ export default async function handler(req, res) {
             proposal_abstract,
             proposal_authors,
             proposal_institution,
+            program_area,
             summary_blob_url,
             grant_cycle_id,
             researcher_id,
@@ -207,6 +208,7 @@ export default async function handler(req, res) {
             ${proposalAbstract || null},
             ${proposalAuthors || null},
             ${proposalInstitution || null},
+            ${programArea || null},
             ${summaryBlobUrl || null},
             ${cycleIdValue},
             ${researcherId},
@@ -221,6 +223,7 @@ export default async function handler(req, res) {
             proposal_abstract = COALESCE(${proposalAbstract}, reviewer_suggestions.proposal_abstract),
             proposal_authors = COALESCE(${proposalAuthors}, reviewer_suggestions.proposal_authors),
             proposal_institution = COALESCE(${proposalInstitution}, reviewer_suggestions.proposal_institution),
+            program_area = COALESCE(${programArea}, reviewer_suggestions.program_area),
             summary_blob_url = COALESCE(${summaryBlobUrl}, reviewer_suggestions.summary_blob_url),
             grant_cycle_id = COALESCE(${cycleIdValue}, reviewer_suggestions.grant_cycle_id),
             relevance_score = ${relevanceScore},

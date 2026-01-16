@@ -36,6 +36,7 @@ async function handleGet(req, res) {
           rs.proposal_abstract,
           rs.proposal_authors,
           rs.proposal_institution,
+          rs.program_area,
           rs.summary_blob_url,
           rs.grant_cycle_id,
           rs.relevance_score,
@@ -44,6 +45,7 @@ async function handleGet(req, res) {
           rs.selected,
           rs.invited,
           rs.accepted,
+          rs.declined,
           rs.notes,
           rs.suggested_at,
           r.id as researcher_id,
@@ -70,6 +72,7 @@ async function handleGet(req, res) {
           rs.proposal_abstract,
           rs.proposal_authors,
           rs.proposal_institution,
+          rs.program_area,
           rs.summary_blob_url,
           rs.grant_cycle_id,
           rs.relevance_score,
@@ -78,6 +81,7 @@ async function handleGet(req, res) {
           rs.selected,
           rs.invited,
           rs.accepted,
+          rs.declined,
           rs.notes,
           rs.suggested_at,
           r.id as researcher_id,
@@ -105,6 +109,7 @@ async function handleGet(req, res) {
           rs.proposal_abstract,
           rs.proposal_authors,
           rs.proposal_institution,
+          rs.program_area,
           rs.summary_blob_url,
           rs.grant_cycle_id,
           rs.relevance_score,
@@ -113,6 +118,7 @@ async function handleGet(req, res) {
           rs.selected,
           rs.invited,
           rs.accepted,
+          rs.declined,
           rs.notes,
           rs.suggested_at,
           r.id as researcher_id,
@@ -142,6 +148,7 @@ async function handleGet(req, res) {
           proposalAbstract: row.proposal_abstract,
           proposalAuthors: row.proposal_authors,
           proposalInstitution: row.proposal_institution,
+          programArea: row.program_area,
           summaryBlobUrl: row.summary_blob_url,
           grantCycleId: row.grant_cycle_id,
           grantCycleName: row.cycle_name,
@@ -163,6 +170,7 @@ async function handleGet(req, res) {
         sources: row.sources,
         invited: row.invited,
         accepted: row.accepted,
+        declined: row.declined,
         notes: row.notes,
         savedAt: row.suggested_at
       });
@@ -186,11 +194,13 @@ async function handlePatch(req, res) {
   try {
     const {
       suggestionId,
-      proposalId,       // For bulk cycle assignment
+      proposalId,       // For bulk cycle/program assignment
       grantCycleId,     // Assign to cycle (null to unassign)
+      programArea,      // Program area assignment
       // Suggestion fields (existing)
       invited,
       accepted,
+      declined,
       notes,
       // Researcher fields (new)
       name,
@@ -200,31 +210,45 @@ async function handlePatch(req, res) {
       hIndex
     } = req.body;
 
-    // Handle bulk cycle assignment by proposalId
-    if (proposalId !== undefined && grantCycleId !== undefined) {
-      // Assign all candidates for this proposal to the specified cycle
-      const cycleValue = grantCycleId === null ? null : parseInt(grantCycleId, 10);
+    // Handle bulk updates by proposalId (cycle or program area)
+    if (proposalId !== undefined) {
+      const updates = {};
 
-      await sql`
-        UPDATE reviewer_suggestions
-        SET grant_cycle_id = ${cycleValue}
-        WHERE proposal_id = ${proposalId} AND selected = true
-      `;
+      // Handle cycle assignment
+      if (grantCycleId !== undefined) {
+        const cycleValue = grantCycleId === null ? null : parseInt(grantCycleId, 10);
+        await sql`
+          UPDATE reviewer_suggestions
+          SET grant_cycle_id = ${cycleValue}
+          WHERE proposal_id = ${proposalId} AND selected = true
+        `;
+        await sql`
+          UPDATE proposal_searches
+          SET grant_cycle_id = ${cycleValue}
+          WHERE proposal_title = (
+            SELECT proposal_title FROM reviewer_suggestions WHERE proposal_id = ${proposalId} LIMIT 1
+          )
+        `;
+        updates.grantCycleId = cycleValue;
+      }
 
-      // Also update proposal_searches if it exists
-      await sql`
-        UPDATE proposal_searches
-        SET grant_cycle_id = ${cycleValue}
-        WHERE proposal_title = (
-          SELECT proposal_title FROM reviewer_suggestions WHERE proposal_id = ${proposalId} LIMIT 1
-        )
-      `;
+      // Handle program area assignment
+      if (programArea !== undefined) {
+        await sql`
+          UPDATE reviewer_suggestions
+          SET program_area = ${programArea}
+          WHERE proposal_id = ${proposalId} AND selected = true
+        `;
+        updates.programArea = programArea;
+      }
 
-      return res.status(200).json({
-        success: true,
-        message: 'Proposal assigned to cycle',
-        updated: { proposalId, grantCycleId: cycleValue }
-      });
+      if (Object.keys(updates).length > 0) {
+        return res.status(200).json({
+          success: true,
+          message: 'Proposal updated',
+          updated: { proposalId, ...updates }
+        });
+      }
     }
 
     if (!suggestionId) {
@@ -236,7 +260,7 @@ async function handlePatch(req, res) {
       email !== undefined || website !== undefined || hIndex !== undefined;
 
     // Check if we have any suggestion fields to update
-    const hasSuggestionFields = invited !== undefined || accepted !== undefined || notes !== undefined;
+    const hasSuggestionFields = invited !== undefined || accepted !== undefined || declined !== undefined || notes !== undefined;
 
     if (!hasResearcherFields && !hasSuggestionFields) {
       return res.status(400).json({ error: 'No fields to update' });
@@ -312,6 +336,13 @@ async function handlePatch(req, res) {
         WHERE id = ${suggestionId}
       `;
     }
+    if (declined !== undefined) {
+      await sql`
+        UPDATE reviewer_suggestions
+        SET declined = ${declined}
+        WHERE id = ${suggestionId}
+      `;
+    }
     if (notes !== undefined) {
       await sql`
         UPDATE reviewer_suggestions
@@ -334,6 +365,7 @@ async function handlePatch(req, res) {
           ...(hIndex !== undefined && { hIndex }),
           ...(invited !== undefined && { invited }),
           ...(accepted !== undefined && { accepted }),
+          ...(declined !== undefined && { declined }),
           ...(notes !== undefined && { notes })
         }
       }

@@ -742,6 +742,7 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
           proposalAbstract: analysisResult?.proposalInfo?.abstract || '',
           proposalAuthors: analysisResult?.proposalInfo?.proposalAuthors || '',
           proposalInstitution: analysisResult?.proposalInfo?.authorInstitution || '',
+          programArea: analysisResult?.proposalInfo?.programArea || null,
           summaryBlobUrl: analysisResult?.summaryBlobUrl || null,
           grantCycleId: currentCycleInfo?.id || null,
           candidates: selected
@@ -2148,6 +2149,10 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
     await onUpdate(candidate.suggestionId, { accepted: !candidate.accepted });
   };
 
+  const handleToggleDeclined = async () => {
+    await onUpdate(candidate.suggestionId, { declined: !candidate.declined });
+  };
+
   const handleSaveNotes = async () => {
     setIsSavingNotes(true);
     await onUpdate(candidate.suggestionId, { notes });
@@ -2237,6 +2242,16 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
             }`}
           >
             {candidate.accepted ? '✓ Accepted' : 'Accepted'}
+          </button>
+          <button
+            onClick={handleToggleDeclined}
+            className={`px-2 py-1 text-xs rounded ${
+              candidate.declined
+                ? 'bg-red-100 text-red-700'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+          >
+            {candidate.declined ? '✓ Declined' : 'Declined'}
           </button>
           <button
             onClick={() => onEdit(candidate)}
@@ -2346,16 +2361,14 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
 
   // Grant cycles state
   const [cycles, setCycles] = useState([]);
-  const [selectedCycleId, setSelectedCycleId] = useState(() => {
-    // Load from localStorage
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem(CURRENT_CYCLE_KEY);
-      return stored ? parseInt(stored, 10) : 'all';
-    }
-    return 'all';
-  });
+  const [selectedCycleId, setSelectedCycleId] = useState('all'); // Always default to 'all' to show everything
   const [expandedProposals, setExpandedProposals] = useState(new Set());
   const [unassignedCount, setUnassignedCount] = useState({ proposals: 0, candidates: 0 });
+
+  // Additional filters
+  const [institutionFilter, setInstitutionFilter] = useState('all');
+  const [piFilter, setPiFilter] = useState('all');
+  const [programFilter, setProgramFilter] = useState('all');
 
   // Fetch grant cycles
   const fetchCycles = async () => {
@@ -2553,6 +2566,32 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
     }
   };
 
+  const handleUpdateProposalProgram = async (proposalId, programArea) => {
+    try {
+      await fetch('/api/reviewer-finder/my-candidates', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposalId, programArea })
+      });
+      fetchCandidates();
+    } catch (err) {
+      console.error('Update program area failed:', err);
+    }
+  };
+
+  const handleUpdateProposalCycle = async (proposalId, grantCycleId) => {
+    try {
+      await fetch('/api/reviewer-finder/my-candidates', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposalId, grantCycleId })
+      });
+      fetchCandidates();
+    } catch (err) {
+      console.error('Update grant cycle failed:', err);
+    }
+  };
+
   const handleToggleSelection = (suggestionId) => {
     setSelectedForDeletion(prev => {
       const next = new Set(prev);
@@ -2729,11 +2768,46 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
     );
   }
 
-  const totalCandidates = proposals.reduce((sum, p) => sum + p.candidates.length, 0);
-  const invitedCount = proposals.reduce((sum, p) =>
+  // Extract unique values for filter dropdowns
+  const uniqueInstitutions = [...new Set(
+    proposals
+      .map(p => p.proposalInstitution)
+      .filter(Boolean)
+  )].sort();
+
+  const uniquePIs = [...new Set(
+    proposals
+      .map(p => p.proposalAuthors)
+      .filter(Boolean)
+  )].sort();
+
+  const uniquePrograms = [...new Set(
+    proposals
+      .map(p => p.programArea)
+      .filter(Boolean)
+  )].sort();
+
+  // Apply filters to proposals
+  const filteredProposals = proposals.filter(p => {
+    if (institutionFilter !== 'all' && p.proposalInstitution !== institutionFilter) {
+      return false;
+    }
+    if (piFilter !== 'all' && p.proposalAuthors !== piFilter) {
+      return false;
+    }
+    if (programFilter !== 'all' && p.programArea !== programFilter) {
+      return false;
+    }
+    return true;
+  });
+
+  const totalCandidates = filteredProposals.reduce((sum, p) => sum + p.candidates.length, 0);
+  const invitedCount = filteredProposals.reduce((sum, p) =>
     sum + p.candidates.filter(c => c.invited).length, 0);
-  const acceptedCount = proposals.reduce((sum, p) =>
+  const acceptedCount = filteredProposals.reduce((sum, p) =>
     sum + p.candidates.filter(c => c.accepted).length, 0);
+  const declinedCount = filteredProposals.reduce((sum, p) =>
+    sum + p.candidates.filter(c => c.declined).length, 0);
 
   return (
     <div className="space-y-6">
@@ -2743,12 +2817,16 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
           <div>
             <h3 className="text-lg font-semibold">My Saved Candidates</h3>
             <p className="text-sm text-gray-500">
-              {totalCandidates} candidate(s) across {proposals.length} proposal(s)
+              {totalCandidates} candidate(s) across {filteredProposals.length} proposal(s)
+              {filteredProposals.length !== proposals.length && (
+                <span className="text-gray-400"> (filtered from {proposals.length})</span>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-4 text-sm">
             <span className="text-blue-600">{invitedCount} invited</span>
             <span className="text-green-600">{acceptedCount} accepted</span>
+            <span className="text-red-600">{declinedCount} declined</span>
             {selectedForDeletion.size > 0 && (
               <>
                 <button
@@ -2769,27 +2847,88 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
           </div>
         </div>
 
-        {/* Cycle Filter & Expand/Collapse Controls */}
+        {/* Filters & Expand/Collapse Controls */}
         <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-gray-600">Grant Cycle:</label>
-            <select
-              value={selectedCycleId}
-              onChange={(e) => handleCycleChange(e.target.value === 'all' ? 'all' : e.target.value === 'unassigned' ? 'unassigned' : parseInt(e.target.value, 10))}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Cycles</option>
-              {unassignedCount.candidates > 0 && (
-                <option value="unassigned">Unassigned ({unassignedCount.candidates})</option>
-              )}
-              {cycles.filter(c => c.isActive).map(cycle => (
-                <option key={cycle.id} value={cycle.id}>
-                  {cycle.shortCode ? `${cycle.shortCode} - ` : ''}{cycle.name} ({cycle.candidateCount})
-                </option>
-              ))}
-            </select>
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-600">Cycle:</label>
+              <select
+                value={selectedCycleId}
+                onChange={(e) => handleCycleChange(e.target.value === 'all' ? 'all' : e.target.value === 'unassigned' ? 'unassigned' : parseInt(e.target.value, 10))}
+                className="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All</option>
+                {unassignedCount.candidates > 0 && (
+                  <option value="unassigned">Unassigned ({unassignedCount.candidates})</option>
+                )}
+                {cycles.filter(c => c.isActive).map(cycle => (
+                  <option key={cycle.id} value={cycle.id}>
+                    {cycle.shortCode || cycle.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {uniqueInstitutions.length > 1 && (
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">Institution:</label>
+                <select
+                  value={institutionFilter}
+                  onChange={(e) => setInstitutionFilter(e.target.value)}
+                  className="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 max-w-[200px]"
+                >
+                  <option value="all">All ({uniqueInstitutions.length})</option>
+                  {uniqueInstitutions.map(inst => (
+                    <option key={inst} value={inst} title={inst}>
+                      {inst.length > 30 ? inst.substring(0, 30) + '...' : inst}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {uniquePIs.length > 1 && (
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">PI:</label>
+                <select
+                  value={piFilter}
+                  onChange={(e) => setPiFilter(e.target.value)}
+                  className="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 max-w-[180px]"
+                >
+                  <option value="all">All ({uniquePIs.length})</option>
+                  {uniquePIs.map(pi => (
+                    <option key={pi} value={pi} title={pi}>
+                      {pi.length > 25 ? pi.substring(0, 25) + '...' : pi}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {uniquePrograms.length > 1 && (
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">Program:</label>
+                <select
+                  value={programFilter}
+                  onChange={(e) => setProgramFilter(e.target.value)}
+                  className="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All ({uniquePrograms.length})</option>
+                  {uniquePrograms.map(prog => (
+                    <option key={prog} value={prog}>
+                      {prog.includes('Medical') ? 'Medical' : 'Science & Eng'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {(institutionFilter !== 'all' || piFilter !== 'all' || programFilter !== 'all') && (
+              <button
+                onClick={() => { setInstitutionFilter('all'); setPiFilter('all'); setProgramFilter('all'); }}
+                className="text-xs text-blue-600 hover:text-blue-800"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
-          {proposals.length > 0 && (
+          {filteredProposals.length > 0 && (
             <div className="flex items-center gap-2">
               <button
                 onClick={expandAll}
@@ -2813,7 +2952,7 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
       <EmailSettingsPanel />
 
       {/* Proposals with Candidates */}
-      {proposals.map((proposal) => {
+      {filteredProposals.map((proposal) => {
         const allIds = proposal.candidates.map(c => c.suggestionId);
         const allSelected = allIds.length > 0 && allIds.every(id => selectedForDeletion.has(id));
         const someSelected = allIds.some(id => selectedForDeletion.has(id));
@@ -2848,13 +2987,59 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
                   <h4 className="font-medium text-gray-900">
                     {proposal.proposalTitle}
                   </h4>
-                  <p className="text-xs text-gray-400">
-                    {proposal.candidates.length} candidate(s)
-                    {proposal.grantCycleShortCode && (
-                      <span className="ml-2 px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
-                        {proposal.grantCycleShortCode}
-                      </span>
-                    )}
+                  {(proposal.proposalAuthors || proposal.proposalInstitution) && (
+                    <p className="text-sm text-gray-600">
+                      {proposal.proposalAuthors && <span>PI: {proposal.proposalAuthors}</span>}
+                      {proposal.proposalAuthors && proposal.proposalInstitution && <span> · </span>}
+                      {proposal.proposalInstitution && <span>{proposal.proposalInstitution}</span>}
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-400 flex items-center flex-wrap gap-1">
+                    <span>{proposal.candidates.length} candidate(s)</span>
+                    <select
+                      value={proposal.programArea || ''}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        handleUpdateProposalProgram(proposal.proposalId, e.target.value || null);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className={`ml-1 px-1.5 py-0.5 rounded text-xs border-0 cursor-pointer appearance-none pr-4 ${
+                        proposal.programArea?.includes('Medical')
+                          ? 'bg-red-50 text-red-600'
+                          : proposal.programArea?.includes('Science')
+                          ? 'bg-blue-50 text-blue-600'
+                          : 'bg-gray-100 text-gray-500'
+                      }`}
+                      style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3E%3Cpath stroke=\'%236b7280\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'m6 8 4 4 4-4\'/%3E%3C/svg%3E")', backgroundPosition: 'right 0 center', backgroundRepeat: 'no-repeat', backgroundSize: '1rem' }}
+                      title="Click to change program area"
+                    >
+                      <option value="">Not assigned</option>
+                      <option value="Science and Engineering Research Program">Science & Eng</option>
+                      <option value="Medical Research Program">Medical</option>
+                    </select>
+                    <select
+                      value={proposal.grantCycleId || ''}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        const cycleId = e.target.value ? parseInt(e.target.value, 10) : null;
+                        handleUpdateProposalCycle(proposal.proposalId, cycleId);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className={`ml-1 px-1.5 py-0.5 rounded text-xs border-0 cursor-pointer appearance-none pr-4 ${
+                        proposal.grantCycleId
+                          ? 'bg-purple-50 text-purple-600'
+                          : 'bg-gray-100 text-gray-500'
+                      }`}
+                      style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3E%3Cpath stroke=\'%236b7280\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'m6 8 4 4 4-4\'/%3E%3C/svg%3E")', backgroundPosition: 'right 0 center', backgroundRepeat: 'no-repeat', backgroundSize: '1rem' }}
+                      title="Click to change grant cycle"
+                    >
+                      <option value="">No cycle</option>
+                      {cycles.filter(c => c.isActive).map(cycle => (
+                        <option key={cycle.id} value={cycle.id}>
+                          {cycle.shortCode || cycle.name}
+                        </option>
+                      ))}
+                    </select>
                   </p>
                 </div>
               </div>
