@@ -912,4 +912,67 @@ Generated .eml files open as "received" messages in email clients. To send:
 
 ---
 
-Last Updated: January 14, 2026
+## January 15, 2026 - Session 23: Grant Cycle Management & UI Enhancements
+
+**Major Feature: Grant Cycle and Program Area Management**
+
+This session added comprehensive grant cycle management and program area tracking to the Reviewer Finder.
+
+### Features Implemented
+
+**1. Database Migrations (V8, V9)**
+- V8: Added `declined` column to `reviewer_suggestions` table
+- V9: Added `program_area` column to `reviewer_suggestions` table
+- Added historical grant cycles: J23, D23, J24, D24, J25, D25, J26
+
+**2. My Candidates Tab Improvements**
+- Editable program area dropdown on each proposal card
+  - Options: Science & Engineering Research Program, Medical Research Program, Not assigned
+  - Color-coded: Blue for Science & Eng, Red for Medical, Gray for unassigned
+- Editable grant cycle dropdown on each proposal card
+  - Shows all active cycles from database
+  - Color-coded: Purple when assigned, Gray when unassigned
+- Declined status button alongside Invited/Accepted (red styling)
+- PI and Institution display on proposal cards
+- Filter dropdowns for Institution, PI, and Program (only show when >1 unique value)
+
+**3. New Search Tab Enhancement**
+- Grant cycle selector dropdown (replaces static indicator)
+- Auto-generates cycles for current year + next year (18 months coverage)
+- Auto-creates missing cycles in database on page load
+- Persists selected cycle to localStorage
+- Defaults to first available cycle if none previously selected
+
+**4. Prompt Updates**
+- Updated Claude analysis prompt to extract Keck cover page fields:
+  - `PROGRAM_AREA`: Medical Research Program or Science and Engineering Research Program
+  - `PRINCIPAL_INVESTIGATOR`: Single name from "Project Leader" field
+  - `CO_INVESTIGATORS`: Names from "Co-Principal Investigators" field
+- Fixed PI field to contain single name (previously had multiple authors)
+
+### API Changes
+
+**`/api/reviewer-finder/my-candidates.js`**
+- Added `programArea` to PATCH handler for bulk proposal updates
+- Added `declined` to SELECT queries and response mapping
+- Added `program_area` to SELECT queries and response mapping
+
+**`/api/reviewer-finder/save-candidates.js`**
+- Added `programArea` to request body and INSERT/UPDATE
+
+### Files Modified
+
+- `pages/reviewer-finder.js` - Cycle selector, program/cycle dropdowns, filters
+- `pages/api/reviewer-finder/my-candidates.js` - PATCH support for program/cycle
+- `pages/api/reviewer-finder/save-candidates.js` - Program area support
+- `scripts/setup-database.js` - V8 and V9 migrations
+- `shared/config/prompts/reviewer-finder.js` - Keck cover page field extraction
+
+### Git Commits
+
+- Add program area and grant cycle editing to My Candidates
+- Add grant cycle selector dropdown to New Search tab
+
+---
+
+Last Updated: January 15, 2026

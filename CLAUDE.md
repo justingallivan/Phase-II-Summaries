@@ -278,13 +278,17 @@ Located in `lib/services/`:
 - `POST /api/refine` - Summary refinement
 
 ### Expert Reviewer Finder v2
-- `POST /api/reviewer-finder/analyze` - Extract proposal metadata, abstract, and summary pages
+- `POST /api/reviewer-finder/analyze` - Extract proposal metadata, abstract, program area, and summary pages
 - `POST /api/reviewer-finder/discover` - Find and verify candidates (streaming)
 - `POST /api/reviewer-finder/save-candidates` - Save candidates with multi-field duplicate detection (ORCID, email, Scholar ID, name)
-- `GET /api/reviewer-finder/my-candidates` - Retrieve saved candidates with summary URLs
-- `PATCH /api/reviewer-finder/my-candidates` - Update candidate info (invited, notes, researcher fields)
+- `GET /api/reviewer-finder/my-candidates` - Retrieve saved candidates with summary URLs; supports `?cycleId=N` filter
+- `PATCH /api/reviewer-finder/my-candidates` - Update candidate info (invited, declined, notes, researcher fields, programArea, grantCycleId)
 - `DELETE /api/reviewer-finder/my-candidates` - Delete candidates
 - `GET /api/reviewer-finder/researchers` - Browse all researchers (with search, sort, filter, pagination); use `?id=` for single researcher with full details
+- `GET /api/reviewer-finder/grant-cycles` - List all grant cycles
+- `POST /api/reviewer-finder/grant-cycles` - Create new grant cycle
+- `PATCH /api/reviewer-finder/grant-cycles` - Update grant cycle
+- `DELETE /api/reviewer-finder/grant-cycles` - Archive grant cycle
 - `POST /api/reviewer-finder/enrich-contacts` - Contact lookup (streaming)
 - `POST /api/reviewer-finder/generate-emails` - Generate .eml invitation files with attachments (streaming)
 - `POST /api/reviewer-finder/extract-summary` - Re-extract summary pages from proposal PDF
@@ -310,4 +314,4 @@ For detailed session-by-session development history, see [DEVELOPMENT_LOG.md](./
 
 ---
 
-Last Updated: January 14, 2026
+Last Updated: January 15, 2026

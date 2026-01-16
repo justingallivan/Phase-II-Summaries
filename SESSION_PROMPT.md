@@ -1,6 +1,6 @@
-# Document Processing Suite - Session 23 Prompt
+# Document Processing Suite - Session 24 Prompt
 
-## Current State (as of January 14, 2026)
+## Current State (as of January 15, 2026)
 
 ### App Suite Overview
 
@@ -12,113 +12,107 @@ The suite has 9 apps organized into categories:
 | **Phase II** | Batch Phase II Summaries, Funding Analysis, Create Phase II Writeup Draft, Reviewer Finder, Summarize Peer Reviews |
 | **Other Tools** | Expense Reporter, Literature Analyzer (coming soon) |
 
-### Session 22 Summary
+### Session 23 Summary
 
-**Email Generation V6 - Complete:**
+**Grant Cycle Management & UI Enhancements:**
 
-1. **Settings Modal Overhaul**
-   - Reordered: Sender Info → Grant Cycle → Email Template → Attachments
-   - Additional Attachments section for optional files
-   - Review template upload via Vercel Blob
-   - Grant cycle custom fields (proposalDueDate, honorarium, proposalSendDate, commitDate)
+1. **Database Migrations (V8, V9)**
+   - V8: Added `declined` column to reviewer_suggestions
+   - V9: Added `program_area` column to reviewer_suggestions
+   - Historical grant cycles added: J23-J26, D23-D25
 
-2. **Email Attachment Support**
-   - MIME multipart/mixed format for .eml files
-   - Auto-extracted project summary from proposal PDFs (pdf-lib)
-   - Review template + additional attachments
-   - Re-extract summary button in My Candidates tab
+2. **My Candidates Tab Improvements**
+   - Editable program area dropdown (Medical/Science & Eng) on proposal cards
+   - Editable grant cycle dropdown on proposal cards
+   - Declined status button alongside Invited/Accepted
+   - PI and Institution display with filters
 
-3. **Investigator Team Formatting**
-   - `{{investigatorTeam}}` - formats PI + Co-PIs gracefully
-   - `{{investigatorVerb}}` - "was" (singular) or "were" (plural)
-   - Enhanced Co-PI extraction from proposals
+3. **New Search Tab Enhancement**
+   - Grant cycle selector dropdown
+   - Auto-creates cycles for current year + next year (18 months coverage)
+   - Persists selected cycle to localStorage
+   - Defaults intelligently to first available cycle
 
-4. **Bug Fixes**
-   - Custom field date formatting (ISO → readable)
-   - Template literal escaping for `${{...}}`
-   - Extract summary API buffer handling
-   - Subject-verb agreement
-
-5. **Email Workflow Documentation**
-   - .eml files open as "received" messages (format limitation)
-   - Instructions: Forward and remove "Fwd:", or copy/paste
-   - Future consideration documented for CRM/email service integration
+4. **Prompt Updates**
+   - Updated Claude prompt to extract Keck cover page fields
+   - Program area extraction (Medical vs Science & Engineering)
+   - Principal Investigator field (single name, not multiple authors)
 
 ### Reviewer Finder - Current State
 
 Complete pipeline for finding expert reviewers:
-1. **Claude Analysis** - Extract proposal metadata (PI, Co-PIs, abstract) and suggest reviewers
+1. **Claude Analysis** - Extract proposal metadata (PI, Co-PIs, abstract, program area) and suggest reviewers
 2. **Database Discovery** - Search PubMed, ArXiv, BioRxiv, ChemRxiv
 3. **Contact Enrichment** - 5-tier system for emails and faculty pages
 4. **Email Generation** - Create .eml files with attachments
 5. **Database Tab** - Browse/search all saved researchers with detail modal
 
 **Key Features:**
+- Grant cycle selector in New Search (auto-creates future cycles)
+- Editable program area and grant cycle on proposal cards
+- Declined status tracking
 - Institution/expertise mismatch warnings
 - Google Scholar profile links
 - PI/author self-suggestion prevention
 - Multi-field duplicate detection on save
 - Multi-select operations (save, delete, email)
 - Tag-based filtering in Database tab
-- Settings gear icon (accessible before proposal upload)
-- `{{investigatorTeam}}` and `{{investigatorVerb}}` placeholders
 
-## Suggested Next Steps (Priority Order)
+## Priority Tasks for Session 24
 
-### 1. Database Tab Phase 3 - Management
+### 1. Concept Evaluation App (NEW - TOP PRIORITY)
+Create a new app to help evaluate concepts received for upcoming grant cycles. This is a workflow priority shift as we approach a new grant cycle.
+
+**Suggested scope to explore:**
+- Upload concept documents (likely 1-2 page PDFs)
+- Claude analysis to extract key information
+- Evaluation criteria (alignment with foundation priorities, feasibility, innovation, etc.)
+- Scoring or ranking suggestions
+- Export evaluation summaries
+
+*Note: User should clarify the specific workflow and evaluation criteria before implementation.*
+
+### 2. Database Tab Phase 3 - Management (deferred)
 - Edit researcher info directly in Database tab
 - Delete researchers (with confirmation)
 - Merge duplicate researchers
 - Bulk export to CSV
 
-### 2. Email Tracking
+### 3. Email Tracking (deferred)
 - Mark candidates as "email sent"
 - Track response status (accepted, declined, no response)
 - Use existing `email_sent_at`, `response_type` columns
 
-### 3. Re-enrich Contacts Button
+### 4. Re-enrich Contacts Button (deferred)
 - Add button in My Candidates tab to re-run contact enrichment
 - Currently must re-run full search to update contacts
 
-### 4. Literature Analyzer App
+### 5. Literature Analyzer App (deferred)
 - Currently "coming soon" placeholder
 - Paper synthesis and citation analysis
 
-### 5. CRM Integration (Future)
-- Direct email sending via SendGrid/AWS SES
-- Skip .eml workflow when CRM available
-- See CLAUDE.md "Future Considerations" section
-
 ## Key Files Reference
 
-**Email Generation:**
-- `lib/utils/email-generator.js` - EML generation, investigatorTeam, date formatting
-- `shared/components/EmailGeneratorModal.js` - Multi-step email workflow
-- `shared/components/SettingsModal.js` - Settings UI with 4 sections
-- `shared/components/EmailTemplateEditor.js` - Template editing with placeholders
-- `pages/api/reviewer-finder/generate-emails.js` - SSE endpoint
-
-**PDF Processing:**
-- `lib/utils/pdf-extractor.js` - Page extraction using pdf-lib
-- `pages/api/reviewer-finder/extract-summary.js` - Re-extract summary pages
-- `pages/api/upload-file.js` - Direct FormData upload to Vercel Blob
-
-**Database Tab:**
-- `pages/reviewer-finder.js` - DatabaseTab, ResearcherRow, ResearcherDetailModal
-- `pages/api/reviewer-finder/researchers.js` - GET endpoint with `?id=` for details
-- `lib/services/database-service.js` - Keyword methods
-
 **Reviewer Finder Core:**
-- `pages/reviewer-finder.js` - Main page with 3 tabs
+- `pages/reviewer-finder.js` - Main page with 3 tabs, cycle selector, program dropdowns
 - `lib/services/discovery-service.js` - Multi-database search
 - `lib/services/contact-enrichment-service.js` - 5-tier contact lookup
-- `lib/services/deduplication-service.js` - Name matching, COI filtering
-- `shared/config/prompts/reviewer-finder.js` - Analysis prompt with Co-PI extraction
+- `shared/config/prompts/reviewer-finder.js` - Analysis prompt with Keck fields
 
-**Utility Scripts:**
-- `scripts/setup-database.js` - Database migrations (V1-V6)
-- `scripts/cleanup-database.js` - Remove incomplete entries
-- `scripts/clear-all-database.js` - Full database reset
+**Grant Cycle Management:**
+- `pages/api/reviewer-finder/grant-cycles.js` - CRUD for cycles
+- `pages/api/reviewer-finder/my-candidates.js` - GET/PATCH/DELETE with cycle/program support
+- `shared/components/SettingsModal.js` - Cycle management UI
+
+**Database:**
+- `scripts/setup-database.js` - Database migrations (V1-V9)
+- V8: `declined` column
+- V9: `program_area` column
+
+**Email Generation:**
+- `lib/utils/email-generator.js` - EML generation with attachments
+- `shared/components/EmailGeneratorModal.js` - Multi-step email workflow
+- `shared/components/SettingsModal.js` - Settings UI with 4 sections
 
 ## Environment Variables
 
@@ -139,11 +133,6 @@ npm run dev
 ## Git Status
 
 Branch: main
-Session 22 commits:
-- Format custom date fields in email template
-- Reorder Settings modal menu sections
-- Add additional attachments support
-- Add investigatorTeam/investigatorVerb placeholders
-- Enhance Co-PI extraction and fallback handling
-- Fix extract-summary API buffer handling
-- Add email workflow instructions and documentation
+Session 23 commits:
+- Add program area and grant cycle editing to My Candidates
+- Add grant cycle selector dropdown to New Search tab
