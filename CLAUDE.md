@@ -240,6 +240,38 @@ ORCID_CLIENT_ID=...        # ORCID API access
 ORCID_CLIENT_SECRET=...    # ORCID API access
 ```
 
+## Per-App Model Configuration
+
+Each app uses a model optimized for its task complexity. Configured in `shared/config/baseConfig.js`:
+
+| App | Default Model | Complexity |
+|-----|---------------|------------|
+| Concept Evaluator | Opus 4 | High (Vision + Analysis) |
+| Batch Phase I/II Summaries | Sonnet 4 | High |
+| Phase I/II Writeup | Sonnet 4 | High |
+| Reviewer Finder | Sonnet 4 | High |
+| Peer Review Summarizer | Sonnet 4 | High |
+| Funding Analysis | Sonnet 4 | Medium |
+| Q&A, Refine | Sonnet 4 | Medium |
+| Expense Reporter | Haiku 3.5 | Low |
+| Contact Enrichment | Haiku 3.5 | Low |
+| Email Personalization | Haiku 3.5 | Low |
+
+**Override via environment variable:**
+```env
+CLAUDE_MODEL_CONCEPT_EVALUATOR=claude-sonnet-4-20250514  # Override Opus → Sonnet
+CLAUDE_MODEL_EXPENSE_REPORTER=claude-sonnet-4-20250514   # Upgrade Haiku → Sonnet
+```
+
+**Helper functions:**
+```javascript
+import { getModelForApp, getFallbackModelForApp } from '../../shared/config/baseConfig';
+
+const model = getModelForApp('concept-evaluator');           // Returns configured model
+const vision = getModelForApp('concept-evaluator', 'visionModel'); // Vision-specific model
+const fallback = getFallbackModelForApp('concept-evaluator'); // Fallback on error
+```
+
 ## Development Commands
 
 ```bash
@@ -345,4 +377,4 @@ For detailed session-by-session development history, see [DEVELOPMENT_LOG.md](./
 
 ---
 
-Last Updated: January 16, 2026
+Last Updated: January 17, 2026
