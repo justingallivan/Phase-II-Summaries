@@ -73,16 +73,16 @@ function ConceptCard({ concept, index }) {
       {/* Ratings Row */}
       <div className="px-4 py-3 bg-gray-25 border-b border-gray-100 flex flex-wrap gap-4">
         <RatingBadge
+          rating={concept.potentialImpact?.rating}
+          label="Impact"
+        />
+        <RatingBadge
           rating={concept.keckAlignment?.rating}
           label="Keck Fit"
         />
         <RatingBadge
           rating={concept.scientificMerit?.rating}
           label="Merit"
-        />
-        <RatingBadge
-          rating={concept.feasibility?.rating}
-          label="Feasibility"
         />
         <RatingBadge
           rating={concept.noveltyAssessment?.rating}
@@ -99,6 +99,14 @@ function ConceptCard({ concept, index }) {
         {/* Expanded Details */}
         {expanded && (
           <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
+            {/* Potential Impact - Primary */}
+            {concept.potentialImpact?.reasoning && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-900">Potential Impact (if successful)</h4>
+                <p className="text-sm text-gray-600 mt-1">{concept.potentialImpact.reasoning}</p>
+              </div>
+            )}
+
             {/* Detailed Ratings */}
             {concept.keckAlignment?.reasoning && (
               <div>
@@ -114,13 +122,6 @@ function ConceptCard({ concept, index }) {
               </div>
             )}
 
-            {concept.feasibility?.reasoning && (
-              <div>
-                <h4 className="text-sm font-medium text-gray-900">Feasibility</h4>
-                <p className="text-sm text-gray-600 mt-1">{concept.feasibility.reasoning}</p>
-              </div>
-            )}
-
             {concept.noveltyAssessment?.reasoning && (
               <div>
                 <h4 className="text-sm font-medium text-gray-900">Novelty Assessment</h4>
@@ -128,16 +129,11 @@ function ConceptCard({ concept, index }) {
               </div>
             )}
 
-            {/* Literature Context */}
-            {concept.literatureContext?.keyFindings && (
+            {/* Feasibility Concerns - only if notable */}
+            {concept.feasibilityConcerns && !concept.feasibilityConcerns.includes('No fatal flaws') && (
               <div>
-                <h4 className="text-sm font-medium text-gray-900">Literature Context</h4>
-                <p className="text-sm text-gray-600 mt-1">{concept.literatureContext.keyFindings}</p>
-                {concept.literatureSearchResults?.totalFound > 0 && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Based on {concept.literatureSearchResults.totalFound} recent publications
-                  </p>
-                )}
+                <h4 className="text-sm font-medium text-red-700">Feasibility Concerns</h4>
+                <p className="text-sm text-red-600 mt-1">{concept.feasibilityConcerns}</p>
               </div>
             )}
 
@@ -158,6 +154,47 @@ function ConceptCard({ concept, index }) {
                 <ul className="list-disc list-inside text-sm text-gray-600 mt-1">
                   {concept.concerns.map((c, i) => <li key={i}>{c}</li>)}
                 </ul>
+              </div>
+            )}
+
+            {/* Literature Search Results */}
+            {concept.literatureSearch && (
+              <div className="border-t border-gray-200 pt-4 mt-4">
+                <h4 className="text-sm font-medium text-gray-900 mb-2">
+                  Literature Search Results
+                </h4>
+                <div className="text-xs text-gray-500 mb-2">
+                  <span className="font-medium">Query:</span> {concept.literatureSearch.query || 'N/A'}
+                  {' | '}
+                  <span className="font-medium">Area:</span> {concept.literatureSearch.researchArea || 'N/A'}
+                  {' | '}
+                  <span className="font-medium">Found:</span> {concept.literatureSearch.totalFound || 0} publications
+                </div>
+
+                {concept.literatureSearch.publications?.length > 0 ? (
+                  <div className="max-h-48 overflow-y-auto border border-gray-200 rounded bg-gray-50 p-2">
+                    {concept.literatureSearch.publications.map((pub, i) => (
+                      <div key={i} className="text-xs text-gray-600 py-1 border-b border-gray-100 last:border-0">
+                        <div className="font-medium text-gray-800">{pub.title}</div>
+                        <div className="text-gray-500">
+                          {pub.authors?.slice(0, 3).join(', ')}{pub.authors?.length > 3 ? ' et al.' : ''}
+                          {pub.year ? ` (${pub.year})` : ''}
+                          {pub.source ? ` - ${pub.source}` : ''}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500 italic">No publications found in searched databases</p>
+                )}
+              </div>
+            )}
+
+            {/* Literature Context Summary */}
+            {concept.literatureContext?.keyFindings && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-900">Literature Context Summary</h4>
+                <p className="text-sm text-gray-600 mt-1">{concept.literatureContext.keyFindings}</p>
               </div>
             )}
 
@@ -317,13 +354,17 @@ export default function ConceptEvaluator() {
         content += `### Ratings\n\n`;
         content += `| Criterion | Rating |\n`;
         content += `|-----------|--------|\n`;
+        content += `| Potential Impact | ${concept.potentialImpact?.rating || 'N/A'} |\n`;
         content += `| Keck Alignment | ${concept.keckAlignment?.rating || 'N/A'} |\n`;
         content += `| Scientific Merit | ${concept.scientificMerit?.rating || 'N/A'} |\n`;
-        content += `| Feasibility | ${concept.feasibility?.rating || 'N/A'} |\n`;
         content += `| Novelty | ${concept.noveltyAssessment?.rating || 'N/A'} |\n\n`;
 
         if (concept.overallAssessment) {
           content += `### Overall Assessment\n\n${concept.overallAssessment}\n\n`;
+        }
+
+        if (concept.potentialImpact?.reasoning) {
+          content += `### Potential Impact (if successful)\n\n${concept.potentialImpact.reasoning}\n\n`;
         }
 
         if (concept.keckAlignment?.reasoning) {
@@ -334,16 +375,34 @@ export default function ConceptEvaluator() {
           content += `### Scientific Merit\n\n${concept.scientificMerit.reasoning}\n\n`;
         }
 
-        if (concept.feasibility?.reasoning) {
-          content += `### Feasibility\n\n${concept.feasibility.reasoning}\n\n`;
-        }
-
         if (concept.noveltyAssessment?.reasoning) {
           content += `### Novelty Assessment\n\n${concept.noveltyAssessment.reasoning}\n\n`;
         }
 
+        if (concept.feasibilityConcerns && !concept.feasibilityConcerns.includes('No fatal flaws')) {
+          content += `### Feasibility Concerns\n\n${concept.feasibilityConcerns}\n\n`;
+        }
+
+        // Literature Search Results
+        if (concept.literatureSearch) {
+          content += `### Literature Search\n\n`;
+          content += `**Query:** ${concept.literatureSearch.query || 'N/A'}\n`;
+          content += `**Research Area:** ${concept.literatureSearch.researchArea || 'N/A'}\n`;
+          content += `**Publications Found:** ${concept.literatureSearch.totalFound || 0}\n\n`;
+
+          if (concept.literatureSearch.publications?.length > 0) {
+            content += `**Sample Publications:**\n\n`;
+            concept.literatureSearch.publications.slice(0, 10).forEach(pub => {
+              const authors = pub.authors?.slice(0, 3).join(', ') || 'Unknown';
+              const authorsStr = pub.authors?.length > 3 ? `${authors} et al.` : authors;
+              content += `- ${pub.title} (${pub.year || 'N/A'}) - ${authorsStr} [${pub.source || 'Unknown'}]\n`;
+            });
+            content += `\n`;
+          }
+        }
+
         if (concept.literatureContext?.keyFindings) {
-          content += `### Literature Context\n\n${concept.literatureContext.keyFindings}\n\n`;
+          content += `### Literature Context Summary\n\n${concept.literatureContext.keyFindings}\n\n`;
         }
 
         if (concept.strengths?.length > 0) {
@@ -423,7 +482,7 @@ export default function ConceptEvaluator() {
             <p>1. Upload a PDF where each page contains one research concept</p>
             <p>2. Claude analyzes each concept and extracts key information</p>
             <p>3. Literature is searched to assess novelty and context</p>
-            <p>4. Each concept receives ratings for Keck alignment, merit, feasibility, and novelty</p>
+            <p>4. Each concept receives ratings for potential impact, Keck alignment, merit, and novelty</p>
             <p>5. Export results as JSON or Markdown for further review</p>
           </div>
         </Card>
@@ -514,15 +573,15 @@ export default function ConceptEvaluator() {
                 </div>
                 <div>
                   <div className="text-2xl font-bold text-green-600">
-                    {countRatings(results.concepts, 'keckAlignment').Strong}
+                    {countRatings(results.concepts, 'potentialImpact').Strong}
                   </div>
-                  <div className="text-sm text-gray-600">Strong Keck Fit</div>
+                  <div className="text-sm text-gray-600">High Impact</div>
                 </div>
                 <div>
                   <div className="text-2xl font-bold text-yellow-600">
-                    {countRatings(results.concepts, 'keckAlignment').Moderate}
+                    {countRatings(results.concepts, 'potentialImpact').Moderate}
                   </div>
-                  <div className="text-sm text-gray-600">Moderate</div>
+                  <div className="text-sm text-gray-600">Moderate Impact</div>
                 </div>
                 <div>
                   <div className="text-2xl font-bold text-red-600">

@@ -73,6 +73,12 @@ ${literatureSummary}
 - Not fundable elsewhere: Would NIH, NSF, or DOE plausibly fund this? If yes, it's not a strong Keck fit.
 - Fundamental questions: Does this address a deep scientific question, or is it applied/translational work?
 
+**KEY EVALUATION FRAMING:**
+The most important question is: "If everything the researchers propose turns out to be correct, will that have a significant impact on the field or the world?"
+- If YES: High priority concept worth serious consideration
+- If NO: Lower priority regardless of feasibility
+Feasibility is secondary at this stage. Only note fatal flaws - peer reviewers will evaluate feasibility in detail later.
+
 **YOUR TASK:**
 
 Provide a critical, honest evaluation as valid JSON:
@@ -105,10 +111,12 @@ Provide a critical, honest evaluation as valid JSON:
     "reasoning": "Is the hypothesis clear? Is the approach sound? What's missing or unclear in the concept description?"
   },
 
-  "feasibility": {
+  "potentialImpact": {
     "rating": "Strong / Moderate / Weak",
-    "reasoning": "What are the technical barriers? Is the timeline realistic? What could go wrong?"
+    "reasoning": "IF everything proposed turns out correct, what is the impact? Would this change the field or have broader significance? Be specific about what the impact would be."
   },
+
+  "feasibilityConcerns": "Only note fatal flaws or major red flags here. If none are obvious, write 'No fatal flaws identified - detailed feasibility to be assessed by peer reviewers.' Do not provide a full feasibility analysis.",
 
   "strengths": ["2-4 genuine strengths - be specific, not generic"],
   "concerns": ["2-4 substantive concerns - every concept has weaknesses, identify them clearly"],

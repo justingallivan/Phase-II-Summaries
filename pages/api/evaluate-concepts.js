@@ -168,9 +168,19 @@ async function evaluateSingleConcept(page, apiKey, res, processedCount, totalCou
     return {
       pageNumber,
       ...finalEvaluation,
-      literatureSearchResults: {
+      literatureSearch: {
+        query: initialAnalysis.keywords?.join(' ') || '',
+        researchArea: initialAnalysis.researchArea,
         totalFound: literatureResults.length,
-        sources: summarizeLiteratureSources(literatureResults)
+        sourceBreakdown: summarizeLiteratureSources(literatureResults),
+        publications: literatureResults.slice(0, 20).map(pub => ({
+          title: pub.title,
+          authors: pub.authors?.slice(0, 4) || [],
+          year: pub.year || pub.publicationDate?.substring(0, 4),
+          source: pub.source,
+          journal: pub.journal || pub.venue || null,
+          doi: pub.doi || null
+        }))
       }
     };
 
