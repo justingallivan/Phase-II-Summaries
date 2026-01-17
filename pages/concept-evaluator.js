@@ -167,11 +167,19 @@ function ConceptCard({ concept, index }) {
                   Literature Search Results
                 </h4>
                 <div className="text-xs text-gray-500 mb-2">
-                  <span className="font-medium">Query:</span> {concept.literatureSearch.query || 'N/A'}
-                  {' | '}
-                  <span className="font-medium">Area:</span> {concept.literatureSearch.researchArea || 'N/A'}
-                  {' | '}
-                  <span className="font-medium">Found:</span> {concept.literatureSearch.totalFound || 0} publications
+                  <div>
+                    <span className="font-medium">Queries:</span>{' '}
+                    {concept.literatureSearch.queries?.length > 0
+                      ? concept.literatureSearch.queries.map((q, i) => (
+                          <span key={i} className="inline-block bg-gray-200 rounded px-1 mr-1 mb-1">"{q}"</span>
+                        ))
+                      : 'N/A'}
+                  </div>
+                  <div className="mt-1">
+                    <span className="font-medium">Area:</span> {concept.literatureSearch.researchArea || 'N/A'}
+                    {' | '}
+                    <span className="font-medium">Found:</span> {concept.literatureSearch.totalFound || 0} publications
+                  </div>
                 </div>
 
                 {concept.literatureSearch.publications?.length > 0 ? (
@@ -390,7 +398,7 @@ export default function ConceptEvaluator() {
         // Literature Search Results
         if (concept.literatureSearch) {
           content += `### Literature Search\n\n`;
-          content += `**Query:** ${concept.literatureSearch.query || 'N/A'}\n`;
+          content += `**Queries:** ${concept.literatureSearch.queries?.join(', ') || 'N/A'}\n`;
           content += `**Research Area:** ${concept.literatureSearch.researchArea || 'N/A'}\n`;
           content += `**Publications Found:** ${concept.literatureSearch.totalFound || 0}\n\n`;
 

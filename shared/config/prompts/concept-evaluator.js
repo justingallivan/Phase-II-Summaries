@@ -27,7 +27,7 @@ Provide a structured analysis with the following information. Return your respon
   "summary": "A 2-3 sentence summary of the core research idea",
   "researchArea": "Primary research category (e.g., 'molecular biology', 'astrophysics', 'materials science', 'neuroscience', 'chemistry', 'computer science', 'engineering')",
   "subfields": ["Array of 2-3 specific subfields or disciplines"],
-  "keywords": ["Array of 4-6 specific technical terms for literature searching - focus on methods, techniques, phenomena, or systems that would appear in related publications"],
+  "searchQueries": ["Array of 2-3 SHORT search queries (3-5 words each) to find related publications. Each query should be a focused phrase like 'CRISPR antiviral immunity' or 'lentiviral vector packaging'. Do NOT combine all terms into one long query."],
   "keyMethodologies": ["Array of main experimental or computational approaches proposed"],
   "initialObservations": {
     "innovativeAspects": "What appears novel or innovative about this concept",
@@ -38,7 +38,9 @@ Provide a structured analysis with the following information. Return your respon
 
 **IMPORTANT:**
 - Return ONLY valid JSON, no additional text or markdown
-- Be specific with keywords - use technical terminology that would appear in academic publications
+- Each search query should be SHORT (3-5 words) and focused on one specific aspect
+- Good queries: "CRISPR gene editing", "retroviral vector packaging", "host innate immunity"
+- Bad queries: "CRISPR screening packageable lentiviral vectors Simian Immunodeficiency Virus innate immunity" (too long, combines too many concepts)
 - If information is not present in the concept, use null for string fields or empty arrays for array fields`;
 }
 

@@ -157,9 +157,9 @@ async function evaluateSingleConcept(page, apiKey, res, processedCount, totalCou
       throw new Error(initialAnalysis?.error || 'Initial analysis failed');
     }
 
-    // Stage 2: Literature search based on extracted keywords
+    // Stage 2: Literature search based on extracted search queries
     sendProgress(res, progressBase + 3, `Searching literature for concept ${pageNumber}...`);
-    const literatureResults = await searchLiterature(initialAnalysis);
+    const { results: literatureResults, queriesUsed } = await searchLiterature(initialAnalysis);
 
     // Stage 3: Final evaluation with literature context
     sendProgress(res, progressBase + 6, `Evaluating concept ${pageNumber}...`);
@@ -169,7 +169,7 @@ async function evaluateSingleConcept(page, apiKey, res, processedCount, totalCou
       pageNumber,
       ...finalEvaluation,
       literatureSearch: {
-        query: initialAnalysis.keywords?.join(' ') || '',
+        queries: queriesUsed,
         researchArea: initialAnalysis.researchArea,
         totalFound: literatureResults.length,
         sourceBreakdown: summarizeLiteratureSources(literatureResults),
@@ -264,87 +264,105 @@ async function performInitialAnalysis(base64Pdf, apiKey) {
 }
 
 /**
- * Stage 2: Search literature databases based on keywords and research area
+ * Stage 2: Search literature databases based on search queries and research area
+ *
+ * Executes each query individually (not concatenated) for better results.
  */
 async function searchLiterature(initialAnalysis) {
-  const { keywords = [], researchArea = 'general' } = initialAnalysis;
+  const { searchQueries = [], researchArea = 'general' } = initialAnalysis;
 
-  if (keywords.length === 0) {
-    console.log('No keywords extracted, skipping literature search');
-    return [];
+  if (searchQueries.length === 0) {
+    console.log('No search queries extracted, skipping literature search');
+    return { results: [], queriesUsed: [] };
   }
 
   // Select databases based on research area
   const databases = selectDatabasesForResearchArea(researchArea);
   console.log(`Literature search for "${researchArea}": databases =`, databases);
+  console.log(`Using ${searchQueries.length} queries:`, searchQueries);
 
   const allResults = [];
-  const searchQuery = keywords.slice(0, 4).join(' '); // Use top 4 keywords
+  const queriesUsed = [];
 
   try {
-    // Search selected databases in parallel
-    const searchPromises = [];
+    // Execute each query individually against selected databases
+    for (const query of searchQueries.slice(0, 3)) { // Max 3 queries
+      queriesUsed.push(query);
+      const searchPromises = [];
 
-    if (databases.pubmed) {
-      searchPromises.push(
-        PubMedService.search(searchQuery, 20).then(results =>
-          results.map(r => ({ ...r, source: 'PubMed' }))
-        ).catch(err => {
-          console.error('PubMed search error:', err.message);
-          return [];
-        })
-      );
+      if (databases.pubmed) {
+        searchPromises.push(
+          PubMedService.search(query, 15).then(results =>
+            results.map(r => ({ ...r, source: 'PubMed', query }))
+          ).catch(err => {
+            console.error(`PubMed search error for "${query}":`, err.message);
+            return [];
+          })
+        );
+      }
+
+      if (databases.arxiv) {
+        searchPromises.push(
+          ArXivService.search(query, 15).then(results =>
+            results.map(r => ({ ...r, source: 'ArXiv', query }))
+          ).catch(err => {
+            console.error(`ArXiv search error for "${query}":`, err.message);
+            return [];
+          })
+        );
+      }
+
+      if (databases.biorxiv) {
+        searchPromises.push(
+          BioRxivService.search(query, 15).then(results =>
+            results.map(r => ({ ...r, source: 'BioRxiv', query }))
+          ).catch(err => {
+            console.error(`BioRxiv search error for "${query}":`, err.message);
+            return [];
+          })
+        );
+      }
+
+      if (databases.chemrxiv) {
+        searchPromises.push(
+          ChemRxivService.search(query, 15).then(results =>
+            results.map(r => ({ ...r, source: 'ChemRxiv', query }))
+          ).catch(err => {
+            console.error(`ChemRxiv search error for "${query}":`, err.message);
+            return [];
+          })
+        );
+      }
+
+      const searchResults = await Promise.all(searchPromises);
+      searchResults.forEach(results => allResults.push(...results));
     }
 
-    if (databases.arxiv) {
-      searchPromises.push(
-        ArXivService.search(searchQuery, 20).then(results =>
-          results.map(r => ({ ...r, source: 'ArXiv' }))
-        ).catch(err => {
-          console.error('ArXiv search error:', err.message);
-          return [];
-        })
-      );
-    }
-
-    if (databases.biorxiv) {
-      searchPromises.push(
-        BioRxivService.search(searchQuery, 20).then(results =>
-          results.map(r => ({ ...r, source: 'BioRxiv' }))
-        ).catch(err => {
-          console.error('BioRxiv search error:', err.message);
-          return [];
-        })
-      );
-    }
-
-    if (databases.chemrxiv) {
-      searchPromises.push(
-        ChemRxivService.search(searchQuery, 20).then(results =>
-          results.map(r => ({ ...r, source: 'ChemRxiv' }))
-        ).catch(err => {
-          console.error('ChemRxiv search error:', err.message);
-          return [];
-        })
-      );
-    }
-
-    const searchResults = await Promise.all(searchPromises);
-    searchResults.forEach(results => allResults.push(...results));
+    // Deduplicate by title (case-insensitive)
+    const seen = new Set();
+    const deduped = allResults.filter(pub => {
+      const key = (pub.title || '').toLowerCase().substring(0, 50);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
     // Filter to recent publications (last 3 years)
     const threeYearsAgo = new Date().getFullYear() - 3;
-    const recentResults = allResults.filter(pub => {
+    const recentResults = deduped.filter(pub => {
       const year = pub.year || parseInt(pub.publicationDate?.substring(0, 4));
       return year && year >= threeYearsAgo;
     });
 
-    console.log(`Literature search: ${allResults.length} total, ${recentResults.length} from last 3 years`);
-    return recentResults.slice(0, 30); // Limit to 30 for prompt size
+    console.log(`Literature search: ${allResults.length} total, ${deduped.length} unique, ${recentResults.length} from last 3 years`);
+    return {
+      results: recentResults.slice(0, 30), // Limit to 30 for prompt size
+      queriesUsed
+    };
 
   } catch (error) {
     console.error('Literature search error:', error);
-    return [];
+    return { results: [], queriesUsed };
   }
 }
 
