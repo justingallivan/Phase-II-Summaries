@@ -975,4 +975,63 @@ This session added comprehensive grant cycle management and program area trackin
 
 ---
 
-Last Updated: January 15, 2026
+## January 16, 2026 - Session 24: Concept Evaluator App
+
+**Major Feature: Pre-Phase I Concept Screening Tool**
+
+This session implemented the Concept Evaluator app, a new tool for screening research concepts before Phase I.
+
+### Features Implemented
+
+**1. Concept Evaluator App**
+- Upload multi-page PDFs where each page contains one research concept
+- Two-stage AI evaluation process:
+  - Stage 1: Claude Vision API extracts title, PI, summary, research area, keywords
+  - Stage 2: Literature search + Claude provides final evaluation with ratings
+- Automatic literature search based on detected research area:
+  - Life sciences → PubMed + BioRxiv
+  - Chemistry → PubMed + ChemRxiv
+  - Physics/CS/Math → ArXiv
+- Label-based ratings (Strong/Moderate/Weak) for:
+  - Keck Alignment (high-risk, pioneering, wouldn't be funded elsewhere)
+  - Scientific Merit (sound science, clear hypothesis)
+  - Feasibility (technical challenges, likelihood of success)
+  - Novelty (based on literature search results)
+- Export to JSON and Markdown
+- New "Concepts" category on landing page
+
+**2. PDF Page Splitter Utility**
+- `lib/utils/pdf-page-splitter.js` - Split multi-page PDF into individual pages
+- Returns base64-encoded PDF for each page (for Claude Vision API)
+- Uses pdf-lib (existing dependency)
+
+### Files Created
+
+- `pages/concept-evaluator.js` - Frontend with streaming progress and results display
+- `pages/api/evaluate-concepts.js` - Two-stage evaluation API with literature search
+- `lib/utils/pdf-page-splitter.js` - PDF page extraction utility
+- `shared/config/prompts/concept-evaluator.js` - Evaluation prompts with Keck criteria
+
+### Files Modified
+
+- `pages/index.js` - Added Concept Evaluator app card and "Concepts" category filter
+- `shared/components/Layout.js` - Added navigation link for Concept Evaluator
+- `CLAUDE.md` - Added Concept Evaluator documentation
+
+### Architecture
+
+```
+PDF Upload → Split Pages → For Each Page:
+  1. Claude Vision (Stage 1) → Extract metadata + keywords
+  2. Literature Search → PubMed/ArXiv/BioRxiv/ChemRxiv
+  3. Claude Text (Stage 2) → Final evaluation with literature context
+→ Aggregate Results → Export JSON/Markdown
+```
+
+### Git Commits
+
+- Add Concept Evaluator app for pre-Phase I screening
+
+---
+
+Last Updated: January 16, 2026

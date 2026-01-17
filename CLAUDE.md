@@ -44,6 +44,7 @@ A multi-application document processing system using Claude AI for grant-related
 
 | App | Page | API Endpoint | Categories | Description |
 |-----|------|--------------|------------|-------------|
+| **Concept Evaluator** | `concept-evaluator.js` | `/api/evaluate-concepts` | Concepts | **NEW** - Pre-Phase I screening with AI analysis and literature search |
 | Batch Phase I Summaries | `batch-phase-i-summaries.js` | `/api/process-phase-i` | Phase I | Batch Phase I proposal processing with Keck alignment evaluation |
 | Batch Phase II Summaries | `batch-proposal-summaries.js` | `/api/process` | Phase II | Batch Phase II proposal processing with customizable length |
 | Funding Analysis | `funding-gap-analyzer.js` | `/api/analyze-funding-gap` | Phase I, II | NSF API integration for federal funding analysis |
@@ -61,6 +62,33 @@ A multi-application document processing system using Claude AI for grant-related
 | document-analyzer | Duplicate of proposal-summarizer with worse UX |
 | find-reviewers | Superseded by Reviewer Finder |
 | find-reviewers-pro | Merged into Reviewer Finder |
+
+### Concept Evaluator - Feature Summary
+
+Pre-Phase I screening tool to identify the strongest concepts from multi-page PDFs:
+
+**Core Pipeline:**
+1. **PDF Splitting** - Split multi-page PDF into individual pages (1 concept per page)
+2. **Claude Vision Analysis** - Extract title, PI, summary, research area, and keywords from each page
+3. **Literature Search** - Auto-select databases based on research area (PubMed, ArXiv, BioRxiv, ChemRxiv)
+4. **Final Evaluation** - Claude interprets literature context and provides ratings
+
+**Evaluation Criteria:**
+- **Keck Alignment** - High-risk, pioneering, wouldn't be funded elsewhere
+- **Scientific Merit** - Sound science, clear hypothesis, quality approach
+- **Feasibility** - Technical challenges, likelihood of success
+- **Novelty** - Based on recent literature search results
+
+**Output:**
+- Label-based ratings (Strong/Moderate/Weak) with reasoning
+- Strengths and concerns for each concept
+- Export to JSON or Markdown
+
+**Key Files:**
+- `pages/concept-evaluator.js` - Frontend with streaming progress
+- `pages/api/evaluate-concepts.js` - Two-stage evaluation API
+- `lib/utils/pdf-page-splitter.js` - PDF page extraction
+- `shared/config/prompts/concept-evaluator.js` - Evaluation prompts
 
 ### Reviewer Finder - Feature Summary
 
@@ -293,6 +321,9 @@ Located in `lib/services/`:
 - `POST /api/reviewer-finder/generate-emails` - Generate .eml invitation files with attachments (streaming)
 - `POST /api/reviewer-finder/extract-summary` - Re-extract summary pages from proposal PDF
 
+### Concept Evaluator
+- `POST /api/evaluate-concepts` - Evaluate research concepts with literature search (streaming)
+
 ### Other
 - `POST /api/analyze-funding-gap` - Federal funding analysis (streaming)
 - `POST /api/process-expenses` - Expense extraction
@@ -314,4 +345,4 @@ For detailed session-by-session development history, see [DEVELOPMENT_LOG.md](./
 
 ---
 
-Last Updated: January 15, 2026
+Last Updated: January 16, 2026
