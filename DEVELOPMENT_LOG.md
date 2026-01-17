@@ -1034,4 +1034,76 @@ PDF Upload → Split Pages → For Each Page:
 
 ---
 
+## January 16, 2026 - Session 25: Concept Evaluator Refinements
+
+**Concept Evaluator Testing and Improvements**
+
+This session focused on testing the Concept Evaluator with real data and refining the evaluation approach based on user feedback.
+
+### Issues Identified & Fixed
+
+**1. Sycophantic Evaluations**
+- Problem: 7 of 8 concepts received identical praise ("This concept represents exactly the type of pioneering, high-risk research that Keck should support")
+- Solution: Completely rewrote Stage 2 prompt with anti-sycophancy instructions:
+  - Explicit rating distribution guidance (Strong = top 10-20%)
+  - List of language to avoid ("exciting", "groundbreaking", "pioneering")
+  - Requirement that every concept have substantive concerns
+  - Default skeptical stance
+
+**2. Evaluation Framing - Impact vs Feasibility**
+- User feedback: Focus on potential impact, not feasibility at screening stage
+- Added `potentialImpact` rating with framing: "If everything proposed turns out correct, what is the impact?"
+- Feasibility remains but as secondary criterion for identifying addressable concerns
+- Key question: "Will success have significant impact on the field or world?"
+
+**3. Literature Search Improvements**
+- Problem: Queries too specific - combining 6+ keywords into one long query returned no results
+- Example bad query: "retroviral immunity CRISPR screening packageable lentiviral vectors Simian Immunodeficiency Virus innate immunity"
+- Solution: Adopted Reviewer Finder pattern:
+  - Claude generates 2-3 SHORT queries (3-5 words each)
+  - Each query executed individually
+  - Results deduplicated across queries
+- Example good queries: "CRISPR gene editing", "retroviral vector packaging", "host innate immunity"
+
+**4. Author Display Bug**
+- Problem: Authors displayed as "[object Object], [object Object]"
+- Cause: Services return author objects with `name` property, code tried to join objects as strings
+- Fix: Extract author names properly: `a.name || 'Unknown'`
+
+**5. Missing Paper Links**
+- Added clickable URLs to literature results
+- Priority: DOI → PubMed → ArXiv
+- Links display in both UI and markdown export
+
+### UI Updates
+
+- Literature search section now shows each query as styled tag
+- Paper titles are clickable links
+- Summary stats show "High Impact" / "Moderate Impact" instead of Keck Fit
+- Ratings row: Impact, Keck Fit, Merit, Novelty, Feasibility (5 ratings)
+
+### Model Configuration Discovery
+
+Identified that model selection is centralized in `shared/config/baseConfig.js`:
+```javascript
+DEFAULT_MODEL: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514'
+```
+
+All apps currently use the same model. This was flagged as a significant issue - different apps may need different models based on task complexity. Deferred to Session 26 for per-app model configuration.
+
+### Files Modified
+
+- `shared/config/prompts/concept-evaluator.js` - Anti-sycophancy, impact framing, short queries
+- `pages/api/evaluate-concepts.js` - Individual query execution, author name extraction, paper URLs
+- `pages/concept-evaluator.js` - Query display, paper links, impact-focused stats
+
+### Git Commits
+
+- Enhance Concept Evaluator with impact focus and literature visibility
+- Restore full feasibility analysis as secondary criterion
+- Improve literature search with focused short queries
+- Fix author display and add paper links in literature results
+
+---
+
 Last Updated: January 16, 2026
