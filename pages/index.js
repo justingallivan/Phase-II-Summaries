@@ -4,6 +4,16 @@ import Link from 'next/link';
 
 const apps = [
   {
+    id: 'concept-evaluator',
+    title: 'Concept Evaluator',
+    description: 'Screen research concepts with AI analysis and automated literature search to identify the strongest candidates',
+    icon: '🔬',
+    status: 'active',
+    categories: ['concepts'],
+    features: ['AI Analysis', 'Literature Search', 'Novelty Assessment', 'Batch Evaluation'],
+    path: '/concept-evaluator'
+  },
+  {
     id: 'batch-phase-i-summaries',
     title: 'Batch Phase I Summaries',
     description: 'Process multiple Phase I proposals simultaneously with customizable summary length',
@@ -139,6 +149,16 @@ export default function LandingPage() {
                 onClick={() => setSelectedCategory('all')}
               >
                 All Apps ({apps.length})
+              </button>
+              <button
+                className={`px-6 py-3 font-semibold rounded-lg transition-all duration-200 ${
+                  selectedCategory === 'concepts'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+                onClick={() => setSelectedCategory('concepts')}
+              >
+                Concepts ({apps.filter(a => a.categories.includes('concepts')).length})
               </button>
               <button
                 className={`px-6 py-3 font-semibold rounded-lg transition-all duration-200 ${
