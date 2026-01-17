@@ -173,14 +173,32 @@ async function evaluateSingleConcept(page, apiKey, res, processedCount, totalCou
         researchArea: initialAnalysis.researchArea,
         totalFound: literatureResults.length,
         sourceBreakdown: summarizeLiteratureSources(literatureResults),
-        publications: literatureResults.slice(0, 20).map(pub => ({
-          title: pub.title,
-          authors: pub.authors?.slice(0, 4) || [],
-          year: pub.year || pub.publicationDate?.substring(0, 4),
-          source: pub.source,
-          journal: pub.journal || pub.venue || null,
-          doi: pub.doi || null
-        }))
+        publications: literatureResults.slice(0, 20).map(pub => {
+          // Extract author names - handle both string and object formats
+          const authorNames = (pub.authors || []).slice(0, 4).map(a =>
+            typeof a === 'string' ? a : (a?.name || 'Unknown')
+          );
+
+          // Build URL - prefer DOI, then PMID, then ArXiv ID
+          let url = null;
+          if (pub.doi) {
+            url = `https://doi.org/${pub.doi}`;
+          } else if (pub.pmid) {
+            url = `https://pubmed.ncbi.nlm.nih.gov/${pub.pmid}`;
+          } else if (pub.arxivId) {
+            url = `https://arxiv.org/abs/${pub.arxivId}`;
+          }
+
+          return {
+            title: pub.title,
+            authors: authorNames,
+            year: pub.year || pub.publicationDate?.substring(0, 4),
+            source: pub.source,
+            journal: pub.journal || pub.venue || null,
+            doi: pub.doi || null,
+            url
+          };
+        })
       }
     };
 

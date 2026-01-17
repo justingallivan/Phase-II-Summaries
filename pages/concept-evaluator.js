@@ -186,7 +186,15 @@ function ConceptCard({ concept, index }) {
                   <div className="max-h-48 overflow-y-auto border border-gray-200 rounded bg-gray-50 p-2">
                     {concept.literatureSearch.publications.map((pub, i) => (
                       <div key={i} className="text-xs text-gray-600 py-1 border-b border-gray-100 last:border-0">
-                        <div className="font-medium text-gray-800">{pub.title}</div>
+                        <div className="font-medium text-gray-800">
+                          {pub.url ? (
+                            <a href={pub.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                              {pub.title}
+                            </a>
+                          ) : (
+                            pub.title
+                          )}
+                        </div>
                         <div className="text-gray-500">
                           {pub.authors?.slice(0, 3).join(', ')}{pub.authors?.length > 3 ? ' et al.' : ''}
                           {pub.year ? ` (${pub.year})` : ''}
@@ -407,7 +415,8 @@ export default function ConceptEvaluator() {
             concept.literatureSearch.publications.slice(0, 10).forEach(pub => {
               const authors = pub.authors?.slice(0, 3).join(', ') || 'Unknown';
               const authorsStr = pub.authors?.length > 3 ? `${authors} et al.` : authors;
-              content += `- ${pub.title} (${pub.year || 'N/A'}) - ${authorsStr} [${pub.source || 'Unknown'}]\n`;
+              const title = pub.url ? `[${pub.title}](${pub.url})` : pub.title;
+              content += `- ${title} (${pub.year || 'N/A'}) - ${authorsStr} [${pub.source || 'Unknown'}]\n`;
             });
             content += `\n`;
           }
