@@ -7,7 +7,7 @@
  * 2. Literature search + Claude for final evaluation with novelty assessment
  */
 
-import { BASE_CONFIG } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
 import { splitPdfToPages } from '../../lib/utils/pdf-page-splitter';
 import {
   createInitialAnalysisPrompt,
@@ -227,7 +227,7 @@ async function performInitialAnalysis(base64Pdf, apiKey) {
       'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
     },
     body: JSON.stringify({
-      model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+      model: getModelForApp('concept-evaluator', 'visionModel'),
       max_tokens: 2000,
       messages: [{
         role: 'user',
@@ -398,7 +398,7 @@ async function performFinalEvaluation(initialAnalysis, literatureResults, apiKey
       'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
     },
     body: JSON.stringify({
-      model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+      model: getModelForApp('concept-evaluator'),
       max_tokens: 3000,
       temperature: 0.3,
       messages: [{

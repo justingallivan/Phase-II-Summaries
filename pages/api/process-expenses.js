@@ -2,6 +2,7 @@ import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
 import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
 import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
+import { getModelForApp } from '../../shared/config/baseConfig';
 
 export const config = {
   api: {
@@ -158,8 +159,10 @@ export default async function handler(req, res) {
       })}\n\n`);
     };
 
-    // Initialize Claude client
-    const claudeClient = createClaudeClient(validatedKey);
+    // Initialize Claude client with Haiku for expense processing (simple task)
+    const claudeClient = createClaudeClient(validatedKey, {
+      model: getModelForApp('expense-reporter')
+    });
     const fileProcessor = createFileProcessor();
 
     const expenses = [];

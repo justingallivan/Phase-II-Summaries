@@ -1,5 +1,5 @@
 import pdf from 'pdf-parse';
-import { BASE_CONFIG } from '../../shared/config';
+import { BASE_CONFIG, getModelForApp } from '../../shared/config';
 import { createPhaseIWriteupPrompt } from '../../shared/config/prompts/phase-i-writeup';
 import { createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer';
 
@@ -111,7 +111,7 @@ async function generatePhaseIWriteup(text, filename, institution, apiKey) {
         'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
       },
       body: JSON.stringify({
-        model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+        model: getModelForApp('phase-i-writeup'),
         max_tokens: BASE_CONFIG.MODEL_PARAMS.DEFAULT_MAX_TOKENS,
         temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
         messages: [{
@@ -161,7 +161,7 @@ async function extractStructuredData(text, filename, writeup, apiKey) {
         'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
       },
       body: JSON.stringify({
-        model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+        model: getModelForApp('phase-i-writeup'),
         max_tokens: 1000,
         temperature: 0.2,
         messages: [{

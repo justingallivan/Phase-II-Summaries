@@ -4,6 +4,7 @@ import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { createFundingExtractionPrompt, createFundingAnalysisPrompt } from '../../shared/config/prompts/funding-gap-analyzer';
 import { queryNSFforPI, queryNSFforKeywords, queryNIHforPI, queryNIHforKeywords, queryUSASpending, formatCurrency, formatDate } from '../../lib/fundingApis';
+import { getModelForApp } from '../../shared/config/baseConfig';
 
 export const config = {
   api: {
@@ -66,7 +67,9 @@ export default async function handler(req, res) {
     };
 
     // Initialize Claude client and file processor
-    const claudeClient = createClaudeClient(validatedKey);
+    const claudeClient = createClaudeClient(validatedKey, {
+      model: getModelForApp('funding-analysis')
+    });
     const fileProcessor = createFileProcessor();
 
     const allProposals = [];

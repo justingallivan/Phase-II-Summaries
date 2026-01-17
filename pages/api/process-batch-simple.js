@@ -1,5 +1,5 @@
 import pdf from 'pdf-parse';
-import { BASE_CONFIG } from '../../shared/config';
+import { BASE_CONFIG, getModelForApp } from '../../shared/config';
 
 export const config = {
   api: {
@@ -165,7 +165,7 @@ export default async function handler(req, res) {
             'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
           },
           body: JSON.stringify({
-            model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+            model: getModelForApp('batch-phase-ii'),
             max_tokens: maxTokens,
             temperature: 0.2,
             messages: [{
@@ -213,7 +213,7 @@ Return only JSON.`;
               'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
             },
             body: JSON.stringify({
-              model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+              model: getModelForApp('batch-phase-ii'),
               max_tokens: 300,
               temperature: 0.1,
               messages: [{

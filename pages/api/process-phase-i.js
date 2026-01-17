@@ -1,5 +1,5 @@
 import pdf from 'pdf-parse';
-import { BASE_CONFIG, KECK_GUIDELINES } from '../../shared/config';
+import { BASE_CONFIG, KECK_GUIDELINES, getModelForApp } from '../../shared/config';
 import { createPhaseISummarizationPrompt } from '../../shared/config/prompts/phase-i-summaries';
 import { createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer';
 
@@ -108,7 +108,7 @@ async function generatePhaseISummary(text, filename, apiKey, summaryLength, summ
         'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
       },
       body: JSON.stringify({
-        model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+        model: getModelForApp('batch-phase-i'),
         max_tokens: BASE_CONFIG.MODEL_PARAMS.DEFAULT_MAX_TOKENS,
         temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
         messages: [{
@@ -158,7 +158,7 @@ async function extractStructuredData(text, filename, summary, apiKey) {
         'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
       },
       body: JSON.stringify({
-        model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+        model: getModelForApp('batch-phase-i'),
         max_tokens: 1000,
         temperature: 0.1,
         messages: [{

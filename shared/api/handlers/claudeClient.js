@@ -3,13 +3,15 @@
  * Provides standardized Claude API interactions with error handling
  */
 
+import { BASE_CONFIG } from '../../config/baseConfig';
+
 export class ClaudeClient {
   constructor(apiKey, config = {}) {
     this.apiKey = apiKey;
     this.config = {
-      apiUrl: config.apiUrl || 'https://api.anthropic.com/v1/messages',
-      anthropicVersion: config.anthropicVersion || '2023-06-01',
-      model: config.model || 'claude-sonnet-4-20250514',
+      apiUrl: config.apiUrl || BASE_CONFIG.CLAUDE.API_URL,
+      anthropicVersion: config.anthropicVersion || BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION,
+      model: config.model || BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
       defaultMaxTokens: config.defaultMaxTokens || 2000,
       defaultTemperature: config.defaultTemperature || 0.3,
       ...config

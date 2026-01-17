@@ -12,6 +12,69 @@ export const BASE_CONFIG = {
     FALLBACK_MODEL: 'claude-3-haiku-20240307'
   },
 
+  // Per-App Model Configuration
+  // Each app can specify its preferred model based on task complexity
+  // Format: { model, visionModel (optional), fallback }
+  APP_MODELS: {
+    // High complexity - Opus for best evaluation quality
+    'concept-evaluator': {
+      model: 'claude-opus-4-20250514',
+      visionModel: 'claude-opus-4-20250514',
+      fallback: 'claude-sonnet-4-20250514'
+    },
+    // High complexity - Sonnet for detailed summaries
+    'batch-phase-i': {
+      model: 'claude-sonnet-4-20250514',
+      fallback: 'claude-3-5-haiku-20241022'
+    },
+    'batch-phase-ii': {
+      model: 'claude-sonnet-4-20250514',
+      fallback: 'claude-3-5-haiku-20241022'
+    },
+    'phase-i-writeup': {
+      model: 'claude-sonnet-4-20250514',
+      fallback: 'claude-3-5-haiku-20241022'
+    },
+    'phase-ii-writeup': {
+      model: 'claude-sonnet-4-20250514',
+      fallback: 'claude-3-5-haiku-20241022'
+    },
+    'reviewer-finder': {
+      model: 'claude-sonnet-4-20250514',
+      fallback: 'claude-3-5-haiku-20241022'
+    },
+    'peer-review-summarizer': {
+      model: 'claude-sonnet-4-20250514',
+      fallback: 'claude-3-5-haiku-20241022'
+    },
+    'funding-analysis': {
+      model: 'claude-sonnet-4-20250514',
+      fallback: 'claude-3-5-haiku-20241022'
+    },
+    // Medium complexity - Q&A and refinement
+    'qa': {
+      model: 'claude-sonnet-4-20250514',
+      fallback: 'claude-3-5-haiku-20241022'
+    },
+    'refine': {
+      model: 'claude-sonnet-4-20250514',
+      fallback: 'claude-3-5-haiku-20241022'
+    },
+    // Low complexity - Haiku is sufficient
+    'expense-reporter': {
+      model: 'claude-3-5-haiku-20241022',
+      fallback: 'claude-3-haiku-20240307'
+    },
+    'contact-enrichment': {
+      model: 'claude-3-5-haiku-20241022',
+      fallback: 'claude-3-haiku-20240307'
+    },
+    'email-personalization': {
+      model: 'claude-3-5-haiku-20241022',
+      fallback: 'claude-3-haiku-20240307'
+    }
+  },
+
   // Model Parameters
   MODEL_PARAMS: {
     DEFAULT_MAX_TOKENS: 2000,
@@ -151,14 +214,49 @@ export function validateConfig(config) {
   if (!config.CLAUDE.API_URL) {
     throw new Error('Claude API URL is required');
   }
-  
+
   if (config.FILE_PROCESSING.PDF_SIZE_LIMIT < 1024 * 1024) {
     throw new Error('PDF size limit must be at least 1MB');
   }
-  
+
   if (config.MODEL_PARAMS.DEFAULT_TEMPERATURE < 0 || config.MODEL_PARAMS.DEFAULT_TEMPERATURE > 1) {
     throw new Error('Temperature must be between 0 and 1');
   }
+}
+
+/**
+ * Get the appropriate Claude model for a specific app
+ * @param {string} appKey - The app identifier (e.g., 'concept-evaluator', 'expense-reporter')
+ * @param {string} type - The model type: 'model', 'visionModel', or 'fallback'
+ * @returns {string} - The model identifier
+ */
+export function getModelForApp(appKey, type = 'model') {
+  // Allow environment variable override for specific apps
+  // e.g., CLAUDE_MODEL_CONCEPT_EVALUATOR=claude-sonnet-4-20250514
+  const envKey = `CLAUDE_MODEL_${appKey.toUpperCase().replace(/-/g, '_')}`;
+  const envOverride = process.env[envKey];
+  if (envOverride) {
+    return envOverride;
+  }
+
+  // Get from APP_MODELS configuration
+  const appConfig = BASE_CONFIG.APP_MODELS[appKey];
+  if (appConfig) {
+    // Return requested type, falling back to model, then to default
+    return appConfig[type] || appConfig.model || BASE_CONFIG.CLAUDE.DEFAULT_MODEL;
+  }
+
+  // Fall back to global default
+  return BASE_CONFIG.CLAUDE.DEFAULT_MODEL;
+}
+
+/**
+ * Get the fallback model for a specific app
+ * @param {string} appKey - The app identifier
+ * @returns {string} - The fallback model identifier
+ */
+export function getFallbackModelForApp(appKey) {
+  return getModelForApp(appKey, 'fallback');
 }
 
 export default BASE_CONFIG;

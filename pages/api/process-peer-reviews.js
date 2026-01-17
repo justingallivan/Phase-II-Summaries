@@ -1,6 +1,6 @@
 import pdf from 'pdf-parse';
 import mammoth from 'mammoth';
-import { BASE_CONFIG } from '../../shared/config';
+import { BASE_CONFIG, getModelForApp } from '../../shared/config';
 import { createPeerReviewAnalysisPrompt, createPeerReviewQuestionsPrompt } from '../../shared/config/prompts/peer-reviewer';
 
 export default async function handler(req, res) {
@@ -191,7 +191,7 @@ async function analyzePeerReviews(reviewTexts, apiKey) {
         'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
       },
       body: JSON.stringify({
-        model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+        model: getModelForApp('peer-review-summarizer'),
         max_tokens: BASE_CONFIG.MODEL_PARAMS.REFINEMENT_MAX_TOKENS, // Use higher token limit for comprehensive analysis
         temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
         messages: [{
@@ -288,7 +288,7 @@ async function analyzePeerReviews(reviewTexts, apiKey) {
             'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
           },
           body: JSON.stringify({
-            model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+            model: getModelForApp('peer-review-summarizer'),
             max_tokens: BASE_CONFIG.MODEL_PARAMS.DEFAULT_MAX_TOKENS,
             temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
             messages: [{

@@ -7,7 +7,7 @@
  */
 
 // Base configuration
-export { BASE_CONFIG, getEnvironmentConfig, mergeConfig, validateConfig } from './baseConfig';
+export { BASE_CONFIG, getEnvironmentConfig, mergeConfig, validateConfig, getModelForApp, getFallbackModelForApp } from './baseConfig';
 
 // Keck Foundation guidelines
 export { KECK_GUIDELINES } from './keck-guidelines';

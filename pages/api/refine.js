@@ -1,5 +1,5 @@
 import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
-import { BASE_CONFIG } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
 import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
 import { applySecurityMiddleware } from '../../shared/api/middleware/security';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
@@ -68,7 +68,7 @@ export default async function handler(req, res) {
 
     // Initialize Claude client
     const claudeClient = createClaudeClient(apiKey, {
-      model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+      model: getModelForApp('refine'),
       defaultMaxTokens: 3000,
       defaultTemperature: 0.3,
     });

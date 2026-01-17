@@ -1,6 +1,6 @@
 import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
 import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
-import { BASE_CONFIG } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
 import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
 import { applySecurityMiddleware } from '../../shared/api/middleware/security';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
@@ -66,7 +66,7 @@ export default async function handler(req, res) {
 
     // Initialize shared utilities
     const claudeClient = createClaudeClient(apiKey, {
-      model: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+      model: getModelForApp('phase-ii-writeup'),
       defaultMaxTokens: BASE_CONFIG.MODEL_PARAMS.DEFAULT_MAX_TOKENS,
       defaultTemperature: 0.3,
     });
