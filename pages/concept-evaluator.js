@@ -88,6 +88,10 @@ function ConceptCard({ concept, index }) {
           rating={concept.noveltyAssessment?.rating}
           label="Novelty"
         />
+        <RatingBadge
+          rating={concept.feasibility?.rating}
+          label="Feasibility"
+        />
       </div>
 
       {/* Summary */}
@@ -129,11 +133,10 @@ function ConceptCard({ concept, index }) {
               </div>
             )}
 
-            {/* Feasibility Concerns - only if notable */}
-            {concept.feasibilityConcerns && !concept.feasibilityConcerns.includes('No fatal flaws') && (
+            {concept.feasibility?.reasoning && (
               <div>
-                <h4 className="text-sm font-medium text-red-700">Feasibility Concerns</h4>
-                <p className="text-sm text-red-600 mt-1">{concept.feasibilityConcerns}</p>
+                <h4 className="text-sm font-medium text-gray-900">Feasibility</h4>
+                <p className="text-sm text-gray-600 mt-1">{concept.feasibility.reasoning}</p>
               </div>
             )}
 
@@ -357,7 +360,8 @@ export default function ConceptEvaluator() {
         content += `| Potential Impact | ${concept.potentialImpact?.rating || 'N/A'} |\n`;
         content += `| Keck Alignment | ${concept.keckAlignment?.rating || 'N/A'} |\n`;
         content += `| Scientific Merit | ${concept.scientificMerit?.rating || 'N/A'} |\n`;
-        content += `| Novelty | ${concept.noveltyAssessment?.rating || 'N/A'} |\n\n`;
+        content += `| Novelty | ${concept.noveltyAssessment?.rating || 'N/A'} |\n`;
+        content += `| Feasibility | ${concept.feasibility?.rating || 'N/A'} |\n\n`;
 
         if (concept.overallAssessment) {
           content += `### Overall Assessment\n\n${concept.overallAssessment}\n\n`;
@@ -379,8 +383,8 @@ export default function ConceptEvaluator() {
           content += `### Novelty Assessment\n\n${concept.noveltyAssessment.reasoning}\n\n`;
         }
 
-        if (concept.feasibilityConcerns && !concept.feasibilityConcerns.includes('No fatal flaws')) {
-          content += `### Feasibility Concerns\n\n${concept.feasibilityConcerns}\n\n`;
+        if (concept.feasibility?.reasoning) {
+          content += `### Feasibility\n\n${concept.feasibility.reasoning}\n\n`;
         }
 
         // Literature Search Results
@@ -482,7 +486,7 @@ export default function ConceptEvaluator() {
             <p>1. Upload a PDF where each page contains one research concept</p>
             <p>2. Claude analyzes each concept and extracts key information</p>
             <p>3. Literature is searched to assess novelty and context</p>
-            <p>4. Each concept receives ratings for potential impact, Keck alignment, merit, and novelty</p>
+            <p>4. Each concept receives ratings for impact, Keck alignment, merit, novelty, and feasibility</p>
             <p>5. Export results as JSON or Markdown for further review</p>
           </div>
         </Card>
