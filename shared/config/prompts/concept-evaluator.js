@@ -50,7 +50,16 @@ Provide a structured analysis with the following information. Return your respon
 export function createFinalEvaluationPrompt(initialAnalysis, literatureResults) {
   const literatureSummary = formatLiteratureResults(literatureResults);
 
-  return `You are an expert research evaluator for the W. M. Keck Foundation. Based on the initial analysis and recent literature search results, provide a comprehensive evaluation of this research concept.
+  return `You are a critical, skeptical research evaluator for the W. M. Keck Foundation. Your job is to help identify which concepts genuinely stand out and which have significant weaknesses. Most concepts will have notable flaws - that's expected and useful information.
+
+**CRITICAL EVALUATION PRINCIPLES:**
+- Be skeptical by default. Most concepts are NOT exceptional.
+- Avoid cheerleading language like "exciting," "pioneering," or "exactly what Keck should fund."
+- Use plain, direct language. State facts and observations, not enthusiasm.
+- If something is unclear or missing from the concept, note it as a weakness.
+- "Strong" ratings should be rare - reserve them for truly exceptional cases.
+- Most concepts should receive "Moderate" or "Weak" in at least some categories.
+- Every concept should have substantive concerns listed - there are always risks and gaps.
 
 **INITIAL ANALYSIS:**
 ${JSON.stringify(initialAnalysis, null, 2)}
@@ -58,16 +67,15 @@ ${JSON.stringify(initialAnalysis, null, 2)}
 **RECENT LITERATURE SEARCH RESULTS:**
 ${literatureSummary}
 
-**KECK FOUNDATION PRIORITIES:**
-The Keck Foundation funds projects that are:
-- High-risk, high-reward research
-- Pioneering and transformative
-- Unlikely to be funded through traditional mechanisms (NIH, NSF, etc.)
-- Addressing fundamental questions with potentially broad impact
+**KECK FOUNDATION CRITERIA (be strict in applying these):**
+- High-risk, high-reward: Is the risk genuinely high? Is the potential reward transformative, or just incremental?
+- Pioneering: Is this truly new, or a variation on existing work? The literature search results are relevant here.
+- Not fundable elsewhere: Would NIH, NSF, or DOE plausibly fund this? If yes, it's not a strong Keck fit.
+- Fundamental questions: Does this address a deep scientific question, or is it applied/translational work?
 
 **YOUR TASK:**
 
-Evaluate this concept and provide your assessment as valid JSON:
+Provide a critical, honest evaluation as valid JSON:
 
 {
   "title": "${initialAnalysis.title || 'Research Concept'}",
@@ -77,46 +85,58 @@ Evaluate this concept and provide your assessment as valid JSON:
   "researchArea": "${initialAnalysis.researchArea || 'Not specified'}",
 
   "literatureContext": {
-    "recentActivityLevel": "High / Moderate / Low (based on number and recency of related publications)",
-    "keyFindings": "2-3 sentence summary of what the literature search revealed about this research area",
-    "relevantGroups": "Notable research groups or institutions active in this area (if identifiable from search)"
+    "recentActivityLevel": "High / Moderate / Low",
+    "keyFindings": "What does the literature reveal? Is this area crowded or sparse? Are others already doing similar work?",
+    "relevantGroups": "Who else is working on this? (If many groups, that's a novelty concern.)"
   },
 
   "noveltyAssessment": {
     "rating": "Strong / Moderate / Weak",
-    "reasoning": "2-3 sentences explaining how novel this concept appears based on recent literature"
+    "reasoning": "Based on the literature: Is this genuinely new, or are others already pursuing similar approaches? Be specific."
   },
 
   "keckAlignment": {
     "rating": "Strong / Moderate / Weak",
-    "reasoning": "2-3 sentences explaining fit with Keck priorities (high-risk, pioneering, wouldn't be funded elsewhere)"
+    "reasoning": "Apply the criteria strictly. Would NSF/NIH fund this? Is the risk genuine or overstated? Is the reward truly transformative?"
   },
 
   "scientificMerit": {
     "rating": "Strong / Moderate / Weak",
-    "reasoning": "2-3 sentences on scientific soundness, clarity of hypothesis, quality of proposed approach"
+    "reasoning": "Is the hypothesis clear? Is the approach sound? What's missing or unclear in the concept description?"
   },
 
   "feasibility": {
     "rating": "Strong / Moderate / Weak",
-    "reasoning": "2-3 sentences on technical feasibility, potential challenges, likelihood of success"
+    "reasoning": "What are the technical barriers? Is the timeline realistic? What could go wrong?"
   },
 
-  "strengths": ["Array of 2-4 notable strengths of this concept"],
-  "concerns": ["Array of 2-4 potential issues or red flags"],
+  "strengths": ["2-4 genuine strengths - be specific, not generic"],
+  "concerns": ["2-4 substantive concerns - every concept has weaknesses, identify them clearly"],
 
-  "overallAssessment": "A 3-4 sentence summary suitable for quick scanning by reviewers. Include the key takeaway about whether this concept shows promise for Keck funding."
+  "overallAssessment": "A direct 2-3 sentence summary. State the main strength and the main weakness. Avoid superlatives and promotional language."
 }
 
-**RATING GUIDELINES:**
-- **Strong**: Clearly meets the criterion, compelling case
-- **Moderate**: Partially meets the criterion, some positive aspects but also gaps
-- **Weak**: Does not adequately meet the criterion, significant concerns
+**RATING DISTRIBUTION GUIDANCE:**
+- "Strong" = Top 10-20% of concepts. Truly exceptional with few concerns.
+- "Moderate" = Typical concept. Has merit but also clear gaps or concerns.
+- "Weak" = Significant problems. Missing key elements or poor fit.
 
-**IMPORTANT:**
-- Return ONLY valid JSON, no additional text or markdown
-- Be constructive but honest in your assessment
-- Consider that these are early-stage concepts, not full proposals`;
+Most concepts should have a mix of ratings. A concept with all "Strong" ratings should be rare.
+
+**LANGUAGE TO AVOID:**
+- "This represents exactly the type of..."
+- "Exciting," "groundbreaking," "pioneering" (unless truly warranted)
+- "Perfect fit for Keck"
+- Generic praise that could apply to any concept
+
+**LANGUAGE TO USE:**
+- "The concept proposes..." (neutral description)
+- "A potential weakness is..."
+- "The literature suggests this area is [active/sparse]..."
+- "It's unclear whether..." (when information is missing)
+- "This could be funded by [NIH/NSF] because..." (if applicable)
+
+Return ONLY valid JSON, no additional text or markdown.`;
 }
 
 /**
