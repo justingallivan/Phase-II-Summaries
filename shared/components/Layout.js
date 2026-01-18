@@ -22,7 +22,7 @@ export default function Layout({
     { name: 'Reviewer Finder', href: '/reviewer-finder', icon: '🎯' },
     { name: 'Summarize Peer Reviews', href: '/peer-review-summarizer', icon: '📝' },
     { name: 'Expense Reporter', href: '/expense-reporter', icon: '💰' },
-    { name: 'Literature Analyzer', href: '/literature-analyzer', icon: '📖' },
+    // { name: 'Literature Analyzer', href: '/literature-analyzer', icon: '📖' },  // Coming soon
   ];
 
   return (
