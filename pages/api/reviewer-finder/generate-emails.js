@@ -5,14 +5,15 @@
  * Supports optional Claude personalization and file attachments via SSE streaming.
  *
  * POST body:
- * - candidates: Array of candidates with name, email, affiliation
+ * - candidates: Array of candidates with name, email, affiliation, suggestionId (optional)
  * - template: { subject, body } with placeholders
  * - settings: { senderName, senderEmail, signature, grantCycle }
  * - proposalInfo: { title, abstract, authors, institution }
- * - options: { useClaudePersonalization, claudeApiKey }
+ * - options: { useClaudePersonalization, claudeApiKey, markAsSent }
  * - attachments: { summaryBlobUrl, reviewTemplateBlobUrl } - URLs to fetch and attach
  */
 
+import { sql } from '@vercel/postgres';
 import {
   generateEmlContent,
   generateEmlContentWithAttachments,
@@ -74,7 +75,7 @@ export default async function handler(req, res) {
       return res.end();
     }
 
-    const { useClaudePersonalization, claudeApiKey } = options;
+    const { useClaudePersonalization, claudeApiKey, markAsSent } = options;
 
     // Filter candidates with email addresses
     const validCandidates = candidates.filter(c => c.email);
@@ -253,6 +254,7 @@ export default async function handler(req, res) {
         generatedEmails.push({
           candidateName: candidate.name,
           candidateEmail: candidate.email,
+          suggestionId: candidate.suggestionId,
           filename,
           content: emlContent,
           subject
@@ -262,6 +264,7 @@ export default async function handler(req, res) {
           index: i,
           candidateName: candidate.name,
           candidateEmail: candidate.email,
+          suggestionId: candidate.suggestionId,
           filename,
           subject
         });
@@ -275,6 +278,35 @@ export default async function handler(req, res) {
       }
     }
 
+    // Update database to mark emails as sent (if option enabled and suggestionIds provided)
+    let markedAsSentCount = 0;
+    if (markAsSent) {
+      const suggestionIdsToUpdate = generatedEmails
+        .filter(e => e.suggestionId)
+        .map(e => e.suggestionId);
+
+      if (suggestionIdsToUpdate.length > 0) {
+        sendEvent('progress', {
+          stage: 'updating_database',
+          message: `Marking ${suggestionIdsToUpdate.length} candidates as sent...`
+        });
+
+        const now = new Date().toISOString();
+        for (const suggestionId of suggestionIdsToUpdate) {
+          try {
+            await sql`
+              UPDATE reviewer_suggestions
+              SET email_sent_at = ${now}, invited = true
+              WHERE id = ${suggestionId}
+            `;
+            markedAsSentCount++;
+          } catch (dbError) {
+            console.error(`Failed to update email_sent_at for suggestion ${suggestionId}:`, dbError.message);
+          }
+        }
+      }
+    }
+
     // Send final result with all email contents
     sendEvent('result', {
       emails: generatedEmails,
@@ -282,15 +314,17 @@ export default async function handler(req, res) {
         total: candidates.length,
         generated: generatedEmails.length,
         skipped: skippedCount,
-        errors: errors.length
+        errors: errors.length,
+        markedAsSent: markedAsSentCount
       },
       errors: errors.length > 0 ? errors : undefined
     });
 
     sendEvent('complete', {
-      message: `Generated ${generatedEmails.length} emails`,
+      message: `Generated ${generatedEmails.length} emails${markedAsSentCount > 0 ? `, marked ${markedAsSentCount} as sent` : ''}`,
       generated: generatedEmails.length,
-      skipped: skippedCount
+      skipped: skippedCount,
+      markedAsSent: markedAsSentCount
     });
 
   } catch (error) {

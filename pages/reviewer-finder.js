@@ -2222,6 +2222,13 @@ function ResearcherDetailModal({ researcherId, onClose }) {
   );
 }
 
+// Helper to format date for display
+function formatShortDate(dateString) {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 // Saved Candidate Card (simpler than search results)
 function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedForDeletion, onToggleSelection }) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -2229,15 +2236,39 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
   const [isSavingNotes, setIsSavingNotes] = useState(false);
 
   const handleToggleInvited = async () => {
-    await onUpdate(candidate.suggestionId, { invited: !candidate.invited });
+    const newInvited = !candidate.invited;
+    // If marking as invited, set email_sent_at to now; if unmarking, clear it
+    await onUpdate(candidate.suggestionId, {
+      invited: newInvited,
+      emailSentAt: newInvited ? 'now' : null
+    });
   };
 
   const handleToggleAccepted = async () => {
-    await onUpdate(candidate.suggestionId, { accepted: !candidate.accepted });
+    const newAccepted = !candidate.accepted;
+    await onUpdate(candidate.suggestionId, {
+      accepted: newAccepted,
+      declined: false,
+      responseType: newAccepted ? 'accepted' : null,
+      responseReceivedAt: newAccepted ? 'now' : null
+    });
   };
 
   const handleToggleDeclined = async () => {
-    await onUpdate(candidate.suggestionId, { declined: !candidate.declined });
+    const newDeclined = !candidate.declined;
+    await onUpdate(candidate.suggestionId, {
+      declined: newDeclined,
+      accepted: false,
+      responseType: newDeclined ? 'declined' : null,
+      responseReceivedAt: newDeclined ? 'now' : null
+    });
+  };
+
+  const handleMarkBounced = async () => {
+    await onUpdate(candidate.suggestionId, {
+      responseType: 'bounced',
+      responseReceivedAt: 'now'
+    });
   };
 
   const handleSaveNotes = async () => {
@@ -2309,7 +2340,8 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Status buttons */}
           <button
             onClick={handleToggleInvited}
             className={`px-2 py-1 text-xs rounded ${
@@ -2317,6 +2349,7 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
                 ? 'bg-blue-100 text-blue-700'
                 : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
             }`}
+            title={candidate.emailSentAt ? `Sent: ${formatShortDate(candidate.emailSentAt)}` : 'Mark as invited'}
           >
             {candidate.invited ? '✓ Invited' : 'Invited'}
           </button>
@@ -2340,6 +2373,13 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
           >
             {candidate.declined ? '✓ Declined' : 'Declined'}
           </button>
+          {/* Bounced indicator/button - only show if email was sent */}
+          {candidate.emailSentAt && candidate.responseType === 'bounced' && (
+            <span className="px-2 py-1 text-xs rounded bg-orange-100 text-orange-700">
+              ⚠ Bounced
+            </span>
+          )}
+          {/* Edit and Remove buttons */}
           <button
             onClick={() => onEdit(candidate)}
             className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-500 hover:bg-blue-100 hover:text-blue-600"
@@ -2354,6 +2394,12 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
           >
             ✕
           </button>
+          {/* Email sent timestamp - show below buttons */}
+          {candidate.emailSentAt && (
+            <span className="text-xs text-gray-400 ml-auto" title={new Date(candidate.emailSentAt).toLocaleString()}>
+              📧 {formatShortDate(candidate.emailSentAt)}
+            </span>
+          )}
         </div>
       </div>
 
@@ -2421,6 +2467,30 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
               </button>
             </div>
           </div>
+
+          {/* Email tracking details */}
+          {candidate.emailSentAt && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-gray-500">
+                Email sent: {new Date(candidate.emailSentAt).toLocaleDateString()}
+              </span>
+              {candidate.responseType && candidate.responseType !== 'bounced' && (
+                <span className="text-gray-500">
+                  | Response: {candidate.responseType}
+                  {candidate.responseReceivedAt && ` (${formatShortDate(candidate.responseReceivedAt)})`}
+                </span>
+              )}
+              {candidate.responseType !== 'bounced' && (
+                <button
+                  onClick={handleMarkBounced}
+                  className="px-2 py-0.5 text-xs rounded bg-orange-50 text-orange-600 hover:bg-orange-100"
+                  title="Mark email as bounced"
+                >
+                  Mark Bounced
+                </button>
+              )}
+            </div>
+          )}
 
           <p className="text-xs text-gray-400">
             Saved: {new Date(candidate.savedAt).toLocaleDateString()}
@@ -2798,6 +2868,7 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
         }
 
         selectedCandidates.push(...candidatesFromProposal.map(c => ({
+          suggestionId: c.suggestionId,
           name: c.name,
           email: c.email || extractEmailFromAffiliation(c.affiliation),
           affiliation: c.affiliation,
@@ -3195,6 +3266,7 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
           candidates={emailModalData.candidates}
           proposalInfo={emailModalData.proposalInfo}
           claudeApiKey={claudeApiKey}
+          onEmailsGenerated={fetchCandidates}
         />
       )}
 

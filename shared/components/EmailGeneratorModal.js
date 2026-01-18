@@ -26,12 +26,14 @@ export default function EmailGeneratorModal({
   onClose,
   candidates,
   proposalInfo,
-  claudeApiKey
+  claudeApiKey,
+  onEmailsGenerated // Callback to refresh candidates after generation
 }) {
   const [step, setStep] = useState(STEPS.REVIEW);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [template, setTemplate] = useState(DEFAULT_TEMPLATE);
   const [usePersonalization, setUsePersonalization] = useState(false);
+  const [markAsSent, setMarkAsSent] = useState(true); // Default to marking as sent
   const [progress, setProgress] = useState({ current: 0, total: 0, message: '' });
   const [generatedEmails, setGeneratedEmails] = useState([]);
   const [errors, setErrors] = useState([]);
@@ -167,7 +169,8 @@ export default function EmailGeneratorModal({
           proposalInfo,
           options: {
             useClaudePersonalization: usePersonalization,
-            claudeApiKey: usePersonalization ? claudeApiKey : null
+            claudeApiKey: usePersonalization ? claudeApiKey : null,
+            markAsSent: markAsSent
           },
           attachments: Object.keys(attachments).length > 0 ? attachments : undefined
         }),
@@ -225,6 +228,10 @@ export default function EmailGeneratorModal({
       setGeneratedEmails(data.emails);
       setErrors(data.errors || []);
       setStep(STEPS.DOWNLOAD);
+      // Notify parent to refresh if emails were marked as sent
+      if (markAsSent && data.stats?.markedAsSent > 0 && onEmailsGenerated) {
+        onEmailsGenerated();
+      }
     } else if (data.message && data.generated !== undefined) {
       // Complete event
       setStep(STEPS.DOWNLOAD);
@@ -373,6 +380,26 @@ export default function EmailGeneratorModal({
                         Requires Claude API key
                       </div>
                     )}
+                  </div>
+                </label>
+              </div>
+
+              {/* Mark as Sent Option */}
+              <div className="p-4 border border-gray-200 rounded-lg">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={markAsSent}
+                    onChange={(e) => setMarkAsSent(e.target.checked)}
+                    className="mt-1"
+                  />
+                  <div>
+                    <div className="font-medium text-gray-800">
+                      Mark candidates as "Email Sent"
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      Records today's date as sent for all generated emails. Uncheck if you're not sending yet.
+                    </div>
                   </div>
                 </label>
               </div>

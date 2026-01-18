@@ -2,7 +2,7 @@
  * API Route: /api/reviewer-finder/my-candidates
  *
  * GET: Fetch all saved candidates grouped by proposal
- * PATCH: Update candidate status (invited, accepted, notes)
+ * PATCH: Update candidate status (invited, accepted, notes, email tracking)
  * DELETE: Remove a saved candidate
  */
 
@@ -47,6 +47,9 @@ async function handleGet(req, res) {
           rs.accepted,
           rs.declined,
           rs.notes,
+          rs.email_sent_at,
+          rs.response_type,
+          rs.response_received_at,
           rs.suggested_at,
           r.id as researcher_id,
           r.name,
@@ -83,6 +86,9 @@ async function handleGet(req, res) {
           rs.accepted,
           rs.declined,
           rs.notes,
+          rs.email_sent_at,
+          rs.response_type,
+          rs.response_received_at,
           rs.suggested_at,
           r.id as researcher_id,
           r.name,
@@ -120,6 +126,9 @@ async function handleGet(req, res) {
           rs.accepted,
           rs.declined,
           rs.notes,
+          rs.email_sent_at,
+          rs.response_type,
+          rs.response_received_at,
           rs.suggested_at,
           r.id as researcher_id,
           r.name,
@@ -172,6 +181,9 @@ async function handleGet(req, res) {
         accepted: row.accepted,
         declined: row.declined,
         notes: row.notes,
+        emailSentAt: row.email_sent_at,
+        responseType: row.response_type,
+        responseReceivedAt: row.response_received_at,
         savedAt: row.suggested_at
       });
     }
@@ -202,6 +214,10 @@ async function handlePatch(req, res) {
       accepted,
       declined,
       notes,
+      // Email tracking fields
+      emailSentAt,
+      responseType,
+      responseReceivedAt,
       // Researcher fields (new)
       name,
       affiliation,
@@ -260,7 +276,8 @@ async function handlePatch(req, res) {
       email !== undefined || website !== undefined || hIndex !== undefined;
 
     // Check if we have any suggestion fields to update
-    const hasSuggestionFields = invited !== undefined || accepted !== undefined || declined !== undefined || notes !== undefined;
+    const hasSuggestionFields = invited !== undefined || accepted !== undefined || declined !== undefined || notes !== undefined ||
+      emailSentAt !== undefined || responseType !== undefined || responseReceivedAt !== undefined;
 
     if (!hasResearcherFields && !hasSuggestionFields) {
       return res.status(400).json({ error: 'No fields to update' });
@@ -351,6 +368,34 @@ async function handlePatch(req, res) {
       `;
     }
 
+    // Email tracking fields
+    if (emailSentAt !== undefined) {
+      // Accept ISO string, null, or 'now' for current timestamp
+      const sentValue = emailSentAt === 'now' ? new Date().toISOString() : emailSentAt;
+      await sql`
+        UPDATE reviewer_suggestions
+        SET email_sent_at = ${sentValue}
+        WHERE id = ${suggestionId}
+      `;
+    }
+    if (responseType !== undefined) {
+      // Valid values: 'accepted', 'declined', 'no_response', 'bounced', null
+      await sql`
+        UPDATE reviewer_suggestions
+        SET response_type = ${responseType}
+        WHERE id = ${suggestionId}
+      `;
+    }
+    if (responseReceivedAt !== undefined) {
+      // Accept ISO string, null, or 'now' for current timestamp
+      const receivedValue = responseReceivedAt === 'now' ? new Date().toISOString() : responseReceivedAt;
+      await sql`
+        UPDATE reviewer_suggestions
+        SET response_received_at = ${receivedValue}
+        WHERE id = ${suggestionId}
+      `;
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Candidate updated',
@@ -366,7 +411,10 @@ async function handlePatch(req, res) {
           ...(invited !== undefined && { invited }),
           ...(accepted !== undefined && { accepted }),
           ...(declined !== undefined && { declined }),
-          ...(notes !== undefined && { notes })
+          ...(notes !== undefined && { notes }),
+          ...(emailSentAt !== undefined && { emailSentAt }),
+          ...(responseType !== undefined && { responseType }),
+          ...(responseReceivedAt !== undefined && { responseReceivedAt })
         }
       }
     });
