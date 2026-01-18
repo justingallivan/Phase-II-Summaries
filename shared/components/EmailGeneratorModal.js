@@ -21,17 +21,35 @@ const STEPS = {
   DOWNLOAD: 'download'
 };
 
+// Default follow-up email template
+const DEFAULT_FOLLOWUP_TEMPLATE = `{{greeting}},
+
+I hope this message finds you well. I am writing to follow up on my previous email regarding an opportunity to serve as an external reviewer for a proposal submitted to {{programName}}.
+
+I understand that you may have a busy schedule, but I wanted to ensure that my initial request reached you. We would greatly value your expertise in evaluating this research proposal.
+
+**Proposal Title:** {{proposalTitle}}
+**Principal Investigator:** {{piName}}
+**Institution:** {{piInstitution}}
+
+The review deadline is {{reviewDeadline}}, and I would be most grateful if you could let me know whether you might be available to assist with this review.
+
+If you are unable to participate at this time, I completely understand, and I thank you for considering this request.
+
+{{signature}}`;
+
 export default function EmailGeneratorModal({
   isOpen,
   onClose,
   candidates,
   proposalInfo,
   claudeApiKey,
-  onEmailsGenerated // Callback to refresh candidates after generation
+  onEmailsGenerated, // Callback to refresh candidates after generation
+  isFollowUp = false // Whether this is a follow-up/re-invite email
 }) {
   const [step, setStep] = useState(STEPS.REVIEW);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-  const [template, setTemplate] = useState(DEFAULT_TEMPLATE);
+  const [template, setTemplate] = useState(isFollowUp ? DEFAULT_FOLLOWUP_TEMPLATE : DEFAULT_TEMPLATE);
   const [usePersonalization, setUsePersonalization] = useState(false);
   const [markAsSent, setMarkAsSent] = useState(true); // Default to marking as sent
   const [progress, setProgress] = useState({ current: 0, total: 0, message: '' });
@@ -87,14 +105,27 @@ export default function EmailGeneratorModal({
 
       setSettings(loadedSettings);
 
-      const storedTemplate = localStorage.getItem(STORAGE_KEYS.EMAIL_TEMPLATE);
-      if (storedTemplate) {
-        setTemplate(JSON.parse(atob(storedTemplate)));
+      // Load appropriate template based on follow-up mode
+      if (isFollowUp) {
+        // Check for stored follow-up template, otherwise use default
+        const storedFollowUpTemplate = localStorage.getItem(STORAGE_KEYS.EMAIL_TEMPLATE + '_followup');
+        if (storedFollowUpTemplate) {
+          setTemplate(JSON.parse(atob(storedFollowUpTemplate)));
+        } else {
+          setTemplate(DEFAULT_FOLLOWUP_TEMPLATE);
+        }
+      } else {
+        const storedTemplate = localStorage.getItem(STORAGE_KEYS.EMAIL_TEMPLATE);
+        if (storedTemplate) {
+          setTemplate(JSON.parse(atob(storedTemplate)));
+        } else {
+          setTemplate(DEFAULT_TEMPLATE);
+        }
       }
     } catch (error) {
       console.error('Failed to load email settings:', error);
     }
-  }, [isOpen]);
+  }, [isOpen, isFollowUp]);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -285,8 +316,13 @@ export default function EmailGeneratorModal({
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-            <span>✉️</span>
-            Generate Reviewer Invitation Emails
+            <span>{isFollowUp ? '🔄' : '✉️'}</span>
+            {isFollowUp ? 'Generate Follow-up Emails' : 'Generate Reviewer Invitation Emails'}
+            {isFollowUp && (
+              <span className="ml-2 px-2 py-0.5 text-xs bg-yellow-100 text-yellow-700 rounded-full">
+                Re-invite
+              </span>
+            )}
           </h2>
           <button
             onClick={handleCancel}

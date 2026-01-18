@@ -247,6 +247,44 @@ When this app is integrated with a CRM or email service, consider implementing d
 - **Requirements**: SMTP credentials or API keys, sender verification, bounce handling
 - **Privacy**: Consider data handling implications when sending through third-party services
 
+#### Microsoft Dynamics 365 Integration (Recommended Path)
+
+The organization uses Microsoft Dynamics, making **Dynamics 365 Customer Insights - Journeys** the preferred future integration for email sending and tracking.
+
+**How Dynamics Email Tracking Works:**
+- Embeds a unique, transparent 1x1 tracking pixel in each email
+- When recipient opens and loads images, the open is registered
+- Tracks: opens, clicks, forwards, bounces, spam reports, unsubscribes
+
+**Available Metrics from Dynamics:**
+| Metric | Description |
+|--------|-------------|
+| Delivery rate | Successfully delivered vs. bounced |
+| Open rate | Recipients who opened the email |
+| Click rate | Recipients who clicked links |
+| Click-to-open rate | Clicks relative to opens |
+| Spam reports | Marked as spam count |
+| Unsubscribes | Opt-out count |
+
+**Integration Architecture:**
+1. **Send emails via Dynamics** instead of generating .eml files
+2. **Webhook endpoint** - Dynamics POSTs open/click events to this app
+3. **Update tracking fields** - Populate `email_opened_at`, `response_type`, etc. automatically
+4. **Dataverse API** - Query email interaction data programmatically
+
+**Database Field Ready:**
+The `email_opened_at` field exists in the `reviewer_suggestions` table, reserved for this integration.
+
+**Limitations to Consider:**
+- Apple Mail Privacy Protection (iOS 15+) auto-loads images, inflating open rates
+- Privacy blockers increasingly prevent tracking pixels
+- Data retention: 12 months for insights views, 2 years for Dataverse entities
+
+**Resources:**
+- [Email insights - Dynamics 365 Customer Insights](https://learn.microsoft.com/en-us/dynamics365/customer-insights/journeys/email-insights)
+- [Use webhooks in Dynamics 365](https://learn.microsoft.com/en-us/dynamics365/customerengagement/on-premises/developer/use-webhooks)
+- [Dataverse API reference](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/webapi/overview)
+
 ## Tech Stack
 
 - **Frontend**: Next.js 14, React 18, Tailwind CSS 3.4

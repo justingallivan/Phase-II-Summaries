@@ -2746,28 +2746,42 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
           </div>
 
           {/* Email tracking details */}
-          {candidate.emailSentAt && (
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-gray-500">
-                Email sent: {new Date(candidate.emailSentAt).toLocaleDateString()}
-              </span>
-              {candidate.responseType && candidate.responseType !== 'bounced' && (
+          {candidate.emailSentAt && (() => {
+            const sentDate = new Date(candidate.emailSentAt);
+            const daysSinceSent = Math.floor((new Date() - sentDate) / (1000 * 60 * 60 * 24));
+            const isPending = !candidate.responseType && !candidate.accepted && !candidate.declined;
+            return (
+              <div className="flex items-center gap-2 text-xs flex-wrap">
                 <span className="text-gray-500">
-                  | Response: {candidate.responseType}
-                  {candidate.responseReceivedAt && ` (${formatShortDate(candidate.responseReceivedAt)})`}
+                  Email sent: {sentDate.toLocaleDateString()}
                 </span>
-              )}
-              {candidate.responseType !== 'bounced' && (
-                <button
-                  onClick={handleMarkBounced}
-                  className="px-2 py-0.5 text-xs rounded bg-orange-50 text-orange-600 hover:bg-orange-100"
-                  title="Mark email as bounced"
-                >
-                  Mark Bounced
-                </button>
-              )}
-            </div>
-          )}
+                {isPending && daysSinceSent > 0 && (
+                  <span className={`px-1.5 py-0.5 rounded ${
+                    daysSinceSent > 14 ? 'bg-red-100 text-red-700' :
+                    daysSinceSent > 7 ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-gray-100 text-gray-600'
+                  }`}>
+                    {daysSinceSent} day{daysSinceSent !== 1 ? 's' : ''} ago
+                  </span>
+                )}
+                {candidate.responseType && candidate.responseType !== 'bounced' && (
+                  <span className="text-gray-500">
+                    | Response: {candidate.responseType}
+                    {candidate.responseReceivedAt && ` (${formatShortDate(candidate.responseReceivedAt)})`}
+                  </span>
+                )}
+                {candidate.responseType !== 'bounced' && isPending && (
+                  <button
+                    onClick={handleMarkBounced}
+                    className="px-2 py-0.5 text-xs rounded bg-orange-50 text-orange-600 hover:bg-orange-100"
+                    title="Mark email as bounced"
+                  >
+                    Mark Bounced
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
           <p className="text-xs text-gray-400">
             Saved: {new Date(candidate.savedAt).toLocaleDateString()}
@@ -2803,6 +2817,7 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
   const [institutionFilter, setInstitutionFilter] = useState('all');
   const [piFilter, setPiFilter] = useState('all');
   const [programFilter, setProgramFilter] = useState('all');
+  const [emailStatusFilter, setEmailStatusFilter] = useState('all'); // 'all', 'not_invited', 'invited', 'pending', 'accepted', 'declined', 'bounced'
 
   // Fetch grant cycles
   const fetchCycles = async () => {
@@ -3159,15 +3174,29 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
   };
 
   // Open email modal with selected candidates
-  const handleOpenEmailModal = () => {
+  const handleOpenEmailModal = (isFollowUp = false) => {
     const { selectedCandidates, proposalInfo } = getSelectedCandidatesWithProposalInfo();
     if (selectedCandidates.length === 0) return;
 
     setEmailModalData({
       candidates: selectedCandidates,
-      proposalInfo
+      proposalInfo,
+      isFollowUp
     });
     setShowEmailModal(true);
+  };
+
+  // Select all pending (awaiting response) candidates
+  const selectAllPending = () => {
+    const pendingIds = new Set();
+    filteredProposals.forEach(p => {
+      p.candidates.forEach(c => {
+        if (c.emailSentAt && !c.responseType && !c.accepted && !c.declined) {
+          pendingIds.add(c.suggestionId);
+        }
+      });
+    });
+    setSelectedForDeletion(pendingIds);
   };
 
   if (isLoading) {
@@ -3222,58 +3251,182 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
       .filter(Boolean)
   )].sort();
 
-  // Apply filters to proposals
-  const filteredProposals = proposals.filter(p => {
-    if (institutionFilter !== 'all' && p.proposalInstitution !== institutionFilter) {
-      return false;
-    }
-    if (piFilter !== 'all' && p.proposalAuthors !== piFilter) {
-      return false;
-    }
-    if (programFilter !== 'all' && p.programArea !== programFilter) {
-      return false;
-    }
+  // Helper: check if candidate matches email status filter
+  const candidateMatchesEmailFilter = (c) => {
+    if (emailStatusFilter === 'all') return true;
+    if (emailStatusFilter === 'not_invited') return !c.invited && !c.emailSentAt;
+    if (emailStatusFilter === 'invited') return c.invited || c.emailSentAt;
+    if (emailStatusFilter === 'pending') return c.emailSentAt && !c.responseType && !c.accepted && !c.declined;
+    if (emailStatusFilter === 'accepted') return c.accepted || c.responseType === 'accepted';
+    if (emailStatusFilter === 'declined') return c.declined || c.responseType === 'declined';
+    if (emailStatusFilter === 'bounced') return c.responseType === 'bounced';
     return true;
-  });
+  };
 
-  const totalCandidates = filteredProposals.reduce((sum, p) => sum + p.candidates.length, 0);
-  const invitedCount = filteredProposals.reduce((sum, p) =>
-    sum + p.candidates.filter(c => c.invited).length, 0);
-  const acceptedCount = filteredProposals.reduce((sum, p) =>
-    sum + p.candidates.filter(c => c.accepted).length, 0);
-  const declinedCount = filteredProposals.reduce((sum, p) =>
-    sum + p.candidates.filter(c => c.declined).length, 0);
+  // Helper: calculate days since a date
+  const daysSince = (dateStr) => {
+    if (!dateStr) return null;
+    const sent = new Date(dateStr);
+    const now = new Date();
+    const diffTime = now - sent;
+    return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  // Apply filters to proposals (filter candidates within each proposal)
+  const filteredProposals = proposals
+    .filter(p => {
+      if (institutionFilter !== 'all' && p.proposalInstitution !== institutionFilter) {
+        return false;
+      }
+      if (piFilter !== 'all' && p.proposalAuthors !== piFilter) {
+        return false;
+      }
+      if (programFilter !== 'all' && p.programArea !== programFilter) {
+        return false;
+      }
+      return true;
+    })
+    .map(p => ({
+      ...p,
+      candidates: p.candidates.filter(candidateMatchesEmailFilter)
+    }))
+    .filter(p => p.candidates.length > 0 || emailStatusFilter === 'all');
+
+  // Enhanced metrics calculation (use ALL proposals for accurate totals, filtered for display)
+  const allCandidates = proposals.flatMap(p => p.candidates);
+  const filteredCandidates = filteredProposals.flatMap(p => p.candidates);
+
+  const metrics = {
+    total: allCandidates.length,
+    filtered: filteredCandidates.length,
+    notInvited: allCandidates.filter(c => !c.invited && !c.emailSentAt).length,
+    invited: allCandidates.filter(c => c.invited || c.emailSentAt).length,
+    pending: allCandidates.filter(c => c.emailSentAt && !c.responseType && !c.accepted && !c.declined).length,
+    accepted: allCandidates.filter(c => c.accepted || c.responseType === 'accepted').length,
+    declined: allCandidates.filter(c => c.declined || c.responseType === 'declined').length,
+    bounced: allCandidates.filter(c => c.responseType === 'bounced').length,
+  };
+
+  // Response rate (of those invited who have responded)
+  const responded = metrics.accepted + metrics.declined;
+  const responseRate = metrics.invited > 0 ? ((responded / metrics.invited) * 100).toFixed(0) : 0;
+  const acceptanceRate = responded > 0 ? ((metrics.accepted / responded) * 100).toFixed(0) : 0;
+
+  // CSV Export function
+  const exportTrackingCSV = () => {
+    const rows = [];
+    rows.push([
+      'Proposal Title', 'PI', 'Institution', 'Program Area',
+      'Reviewer Name', 'Email', 'Affiliation', 'H-Index',
+      'Invited', 'Email Sent Date', 'Days Since Sent',
+      'Response Type', 'Response Date', 'Notes'
+    ].join(','));
+
+    proposals.forEach(p => {
+      p.candidates.forEach(c => {
+        const days = daysSince(c.emailSentAt);
+        rows.push([
+          `"${(p.proposalTitle || '').replace(/"/g, '""')}"`,
+          `"${(p.proposalAuthors || '').replace(/"/g, '""')}"`,
+          `"${(p.proposalInstitution || '').replace(/"/g, '""')}"`,
+          `"${(p.programArea || '').replace(/"/g, '""')}"`,
+          `"${(c.name || '').replace(/"/g, '""')}"`,
+          `"${(c.email || '').replace(/"/g, '""')}"`,
+          `"${(c.affiliation || '').replace(/"/g, '""')}"`,
+          c.hIndex || '',
+          c.invited ? 'Yes' : 'No',
+          c.emailSentAt ? new Date(c.emailSentAt).toLocaleDateString() : '',
+          days !== null ? days : '',
+          c.responseType || (c.accepted ? 'accepted' : c.declined ? 'declined' : ''),
+          c.responseReceivedAt ? new Date(c.responseReceivedAt).toLocaleDateString() : '',
+          `"${(c.notes || '').replace(/"/g, '""')}"`
+        ].join(','));
+      });
+    });
+
+    const csv = rows.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const cycleName = cycles.find(c => c.id === selectedCycleId)?.shortCode || 'all';
+    a.download = `email-tracking-${cycleName}-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Legacy counts for backward compatibility
+  const totalCandidates = metrics.filtered;
+  const invitedCount = metrics.invited;
+  const acceptedCount = metrics.accepted;
+  const declinedCount = metrics.declined;
 
   return (
     <div className="space-y-6">
-      {/* Summary Stats */}
+      {/* Summary Stats & Dashboard */}
       <Card>
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold">My Saved Candidates</h3>
             <p className="text-sm text-gray-500">
               {totalCandidates} candidate(s) across {filteredProposals.length} proposal(s)
-              {filteredProposals.length !== proposals.length && (
-                <span className="text-gray-400"> (filtered from {proposals.length})</span>
+              {(emailStatusFilter !== 'all' || filteredProposals.length !== proposals.length) && (
+                <span className="text-gray-400"> (filtered from {metrics.total} total)</span>
               )}
             </p>
           </div>
-          <div className="flex items-center gap-4 text-sm">
-            <span className="text-blue-600">{invitedCount} invited</span>
-            <span className="text-green-600">{acceptedCount} accepted</span>
-            <span className="text-red-600">{declinedCount} declined</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={exportTrackingCSV}
+              className="px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm"
+              title="Export email tracking data to CSV"
+            >
+              Export CSV
+            </button>
+            {metrics.pending > 0 && selectedForDeletion.size === 0 && (
+              <button
+                onClick={selectAllPending}
+                className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 text-sm"
+                title="Select all candidates awaiting response for follow-up"
+              >
+                Select Pending ({metrics.pending})
+              </button>
+            )}
             {selectedForDeletion.size > 0 && (
               <>
                 <button
-                  onClick={handleOpenEmailModal}
-                  className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                  onClick={() => handleOpenEmailModal(false)}
+                  className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-sm"
                 >
                   Email Selected ({selectedForDeletion.size})
                 </button>
+                {/* Show Re-invite button if any selected candidates are pending */}
+                {(() => {
+                  const selectedPending = [...selectedForDeletion].filter(id => {
+                    for (const p of filteredProposals) {
+                      const c = p.candidates.find(c => c.suggestionId === id);
+                      if (c && c.emailSentAt && !c.responseType && !c.accepted && !c.declined) {
+                        return true;
+                      }
+                    }
+                    return false;
+                  });
+                  return selectedPending.length > 0 ? (
+                    <button
+                      onClick={() => handleOpenEmailModal(true)}
+                      className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 text-sm"
+                      title="Send follow-up emails to non-responders"
+                    >
+                      Re-invite ({selectedPending.length})
+                    </button>
+                  ) : null;
+                })()}
                 <button
                   onClick={handleDeleteSelected}
                   disabled={isDeleting}
-                  className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 disabled:opacity-50"
+                  className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 disabled:opacity-50 text-sm"
                 >
                   {isDeleting ? 'Deleting...' : `Delete Selected (${selectedForDeletion.size})`}
                 </button>
@@ -3281,6 +3434,92 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
             )}
           </div>
         </div>
+
+        {/* Response Tracking Dashboard */}
+        {metrics.total > 0 && (
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+              <button
+                onClick={() => setEmailStatusFilter(emailStatusFilter === 'not_invited' ? 'all' : 'not_invited')}
+                className={`text-center p-2 rounded-lg transition-colors ${
+                  emailStatusFilter === 'not_invited' ? 'bg-gray-200 ring-2 ring-gray-400' : 'bg-gray-50 hover:bg-gray-100'
+                }`}
+              >
+                <div className="text-xl font-bold text-gray-600">{metrics.notInvited}</div>
+                <div className="text-xs text-gray-500">Not Invited</div>
+              </button>
+              <button
+                onClick={() => setEmailStatusFilter(emailStatusFilter === 'invited' ? 'all' : 'invited')}
+                className={`text-center p-2 rounded-lg transition-colors ${
+                  emailStatusFilter === 'invited' ? 'bg-blue-200 ring-2 ring-blue-400' : 'bg-blue-50 hover:bg-blue-100'
+                }`}
+              >
+                <div className="text-xl font-bold text-blue-600">{metrics.invited}</div>
+                <div className="text-xs text-blue-500">Invited</div>
+              </button>
+              <button
+                onClick={() => setEmailStatusFilter(emailStatusFilter === 'pending' ? 'all' : 'pending')}
+                className={`text-center p-2 rounded-lg transition-colors ${
+                  emailStatusFilter === 'pending' ? 'bg-yellow-200 ring-2 ring-yellow-400' : 'bg-yellow-50 hover:bg-yellow-100'
+                }`}
+              >
+                <div className="text-xl font-bold text-yellow-600">{metrics.pending}</div>
+                <div className="text-xs text-yellow-600">Awaiting</div>
+              </button>
+              <button
+                onClick={() => setEmailStatusFilter(emailStatusFilter === 'accepted' ? 'all' : 'accepted')}
+                className={`text-center p-2 rounded-lg transition-colors ${
+                  emailStatusFilter === 'accepted' ? 'bg-green-200 ring-2 ring-green-400' : 'bg-green-50 hover:bg-green-100'
+                }`}
+              >
+                <div className="text-xl font-bold text-green-600">{metrics.accepted}</div>
+                <div className="text-xs text-green-500">Accepted</div>
+              </button>
+              <button
+                onClick={() => setEmailStatusFilter(emailStatusFilter === 'declined' ? 'all' : 'declined')}
+                className={`text-center p-2 rounded-lg transition-colors ${
+                  emailStatusFilter === 'declined' ? 'bg-red-200 ring-2 ring-red-400' : 'bg-red-50 hover:bg-red-100'
+                }`}
+              >
+                <div className="text-xl font-bold text-red-600">{metrics.declined}</div>
+                <div className="text-xs text-red-500">Declined</div>
+              </button>
+              {metrics.bounced > 0 && (
+                <button
+                  onClick={() => setEmailStatusFilter(emailStatusFilter === 'bounced' ? 'all' : 'bounced')}
+                  className={`text-center p-2 rounded-lg transition-colors ${
+                    emailStatusFilter === 'bounced' ? 'bg-orange-200 ring-2 ring-orange-400' : 'bg-orange-50 hover:bg-orange-100'
+                  }`}
+                >
+                  <div className="text-xl font-bold text-orange-600">{metrics.bounced}</div>
+                  <div className="text-xs text-orange-500">Bounced</div>
+                </button>
+              )}
+              {metrics.invited > 0 && (
+                <div className="text-center p-2 rounded-lg bg-purple-50">
+                  <div className="text-xl font-bold text-purple-600">{responseRate}%</div>
+                  <div className="text-xs text-purple-500">Response Rate</div>
+                  {responded > 0 && (
+                    <div className="text-xs text-purple-400 mt-1">{acceptanceRate}% accepted</div>
+                  )}
+                </div>
+              )}
+            </div>
+            {emailStatusFilter !== 'all' && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-sm text-gray-500">
+                  Showing: <span className="font-medium">{emailStatusFilter.replace('_', ' ')}</span>
+                </span>
+                <button
+                  onClick={() => setEmailStatusFilter('all')}
+                  className="text-xs text-blue-600 hover:text-blue-800"
+                >
+                  Clear filter
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Filters & Expand/Collapse Controls */}
         <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
@@ -3354,12 +3593,12 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
                 </select>
               </div>
             )}
-            {(institutionFilter !== 'all' || piFilter !== 'all' || programFilter !== 'all') && (
+            {(institutionFilter !== 'all' || piFilter !== 'all' || programFilter !== 'all' || emailStatusFilter !== 'all') && (
               <button
-                onClick={() => { setInstitutionFilter('all'); setPiFilter('all'); setProgramFilter('all'); }}
+                onClick={() => { setInstitutionFilter('all'); setPiFilter('all'); setProgramFilter('all'); setEmailStatusFilter('all'); }}
                 className="text-xs text-blue-600 hover:text-blue-800"
               >
-                Clear filters
+                Clear all filters
               </button>
             )}
           </div>
@@ -3544,6 +3783,7 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
           proposalInfo={emailModalData.proposalInfo}
           claudeApiKey={claudeApiKey}
           onEmailsGenerated={fetchCandidates}
+          isFollowUp={emailModalData.isFollowUp}
         />
       )}
 

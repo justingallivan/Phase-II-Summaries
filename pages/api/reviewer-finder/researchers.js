@@ -712,6 +712,7 @@ async function handleMerge(req, res) {
     let mergedData = {
       keywordsMoved: 0,
       suggestionsMoved: 0,
+      conflictsResolved: 0,
       secondariesDeleted: 0
     };
 
@@ -744,12 +745,36 @@ async function handleMerge(req, res) {
       mergedData.keywordsMoved += parseInt(keywordCountResult.rows[0].count || 0);
 
       // Move proposal associations (reviewer_suggestions)
+      // First, find proposals where BOTH primary and secondary have suggestions (conflict)
+      const conflictingProposals = await sql`
+        SELECT s.proposal_id
+        FROM reviewer_suggestions s
+        WHERE s.researcher_id = ${secondaryId}
+          AND EXISTS (
+            SELECT 1 FROM reviewer_suggestions p
+            WHERE p.researcher_id = ${parsedPrimaryId}
+              AND p.proposal_id = s.proposal_id
+          )
+      `;
+
+      // Delete secondary's suggestions for conflicting proposals (primary already has them)
+      if (conflictingProposals.rows.length > 0) {
+        const conflictIds = conflictingProposals.rows.map(r => r.proposal_id);
+        await sql`
+          DELETE FROM reviewer_suggestions
+          WHERE researcher_id = ${secondaryId}
+            AND proposal_id = ANY(${conflictIds})
+        `;
+      }
+
+      // Now safely move remaining suggestions (no conflicts)
       const suggestionsResult = await sql`
         UPDATE reviewer_suggestions
         SET researcher_id = ${parsedPrimaryId}
         WHERE researcher_id = ${secondaryId}
       `;
       mergedData.suggestionsMoved += suggestionsResult.rowCount || 0;
+      mergedData.conflictsResolved += conflictingProposals.rows.length;
 
       // Update primary with missing data from secondary (only if primary is missing the data)
       if (!primary.email && secondary.email) {
