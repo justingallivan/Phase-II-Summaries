@@ -1896,11 +1896,15 @@ function EditCandidateModal({ isOpen, candidate, onClose, onSave }) {
   );
 }
 
-// Researcher Detail Modal (for Database Tab)
-function ResearcherDetailModal({ researcherId, onClose }) {
+// Researcher Detail Modal (for Database Tab) - with Edit and Delete support
+function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [editForm, setEditForm] = useState({});
 
   useEffect(() => {
     if (!researcherId) return;
@@ -1915,6 +1919,21 @@ function ResearcherDetailModal({ researcherId, onClose }) {
         }
         const result = await response.json();
         setData(result);
+        // Initialize edit form with current values
+        if (result.researcher) {
+          setEditForm({
+            name: result.researcher.name || '',
+            affiliation: result.researcher.affiliation || '',
+            department: result.researcher.department || '',
+            email: result.researcher.email || '',
+            website: result.researcher.website || '',
+            orcid: result.researcher.orcid || '',
+            googleScholarId: result.researcher.googleScholarId || '',
+            hIndex: result.researcher.hIndex || '',
+            i10Index: result.researcher.i10Index || '',
+            totalCitations: result.researcher.totalCitations || ''
+          });
+        }
       } catch (err) {
         setError(err.message);
       } finally {
@@ -1925,14 +1944,14 @@ function ResearcherDetailModal({ researcherId, onClose }) {
     fetchDetails();
   }, [researcherId]);
 
-  // Handle escape key to close
+  // Handle escape key to close (but not when editing)
   useEffect(() => {
     const handleEscape = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && !isEditing && !showDeleteConfirm) onClose();
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
+  }, [onClose, isEditing, showDeleteConfirm]);
 
   if (!researcherId) return null;
 
@@ -1954,19 +1973,125 @@ function ResearcherDetailModal({ researcherId, onClose }) {
     return groups;
   };
 
+  const handleEditChange = (field, value) => {
+    setEditForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/reviewer-finder/researchers', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: researcherId,
+          name: editForm.name,
+          affiliation: editForm.affiliation,
+          department: editForm.department,
+          email: editForm.email,
+          website: editForm.website,
+          orcid: editForm.orcid,
+          googleScholarId: editForm.googleScholarId,
+          hIndex: editForm.hIndex ? parseInt(editForm.hIndex) : null,
+          i10Index: editForm.i10Index ? parseInt(editForm.i10Index) : null,
+          totalCitations: editForm.totalCitations ? parseInt(editForm.totalCitations) : null
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to save changes');
+      }
+
+      // Refresh data
+      const refreshResponse = await fetch(`/api/reviewer-finder/researchers?id=${researcherId}`);
+      const refreshedData = await refreshResponse.json();
+      setData(refreshedData);
+      setIsEditing(false);
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setIsSaving(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/reviewer-finder/researchers', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: researcherId })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to delete researcher');
+      }
+
+      if (onDelete) onDelete(researcherId);
+      onClose();
+    } catch (err) {
+      setError(err.message);
+      setShowDeleteConfirm(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    // Reset form to original values
+    if (data?.researcher) {
+      setEditForm({
+        name: data.researcher.name || '',
+        affiliation: data.researcher.affiliation || '',
+        department: data.researcher.department || '',
+        email: data.researcher.email || '',
+        website: data.researcher.website || '',
+        orcid: data.researcher.orcid || '',
+        googleScholarId: data.researcher.googleScholarId || '',
+        hIndex: data.researcher.hIndex || '',
+        i10Index: data.researcher.i10Index || '',
+        totalCitations: data.researcher.totalCitations || ''
+      });
+    }
+    setIsEditing(false);
+    setError(null);
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget && !isEditing && !showDeleteConfirm) onClose();
       }}
     >
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50">
-          <div>
+          <div className="flex-1">
             {loading ? (
               <div className="h-6 w-48 bg-gray-200 rounded animate-pulse" />
+            ) : isEditing ? (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => handleEditChange('name', e.target.value)}
+                  className="text-lg font-semibold text-gray-900 border border-gray-300 rounded px-2 py-1 w-full"
+                  placeholder="Name"
+                />
+                <input
+                  type="text"
+                  value={editForm.affiliation}
+                  onChange={(e) => handleEditChange('affiliation', e.target.value)}
+                  className="text-sm text-gray-600 border border-gray-300 rounded px-2 py-1 w-full"
+                  placeholder="Affiliation"
+                />
+              </div>
             ) : data?.researcher ? (
               <>
                 <h2 className="text-lg font-semibold text-gray-900">{data.researcher.name}</h2>
@@ -1976,13 +2101,66 @@ function ResearcherDetailModal({ researcherId, onClose }) {
               </>
             ) : null}
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-xl"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-2 ml-4">
+            {!loading && data?.researcher && !isEditing && (
+              <>
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded"
+                  title="Edit researcher"
+                >
+                  ✏️ Edit
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded"
+                  title="Delete researcher"
+                >
+                  🗑️ Delete
+                </button>
+              </>
+            )}
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 text-xl ml-2"
+            >
+              ✕
+            </button>
+          </div>
         </div>
+
+        {/* Delete Confirmation */}
+        {showDeleteConfirm && (
+          <div className="px-6 py-4 bg-red-50 border-b border-red-200">
+            <p className="text-red-800 font-medium mb-2">
+              Delete this researcher?
+            </p>
+            <p className="text-sm text-red-600 mb-3">
+              This will permanently remove the researcher from the database.
+              {data?.proposals?.length > 0 && (
+                <span className="block mt-1">
+                  Note: This researcher is associated with {data.proposals.length} proposal(s).
+                  Those associations will be removed.
+                </span>
+              )}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleDelete}
+                disabled={isSaving}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+              >
+                {isSaving ? 'Deleting...' : 'Yes, Delete'}
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Content */}
         <div className="overflow-y-auto flex-1 p-6 space-y-6">
@@ -2007,79 +2185,157 @@ function ResearcherDetailModal({ researcherId, onClose }) {
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
                   Contact Information
                 </h3>
-                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                  {data.researcher.email ? (
-                    <div className="flex items-start gap-2">
-                      <span className="text-green-600">✉️</span>
-                      <div>
-                        <a href={`mailto:${data.researcher.email}`} className="text-blue-600 hover:underline">
-                          {data.researcher.email}
-                        </a>
-                        {data.researcher.emailSource && (
-                          <span className="text-xs text-gray-500 ml-2">
-                            from {data.researcher.emailSource}
-                            {data.researcher.emailYear && ` (${data.researcher.emailYear})`}
-                          </span>
-                        )}
+                {isEditing ? (
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                    <div>
+                      <label className="text-xs text-gray-500">Email</label>
+                      <input
+                        type="email"
+                        value={editForm.email}
+                        onChange={(e) => handleEditChange('email', e.target.value)}
+                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                        placeholder="email@university.edu"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Website</label>
+                      <input
+                        type="url"
+                        value={editForm.website}
+                        onChange={(e) => handleEditChange('website', e.target.value)}
+                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                        placeholder="https://..."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">ORCID ID</label>
+                      <input
+                        type="text"
+                        value={editForm.orcid}
+                        onChange={(e) => handleEditChange('orcid', e.target.value)}
+                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                        placeholder="0000-0000-0000-0000"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Google Scholar ID</label>
+                      <input
+                        type="text"
+                        value={editForm.googleScholarId}
+                        onChange={(e) => handleEditChange('googleScholarId', e.target.value)}
+                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                        placeholder="Scholar user ID"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                    {data.researcher.email ? (
+                      <div className="flex items-start gap-2">
+                        <span className="text-green-600">✉️</span>
+                        <div>
+                          <a href={`mailto:${data.researcher.email}`} className="text-blue-600 hover:underline">
+                            {data.researcher.email}
+                          </a>
+                          {data.researcher.emailSource && (
+                            <span className="text-xs text-gray-500 ml-2">
+                              from {data.researcher.emailSource}
+                              {data.researcher.emailYear && ` (${data.researcher.emailYear})`}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-gray-400">
-                      <span>✉️</span>
-                      <span>No email on file</span>
-                    </div>
-                  )}
+                    ) : (
+                      <div className="flex items-center gap-2 text-gray-400">
+                        <span>✉️</span>
+                        <span>No email on file</span>
+                      </div>
+                    )}
 
-                  {(data.researcher.website || data.researcher.facultyPageUrl) && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-blue-600">🔗</span>
-                      <a
-                        href={data.researcher.website || data.researcher.facultyPageUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline truncate"
-                      >
-                        {data.researcher.website || data.researcher.facultyPageUrl}
-                      </a>
-                    </div>
-                  )}
+                    {(data.researcher.website || data.researcher.facultyPageUrl) && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-blue-600">🔗</span>
+                        <a
+                          href={data.researcher.website || data.researcher.facultyPageUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline truncate"
+                        >
+                          {data.researcher.website || data.researcher.facultyPageUrl}
+                        </a>
+                      </div>
+                    )}
 
-                  {data.researcher.orcid && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-green-700">🆔</span>
-                      <a
-                        href={data.researcher.orcidUrl || `https://orcid.org/${data.researcher.orcid}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
-                      >
-                        ORCID: {data.researcher.orcid}
-                      </a>
-                    </div>
-                  )}
+                    {data.researcher.orcid && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-green-700">🆔</span>
+                        <a
+                          href={data.researcher.orcidUrl || `https://orcid.org/${data.researcher.orcid}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline"
+                        >
+                          ORCID: {data.researcher.orcid}
+                        </a>
+                      </div>
+                    )}
 
-                  {data.researcher.googleScholarUrl && (
-                    <div className="flex items-center gap-2">
-                      <span>🎓</span>
-                      <a
-                        href={data.researcher.googleScholarUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
-                      >
-                        Google Scholar Profile
-                      </a>
-                    </div>
-                  )}
-                </div>
+                    {data.researcher.googleScholarUrl && (
+                      <div className="flex items-center gap-2">
+                        <span>🎓</span>
+                        <a
+                          href={data.researcher.googleScholarUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline"
+                        >
+                          Google Scholar Profile
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
               </section>
 
               {/* Metrics */}
-              {(data.researcher.hIndex || data.researcher.i10Index || data.researcher.totalCitations) && (
-                <section>
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                    Metrics
-                  </h3>
+              <section>
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                  Metrics
+                </h3>
+                {isEditing ? (
+                  <div className="bg-gray-50 rounded-lg p-4 flex gap-4">
+                    <div>
+                      <label className="text-xs text-gray-500">h-index</label>
+                      <input
+                        type="number"
+                        value={editForm.hIndex}
+                        onChange={(e) => handleEditChange('hIndex', e.target.value)}
+                        className="w-24 border border-gray-300 rounded px-3 py-2 text-sm"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">i10-index</label>
+                      <input
+                        type="number"
+                        value={editForm.i10Index}
+                        onChange={(e) => handleEditChange('i10Index', e.target.value)}
+                        className="w-24 border border-gray-300 rounded px-3 py-2 text-sm"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Citations</label>
+                      <input
+                        type="number"
+                        value={editForm.totalCitations}
+                        onChange={(e) => handleEditChange('totalCitations', e.target.value)}
+                        className="w-28 border border-gray-300 rounded px-3 py-2 text-sm"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+                ) : (data.researcher.hIndex || data.researcher.i10Index || data.researcher.totalCitations) ? (
                   <div className="flex gap-4">
                     {data.researcher.hIndex && (
                       <div className="bg-purple-50 rounded-lg px-4 py-2 text-center">
@@ -2102,10 +2358,12 @@ function ResearcherDetailModal({ researcherId, onClose }) {
                       </div>
                     )}
                   </div>
-                </section>
-              )}
+                ) : (
+                  <p className="text-gray-500 text-sm italic">No metrics available</p>
+                )}
+              </section>
 
-              {/* Expertise Keywords */}
+              {/* Expertise Keywords (read-only) */}
               {data.keywords && data.keywords.length > 0 && (
                 <section>
                   <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
@@ -2142,7 +2400,7 @@ function ResearcherDetailModal({ researcherId, onClose }) {
                 </section>
               )}
 
-              {/* Proposal Associations */}
+              {/* Proposal Associations (read-only) */}
               <section>
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
                   Proposal Associations ({data.proposals?.length || 0})
@@ -2209,13 +2467,32 @@ function ResearcherDetailModal({ researcherId, onClose }) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t bg-gray-50 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-          >
-            Close
-          </button>
+        <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-2">
+          {isEditing ? (
+            <>
+              <button
+                onClick={handleCancelEdit}
+                disabled={isSaving}
+                className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              Close
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -3372,6 +3649,16 @@ function DatabaseTab() {
     offset: 0,
     hasMore: false,
   });
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  // Duplicates state
+  const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
+  const [duplicateGroups, setDuplicateGroups] = useState([]);
+  const [isLoadingDuplicates, setIsLoadingDuplicates] = useState(false);
+  const [isMerging, setIsMerging] = useState(false);
 
   // Fetch available keywords for filter dropdown
   useEffect(() => {
@@ -3465,6 +3752,174 @@ function DatabaseTab() {
     return <span className="text-blue-600 ml-1">{sortOrder === 'asc' ? '↑' : '↓'}</span>;
   };
 
+  // Bulk selection handlers
+  const handleToggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === researchers.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(researchers.map(r => r.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+
+    setIsBulkDeleting(true);
+    try {
+      const response = await fetch('/api/reviewer-finder/researchers', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedIds) })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to delete researchers');
+      }
+
+      setSelectedIds(new Set());
+      setShowBulkDeleteConfirm(false);
+      fetchResearchers();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  // Clear selection when navigating pages or filtering
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [pagination.offset, debouncedSearch, hasEmailFilter, hasWebsiteFilter, keywordFilter]);
+
+  // CSV Export - exports all matching researchers (not just current page)
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    try {
+      // Fetch all matching researchers (up to 1000)
+      const params = new URLSearchParams({
+        search: debouncedSearch,
+        sortBy,
+        sortOrder,
+        limit: '1000',
+        offset: '0',
+      });
+      if (hasEmailFilter) params.append('hasEmail', 'true');
+      if (hasWebsiteFilter) params.append('hasWebsite', 'true');
+      if (keywordFilter.length > 0) params.append('keywords', keywordFilter.join(','));
+
+      const response = await fetch(`/api/reviewer-finder/researchers?${params}`);
+      const data = await response.json();
+
+      if (!data.success || !data.researchers.length) {
+        throw new Error('No researchers to export');
+      }
+
+      // Build CSV content
+      const headers = ['Name', 'Affiliation', 'Email', 'Website', 'h-index', 'i10-index', 'Citations', 'ORCID', 'Keywords', 'Last Updated'];
+      const rows = data.researchers.map(r => [
+        r.name || '',
+        r.affiliation || '',
+        r.email || '',
+        r.website || '',
+        r.hIndex || '',
+        r.i10Index || '',
+        r.totalCitations || '',
+        r.orcid || '',
+        (r.keywords || []).map(k => k.keyword).join('; '),
+        r.lastUpdated ? new Date(r.lastUpdated).toLocaleDateString() : ''
+      ]);
+
+      // Escape CSV fields
+      const escapeCSV = (field) => {
+        const str = String(field);
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      };
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(escapeCSV).join(','))
+      ].join('\n');
+
+      // Download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `researchers-export-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Find Duplicates
+  const handleFindDuplicates = async () => {
+    setIsLoadingDuplicates(true);
+    setShowDuplicatesModal(true);
+    try {
+      const response = await fetch('/api/reviewer-finder/researchers?mode=duplicates');
+      const data = await response.json();
+      if (data.success) {
+        setDuplicateGroups(data.duplicateGroups || []);
+      } else {
+        throw new Error(data.error || 'Failed to find duplicates');
+      }
+    } catch (err) {
+      setError(err.message);
+      setShowDuplicatesModal(false);
+    } finally {
+      setIsLoadingDuplicates(false);
+    }
+  };
+
+  // Merge researchers
+  const handleMerge = async (primaryId, secondaryIds) => {
+    setIsMerging(true);
+    try {
+      const response = await fetch('/api/reviewer-finder/researchers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ primaryId, secondaryIds })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to merge researchers');
+      }
+
+      // Refresh duplicates list and researchers
+      const dupResponse = await fetch('/api/reviewer-finder/researchers?mode=duplicates');
+      const dupData = await dupResponse.json();
+      if (dupData.success) {
+        setDuplicateGroups(dupData.duplicateGroups || []);
+      }
+      fetchResearchers();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsMerging(false);
+    }
+  };
+
   if (error) {
     return (
       <Card className="text-center py-12">
@@ -3549,9 +4004,29 @@ function DatabaseTab() {
             )}
           </div>
 
-          {/* Stats */}
-          <div className="text-sm text-gray-500">
-            {pagination.total} researcher{pagination.total !== 1 ? 's' : ''}
+          {/* Stats and Actions */}
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-500">
+              {pagination.total} researcher{pagination.total !== 1 ? 's' : ''}
+            </span>
+            <button
+              onClick={handleFindDuplicates}
+              disabled={isLoadingDuplicates}
+              className="px-3 py-1.5 text-sm text-orange-600 bg-white border border-orange-300 rounded hover:bg-orange-50 disabled:opacity-50"
+              title="Find and merge duplicate researchers"
+            >
+              {isLoadingDuplicates ? '⏳ Searching...' : '🔍 Find Duplicates'}
+            </button>
+            {pagination.total > 0 && (
+              <button
+                onClick={handleExportCSV}
+                disabled={isExporting}
+                className="px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                title="Export all matching researchers to CSV"
+              >
+                {isExporting ? '⏳ Exporting...' : '📥 Export CSV'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -3592,6 +4067,62 @@ function DatabaseTab() {
         )}
       </Card>
 
+      {/* Bulk Action Bar */}
+      {selectedIds.size > 0 && (
+        <Card className="bg-blue-50 border-blue-200">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-blue-800">
+              <strong>{selectedIds.size}</strong> researcher{selectedIds.size !== 1 ? 's' : ''} selected
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowBulkDeleteConfirm(true)}
+                className="px-3 py-1.5 text-sm text-red-600 bg-white border border-red-300 rounded hover:bg-red-50"
+              >
+                🗑️ Delete Selected
+              </button>
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50"
+              >
+                Clear Selection
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Bulk Delete Confirmation */}
+      {showBulkDeleteConfirm && (
+        <Card className="bg-red-50 border-red-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-red-800 font-medium">
+                Delete {selectedIds.size} researcher{selectedIds.size !== 1 ? 's' : ''}?
+              </p>
+              <p className="text-sm text-red-600">
+                This action cannot be undone. Proposal associations will be removed.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleBulkDelete}
+                disabled={isBulkDeleting}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+              >
+                {isBulkDeleting ? 'Deleting...' : 'Yes, Delete All'}
+              </button>
+              <button
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Table */}
       <Card className="overflow-hidden">
         {isLoading && researchers.length === 0 ? (
@@ -3615,6 +4146,15 @@ function DatabaseTab() {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
+                    <th className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.size === researchers.length && researchers.length > 0}
+                        onChange={handleSelectAll}
+                        className="rounded border-gray-300 text-blue-600"
+                        title="Select all on this page"
+                      />
+                    </th>
                     <th
                       onClick={() => handleSort('name')}
                       className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
@@ -3650,6 +4190,8 @@ function DatabaseTab() {
                       key={researcher.id}
                       researcher={researcher}
                       onClick={() => setSelectedResearcherId(researcher.id)}
+                      isSelected={selectedIds.has(researcher.id)}
+                      onToggleSelect={() => handleToggleSelect(researcher.id)}
                     />
                   ))}
                 </tbody>
@@ -3706,14 +4248,190 @@ function DatabaseTab() {
         <ResearcherDetailModal
           researcherId={selectedResearcherId}
           onClose={() => setSelectedResearcherId(null)}
+          onUpdate={fetchResearchers}
+          onDelete={(deletedId) => {
+            setSelectedResearcherId(null);
+            fetchResearchers();
+          }}
+        />
+      )}
+
+      {/* Duplicates Modal */}
+      {showDuplicatesModal && (
+        <DuplicatesModal
+          isOpen={showDuplicatesModal}
+          onClose={() => setShowDuplicatesModal(false)}
+          duplicateGroups={duplicateGroups}
+          isLoading={isLoadingDuplicates}
+          isMerging={isMerging}
+          onMerge={handleMerge}
         />
       )}
     </div>
   );
 }
 
+// Duplicates Modal Component
+function DuplicatesModal({ isOpen, onClose, duplicateGroups, isLoading, isMerging, onMerge }) {
+  const [selectedPrimary, setSelectedPrimary] = useState({});
+
+  if (!isOpen) return null;
+
+  const handleMergeGroup = async (group) => {
+    const primaryId = selectedPrimary[group.matchValue];
+    if (!primaryId) {
+      alert('Please select a primary researcher to keep');
+      return;
+    }
+    const secondaryIds = group.researchers
+      .filter(r => r.id !== primaryId)
+      .map(r => r.id);
+    await onMerge(primaryId, secondaryIds);
+    // Clear selection for this group
+    setSelectedPrimary(prev => {
+      const next = { ...prev };
+      delete next[group.matchValue];
+      return next;
+    });
+  };
+
+  const matchTypeLabels = {
+    email: '📧 Same Email',
+    name: '👤 Same Name',
+    orcid: '🆔 Same ORCID',
+    google_scholar: '🎓 Same Google Scholar'
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isMerging) onClose();
+      }}
+    >
+      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-orange-50">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">🔍 Potential Duplicates</h2>
+            <p className="text-sm text-gray-600">
+              Found {duplicateGroups.length} group{duplicateGroups.length !== 1 ? 's' : ''} of potential duplicates
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={isMerging}
+            className="text-gray-400 hover:text-gray-600 text-xl disabled:opacity-50"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="overflow-y-auto flex-1 p-6">
+          {isLoading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin text-4xl mb-4">⏳</div>
+              <p className="text-gray-500">Scanning for duplicates...</p>
+            </div>
+          ) : duplicateGroups.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">✨</div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">No Duplicates Found</h3>
+              <p className="text-gray-500">Your researcher database looks clean!</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {duplicateGroups.map((group, groupIdx) => (
+                <div key={groupIdx} className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
+                    <div>
+                      <span className="text-sm font-medium text-gray-700">
+                        {matchTypeLabels[group.matchType] || group.matchType}
+                      </span>
+                      <span className="text-sm text-gray-500 ml-2">
+                        "{group.matchValue}"
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleMergeGroup(group)}
+                      disabled={isMerging || !selectedPrimary[group.matchValue]}
+                      className="px-3 py-1 text-sm bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isMerging ? 'Merging...' : 'Merge Selected'}
+                    </button>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {group.researchers.map((researcher) => (
+                      <label
+                        key={researcher.id}
+                        className={`flex items-start gap-3 p-4 cursor-pointer hover:bg-gray-50 ${
+                          selectedPrimary[group.matchValue] === researcher.id ? 'bg-orange-50' : ''
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`primary-${group.matchValue}`}
+                          checked={selectedPrimary[group.matchValue] === researcher.id}
+                          onChange={() => setSelectedPrimary(prev => ({
+                            ...prev,
+                            [group.matchValue]: researcher.id
+                          }))}
+                          className="mt-1"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-900">{researcher.name}</span>
+                            {researcher.hIndex && (
+                              <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
+                                h:{researcher.hIndex}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600 truncate">{researcher.affiliation || 'No affiliation'}</p>
+                          <div className="flex flex-wrap gap-3 mt-1 text-xs text-gray-500">
+                            {researcher.email && <span>📧 {researcher.email}</span>}
+                            {researcher.orcid && <span>🆔 {researcher.orcid}</span>}
+                            {researcher.website && <span>🔗 Website</span>}
+                            {researcher.createdAt && (
+                              <span>Added: {new Date(researcher.createdAt).toLocaleDateString()}</span>
+                            )}
+                          </div>
+                        </div>
+                        {selectedPrimary[group.matchValue] === researcher.id && (
+                          <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                            Keep this one
+                          </span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="bg-gray-50 px-4 py-2 text-xs text-gray-500">
+                    Select the researcher to keep. Others will be merged into it and deleted.
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t bg-gray-50 flex justify-end">
+          <button
+            onClick={onClose}
+            disabled={isMerging}
+            className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+          >
+            {duplicateGroups.length === 0 ? 'Close' : 'Done'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Row component for researcher table
-function ResearcherRow({ researcher, onClick }) {
+function ResearcherRow({ researcher, onClick, isSelected, onToggleSelect }) {
   const scholarUrl = researcher.googleScholarUrl ||
     (researcher.name ? `https://scholar.google.com/citations?view_op=search_authors&mauthors=${encodeURIComponent(researcher.name)}` : null);
 
@@ -3725,9 +4443,17 @@ function ResearcherRow({ researcher, onClick }) {
 
   return (
     <tr
-      className="hover:bg-blue-50 cursor-pointer transition-colors"
+      className={`hover:bg-blue-50 cursor-pointer transition-colors ${isSelected ? 'bg-blue-50' : ''}`}
       onClick={onClick}
     >
+      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={onToggleSelect}
+          className="rounded border-gray-300 text-blue-600"
+        />
+      </td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="font-medium text-gray-900">{researcher.name}</span>
