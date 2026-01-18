@@ -98,9 +98,9 @@ const apps = [
     title: 'Literature Analyzer',
     description: 'Comprehensive analysis and synthesis of research papers and academic literature',
     icon: '📖',
-    status: 'coming-soon',
+    status: 'active',
     categories: ['other'],
-    features: ['Paper Synthesis', 'Citation Analysis', 'Theme Extraction', 'Knowledge Mapping'],
+    features: ['Paper Synthesis', 'Theme Extraction', 'Cross-Paper Synthesis', 'Export Reports'],
     path: '/literature-analyzer'
   }
 ];

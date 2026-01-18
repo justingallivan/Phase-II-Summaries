@@ -53,7 +53,7 @@ A multi-application document processing system using Claude AI for grant-related
 | **Reviewer Finder** | `reviewer-finder.js` | `/api/reviewer-finder/*` | Phase I, II | **Production Ready** - AI + database search with contact enrichment |
 | Summarize Peer Reviews | `peer-review-summarizer.js` | `/api/summarize-reviews` | Phase II | Analyze peer reviews and generate site visit questions |
 | Expense Reporter | `expense-reporter.js` | `/api/process-expenses` | Other | Receipt/invoice processing with CSV export |
-| Literature Analyzer | `literature-analyzer.js` | - | Other | **Not implemented** - Hidden from navigation until built |
+| **Literature Analyzer** | `literature-analyzer.js` | `/api/analyze-literature` | Other | Analyze and synthesize research papers with AI |
 
 ### Deprecated Apps (hidden from UI, files retained)
 
@@ -89,6 +89,39 @@ Pre-Phase I screening tool to identify the strongest concepts from multi-page PD
 - `pages/api/evaluate-concepts.js` - Two-stage evaluation API
 - `lib/utils/pdf-page-splitter.js` - PDF page extraction
 - `shared/config/prompts/concept-evaluator.js` - Evaluation prompts
+
+### Literature Analyzer - Feature Summary
+
+Analyze and synthesize research papers for literature reviews:
+
+**Core Pipeline:**
+1. **PDF Upload** - Upload one or more research paper PDFs
+2. **Claude Vision Analysis** - Extract key information from each paper (title, authors, abstract, methods, findings, conclusions)
+3. **Cross-Paper Synthesis** - For 2+ papers, generate thematic synthesis identifying patterns and gaps
+4. **Export** - Download results as JSON or Markdown for literature review sections
+
+**Extracted Information (per paper):**
+- Title, authors, year, journal, DOI
+- Abstract and research type (empirical, theoretical, review, etc.)
+- Background (problem, motivation)
+- Methods (approach, techniques, sample/data)
+- Findings (main results, quantitative, qualitative)
+- Conclusions (summary, implications, limitations, future work)
+- Keywords and research field/subfield
+
+**Synthesis Features (2+ papers):**
+- Overview with date range and primary field
+- Theme identification across papers with consensus/disagreements
+- Key findings categorized as established, emerging, or contradictory
+- Research gaps (identified and inferred)
+- Methodological approaches comparison
+- Future research directions
+- Practical implications
+
+**Key Files:**
+- `pages/literature-analyzer.js` - Frontend with tabbed results view
+- `pages/api/analyze-literature.js` - Two-stage analysis API
+- `shared/config/prompts/literature-analyzer.js` - Extraction and synthesis prompts
 
 ### Reviewer Finder - Feature Summary
 
@@ -247,6 +280,7 @@ Each app uses a model optimized for its task complexity. Configured in `shared/c
 | App | Default Model | Complexity |
 |-----|---------------|------------|
 | Concept Evaluator | Opus 4 | High (Vision + Analysis) |
+| Literature Analyzer | Sonnet 4 | High (Vision + Synthesis) |
 | Batch Phase I/II Summaries | Sonnet 4 | High |
 | Phase I/II Writeup | Sonnet 4 | High |
 | Reviewer Finder | Sonnet 4 | High |

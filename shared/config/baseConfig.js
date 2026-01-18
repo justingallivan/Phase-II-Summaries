@@ -22,6 +22,12 @@ export const BASE_CONFIG = {
       visionModel: 'claude-opus-4-20250514',
       fallback: 'claude-sonnet-4-20250514'
     },
+    // High complexity - Literature analysis with Vision
+    'literature-analyzer': {
+      model: 'claude-sonnet-4-20250514',
+      visionModel: 'claude-sonnet-4-20250514',
+      fallback: 'claude-3-5-haiku-20241022'
+    },
     // High complexity - Sonnet for detailed summaries
     'batch-phase-i': {
       model: 'claude-sonnet-4-20250514',
