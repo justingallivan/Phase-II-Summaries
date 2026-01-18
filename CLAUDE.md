@@ -53,7 +53,7 @@ A multi-application document processing system using Claude AI for grant-related
 | **Reviewer Finder** | `reviewer-finder.js` | `/api/reviewer-finder/*` | Phase I, II | **Production Ready** - AI + database search with contact enrichment |
 | Summarize Peer Reviews | `peer-review-summarizer.js` | `/api/summarize-reviews` | Phase II | Analyze peer reviews and generate site visit questions |
 | Expense Reporter | `expense-reporter.js` | `/api/process-expenses` | Other | Receipt/invoice processing with CSV export |
-| Literature Analyzer | `literature-analyzer.js` | - | Other | Coming soon - Paper synthesis and citation analysis |
+| Literature Analyzer | `literature-analyzer.js` | - | Other | **Not implemented** - Hidden from navigation until built |
 
 ### Deprecated Apps (hidden from UI, files retained)
 
@@ -377,4 +377,4 @@ For detailed session-by-session development history, see [DEVELOPMENT_LOG.md](./
 
 ---
 
-Last Updated: January 17, 2026
+Last Updated: January 18, 2026

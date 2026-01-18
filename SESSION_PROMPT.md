@@ -1,23 +1,23 @@
 # Document Processing Suite - Session 27 Prompt
 
-## Current State (as of January 17, 2026)
+## Current State (as of January 18, 2026)
 
 ### App Suite Overview
 
-The suite has 10 apps organized into categories:
+The suite has 9 active apps (Literature Analyzer is planned but not yet implemented):
 
 | Category | Apps |
 |----------|------|
 | **Concepts** | Concept Evaluator |
 | **Phase I** | Batch Phase I Summaries, Funding Analysis, Create Phase I Writeup Draft, Reviewer Finder |
 | **Phase II** | Batch Phase II Summaries, Funding Analysis, Create Phase II Writeup Draft, Reviewer Finder, Summarize Peer Reviews |
-| **Other Tools** | Expense Reporter, Literature Analyzer (coming soon) |
+| **Other Tools** | Expense Reporter |
 
 ### Session 26 Summary
 
-**Per-App Model Configuration (Completed)**
+**1. Per-App Model Configuration (Completed)**
 
-Implemented centralized per-app model configuration in `shared/config/baseConfig.js`:
+Implemented centralized model configuration in `shared/config/baseConfig.js`:
 
 | App | Model | Complexity |
 |-----|-------|------------|
@@ -29,182 +29,89 @@ Implemented centralized per-app model configuration in `shared/config/baseConfig
 | Funding Analysis | Sonnet 4 | Medium |
 | Q&A, Refine | Sonnet 4 | Medium |
 | Expense Reporter | Haiku 3.5 | Low |
-| Contact Enrichment | Haiku 3.5 | Low (unchanged) |
-| Email Personalization | Haiku 3.5 | Low (unchanged) |
+| Contact Enrichment | Haiku 3.5 | Low |
+| Email Personalization | Haiku 3.5 | Low |
 
-## Current Session Tasks
+**2. Model Indicator Added to All Apps (Completed)**
 
-### 1. Add Model Indicator to All Apps
-Display the current Claude model beneath the API key indicator:
-
+Each app now displays its current model beneath the API key:
 ```
 🔑 API Key: sk-•••••ijk [👁] [Edit] [Clear]
+─────────────────────────────────────────
 🤖 Model: Opus 4
 ```
 
-**Implementation:**
-- Extend `ApiKeyManager` component with optional `appKey` prop
-- Create model name mapping (technical ID → friendly name)
-- Update 10 app pages to pass their `appKey`
+**Key files:**
+- `shared/utils/modelNames.js` - Converts model IDs to friendly names
+- `shared/components/ApiKeyManager.js` - Extended with `appKey` prop
 
-### 2. Test Concept Evaluator with Opus 4
-- Run evaluations on sample concepts
-- Compare quality vs. Sonnet 4 evaluations
-- Document findings and cost implications
+**3. Navigation Cleanup**
+- Removed Literature Analyzer from navigation ribbon (commented out until implemented)
 
-## Future Work: User Profiles & Preferences
+**4. Future Work Documented: User Profiles & Preferences**
 
-### Context
-- Small trusted team (handful of users)
-- Each user has their own Claude API key (team subscription)
-- Search service API keys (SERP, NCBI, ORCID) should be per-user to prevent rate limit lockouts during concurrent usage
-- Growing configuration needs: API keys, model preferences, grant cycle settings, email templates
+Planned system for per-user settings (API keys, model preferences):
+- Simple profile selector (no auth for trusted team)
+- Database storage for preferences
+- Per-user API keys to prevent rate limit conflicts
+- See detailed plan in SESSION_PROMPT.md from Session 26
 
-### Recommended Approach: Simple Profile Selector (No Auth)
+## Priority Tasks for Session 27
 
-For a small trusted team, implement profile selection without authentication:
-
-```
-┌─────────────────────────────────────────┐
-│ 👤 Profile: [Sarah ▾]                   │
-│              Sarah                       │
-│              Michael                     │
-│              Jennifer                    │
-│              + Add profile...            │
-└─────────────────────────────────────────┘
-```
-
-**Benefits:**
-- Per-user preferences without login friction
-- Works across devices (just select your name)
-- Foundation for adding auth later if needed
-- Prevents API rate limit conflicts between users
-
-### Database Schema
-
-```sql
--- User profiles (no auth initially, can add password_hash later)
-CREATE TABLE user_profiles (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(100) UNIQUE NOT NULL,
-  email VARCHAR(255),
-  created_at TIMESTAMP DEFAULT NOW(),
-  last_active_at TIMESTAMP
-);
-
--- Flexible key-value preferences
-CREATE TABLE user_preferences (
-  id SERIAL PRIMARY KEY,
-  profile_id INTEGER REFERENCES user_profiles(id) ON DELETE CASCADE,
-  preference_key VARCHAR(100) NOT NULL,
-  preference_value TEXT,
-  updated_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(profile_id, preference_key)
-);
-
--- Index for fast lookups
-CREATE INDEX idx_user_preferences_profile_key
-ON user_preferences(profile_id, preference_key);
-```
-
-### Preference Keys to Support
-
-| Key | Description | Example Value |
-|-----|-------------|---------------|
-| `api_key.claude` | Claude API key | `sk-ant-...` |
-| `api_key.serp` | SerpAPI key for Google Scholar | `abc123...` |
-| `api_key.ncbi` | NCBI API key for PubMed | `def456...` |
-| `api_key.orcid_id` | ORCID client ID | `APP-XXX` |
-| `api_key.orcid_secret` | ORCID client secret | `xxx-yyy` |
-| `model.concept-evaluator` | Model override | `claude-sonnet-4-20250514` |
-| `model.expense-reporter` | Model override | `claude-3-5-haiku-20241022` |
-| `ui.theme` | UI preference | `light` / `dark` |
-
-### Implementation Phases
-
-**Phase 1: Profile Selector + API Keys**
-- Create database tables
-- Add profile selector component (stored in localStorage which profile is active)
-- Move API key storage from localStorage to database
-- Add `/api/profiles` endpoints (CRUD)
-- Add `/api/preferences` endpoints (get/set)
-
-**Phase 2: Model Selection UI**
-- Add model dropdown to ApiKeyManager
-- Store preference in database
-- API endpoints check user preference before falling back to defaults
-
-**Phase 3: Full Settings Page**
-- Create `/settings` page
-- Manage all API keys in one place
-- Configure model preferences for all apps
-- Export/import settings
-
-**Phase 4 (Optional): Authentication**
-- Add password_hash to user_profiles
-- Implement login/logout flow with NextAuth.js
-- Session management
-
-### API Endpoint Design
-
-```
-GET  /api/profiles              - List all profiles
-POST /api/profiles              - Create profile
-GET  /api/profiles/:id          - Get profile details
-PUT  /api/profiles/:id          - Update profile
-DELETE /api/profiles/:id        - Delete profile
-
-GET  /api/preferences           - Get current user's preferences
-PUT  /api/preferences/:key      - Set a preference
-DELETE /api/preferences/:key    - Clear a preference
-```
-
-## Deferred Tasks
-
-### Database Tab Phase 3 - Management
+### 1. Database Tab Phase 3 - Researcher Management
 - Edit researcher info directly in Database tab
 - Delete researchers (with confirmation)
 - Merge duplicate researchers
 - Bulk export to CSV
 
-### Email Tracking
+### 2. Email Tracking
 - Mark candidates as "email sent"
 - Track response status (accepted, declined, no response)
-- Use existing `email_sent_at`, `response_type` columns
+- Use existing `email_sent_at`, `response_type` database columns
 
-### Literature Analyzer App
-- Currently "coming soon" placeholder
+### 3. Literature Analyzer App
+- Currently placeholder, hidden from navigation
 - Paper synthesis and citation analysis
+- Consider integration with existing literature search services
+
+### 4. User Profiles (When Ready)
+Phase 1 implementation:
+- Create `user_profiles` and `user_preferences` tables
+- Add profile selector component
+- Move API key storage from localStorage to database
 
 ## Key Files Reference
 
 **Model Configuration:**
-- `shared/config/baseConfig.js` - Central config with APP_MODELS and getModelForApp()
-- `shared/config/index.js` - Exports getModelForApp, getFallbackModelForApp
+- `shared/config/baseConfig.js` - APP_MODELS config and getModelForApp()
+- `shared/utils/modelNames.js` - Model ID to friendly name mapping
 
-**API Key Management:**
-- `shared/components/ApiKeyManager.js` - Current localStorage-based key management
-- `shared/components/ApiKeyManager.module.css` - Styles
+**API Key & Model Display:**
+- `shared/components/ApiKeyManager.js` - Manages API key with model indicator
+- `shared/components/ApiKeyManager.module.css` - Styling
+
+**Navigation:**
+- `shared/components/Layout.js` - Navigation items array (line 14)
 
 **Concept Evaluator:**
-- `pages/concept-evaluator.js` - Frontend with file upload and results display
-- `pages/api/evaluate-concepts.js` - API with Vision + text calls
+- `pages/concept-evaluator.js` - Frontend
+- `pages/api/evaluate-concepts.js` - API (uses Opus 4)
 
-**Reviewer Finder Core:**
+**Reviewer Finder:**
 - `pages/reviewer-finder.js` - Main page with 3 tabs
-- `lib/services/claude-reviewer-service.js` - Uses getModelForApp('reviewer-finder')
+- `lib/services/claude-reviewer-service.js` - Uses getModelForApp()
 
 ## Environment Variables
 
 ```
-CLAUDE_API_KEY=        # Required (will become per-user)
+CLAUDE_API_KEY=        # Required
 POSTGRES_URL=          # Auto-set by Vercel Postgres
-SERP_API_KEY=          # Google/Scholar search (will become per-user)
-NCBI_API_KEY=          # Higher PubMed rate limits (will become per-user)
+SERP_API_KEY=          # Google/Scholar search (optional)
+NCBI_API_KEY=          # Higher PubMed rate limits (optional)
 
-# Per-app model overrides (optional, will become per-user preferences)
-CLAUDE_MODEL_CONCEPT_EVALUATOR=   # Override Opus → Sonnet if needed
-CLAUDE_MODEL_EXPENSE_REPORTER=    # Upgrade Haiku → Sonnet if needed
+# Per-app model overrides (optional)
+CLAUDE_MODEL_CONCEPT_EVALUATOR=claude-sonnet-4-20250514   # Downgrade Opus if needed
+CLAUDE_MODEL_EXPENSE_REPORTER=claude-sonnet-4-20250514    # Upgrade Haiku if needed
 ```
 
 ## Running the App
@@ -213,3 +120,13 @@ CLAUDE_MODEL_EXPENSE_REPORTER=    # Upgrade Haiku → Sonnet if needed
 npm run dev
 # Access at http://localhost:3000
 ```
+
+## Git Status
+
+Branch: main
+
+Session 26 commits:
+- Add per-app model configuration for optimized cost/performance
+- Update documentation for Session 26 and prepare Session 27 prompt
+- Add model indicator to all apps showing current Claude model
+- Remove Literature Analyzer from navigation until implemented
