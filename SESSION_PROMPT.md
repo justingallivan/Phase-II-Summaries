@@ -1,4 +1,4 @@
-# Document Processing Suite - Session 27 Prompt
+# Document Processing Suite - Session 28 Prompt
 
 ## Current State (as of January 18, 2026)
 
@@ -13,93 +13,109 @@ The suite has 9 active apps (Literature Analyzer is planned but not yet implemen
 | **Phase II** | Batch Phase II Summaries, Funding Analysis, Create Phase II Writeup Draft, Reviewer Finder, Summarize Peer Reviews |
 | **Other Tools** | Expense Reporter |
 
-### Session 26 Summary
+### Session 27 Summary
 
-**1. Per-App Model Configuration (Completed)**
+**1. Email Tracking (Completed)**
 
-Implemented centralized model configuration in `shared/config/baseConfig.js`:
+Implemented full email tracking for reviewer candidates:
 
-| App | Model | Complexity |
-|-----|-------|------------|
-| Concept Evaluator | Opus 4 | High (Vision + Analysis) |
-| Batch Phase I/II Summaries | Sonnet 4 | High |
-| Phase I/II Writeup | Sonnet 4 | High |
-| Reviewer Finder | Sonnet 4 | High |
-| Peer Review Summarizer | Sonnet 4 | High |
-| Funding Analysis | Sonnet 4 | Medium |
-| Q&A, Refine | Sonnet 4 | Medium |
-| Expense Reporter | Haiku 3.5 | Low |
-| Contact Enrichment | Haiku 3.5 | Low |
-| Email Personalization | Haiku 3.5 | Low |
-
-**2. Model Indicator Added to All Apps (Completed)**
-
-Each app now displays its current model beneath the API key:
-```
-🔑 API Key: sk-•••••ijk [👁] [Edit] [Clear]
-─────────────────────────────────────────
-🤖 Model: Opus 4
-```
+| Feature | Description |
+|---------|-------------|
+| API Updates | PATCH endpoint accepts `emailSentAt`, `responseType`, `responseReceivedAt` |
+| Auto-mark sent | Generate emails modal marks candidates as sent with timestamp |
+| UI indicators | Sent date displayed on candidate cards (📧 Jan 18) |
+| Response tracking | Clicking Accepted/Declined sets response type and timestamp |
+| Bounced emails | Mark Bounced button in expanded details |
 
 **Key files:**
-- `shared/utils/modelNames.js` - Converts model IDs to friendly names
-- `shared/components/ApiKeyManager.js` - Extended with `appKey` prop
+- `pages/api/reviewer-finder/my-candidates.js` - Extended PATCH for email fields
+- `pages/api/reviewer-finder/generate-emails.js` - Added `markAsSent` option
+- `shared/components/EmailGeneratorModal.js` - Added checkbox and callback
+- `pages/reviewer-finder.js` - SavedCandidateCard email status display
 
-**3. Navigation Cleanup**
-- Removed Literature Analyzer from navigation ribbon (commented out until implemented)
+**2. Database Tab Phase 3 - Researcher Management (Completed)**
 
-**4. Future Work Documented: User Profiles & Preferences**
+Full researcher management in the Database tab:
 
-Planned system for per-user settings (API keys, model preferences):
-- Simple profile selector (no auth for trusted team)
-- Database storage for preferences
-- Per-user API keys to prevent rate limit conflicts
-- See detailed plan in SESSION_PROMPT.md from Session 26
+| Feature | Description |
+|---------|-------------|
+| Edit Researcher | Click row → Edit → modify name, affiliation, email, website, metrics |
+| Delete Researcher | Click row → Delete → confirmation with proposal count warning |
+| Bulk Selection | Checkbox column, select all on page |
+| Bulk Delete | Select multiple → Delete Selected → confirmation |
+| CSV Export | Export up to 1000 matching researchers with all fields |
+| Find Duplicates | Scans by email, name, ORCID, Google Scholar ID |
+| Merge Duplicates | Select primary → merge keywords/proposals → delete secondary |
 
-## Priority Tasks for Session 27
+**API endpoints added:**
+- `GET ?mode=duplicates` - Find potential duplicate researchers
+- `POST` - Merge researchers (combines data, transfers associations)
+- `PATCH` - Edit researcher info
+- `DELETE` - Delete single or multiple researchers
 
-### 1. Database Tab Phase 3 - Researcher Management
-- Edit researcher info directly in Database tab
-- Delete researchers (with confirmation)
-- Merge duplicate researchers
-- Bulk export to CSV
+**Key files:**
+- `pages/api/reviewer-finder/researchers.js` - All CRUD + merge operations
+- `pages/reviewer-finder.js` - ResearcherDetailModal with edit/delete, DuplicatesModal
 
-### 2. Email Tracking
-- Mark candidates as "email sent"
-- Track response status (accepted, declined, no response)
-- Use existing `email_sent_at`, `response_type` database columns
+**Session 27 Commits:**
+- `c89a8d4` Add email tracking for reviewer candidates
+- `18be0af` Add Database Tab Phase 3: researcher management features
 
-### 3. Literature Analyzer App
+## Priority Tasks for Session 28
+
+### 1. Literature Analyzer App
 - Currently placeholder, hidden from navigation
 - Paper synthesis and citation analysis
-- Consider integration with existing literature search services
+- Consider integration with existing literature search services (PubMed, ArXiv, etc.)
+- Potential features:
+  - Upload PDFs of papers
+  - Extract key findings, methods, conclusions
+  - Generate synthesis across multiple papers
+  - Citation network visualization
 
-### 4. User Profiles (When Ready)
+### 2. User Profiles (When Ready)
 Phase 1 implementation:
 - Create `user_profiles` and `user_preferences` tables
-- Add profile selector component
+- Add profile selector component (simple dropdown, no auth)
 - Move API key storage from localStorage to database
+- Per-user model preferences
+
+### 3. Reviewer Finder Enhancements
+- Add reviewer response tracking dashboard/summary
+- Export email tracking data to CSV
+- Add "re-invite" workflow for non-responders
+
+### 4. Documentation Updates
+- Update CLAUDE.md with Session 27 features
+- Add email tracking workflow to documentation
+- Document merge duplicates feature
 
 ## Key Files Reference
+
+**Email Tracking:**
+- `pages/api/reviewer-finder/my-candidates.js` - Email status CRUD
+- `pages/api/reviewer-finder/generate-emails.js` - Auto-mark as sent
+- `shared/components/EmailGeneratorModal.js` - Mark as Sent checkbox
+
+**Database Tab Phase 3:**
+- `pages/api/reviewer-finder/researchers.js` - Full CRUD + duplicates + merge
+- `pages/reviewer-finder.js` - DatabaseTab, ResearcherDetailModal, DuplicatesModal
 
 **Model Configuration:**
 - `shared/config/baseConfig.js` - APP_MODELS config and getModelForApp()
 - `shared/utils/modelNames.js` - Model ID to friendly name mapping
 
-**API Key & Model Display:**
-- `shared/components/ApiKeyManager.js` - Manages API key with model indicator
-- `shared/components/ApiKeyManager.module.css` - Styling
-
 **Navigation:**
-- `shared/components/Layout.js` - Navigation items array (line 14)
+- `shared/components/Layout.js` - Navigation items array
 
-**Concept Evaluator:**
-- `pages/concept-evaluator.js` - Frontend
-- `pages/api/evaluate-concepts.js` - API (uses Opus 4)
+## Database Schema (Email Tracking Fields)
 
-**Reviewer Finder:**
-- `pages/reviewer-finder.js` - Main page with 3 tabs
-- `lib/services/claude-reviewer-service.js` - Uses getModelForApp()
+```sql
+-- reviewer_suggestions table (existing columns now in use)
+email_sent_at TIMESTAMP        -- When invitation was sent
+response_type VARCHAR(50)      -- 'accepted', 'declined', 'no_response', 'bounced'
+response_received_at TIMESTAMP -- When response was received
+```
 
 ## Environment Variables
 
@@ -110,8 +126,8 @@ SERP_API_KEY=          # Google/Scholar search (optional)
 NCBI_API_KEY=          # Higher PubMed rate limits (optional)
 
 # Per-app model overrides (optional)
-CLAUDE_MODEL_CONCEPT_EVALUATOR=claude-sonnet-4-20250514   # Downgrade Opus if needed
-CLAUDE_MODEL_EXPENSE_REPORTER=claude-sonnet-4-20250514    # Upgrade Haiku if needed
+CLAUDE_MODEL_CONCEPT_EVALUATOR=claude-sonnet-4-20250514
+CLAUDE_MODEL_EXPENSE_REPORTER=claude-sonnet-4-20250514
 ```
 
 ## Running the App
@@ -125,8 +141,6 @@ npm run dev
 
 Branch: main
 
-Session 26 commits:
-- Add per-app model configuration for optimized cost/performance
-- Update documentation for Session 26 and prepare Session 27 prompt
-- Add model indicator to all apps showing current Claude model
-- Remove Literature Analyzer from navigation until implemented
+Session 27 commits:
+- Add email tracking for reviewer candidates
+- Add Database Tab Phase 3: researcher management features

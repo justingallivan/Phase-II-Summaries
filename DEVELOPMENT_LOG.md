@@ -1106,4 +1106,68 @@ All apps currently use the same model. This was flagged as a significant issue -
 
 ---
 
-Last Updated: January 16, 2026
+## Session 27 - January 18, 2026
+
+### Email Tracking for Reviewer Candidates
+
+Implemented full email tracking lifecycle for the Reviewer Finder:
+
+**API Changes:**
+- Extended `my-candidates.js` PATCH endpoint to accept `emailSentAt`, `responseType`, `responseReceivedAt`
+- Added `markAsSent` option to `generate-emails.js` that auto-records timestamp when emails are generated
+- Supports `'now'` as value for timestamps to set current time
+
+**UI Changes:**
+- EmailGeneratorModal now has "Mark candidates as Email Sent" checkbox (default: on)
+- SavedCandidateCard displays sent timestamp (📧 Jan 18) next to status buttons
+- Clicking Invited toggles `email_sent_at`
+- Clicking Accepted/Declined sets `response_type` and `response_received_at`
+- Added "Mark Bounced" button in expanded card details
+
+### Database Tab Phase 3 - Researcher Management
+
+Complete CRUD operations for researchers in the Database tab:
+
+**API Endpoints Added (`/api/reviewer-finder/researchers`):**
+- `GET ?mode=duplicates` - Find potential duplicates by email, normalized name, ORCID, Google Scholar ID
+- `POST` - Merge researchers (moves keywords, transfers proposal associations, keeps best data)
+- `PATCH` - Edit researcher fields (name, affiliation, email, website, metrics)
+- `DELETE` - Delete single researcher or bulk delete multiple
+
+**UI Features:**
+- ResearcherDetailModal enhanced with Edit and Delete buttons
+- Edit mode: inline form for all editable fields
+- Delete confirmation showing proposal association count
+- Bulk selection with checkbox column and "select all" header
+- Bulk delete with confirmation dialog
+- CSV Export button (fetches up to 1000 matching researchers)
+- Find Duplicates button opens DuplicatesModal
+- DuplicatesModal shows groups by match type, allows selecting primary and merging
+
+**Merge Logic:**
+- Keywords moved to primary (ON CONFLICT DO NOTHING for duplicates)
+- Proposal associations (reviewer_suggestions) transferred to primary
+- Missing data (email, website, ORCID, Scholar ID) filled from secondary
+- Higher metrics (h-index, i10-index, citations) kept
+- Secondary researcher deleted after merge
+
+### Files Modified
+
+**Email Tracking:**
+- `pages/api/reviewer-finder/my-candidates.js` - Email tracking fields in GET and PATCH
+- `pages/api/reviewer-finder/generate-emails.js` - markAsSent option with DB updates
+- `shared/components/EmailGeneratorModal.js` - Checkbox and onEmailsGenerated callback
+- `pages/reviewer-finder.js` - SavedCandidateCard email display and handlers
+
+**Database Tab Phase 3:**
+- `pages/api/reviewer-finder/researchers.js` - POST/PATCH/DELETE + duplicates mode
+- `pages/reviewer-finder.js` - ResearcherDetailModal edit/delete, DuplicatesModal, bulk operations
+
+### Git Commits
+
+- `c89a8d4` Add email tracking for reviewer candidates
+- `18be0af` Add Database Tab Phase 3: researcher management features
+
+---
+
+Last Updated: January 18, 2026
