@@ -188,6 +188,7 @@ export default function BatchPhaseISummaries() {
           <ApiKeyManager
             onApiKeySet={handleApiKeySet}
             required={true}
+            appKey="batch-phase-i"
           />
         </div>
       </Card>

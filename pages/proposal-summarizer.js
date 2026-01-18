@@ -258,9 +258,10 @@ export default function ProposalSummarizer() {
 
       <Card className="mb-8">
         <div className="text-center">
-          <ApiKeyManager 
+          <ApiKeyManager
             onApiKeySet={handleApiKeySet}
             required={true}
+            appKey="phase-ii-writeup"
           />
         </div>
       </Card>

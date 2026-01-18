@@ -185,9 +185,10 @@ export default function BatchProposalSummaries() {
 
       <Card className="mb-8">
         <div className="text-center">
-          <ApiKeyManager 
+          <ApiKeyManager
             onApiKeySet={handleApiKeySet}
             required={true}
+            appKey="batch-phase-ii"
           />
         </div>
       </Card>

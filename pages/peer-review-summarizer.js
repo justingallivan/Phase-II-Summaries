@@ -168,9 +168,10 @@ export default function PeerReviewSummarizer() {
 
       <Card className="mb-8">
         <div className="text-center">
-          <ApiKeyManager 
+          <ApiKeyManager
             onApiKeySet={handleApiKeySet}
             required={true}
+            appKey="peer-review-summarizer"
           />
         </div>
       </Card>

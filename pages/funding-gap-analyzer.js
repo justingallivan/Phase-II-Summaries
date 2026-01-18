@@ -227,6 +227,7 @@ export default function FundingGapAnalyzer() {
           <ApiKeyManager
             onApiKeySet={handleApiKeySet}
             required={true}
+            appKey="funding-analysis"
           />
         </div>
       </Card>

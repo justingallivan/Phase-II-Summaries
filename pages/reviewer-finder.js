@@ -18,6 +18,8 @@ import ApiSettingsPanel from '../shared/components/ApiSettingsPanel';
 import EmailSettingsPanel from '../shared/components/EmailSettingsPanel';
 import EmailGeneratorModal from '../shared/components/EmailGeneratorModal';
 import SettingsModal from '../shared/components/SettingsModal';
+import { getModelDisplayName } from '../shared/utils/modelNames';
+import { BASE_CONFIG } from '../shared/config/baseConfig';
 
 // Helper to extract email from affiliation string (fallback when email field is null)
 function extractEmailFromAffiliation(affiliation) {
@@ -3819,6 +3821,14 @@ export default function ReviewerFinderPage() {
             {apiKey && (
               <span className="text-green-500 text-sm">✓ Saved</span>
             )}
+          </div>
+
+          {/* Model Indicator */}
+          <div className="flex items-center gap-2 mb-4 pt-3 border-t border-gray-200">
+            <span className="text-lg">🤖</span>
+            <span className="text-sm text-gray-600">
+              Model: <strong className="text-gray-800">{getModelDisplayName(BASE_CONFIG.APP_MODELS?.['reviewer-finder']?.model || BASE_CONFIG.CLAUDE.DEFAULT_MODEL)}</strong>
+            </span>
           </div>
 
           {/* Optional API Settings (ORCID, NCBI) */}

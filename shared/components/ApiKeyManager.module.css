@@ -12,6 +12,30 @@
   gap: 0.75rem;
 }
 
+/* Model indicator styles */
+.modelIndicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e0e0e0;
+}
+
+.modelIcon {
+  font-size: 1.25rem;
+}
+
+.modelText {
+  font-size: 0.875rem;
+  color: #555;
+}
+
+.modelText strong {
+  color: #333;
+  font-weight: 600;
+}
+
 .statusIcon {
   font-size: 1.5rem;
 }

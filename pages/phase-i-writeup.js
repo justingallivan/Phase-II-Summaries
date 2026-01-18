@@ -144,6 +144,7 @@ export default function PhaseIWriteup() {
           <ApiKeyManager
             onApiKeySet={handleApiKeySet}
             required={true}
+            appKey="phase-i-writeup"
           />
         </div>
       </Card>

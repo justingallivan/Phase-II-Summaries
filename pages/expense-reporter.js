@@ -334,6 +334,7 @@ export default function ExpenseReporter() {
             apiKey={apiKey}
             setApiKey={setApiKey}
             onClose={() => setShowApiKeyModal(false)}
+            appKey="expense-reporter"
           />
         )}
 

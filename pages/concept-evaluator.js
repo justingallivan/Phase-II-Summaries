@@ -479,6 +479,7 @@ export default function ConceptEvaluator() {
           <ApiKeyManager
             onApiKeySet={handleApiKeySet}
             required={true}
+            appKey="concept-evaluator"
           />
         </div>
       </Card>

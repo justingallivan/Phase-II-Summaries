@@ -1,9 +1,26 @@
 import { useState, useEffect } from 'react';
 import styles from './ApiKeyManager.module.css';
+import { getModelDisplayName } from '../utils/modelNames';
+import { BASE_CONFIG } from '../config/baseConfig';
 
 const API_KEY_STORAGE_KEY = 'claude_api_key_encrypted';
 
-export default function ApiKeyManager({ onApiKeySet, required = true }) {
+/**
+ * Get the model for a specific app (client-side version)
+ * This mirrors the server-side getModelForApp but runs in the browser
+ */
+function getModelForAppClient(appKey) {
+  if (!appKey) return BASE_CONFIG.CLAUDE.DEFAULT_MODEL;
+
+  const appConfig = BASE_CONFIG.APP_MODELS?.[appKey];
+  if (appConfig) {
+    return appConfig.model || BASE_CONFIG.CLAUDE.DEFAULT_MODEL;
+  }
+
+  return BASE_CONFIG.CLAUDE.DEFAULT_MODEL;
+}
+
+export default function ApiKeyManager({ onApiKeySet, required = true, appKey = null }) {
   const [apiKey, setApiKey] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [isKeyStored, setIsKeyStored] = useState(false);
@@ -49,6 +66,10 @@ export default function ApiKeyManager({ onApiKeySet, required = true }) {
     return `${key.substring(0, 3)}••••••${key.substring(key.length - 3)}`;
   };
 
+  // Get current model info if appKey is provided
+  const currentModel = appKey ? getModelForAppClient(appKey) : null;
+  const modelDisplayName = currentModel ? getModelDisplayName(currentModel) : null;
+
   return (
     <>
       <div className={styles.apiKeyStatus}>
@@ -88,6 +109,16 @@ export default function ApiKeyManager({ onApiKeySet, required = true }) {
             >
               Add Key
             </button>
+          </div>
+        )}
+
+        {/* Model indicator - shown when appKey is provided */}
+        {appKey && modelDisplayName && (
+          <div className={styles.modelIndicator}>
+            <span className={styles.modelIcon}>🤖</span>
+            <span className={styles.modelText}>
+              Model: <strong>{modelDisplayName}</strong>
+            </span>
           </div>
         )}
       </div>
