@@ -133,6 +133,7 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
     isLoadingRef.current = true;
     lastLoadedProfileId.current = profileId;
     setIsLoading(true);
+    setShowMigrationPrompt(false);
 
     const loaded = {
       orcidClientId: '',
@@ -141,10 +142,7 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
       serpApiKey: '',
     };
 
-    let fromProfile = false;
-    let fromLocalStorage = false;
-
-    // Try loading from profile first
+    // If profile is selected, ONLY use profile storage (not localStorage)
     if (profileId && getDecryptedApiKey) {
       try {
         const [orcidId, orcidSecret, ncbi, serp] = await Promise.all([
@@ -154,16 +152,42 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
           getDecryptedApiKey(PREFERENCE_KEYS.SERP_API_KEY),
         ]);
 
-        if (orcidId) { loaded.orcidClientId = orcidId; fromProfile = true; }
-        if (orcidSecret) { loaded.orcidClientSecret = orcidSecret; fromProfile = true; }
-        if (ncbi) { loaded.ncbiApiKey = ncbi; fromProfile = true; }
-        if (serp) { loaded.serpApiKey = serp; fromProfile = true; }
+        if (orcidId) { loaded.orcidClientId = orcidId; }
+        if (orcidSecret) { loaded.orcidClientSecret = orcidSecret; }
+        if (ncbi) { loaded.ncbiApiKey = ncbi; }
+        if (serp) { loaded.serpApiKey = serp; }
       } catch (err) {
         console.error('Error loading settings from profile:', err);
       }
+
+      // Check if localStorage has keys to migrate (don't auto-fill, just prompt)
+      const stored = {
+        orcidClientId: localStorage.getItem(STORAGE_KEYS.ORCID_CLIENT_ID),
+        orcidClientSecret: localStorage.getItem(STORAGE_KEYS.ORCID_CLIENT_SECRET),
+        ncbiApiKey: localStorage.getItem(STORAGE_KEYS.NCBI_API_KEY),
+        serpApiKey: localStorage.getItem(STORAGE_KEYS.SERP_API_KEY),
+      };
+      const hasLocalStorage = Object.values(stored).some(v => v);
+      const hasProfile = Object.values(loaded).some(v => v);
+
+      if (hasLocalStorage && !hasProfile && !migratedProfiles.has(profileId)) {
+        setShowMigrationPrompt(true);
+      }
+
+      setSettings(loaded);
+      const hasAny = Object.values(loaded).some(v => v && v.length > 0);
+      setHasStoredSettings(hasAny);
+
+      if (onSettingsChange) {
+        onSettingsChange(loaded);
+      }
+
+      setIsLoading(false);
+      isLoadingRef.current = false;
+      return;
     }
 
-    // Fall back to or augment with localStorage
+    // No profile selected - use localStorage
     const stored = {
       orcidClientId: localStorage.getItem(STORAGE_KEYS.ORCID_CLIENT_ID),
       orcidClientSecret: localStorage.getItem(STORAGE_KEYS.ORCID_CLIENT_SECRET),
@@ -171,36 +195,16 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
       serpApiKey: localStorage.getItem(STORAGE_KEYS.SERP_API_KEY),
     };
 
-    if (stored.orcidClientId && !loaded.orcidClientId) {
-      loaded.orcidClientId = atob(stored.orcidClientId);
-      fromLocalStorage = true;
-    }
-    if (stored.orcidClientSecret && !loaded.orcidClientSecret) {
-      loaded.orcidClientSecret = atob(stored.orcidClientSecret);
-      fromLocalStorage = true;
-    }
-    if (stored.ncbiApiKey && !loaded.ncbiApiKey) {
-      loaded.ncbiApiKey = atob(stored.ncbiApiKey);
-      fromLocalStorage = true;
-    }
-    if (stored.serpApiKey && !loaded.serpApiKey) {
-      loaded.serpApiKey = atob(stored.serpApiKey);
-      fromLocalStorage = true;
-    }
+    if (stored.orcidClientId) { loaded.orcidClientId = atob(stored.orcidClientId); }
+    if (stored.orcidClientSecret) { loaded.orcidClientSecret = atob(stored.orcidClientSecret); }
+    if (stored.ncbiApiKey) { loaded.ncbiApiKey = atob(stored.ncbiApiKey); }
+    if (stored.serpApiKey) { loaded.serpApiKey = atob(stored.serpApiKey); }
 
     setSettings(loaded);
 
     const hasAny = Object.values(loaded).some(v => v && v.length > 0);
     setHasStoredSettings(hasAny);
 
-    // Show migration prompt if we have localStorage data but also have a profile (once per session per profile)
-    if (profileId && fromLocalStorage && !fromProfile && !migratedProfiles.has(profileId)) {
-      setShowMigrationPrompt(true);
-    } else {
-      setShowMigrationPrompt(false);
-    }
-
-    // Notify parent of initial settings
     if (onSettingsChange) {
       onSettingsChange(loaded);
     }

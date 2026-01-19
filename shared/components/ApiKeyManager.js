@@ -63,9 +63,10 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
     isLoadingRef.current = true;
     lastLoadedProfileId.current = profileId;
     setIsLoading(true);
+    setShowMigrationPrompt(false);
 
     try {
-      // If profile is selected, try to get key from profile first
+      // If profile is selected, ONLY use profile storage (not localStorage)
       if (profileId && getDecryptedApiKey) {
         try {
           const key = await getDecryptedApiKey(PREFERENCE_KEY);
@@ -74,17 +75,35 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
             setMaskedKey(maskApiKeyValue(key));
             setIsKeyStored(true);
             onApiKeySet(key);
-            setShowMigrationPrompt(false);
             setIsLoading(false);
             isLoadingRef.current = false;
             return;
           }
         } catch (e) {
-          // Profile doesn't have key, continue to localStorage
+          // Profile doesn't have key
         }
+
+        // Profile selected but no key - check if localStorage has one to migrate
+        const storedKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+        if (storedKey && !migratedProfiles.has(profileId)) {
+          // Don't auto-fill the key, just show migration prompt
+          setShowMigrationPrompt(true);
+        }
+
+        // No key for this profile
+        setApiKey('');
+        setMaskedKey('');
+        setIsKeyStored(false);
+        onApiKeySet('');
+        if (required) {
+          setShowModal(true);
+        }
+        setIsLoading(false);
+        isLoadingRef.current = false;
+        return;
       }
 
-      // Fallback to localStorage
+      // No profile selected - use localStorage
       const storedKey = localStorage.getItem(API_KEY_STORAGE_KEY);
       if (storedKey) {
         const decrypted = atob(storedKey);
@@ -92,24 +111,23 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
         setMaskedKey(maskApiKeyValue(decrypted));
         setIsKeyStored(true);
         onApiKeySet(decrypted);
-
-        // If we have a profile and localStorage key, prompt to migrate (once per profile per session)
-        if (profileId && !migratedProfiles.has(profileId)) {
-          setShowMigrationPrompt(true);
-        }
       } else if (required) {
         setShowModal(true);
       }
     } catch (error) {
       console.error('Error loading API key:', error);
-      // Try localStorage as final fallback
-      const storedKey = localStorage.getItem(API_KEY_STORAGE_KEY);
-      if (storedKey) {
-        const decrypted = atob(storedKey);
-        setApiKey(decrypted);
-        setMaskedKey(maskApiKeyValue(decrypted));
-        setIsKeyStored(true);
-        onApiKeySet(decrypted);
+      // Only use localStorage if no profile is selected
+      if (!profileId) {
+        const storedKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+        if (storedKey) {
+          const decrypted = atob(storedKey);
+          setApiKey(decrypted);
+          setMaskedKey(maskApiKeyValue(decrypted));
+          setIsKeyStored(true);
+          onApiKeySet(decrypted);
+        } else if (required) {
+          setShowModal(true);
+        }
       } else if (required) {
         setShowModal(true);
       }
