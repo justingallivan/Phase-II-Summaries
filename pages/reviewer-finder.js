@@ -432,7 +432,9 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
 
   // Current cycle state
   const [currentCycleInfo, setCurrentCycleInfo] = useState(null);
-  const [availableCycles, setAvailableCycles] = useState([]);
+  const [availableCycles, setAvailableCycles] = useState([]); // Recent cycles (rolling window)
+  const [allCyclesList, setAllCyclesList] = useState([]); // All active cycles
+  const [showAllCycles, setShowAllCycles] = useState(false); // Toggle for showing all cycles
 
   // Generate cycle options for current year and next year (18 months coverage)
   const generateCycleOptions = () => {
@@ -510,6 +512,24 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
           });
 
           setAvailableCycles(relevantCycles);
+
+          // Also store all active cycles for "show all" mode
+          let allActiveCycles = allCycles.filter(c => c.isActive);
+          // Deduplicate
+          const seenAll = new Set();
+          allActiveCycles = allActiveCycles.filter(c => {
+            if (seenAll.has(c.shortCode)) return false;
+            seenAll.add(c.shortCode);
+            return true;
+          });
+          // Sort by year descending (newest first), then D before J
+          allActiveCycles.sort((a, b) => {
+            const aYear = parseInt(a.shortCode.slice(1), 10);
+            const bYear = parseInt(b.shortCode.slice(1), 10);
+            if (aYear !== bYear) return bYear - aYear; // Descending
+            return a.shortCode[0] === 'D' ? -1 : 1; // D before J within same year
+          });
+          setAllCyclesList(allActiveCycles);
 
           // Set current cycle from localStorage or default to first option
           const storedCycleId = localStorage.getItem(CURRENT_CYCLE_KEY);
@@ -1094,7 +1114,16 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
             <span className="text-gray-500">Grant Cycle:</span>
             <select
               value={currentCycleInfo?.id || ''}
-              onChange={(e) => handleCycleChange(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === '__show_all__') {
+                  setShowAllCycles(true);
+                } else if (val === '__show_recent__') {
+                  setShowAllCycles(false);
+                } else {
+                  handleCycleChange(val);
+                }
+              }}
               className="px-3 py-1.5 bg-purple-50 text-purple-700 rounded font-medium border-0 cursor-pointer appearance-none pr-8"
               style={{
                 backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3E%3Cpath stroke=\'%237c3aed\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'m6 8 4 4 4-4\'/%3E%3C/svg%3E")',
@@ -1103,11 +1132,17 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
                 backgroundSize: '1rem'
               }}
             >
-              {availableCycles.map(cycle => (
+              {(showAllCycles ? allCyclesList : availableCycles).map(cycle => (
                 <option key={cycle.id} value={cycle.id}>
                   {cycle.shortCode} - {cycle.name}
                 </option>
               ))}
+              <option disabled>───────────</option>
+              {showAllCycles ? (
+                <option value="__show_recent__">↩ Show recent only</option>
+              ) : (
+                <option value="__show_all__">Show all cycles ({allCyclesList.length})...</option>
+              )}
             </select>
           </div>
         </div>
