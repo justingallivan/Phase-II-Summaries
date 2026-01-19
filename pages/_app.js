@@ -1,10 +1,13 @@
 import '../styles/globals.css'
+import { SessionProvider } from 'next-auth/react'
 import { ProfileProvider } from '../shared/context/ProfileContext'
 
-export default function App({ Component, pageProps }) {
+export default function App({ Component, pageProps: { session, ...pageProps } }) {
   return (
-    <ProfileProvider>
-      <Component {...pageProps} />
-    </ProfileProvider>
+    <SessionProvider session={session}>
+      <ProfileProvider>
+        <Component {...pageProps} />
+      </ProfileProvider>
+    </SessionProvider>
   )
 }

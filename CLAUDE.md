@@ -287,16 +287,60 @@ The `email_opened_at` field exists in the `reviewer_suggestions` table, reserved
 
 ## User Profiles System
 
-Multi-user support without authentication. Each user has isolated API keys and "My Candidates" data.
+Multi-user support with Microsoft Azure AD authentication. Each user has isolated API keys and "My Candidates" data.
 
 ### Overview
 
-- **Profile Selection**: Dropdown in header to switch between users
+- **Authentication**: Microsoft Azure AD (Entra ID) single sign-on required
+- **Profile Linking**: Azure account linked to user profile on first login
 - **API Key Isolation**: Each profile has its own encrypted API keys
 - **Data Scoping**: My Candidates filtered by current profile
 - **Settings Page**: `/profile-settings` for profile management
 
-### Database Tables (V10 Migration)
+### Microsoft Authentication (V11)
+
+**Flow:**
+1. User visits app → RequireAuth redirects to Microsoft login
+2. After Azure authentication → signIn callback checks for linked profile
+3. First login → ProfileLinkingDialog lets user pick existing profile or create new
+4. Future logins → Auto-selects linked profile from session
+
+**Environment Variables:**
+```env
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=<generate-with: openssl rand -base64 32>
+AZURE_AD_CLIENT_ID=<from Azure Portal>
+AZURE_AD_CLIENT_SECRET=<from Azure Portal>
+AZURE_AD_TENANT_ID=<your organization's tenant ID>
+```
+
+**Key Files:**
+| File | Purpose |
+|------|---------|
+| `pages/api/auth/[...nextauth].js` | NextAuth API route with Azure AD provider |
+| `pages/api/auth/link-profile.js` | API for linking Azure account to profile |
+| `pages/auth/signin.js` | Custom sign-in page |
+| `pages/auth/error.js` | Custom error page |
+| `shared/components/RequireAuth.js` | Auth guard component |
+| `shared/components/ProfileLinkingDialog.js` | First-login profile selection |
+| `lib/utils/auth.js` | Server-side auth utilities |
+
+**Protecting API Routes:**
+```javascript
+import { requireAuth, requireAuthWithProfile } from '../../lib/utils/auth';
+
+export default async function handler(req, res) {
+  // Option 1: Just require authentication
+  const session = await requireAuth(req, res);
+  if (!session) return; // 401 already sent
+
+  // Option 2: Require auth + profile for data scoping
+  const profileId = await requireAuthWithProfile(req, res);
+  if (!profileId) return; // 401 or 403 already sent
+}
+```
+
+### Database Tables (V10 + V11 Migrations)
 
 **`user_profiles`** - User identity
 | Column | Type | Description |
@@ -308,6 +352,10 @@ Multi-user support without authentication. Each user has isolated API keys and "
 | is_default | BOOLEAN | Auto-select on fresh browser |
 | is_active | BOOLEAN | Soft delete flag |
 | last_used_at | TIMESTAMP | For sorting |
+| azure_id | VARCHAR(255) | Azure AD user ID (unique) |
+| azure_email | VARCHAR(255) | User's Azure email |
+| last_login_at | TIMESTAMP | Last Azure login |
+| needs_linking | BOOLEAN | True if first-time login |
 
 **`user_preferences`** - Per-user settings (API keys encrypted)
 | Column | Type | Description |
@@ -353,16 +401,21 @@ node scripts/manage-preferences.js --delete-keys --profile 2
 | File | Purpose |
 |------|---------|
 | `shared/context/ProfileContext.js` | React context for global profile state |
-| `shared/components/ProfileSelector.js` | Header dropdown component |
+| `shared/components/RequireAuth.js` | Auth guard with profile linking |
+| `shared/components/ProfileLinkingDialog.js` | First-login profile selection |
 | `pages/profile-settings.js` | Profile management page |
+| `pages/api/auth/[...nextauth].js` | NextAuth API route |
+| `pages/api/auth/link-profile.js` | Profile linking endpoint |
 | `pages/api/user-profiles.js` | CRUD API for profiles |
 | `pages/api/user-preferences.js` | API for preferences with encryption |
 | `lib/utils/encryption.js` | AES-256-GCM encryption utilities |
+| `lib/utils/auth.js` | Server-side auth utilities |
 
 ## Tech Stack
 
 - **Frontend**: Next.js 14, React 18, Tailwind CSS 3.4
 - **Backend**: Next.js API Routes
+- **Authentication**: NextAuth.js with Azure AD provider
 - **AI**: Claude API (Anthropic)
 - **Database**: Vercel Postgres (for reviewer caching + user profiles)
 - **File Storage**: Vercel Blob (for uploads >4.5MB)
@@ -377,6 +430,13 @@ CLAUDE_API_KEY=your_api_key
 
 # Database (auto-set by Vercel Postgres)
 POSTGRES_URL=...
+
+# Required - Authentication (Azure AD)
+NEXTAUTH_URL=http://localhost:3000     # Base URL (https://... in production)
+NEXTAUTH_SECRET=...                     # Generate with: openssl rand -base64 32
+AZURE_AD_CLIENT_ID=...                  # From Azure Portal app registration
+AZURE_AD_CLIENT_SECRET=...              # From Azure Portal app registration
+AZURE_AD_TENANT_ID=...                  # Your organization's tenant ID
 
 # Optional - Enhanced Features
 SERP_API_KEY=...           # Google Scholar searches (paid)

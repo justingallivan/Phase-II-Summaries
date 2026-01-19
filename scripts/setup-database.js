@@ -288,6 +288,18 @@ const v10Alterations = [
   `CREATE INDEX IF NOT EXISTS idx_reviewer_suggestions_user ON reviewer_suggestions(user_profile_id)`,
 ];
 
+// V11: Azure AD authentication integration
+const v11Alterations = [
+  // Add Azure AD fields to user_profiles
+  `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS azure_id VARCHAR(255) UNIQUE`,
+  `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS azure_email VARCHAR(255)`,
+  `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP`,
+  `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS needs_linking BOOLEAN DEFAULT false`,
+  // Index for Azure ID lookups
+  `CREATE INDEX IF NOT EXISTS idx_user_profiles_azure_id ON user_profiles(azure_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_user_profiles_azure_email ON user_profiles(azure_email)`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -573,6 +585,24 @@ async function runMigration() {
       }
     }
 
+    // Run V11 column additions (Azure AD authentication)
+    console.log(`\nApplying v11 schema updates - Azure AD authentication (${v11Alterations.length} alterations)...`);
+    for (let i = 0; i < v11Alterations.length; i++) {
+      const statement = v11Alterations[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v11-${i + 1}/${v11Alterations.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists') || error.message.includes('duplicate column')) {
+          console.log(`[v11-${i + 1}/${v11Alterations.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v11-${i + 1}/${v11Alterations.length}] ✗ Error: ${error.message}`);
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -624,7 +654,12 @@ async function runMigration() {
     console.log('\nV10 column additions (user profile FK):');
     console.log('  • proposal_searches.user_profile_id');
     console.log('  • reviewer_suggestions.user_profile_id');
-    console.log('\nIndexes created: 25');
+    console.log('\nV11 column additions (Azure AD authentication):');
+    console.log('  • user_profiles.azure_id (unique)');
+    console.log('  • user_profiles.azure_email');
+    console.log('  • user_profiles.last_login_at');
+    console.log('  • user_profiles.needs_linking');
+    console.log('\nIndexes created: 27');
 
   } catch (error) {
     console.error('\n✗ Migration failed:', error.message);

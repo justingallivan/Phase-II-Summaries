@@ -1,18 +1,21 @@
 /**
  * ProfileContext - Global user profile state management
  *
- * Provides profile selection and preference management across the app.
- * Stores selected profile ID in localStorage for persistence.
+ * Integrates with NextAuth session for automatic profile selection.
+ * When authenticated, the profile is determined by the Azure account.
+ * Provides preference management across the app.
  */
 
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
 
 const ProfileContext = createContext(null);
 
-// localStorage key for persisting selected profile
+// localStorage key for persisting selected profile (fallback when not authenticated)
 const SELECTED_PROFILE_KEY = 'selected_user_profile_id';
 
 export function ProfileProvider({ children }) {
+  const { data: session, status: sessionStatus } = useSession();
   const [profiles, setProfiles] = useState([]);
   const [currentProfile, setCurrentProfile] = useState(null);
   const [preferences, setPreferences] = useState({});
@@ -62,7 +65,8 @@ export function ProfileProvider({ children }) {
   }, []);
 
   /**
-   * Select a profile by ID
+   * Select a profile by ID (for non-authenticated mode or admin scenarios)
+   * In authenticated mode, profile is auto-selected based on session
    */
   const selectProfile = useCallback(async (profileId) => {
     if (!profileId) {
@@ -294,15 +298,31 @@ export function ProfileProvider({ children }) {
     return preferences[key] !== undefined && preferences[key] !== null && preferences[key] !== '';
   }, [preferences]);
 
-  // Initial load
+  // Initialize profile based on session
   useEffect(() => {
     async function init() {
+      // Wait for session to be determined
+      if (sessionStatus === 'loading') {
+        return;
+      }
+
       setIsLoading(true);
       try {
         const loadedProfiles = await refreshProfiles();
 
+        // If authenticated, use the profile from the session
+        if (sessionStatus === 'authenticated' && session?.user?.profileId) {
+          const sessionProfile = loadedProfiles.find(p => p.id === session.user.profileId);
+          if (sessionProfile) {
+            setCurrentProfile(sessionProfile);
+            await refreshPreferences(sessionProfile.id);
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        // Fallback: use localStorage or default (for unauthenticated access)
         if (loadedProfiles.length > 0) {
-          // Try to restore previously selected profile from localStorage
           const savedProfileId = localStorage.getItem(SELECTED_PROFILE_KEY);
 
           if (savedProfileId) {
@@ -338,7 +358,7 @@ export function ProfileProvider({ children }) {
     }
 
     init();
-  }, [refreshProfiles, refreshPreferences]);
+  }, [sessionStatus, session?.user?.profileId, refreshProfiles, refreshPreferences]);
 
   const value = {
     // State
@@ -347,6 +367,11 @@ export function ProfileProvider({ children }) {
     preferences,
     isLoading,
     error,
+
+    // Session info
+    session,
+    isAuthenticated: sessionStatus === 'authenticated',
+    sessionStatus,
 
     // Profile management
     selectProfile,

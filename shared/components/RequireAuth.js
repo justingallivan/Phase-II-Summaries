@@ -1,0 +1,108 @@
+/**
+ * RequireAuth - Authentication guard component
+ *
+ * Wraps pages that require authentication. Shows loading state while
+ * checking session, redirects to signin if unauthenticated.
+ *
+ * Also handles profile linking for first-time Azure logins.
+ */
+
+import { useSession, signIn } from 'next-auth/react';
+import { useEffect, useState } from 'react';
+import ProfileLinkingDialog from './ProfileLinkingDialog';
+
+export default function RequireAuth({ children }) {
+  const { data: session, status } = useSession();
+  const [showLinkingDialog, setShowLinkingDialog] = useState(false);
+
+  useEffect(() => {
+    // Check if user needs to link to an existing profile
+    if (status === 'authenticated' && session?.user?.needsLinking) {
+      setShowLinkingDialog(true);
+    }
+  }, [status, session?.user?.needsLinking]);
+
+  // Loading state
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-gray-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Not authenticated - redirect to signin
+  if (status === 'unauthenticated') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="max-w-md w-full mx-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-8 text-center">
+            <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg
+                className="w-8 h-8 text-indigo-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">
+              Sign In Required
+            </h1>
+            <p className="text-gray-600 mb-6">
+              Please sign in with your Microsoft account to access the Document Processing Suite.
+            </p>
+            <button
+              onClick={() => signIn('azure-ad')}
+              className="w-full flex items-center justify-center gap-3 px-6 py-3 bg-gray-900 hover:bg-gray-800 text-white font-semibold rounded-lg transition-colors"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 21 21" fill="none">
+                <rect width="10" height="10" fill="#f25022" />
+                <rect x="11" width="10" height="10" fill="#7fba00" />
+                <rect y="11" width="10" height="10" fill="#00a4ef" />
+                <rect x="11" y="11" width="10" height="10" fill="#ffb900" />
+              </svg>
+              Sign in with Microsoft
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Authenticated but needs to link to existing profile
+  if (showLinkingDialog) {
+    return (
+      <ProfileLinkingDialog
+        session={session}
+        onLinked={() => setShowLinkingDialog(false)}
+      />
+    );
+  }
+
+  // Authenticated and profile linked - render children
+  return children;
+}
+
+/**
+ * Hook for checking authentication in API routes
+ * Use getServerSession from next-auth/next instead for server-side auth checks
+ */
+export function useRequireAuth() {
+  const { data: session, status } = useSession();
+  return {
+    session,
+    isLoading: status === 'loading',
+    isAuthenticated: status === 'authenticated',
+    profileId: session?.user?.profileId,
+  };
+}
