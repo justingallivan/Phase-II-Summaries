@@ -1216,8 +1216,74 @@ Implemented the Literature Analyzer app for research paper analysis and synthesi
 
 ### Git Commits
 
-- (pending) Implement Literature Analyzer app
+- `75559e3` Implement Literature Analyzer app for paper analysis and synthesis
 
 ---
 
-Last Updated: January 18, 2026
+## Session 29 - January 18-19, 2026
+
+### User Profiles Phase 1 Implementation
+
+Implemented multi-user support without authentication, enabling isolated API keys and "My Candidates" data per user.
+
+**Database Schema (V10 Migration):**
+- `user_profiles` table - User identity with avatar colors
+- `user_preferences` table - Per-user settings with AES-256-GCM encryption for API keys
+- Added `user_profile_id` FK to `proposal_searches` and `reviewer_suggestions`
+
+**Core Features:**
+- Profile selector dropdown in header for switching users
+- Profile Settings page at `/profile-settings` for managing profiles
+- Encrypted API key storage per profile (not shared via localStorage)
+- My Candidates filtered by current user profile
+- Legacy data (NULL user_profile_id) visible to all users until migrated
+
+**API Endpoints:**
+- `GET/POST/PATCH/DELETE /api/user-profiles` - Profile CRUD
+- `GET/POST/DELETE /api/user-preferences` - Preference management with encryption
+
+**Migration Tools:**
+- `export-proposals-for-migration.js` - Export proposals to CSV
+- `import-user-assignments.js` - Assign proposals to users from CSV
+- `manage-preferences.js` - View/delete API key preferences
+
+**Bug Fixes:**
+- Fixed ProfileProvider placement (moved to `_app.js` for SSR compatibility)
+- Fixed `setPreferences` naming conflict in ProfileContext
+- Fixed infinite re-render loop when switching profiles
+- Fixed localStorage fallback showing shared keys across profiles
+
+**Files Created:**
+- `lib/utils/encryption.js` - AES-256-GCM encryption utilities
+- `shared/context/ProfileContext.js` - React context for profile state
+- `shared/components/ProfileSelector.js` - Header dropdown
+- `pages/profile-settings.js` - Profile management page
+- `pages/api/user-profiles.js` - Profile API
+- `pages/api/user-preferences.js` - Preferences API
+- `scripts/export-proposals-for-migration.js`
+- `scripts/import-user-assignments.js`
+- `scripts/manage-preferences.js`
+- `scripts/test-profiles.js`
+
+**Files Modified:**
+- `scripts/setup-database.js` - V10 migration
+- `lib/services/database-service.js` - Profile/preference methods
+- `pages/_app.js` - ProfileProvider wrapper
+- `shared/components/Layout.js` - ProfileSelector in header
+- `shared/components/ApiKeyManager.js` - Profile integration, isolated keys
+- `shared/components/ApiSettingsPanel.js` - Profile integration, isolated keys
+- `pages/api/reviewer-finder/my-candidates.js` - User scoping
+- `pages/api/reviewer-finder/save-candidates.js` - User scoping
+- `pages/reviewer-finder.js` - Pass userProfileId to APIs
+
+### Git Commits
+
+- `943cb65` Implement User Profiles Phase 1 for multi-user support
+- `de60c03` Fix ProfileProvider and setPreferences naming conflict
+- `8277c1b` Fix profile switching loop in API key components
+- `f94ceb5` Isolate API keys per profile - do not show localStorage fallback
+- `f088353` Add migration CSV to gitignore
+
+---
+
+Last Updated: January 19, 2026

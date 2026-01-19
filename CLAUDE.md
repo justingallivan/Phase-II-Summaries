@@ -285,12 +285,86 @@ The `email_opened_at` field exists in the `reviewer_suggestions` table, reserved
 - [Use webhooks in Dynamics 365](https://learn.microsoft.com/en-us/dynamics365/customerengagement/on-premises/developer/use-webhooks)
 - [Dataverse API reference](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/webapi/overview)
 
+## User Profiles System
+
+Multi-user support without authentication. Each user has isolated API keys and "My Candidates" data.
+
+### Overview
+
+- **Profile Selection**: Dropdown in header to switch between users
+- **API Key Isolation**: Each profile has its own encrypted API keys
+- **Data Scoping**: My Candidates filtered by current profile
+- **Settings Page**: `/profile-settings` for profile management
+
+### Database Tables (V10 Migration)
+
+**`user_profiles`** - User identity
+| Column | Type | Description |
+|--------|------|-------------|
+| id | SERIAL | Primary key |
+| name | VARCHAR(255) | Unique username |
+| display_name | VARCHAR(255) | Display name |
+| avatar_color | VARCHAR(7) | Hex color for avatar |
+| is_default | BOOLEAN | Auto-select on fresh browser |
+| is_active | BOOLEAN | Soft delete flag |
+| last_used_at | TIMESTAMP | For sorting |
+
+**`user_preferences`** - Per-user settings (API keys encrypted)
+| Column | Type | Description |
+|--------|------|-------------|
+| user_profile_id | INTEGER | FK to user_profiles |
+| preference_key | VARCHAR(100) | Setting name |
+| preference_value | TEXT | Value (encrypted if API key) |
+| is_encrypted | BOOLEAN | Whether AES-256-GCM encrypted |
+
+**Encrypted preference keys:**
+- `api_key_claude`, `api_key_orcid_client_id`, `api_key_orcid_client_secret`, `api_key_ncbi`, `api_key_serp`
+
+### User Scoping
+
+| Table | Scoping | Rationale |
+|-------|---------|-----------|
+| `researchers` | Shared | Global pool of expert data |
+| `publications` | Shared | Linked to researchers |
+| `grant_cycles` | Shared | Organization-wide cycles |
+| `reviewer_suggestions` | Per-user | "My Candidates" is user-specific |
+| `proposal_searches` | Per-user | Each user's proposal analyses |
+
+Legacy data (user_profile_id=NULL) is visible to all users until migrated.
+
+### Profile Management Scripts
+
+```bash
+# Export proposals for user assignment
+node scripts/export-proposals-for-migration.js
+
+# Import user assignments from CSV (dry-run first)
+node scripts/import-user-assignments.js --file proposals-for-migration.csv --dry-run
+node scripts/import-user-assignments.js --file proposals-for-migration.csv
+
+# View/delete API key preferences
+node scripts/manage-preferences.js --list
+node scripts/manage-preferences.js --delete-all-keys
+node scripts/manage-preferences.js --delete-keys --profile 2
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `shared/context/ProfileContext.js` | React context for global profile state |
+| `shared/components/ProfileSelector.js` | Header dropdown component |
+| `pages/profile-settings.js` | Profile management page |
+| `pages/api/user-profiles.js` | CRUD API for profiles |
+| `pages/api/user-preferences.js` | API for preferences with encryption |
+| `lib/utils/encryption.js` | AES-256-GCM encryption utilities |
+
 ## Tech Stack
 
 - **Frontend**: Next.js 14, React 18, Tailwind CSS 3.4
 - **Backend**: Next.js API Routes
 - **AI**: Claude API (Anthropic)
-- **Database**: Vercel Postgres (for reviewer caching)
+- **Database**: Vercel Postgres (for reviewer caching + user profiles)
 - **File Storage**: Vercel Blob (for uploads >4.5MB)
 - **File Processing**: pdf-parse
 - **Deployment**: Vercel
@@ -309,6 +383,9 @@ SERP_API_KEY=...           # Google Scholar searches (paid)
 NCBI_API_KEY=...           # Higher PubMed rate limits
 ORCID_CLIENT_ID=...        # ORCID API access
 ORCID_CLIENT_SECRET=...    # ORCID API access
+
+# Optional - User Profiles (uses dev fallback if not set)
+USER_PREFS_ENCRYPTION_KEY=...  # 32-byte hex key for API key encryption
 ```
 
 ## Per-App Model Configuration
@@ -362,11 +439,16 @@ Located in `scripts/`:
 | `setup-database.js` | Run database migrations, create tables and indexes |
 | `cleanup-database.js` | Remove researchers missing email OR website (keeps high-quality entries) |
 | `clear-all-database.js` | Delete ALL data from all tables for a fresh start |
+| `export-proposals-for-migration.js` | Export proposals to CSV for user profile assignment |
+| `import-user-assignments.js` | Import user profile assignments from CSV |
+| `manage-preferences.js` | View and delete user API key preferences |
+| `test-profiles.js` | Test profile/preference database operations |
 
 Usage:
 ```bash
 node scripts/cleanup-database.js      # Clean up incomplete entries
 node scripts/clear-all-database.js    # Full reset
+node scripts/manage-preferences.js --list  # View all preferences
 ```
 
 ## Key Conventions
@@ -428,6 +510,15 @@ Located in `lib/services/`:
 ### Concept Evaluator
 - `POST /api/evaluate-concepts` - Evaluate research concepts with literature search (streaming)
 
+### User Profiles
+- `GET /api/user-profiles` - List all profiles (or single by `?id=N`)
+- `POST /api/user-profiles` - Create profile
+- `PATCH /api/user-profiles` - Update profile
+- `DELETE /api/user-profiles` - Archive profile (soft delete)
+- `GET /api/user-preferences` - Get preferences for profile (`?profileId=N`)
+- `POST /api/user-preferences` - Set preference(s)
+- `DELETE /api/user-preferences` - Delete preference
+
 ### Other
 - `POST /api/analyze-funding-gap` - Federal funding analysis (streaming)
 - `POST /api/process-expenses` - Expense extraction
@@ -449,4 +540,4 @@ For detailed session-by-session development history, see [DEVELOPMENT_LOG.md](./
 
 ---
 
-Last Updated: January 18, 2026
+Last Updated: January 19, 2026

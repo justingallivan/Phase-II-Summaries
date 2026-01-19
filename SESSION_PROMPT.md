@@ -1,10 +1,10 @@
-# Document Processing Suite - Session 29 Prompt
+# Document Processing Suite - Session 30 Prompt
 
-## Current State (as of January 18, 2026)
+## Current State (as of January 19, 2026)
 
 ### App Suite Overview
 
-The suite has **10 active apps**:
+The suite has **10 active apps** with multi-user support:
 
 | Category | Apps |
 |----------|------|
@@ -13,82 +13,86 @@ The suite has **10 active apps**:
 | **Phase II** | Batch Phase II Summaries, Funding Analysis, Create Phase II Writeup Draft, Reviewer Finder, Summarize Peer Reviews |
 | **Other Tools** | Expense Reporter, Literature Analyzer |
 
-### Session 28 Summary (Completed)
+### Session 29 Summary (Completed)
 
-**1. Response Tracking Dashboard (Completed)**
-- Visual metrics cards: Not Invited, Invited, Awaiting, Accepted, Declined, Bounced
-- Click-to-filter functionality on each metric card
-- Response rate and acceptance rate calculations
-- Color-coded "days since sent" indicators on candidate cards (gray <7d, yellow 7-14d, red >14d)
+**User Profiles Phase 1 - Full Implementation:**
 
-**2. Email Tracking CSV Export (Completed)**
-- Export button in My Candidates tab header
-- Includes: proposal info, reviewer info, email sent date, days since sent, response type, response date, notes
-- Filename includes cycle name and date
+1. **Database Schema (V10 Migration)**
+   - `user_profiles` table with avatar colors, default flags
+   - `user_preferences` table with AES-256-GCM encryption for API keys
+   - Added `user_profile_id` FK to `proposal_searches` and `reviewer_suggestions`
 
-**3. Re-invite Workflow (Completed)**
-- "Select Pending" button to quickly select all non-responders
-- "Re-invite" button for follow-up emails
-- Dedicated follow-up email template with appropriate language
-- Follow-up mode indicator in email generation modal
+2. **Profile Selection**
+   - Profile dropdown in header (all pages)
+   - Profile Settings page at `/profile-settings`
+   - Create, edit, archive profiles with colored avatars
 
-**4. Grant Cycle Improvements (Completed)**
-- Fixed duplicate cycles bug in database and API
-- Added "Show all cycles" option to dropdown
-- Default shows rolling 18-month window (4 cycles)
-- Expandable to show all active cycles sorted newest-first
-- Added cleanup script: `scripts/cleanup-duplicate-cycles.js`
+3. **API Key Isolation**
+   - Each profile has its own encrypted API keys (Claude, ORCID, NCBI, SerpAPI)
+   - Keys stored in database, NOT in localStorage
+   - Switching profiles loads only that profile's keys
 
-**5. Documentation Updates (Completed)**
-- Added Microsoft Dynamics 365 integration notes to CLAUDE.md
-- Documents future email tracking integration path via Dynamics webhooks
-- Notes about `email_opened_at` field reserved for Dynamics integration
+4. **User-Scoped Data**
+   - My Candidates filtered by current profile
+   - New proposals saved with user_profile_id
+   - Legacy data (NULL) visible to all until migrated
 
-### Session 27 Summary (Previous)
+5. **Migration Tools**
+   - `export-proposals-for-migration.js` - Export proposals to CSV
+   - `import-user-assignments.js` - Assign proposals to users
+   - `manage-preferences.js` - View/delete API keys by profile
 
-- Email tracking fields and UI
-- Database Tab Phase 3: researcher management, merge duplicates
+6. **Bug Fixes**
+   - Fixed SSR compatibility (ProfileProvider in _app.js)
+   - Fixed infinite re-render loop on profile switch
+   - Fixed localStorage keys showing across all profiles
 
-## Remaining Priority Tasks for Session 29
+### Current Users
 
-### 1. User Profiles (When Ready)
-Phase 1 implementation:
-- Create `user_profiles` and `user_preferences` tables
-- Add profile selector component (simple dropdown, no auth)
-- Move API key storage from localStorage to database
-- Per-user model preferences
+| ID | Name | Proposals |
+|----|------|-----------|
+| 1 | Test User | 1 |
+| 2 | Justin | 6 |
+| 3 | Kevin Moses | 6 |
+| 4 | Jean Kim | 5 |
+| 5 | Beth Pruitt | 5 |
+| 6 | Tom Rieker | 0 |
 
-### 2. Additional Documentation
-- Document response tracking dashboard features
-- Document re-invite workflow
+## Future Enhancements (Low Priority)
 
-### 3. Future Enhancements (Low Priority)
-- Email open tracking via Dynamics 365 integration
-- Response tracking charts/visualizations
+### 1. User Profiles Phase 2 (If Needed)
+- Per-user model preferences (override default Claude model)
+- Email template settings per user
+- Sender info (name, email, signature) stored in profile
+
+### 2. Email Integration
+- Dynamics 365 integration for email tracking
 - Automated reminder system for non-responders
+- Open/click tracking via webhooks
+
+### 3. Data Management
+- Archive old proposals
+- Bulk operations across grant cycles
 
 ## Key Files Reference
 
-**Response Tracking Dashboard:**
-- `pages/reviewer-finder.js` - MyCandidatesTab with metrics dashboard, CSV export, re-invite workflow
-- `shared/components/EmailGeneratorModal.js` - Follow-up email template support
+**User Profiles:**
+- `shared/context/ProfileContext.js` - React context for profile state
+- `shared/components/ProfileSelector.js` - Header dropdown
+- `pages/profile-settings.js` - Profile management page
+- `pages/api/user-profiles.js` - Profile CRUD API
+- `pages/api/user-preferences.js` - Encrypted preferences API
+- `lib/utils/encryption.js` - AES-256-GCM encryption
 
-**Grant Cycles:**
-- `pages/api/reviewer-finder/grant-cycles.js` - Duplicate prevention on create
-- `scripts/cleanup-duplicate-cycles.js` - Database cleanup utility
+**Migration Scripts:**
+- `scripts/export-proposals-for-migration.js`
+- `scripts/import-user-assignments.js`
+- `scripts/manage-preferences.js`
 
-**Literature Analyzer:**
-- `pages/literature-analyzer.js` - Frontend with tabbed results
-- `pages/api/analyze-literature.js` - Two-stage analysis API
-- `shared/config/prompts/literature-analyzer.js` - Extraction and synthesis prompts
-
-**Email Tracking:**
-- `pages/api/reviewer-finder/my-candidates.js` - Email status CRUD
-- `pages/api/reviewer-finder/generate-emails.js` - Auto-mark as sent
-
-**Database Tab:**
-- `pages/api/reviewer-finder/researchers.js` - Full CRUD + duplicates + merge
-- `pages/reviewer-finder.js` - DatabaseTab, ResearcherDetailModal, DuplicatesModal
+**Reviewer Finder:**
+- `pages/reviewer-finder.js` - Main app with My Candidates, Database tabs
+- `pages/api/reviewer-finder/my-candidates.js` - User-scoped queries
+- `pages/api/reviewer-finder/save-candidates.js` - Saves with user_profile_id
 
 ## Environment Variables
 
@@ -98,10 +102,11 @@ POSTGRES_URL=          # Auto-set by Vercel Postgres
 SERP_API_KEY=          # Google/Scholar search (optional)
 NCBI_API_KEY=          # Higher PubMed rate limits (optional)
 
+# User Profiles (optional - uses dev fallback)
+USER_PREFS_ENCRYPTION_KEY=  # 32-byte hex key for API key encryption
+
 # Per-app model overrides (optional)
 CLAUDE_MODEL_CONCEPT_EVALUATOR=claude-sonnet-4-20250514
-CLAUDE_MODEL_LITERATURE_ANALYZER=claude-sonnet-4-20250514
-CLAUDE_MODEL_EXPENSE_REPORTER=claude-sonnet-4-20250514
 ```
 
 ## Running the App
@@ -109,14 +114,20 @@ CLAUDE_MODEL_EXPENSE_REPORTER=claude-sonnet-4-20250514
 ```bash
 npm run dev
 # Access at http://localhost:3000
+
+# Database setup (if needed)
+node scripts/setup-database.js
 ```
 
 ## Git Status
 
 Branch: main
 
-Session 28 commits:
-- f6df26f Add "Show all cycles" option to grant cycle dropdown
-- ae802aa Fix duplicate grant cycles in dropdown
-- 4ef347b Add response tracking dashboard and re-invite workflow for Reviewer Finder
-- 75559e3 Implement Literature Analyzer app for paper analysis and synthesis
+Session 29 commits:
+- `943cb65` Implement User Profiles Phase 1 for multi-user support
+- `de60c03` Fix ProfileProvider and setPreferences naming conflict
+- `8277c1b` Fix profile switching loop in API key components
+- `f94ceb5` Isolate API keys per profile - do not show localStorage fallback
+- `f088353` Add migration CSV to gitignore
+
+52 commits ahead of origin/main (not pushed).
