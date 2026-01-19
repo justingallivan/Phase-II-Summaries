@@ -487,9 +487,19 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
 
           // Filter to only show current+next year cycles in dropdown
           const relevantShortCodes = neededCycles.map(c => c.shortCode);
-          const relevantCycles = allCycles.filter(c =>
+          let relevantCycles = allCycles.filter(c =>
             relevantShortCodes.includes(c.shortCode) && c.isActive
           );
+
+          // Deduplicate by shortCode (keep the first/oldest one)
+          const seenShortCodes = new Set();
+          relevantCycles = relevantCycles.filter(c => {
+            if (seenShortCodes.has(c.shortCode)) {
+              return false;
+            }
+            seenShortCodes.add(c.shortCode);
+            return true;
+          });
 
           // Sort: current year first, then by J before D
           relevantCycles.sort((a, b) => {

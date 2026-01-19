@@ -142,6 +142,22 @@ async function handlePost(req, res) {
       return res.status(400).json({ error: 'name is required' });
     }
 
+    // Check for existing cycle with same shortCode to prevent duplicates
+    if (shortCode) {
+      const existingCheck = await sql`
+        SELECT id, name FROM grant_cycles WHERE short_code = ${shortCode} AND is_active = true
+      `;
+      if (existingCheck.rows.length > 0) {
+        // Return the existing cycle instead of creating a duplicate
+        const existing = existingCheck.rows[0];
+        return res.status(200).json({
+          success: true,
+          cycle: { id: existing.id, name: existing.name, shortCode },
+          message: 'Cycle with this shortCode already exists'
+        });
+      }
+    }
+
     const result = await sql`
       INSERT INTO grant_cycles (
         name,
