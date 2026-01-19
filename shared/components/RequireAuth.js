@@ -5,15 +5,42 @@
  * checking session, redirects to signin if unauthenticated.
  *
  * Also handles profile linking for first-time Azure logins.
+ *
+ * IMPORTANT: Authentication is OPTIONAL until Azure AD is configured.
+ * If AZURE_AD_CLIENT_ID is not set, this component passes through children
+ * without requiring authentication.
  */
 
 import { useSession, signIn } from 'next-auth/react';
 import { useEffect, useState } from 'react';
 import ProfileLinkingDialog from './ProfileLinkingDialog';
 
+// Check if auth is configured (set at build time via next.config.js or runtime)
+const AUTH_ENABLED = typeof window !== 'undefined'
+  ? window.__AUTH_ENABLED__
+  : process.env.AZURE_AD_CLIENT_ID && process.env.AZURE_AD_CLIENT_SECRET;
+
 export default function RequireAuth({ children }) {
   const { data: session, status } = useSession();
   const [showLinkingDialog, setShowLinkingDialog] = useState(false);
+  const [authEnabled, setAuthEnabled] = useState(AUTH_ENABLED);
+
+  // Check auth status on mount (client-side)
+  useEffect(() => {
+    // Fetch auth status from API if not already known
+    if (typeof window !== 'undefined' && window.__AUTH_ENABLED__ === undefined) {
+      fetch('/api/auth/status')
+        .then(res => res.json())
+        .then(data => {
+          window.__AUTH_ENABLED__ = data.enabled;
+          setAuthEnabled(data.enabled);
+        })
+        .catch(() => {
+          // If check fails, assume auth is disabled
+          setAuthEnabled(false);
+        });
+    }
+  }, []);
 
   useEffect(() => {
     // Check if user needs to link to an existing profile
@@ -21,6 +48,11 @@ export default function RequireAuth({ children }) {
       setShowLinkingDialog(true);
     }
   }, [status, session?.user?.needsLinking]);
+
+  // If auth is not enabled, just render children
+  if (!authEnabled) {
+    return children;
+  }
 
   // Loading state
   if (status === 'loading') {
@@ -68,8 +100,7 @@ export default function RequireAuth({ children }) {
               <svg className="w-5 h-5" viewBox="0 0 21 21" fill="none">
                 <rect width="10" height="10" fill="#f25022" />
                 <rect x="11" width="10" height="10" fill="#7fba00" />
-                <rect y="11" width="10" height="10" fill="#00a4ef" />
-                <rect x="11" y="11" width="10" height="10" fill="#ffb900" />
+                <rect y="11" width="10" height="10" fill="#ffb900" />
               </svg>
               Sign in with Microsoft
             </button>

@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import RequireAuth from '../shared/components/RequireAuth';
+import ProfileSelector from '../shared/components/ProfileSelector';
 
 const apps = [
   {
@@ -110,7 +111,16 @@ const apps = [
 export default function LandingPage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [authEnabled, setAuthEnabled] = useState(false);
   const { data: session } = useSession();
+
+  // Check if auth is enabled
+  useEffect(() => {
+    fetch('/api/auth/status')
+      .then(res => res.json())
+      .then(data => setAuthEnabled(data.enabled))
+      .catch(() => setAuthEnabled(false));
+  }, []);
 
   const filteredApps = apps.filter(app => {
     if (selectedCategory === 'all') return true;
@@ -129,9 +139,13 @@ export default function LandingPage() {
         {/* Header Section */}
         <header className="bg-white shadow-sm border-b border-gray-200">
           <div className="max-w-7xl mx-auto px-4 py-8">
-            {/* User Menu */}
-            {session?.user && (
-              <div className="flex justify-end mb-4">
+            {/* Profile/User Menu */}
+            <div className="flex justify-end mb-4">
+              {/* Show ProfileSelector when auth is disabled */}
+              {!authEnabled && <ProfileSelector />}
+
+              {/* Show User Menu when auth is enabled and authenticated */}
+              {authEnabled && session?.user && (
                 <div className="relative">
                   <button
                     onClick={() => setShowUserMenu(!showUserMenu)}
@@ -189,8 +203,8 @@ export default function LandingPage() {
                     </div>
                   )}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             <div className="text-center">
               <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">

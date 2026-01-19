@@ -1,8 +1,9 @@
 import Head from 'next/head';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useProfile } from '../context/ProfileContext';
+import ProfileSelector from './ProfileSelector';
 
 export default function Layout({
   children,
@@ -13,8 +14,17 @@ export default function Layout({
 }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [authEnabled, setAuthEnabled] = useState(false);
   const { data: session, status } = useSession();
   const { currentProfile } = useProfile();
+
+  // Check if auth is enabled
+  useEffect(() => {
+    fetch('/api/auth/status')
+      .then(res => res.json())
+      .then(data => setAuthEnabled(data.enabled))
+      .catch(() => setAuthEnabled(false));
+  }, []);
 
   const navigationItems = [
     { name: 'Home', href: '/', icon: '🏠' },
@@ -60,7 +70,11 @@ export default function Layout({
 
             {/* User Menu - Desktop */}
             <div className="hidden md:flex items-center">
-              {status === 'authenticated' && session?.user ? (
+              {/* Show ProfileSelector when auth is disabled */}
+              {!authEnabled && <ProfileSelector />}
+
+              {/* Show User Menu when auth is enabled and authenticated */}
+              {authEnabled && status === 'authenticated' && session?.user ? (
                 <div className="relative">
                   <button
                     onClick={() => setShowUserMenu(!showUserMenu)}
@@ -131,7 +145,7 @@ export default function Layout({
                     </div>
                   )}
                 </div>
-              ) : status === 'loading' ? (
+              ) : authEnabled && status === 'loading' ? (
                 <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500">
                   <div className="w-3 h-3 rounded-full bg-gray-300 animate-pulse" />
                   <span>Loading...</span>
@@ -139,9 +153,13 @@ export default function Layout({
               ) : null}
             </div>
 
-            {/* Mobile: User + Menu Button */}
+            {/* Mobile: User/Profile + Menu Button */}
             <div className="md:hidden flex items-center gap-2">
-              {status === 'authenticated' && session?.user && (
+              {/* Show ProfileSelector on mobile when auth is disabled */}
+              {!authEnabled && <ProfileSelector />}
+
+              {/* Show user avatar on mobile when auth is enabled and authenticated */}
+              {authEnabled && status === 'authenticated' && session?.user && (
                 <button
                   onClick={() => setShowUserMenu(!showUserMenu)}
                   className="flex items-center gap-2 px-2 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 rounded-lg"
@@ -167,8 +185,8 @@ export default function Layout({
             </div>
           </div>
 
-          {/* Mobile User Menu */}
-          {showUserMenu && status === 'authenticated' && (
+          {/* Mobile User Menu (only when auth enabled) */}
+          {authEnabled && showUserMenu && status === 'authenticated' && (
             <div className="md:hidden border-t border-gray-200 py-4">
               <div className="px-4 pb-3 border-b border-gray-100 mb-3">
                 <div className="text-sm font-medium text-gray-900">{session.user.name}</div>
