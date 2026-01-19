@@ -60,17 +60,24 @@ The suite has **10 active apps** with multi-user support:
 
 ## Future Enhancements (Low Priority)
 
-### 1. User Profiles Phase 2 (If Needed)
+### 1. User Authentication (If Trust Model Changes)
+Currently profiles are honor-based (no login required). If security between users becomes necessary:
+- Add login system (password, SSO, or OAuth)
+- Per-user encryption keys derived from credentials
+- Session management and logout
+- Note: Current model assumes trusted internal team
+
+### 2. User Profiles Phase 2 (If Needed)
 - Per-user model preferences (override default Claude model)
 - Email template settings per user
 - Sender info (name, email, signature) stored in profile
 
-### 2. Email Integration
+### 3. Email Integration
 - Dynamics 365 integration for email tracking
 - Automated reminder system for non-responders
 - Open/click tracking via webhooks
 
-### 3. Data Management
+### 4. Data Management
 - Archive old proposals
 - Bulk operations across grant cycles
 
