@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import styles from './ApiKeyManager.module.css';
 import { getModelDisplayName } from '../utils/modelNames';
 import { BASE_CONFIG } from '../config/baseConfig';
+import { useProfile } from '../context/ProfileContext';
 
 const API_KEY_STORAGE_KEY = 'claude_api_key_encrypted';
+const PREFERENCE_KEY = 'api_key_claude';
 
 /**
  * Get the model for a specific app (client-side version)
@@ -22,53 +24,187 @@ function getModelForAppClient(appKey) {
 
 export default function ApiKeyManager({ onApiKeySet, required = true, appKey = null }) {
   const [apiKey, setApiKey] = useState('');
+  const [maskedKey, setMaskedKey] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [isKeyStored, setIsKeyStored] = useState(false);
   const [showKey, setShowKey] = useState(false);
+  const [showMigrationPrompt, setShowMigrationPrompt] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const storedKey = localStorage.getItem(API_KEY_STORAGE_KEY);
-    if (storedKey) {
-      const decrypted = atob(storedKey);
-      setApiKey(decrypted);
-      setIsKeyStored(true);
-      onApiKeySet(decrypted);
-    } else if (required) {
-      setShowModal(true);
+  // Get profile context - may be null if ProfileProvider is not mounted
+  let profileContext = null;
+  try {
+    profileContext = useProfile();
+  } catch (e) {
+    // ProfileProvider not available, will use localStorage fallback
+  }
+
+  const { currentProfile, setPreference, getDecryptedApiKey, hasPreference } = profileContext || {};
+
+  const maskApiKeyValue = (key) => {
+    if (!key || key.length < 8) return '••••••••';
+    return `${key.substring(0, 3)}••••••${key.substring(key.length - 3)}`;
+  };
+
+  // Load API key from profile or localStorage
+  const loadApiKey = useCallback(async () => {
+    setIsLoading(true);
+
+    try {
+      // If profile is selected and has the API key preference
+      if (currentProfile && hasPreference) {
+        const hasKey = hasPreference(PREFERENCE_KEY);
+        if (hasKey) {
+          // Get decrypted key from profile
+          const key = await getDecryptedApiKey(PREFERENCE_KEY);
+          if (key) {
+            setApiKey(key);
+            setMaskedKey(maskApiKeyValue(key));
+            setIsKeyStored(true);
+            onApiKeySet(key);
+            setIsLoading(false);
+            return;
+          }
+        }
+      }
+
+      // Fallback to localStorage
+      const storedKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+      if (storedKey) {
+        const decrypted = atob(storedKey);
+        setApiKey(decrypted);
+        setMaskedKey(maskApiKeyValue(decrypted));
+        setIsKeyStored(true);
+        onApiKeySet(decrypted);
+
+        // If we have a profile and localStorage key, prompt to migrate
+        if (currentProfile && !hasPreference?.(PREFERENCE_KEY)) {
+          setShowMigrationPrompt(true);
+        }
+      } else if (required) {
+        setShowModal(true);
+      }
+    } catch (error) {
+      console.error('Error loading API key:', error);
+      // Try localStorage as final fallback
+      const storedKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+      if (storedKey) {
+        const decrypted = atob(storedKey);
+        setApiKey(decrypted);
+        setMaskedKey(maskApiKeyValue(decrypted));
+        setIsKeyStored(true);
+        onApiKeySet(decrypted);
+      } else if (required) {
+        setShowModal(true);
+      }
     }
-  }, [required, onApiKeySet]);
 
-  const saveApiKey = () => {
+    setIsLoading(false);
+  }, [currentProfile, getDecryptedApiKey, hasPreference, onApiKeySet, required]);
+
+  // Reload when profile changes
+  useEffect(() => {
+    loadApiKey();
+  }, [loadApiKey, currentProfile?.id]);
+
+  const saveApiKey = async () => {
     if (!apiKey.trim()) {
       alert('Please enter a valid API key');
       return;
     }
 
-    const encrypted = btoa(apiKey);
-    localStorage.setItem(API_KEY_STORAGE_KEY, encrypted);
-    setIsKeyStored(true);
-    setShowModal(false);
-    onApiKeySet(apiKey);
+    try {
+      // If profile is selected, save to profile preferences
+      if (currentProfile && setPreference) {
+        const success = await setPreference(PREFERENCE_KEY, apiKey.trim());
+        if (!success) {
+          throw new Error('Failed to save to profile');
+        }
+      }
+
+      // Also save to localStorage as fallback
+      const encrypted = btoa(apiKey.trim());
+      localStorage.setItem(API_KEY_STORAGE_KEY, encrypted);
+
+      setMaskedKey(maskApiKeyValue(apiKey.trim()));
+      setIsKeyStored(true);
+      setShowModal(false);
+      setShowMigrationPrompt(false);
+      onApiKeySet(apiKey.trim());
+    } catch (error) {
+      console.error('Error saving API key:', error);
+      // Fall back to localStorage only
+      const encrypted = btoa(apiKey.trim());
+      localStorage.setItem(API_KEY_STORAGE_KEY, encrypted);
+      setMaskedKey(maskApiKeyValue(apiKey.trim()));
+      setIsKeyStored(true);
+      setShowModal(false);
+      onApiKeySet(apiKey.trim());
+    }
   };
 
-  const clearApiKey = () => {
+  const migrateToProfile = async () => {
+    if (!currentProfile || !setPreference) return;
+
+    setIsMigrating(true);
+    try {
+      // Get key from localStorage
+      const storedKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+      if (storedKey) {
+        const decrypted = atob(storedKey);
+        const success = await setPreference(PREFERENCE_KEY, decrypted);
+        if (success) {
+          setShowMigrationPrompt(false);
+        }
+      }
+    } catch (error) {
+      console.error('Migration error:', error);
+    }
+    setIsMigrating(false);
+  };
+
+  const clearApiKey = async () => {
     if (confirm('Are you sure you want to remove your stored API key?')) {
+      // Clear from localStorage
       localStorage.removeItem(API_KEY_STORAGE_KEY);
+
+      // Clear from profile if available
+      if (currentProfile) {
+        try {
+          await fetch('/api/user-preferences', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              profileId: currentProfile.id,
+              key: PREFERENCE_KEY
+            })
+          });
+        } catch (error) {
+          console.error('Error clearing profile preference:', error);
+        }
+      }
+
       setApiKey('');
+      setMaskedKey('');
       setIsKeyStored(false);
       setShowModal(true);
       onApiKeySet('');
     }
   };
 
-  const maskApiKey = (key) => {
-    if (!key || key.length < 8) return '••••••••';
-    return `${key.substring(0, 3)}••••••${key.substring(key.length - 3)}`;
-  };
-
   // Get current model info if appKey is provided
   const currentModel = appKey ? getModelForAppClient(appKey) : null;
   const modelDisplayName = currentModel ? getModelDisplayName(currentModel) : null;
+
+  if (isLoading) {
+    return (
+      <div className={styles.apiKeyStatus}>
+        <span className={styles.statusIcon}>⏳</span>
+        <span className={styles.statusText}>Loading...</span>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -77,7 +213,7 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
           <div className={styles.keyStored}>
             <span className={styles.statusIcon}>🔑</span>
             <span className={styles.statusText}>
-              API Key: {showKey ? apiKey : maskApiKey(apiKey)}
+              API Key: {showKey ? apiKey : maskedKey}
             </span>
             <button
               onClick={() => setShowKey(!showKey)}
@@ -98,6 +234,11 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
             >
               Clear
             </button>
+            {currentProfile && (
+              <span className={styles.profileBadge} title={`Saved to profile: ${currentProfile.displayName || currentProfile.name}`}>
+                👤
+              </span>
+            )}
           </div>
         ) : (
           <div className={styles.keyMissing}>
@@ -123,6 +264,31 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
         )}
       </div>
 
+      {/* Migration prompt */}
+      {showMigrationPrompt && currentProfile && (
+        <div className={styles.migrationPrompt}>
+          <p>
+            Migrate your API key to your profile ({currentProfile.displayName || currentProfile.name})?
+            This will save it securely in the database.
+          </p>
+          <div className={styles.migrationButtons}>
+            <button
+              onClick={() => setShowMigrationPrompt(false)}
+              className={styles.migrationSkip}
+            >
+              Skip
+            </button>
+            <button
+              onClick={migrateToProfile}
+              className={styles.migrationConfirm}
+              disabled={isMigrating}
+            >
+              {isMigrating ? 'Migrating...' : 'Migrate'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {showModal && (
         <div className={styles.modalOverlay} onClick={() => setShowModal(false)}>
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -139,8 +305,12 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
 
             <div className={styles.modalContent}>
               <p className={styles.instructions}>
-                Enter your Claude API key to use the application. Your key will be stored locally
-                in your browser and never sent to our servers.
+                Enter your Claude API key to use the application.
+                {currentProfile ? (
+                  <> Your key will be saved to your profile ({currentProfile.displayName || currentProfile.name}) and encrypted in the database.</>
+                ) : (
+                  <> Your key will be stored locally in your browser.</>
+                )}
               </p>
 
               <div className={styles.inputGroup}>
@@ -170,7 +340,7 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
 
               <div className={styles.helpText}>
                 <p>
-                  🔒 Your API key is encrypted and stored locally in your browser.
+                  🔒 Your API key is encrypted and {currentProfile ? 'stored securely in your profile' : 'stored locally in your browser'}.
                   It is never sent to our servers.
                 </p>
                 <p>

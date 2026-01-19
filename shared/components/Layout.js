@@ -1,6 +1,8 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useState } from 'react';
+import { ProfileProvider } from '../context/ProfileContext';
+import ProfileSelector from './ProfileSelector';
 
 export default function Layout({ 
   children, 
@@ -26,6 +28,7 @@ export default function Layout({
   ];
 
   return (
+    <ProfileProvider>
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <Head>
         <title>{title}</title>
@@ -39,7 +42,7 @@ export default function Layout({
           <div className="flex justify-between items-center py-4">
             {/* Desktop Navigation */}
             {showNavigation && (
-              <nav className="hidden md:flex items-center gap-1 flex-wrap">
+              <nav className="hidden md:flex items-center gap-1 flex-wrap flex-1">
                 {navigationItems.map((item) => (
                   <Link
                     key={item.href}
@@ -53,17 +56,25 @@ export default function Layout({
               </nav>
             )}
 
-            {/* Mobile Menu Button */}
-            {showNavigation && (
-              <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="md:hidden p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-all duration-200"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isMobileMenuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
-                </svg>
-              </button>
-            )}
+            {/* Profile Selector - Desktop */}
+            <div className="hidden md:flex items-center">
+              <ProfileSelector />
+            </div>
+
+            {/* Mobile: Profile Selector + Menu Button */}
+            <div className="md:hidden flex items-center gap-2">
+              <ProfileSelector />
+              {showNavigation && (
+                <button
+                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-all duration-200"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isMobileMenuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
+                  </svg>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Mobile Navigation */}
@@ -102,18 +113,18 @@ export default function Layout({
               Written by <a href="mailto:justingallivan@me.com" className="hover:text-gray-800">Justin Gallivan</a> • Built with Claude AI • Powered by Next.js • Deployed on Vercel
             </p>
             <div className="flex justify-center items-center gap-4">
-              <a 
-                href="https://github.com/justingallivan/Phase-II-Summaries" 
-                target="_blank" 
+              <a
+                href="https://github.com/justingallivan/Phase-II-Summaries"
+                target="_blank"
                 rel="noopener noreferrer"
                 className="text-gray-500 hover:text-gray-700 transition-colors duration-200"
               >
                 GitHub
               </a>
               <span className="text-gray-300">•</span>
-              <a 
-                href="https://claude.ai" 
-                target="_blank" 
+              <a
+                href="https://claude.ai"
+                target="_blank"
                 rel="noopener noreferrer"
                 className="text-gray-500 hover:text-gray-700 transition-colors duration-200"
               >
@@ -124,6 +135,7 @@ export default function Layout({
         </div>
       </footer>
     </div>
+    </ProfileProvider>
   );
 }
 

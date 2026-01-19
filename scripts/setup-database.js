@@ -245,6 +245,49 @@ const v9Alterations = [
   `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS program_area VARCHAR(100)`,
 ];
 
+// V10: User profiles and preferences
+const v10Statements = [
+  // Table: user_profiles
+  `CREATE TABLE IF NOT EXISTS user_profiles (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    display_name VARCHAR(255),
+    avatar_color VARCHAR(7) DEFAULT '#6366f1',
+    is_default BOOLEAN DEFAULT false,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+
+  // Table: user_preferences
+  `CREATE TABLE IF NOT EXISTS user_preferences (
+    id SERIAL PRIMARY KEY,
+    user_profile_id INTEGER NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+    preference_key VARCHAR(100) NOT NULL,
+    preference_value TEXT,
+    is_encrypted BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_profile_id, preference_key)
+  )`,
+
+  // Indexes for user tables
+  `CREATE INDEX IF NOT EXISTS idx_user_profiles_active ON user_profiles(is_active)`,
+  `CREATE INDEX IF NOT EXISTS idx_user_profiles_default ON user_profiles(is_default)`,
+  `CREATE INDEX IF NOT EXISTS idx_user_preferences_profile ON user_preferences(user_profile_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_user_preferences_key ON user_preferences(preference_key)`,
+];
+
+const v10Alterations = [
+  // Add user_profile_id FK to proposal_searches
+  `ALTER TABLE proposal_searches ADD COLUMN IF NOT EXISTS user_profile_id INTEGER REFERENCES user_profiles(id) ON DELETE SET NULL`,
+  // Add user_profile_id FK to reviewer_suggestions
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS user_profile_id INTEGER REFERENCES user_profiles(id) ON DELETE SET NULL`,
+  // Indexes for FK columns
+  `CREATE INDEX IF NOT EXISTS idx_proposal_searches_user ON proposal_searches(user_profile_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_reviewer_suggestions_user ON reviewer_suggestions(user_profile_id)`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -493,6 +536,43 @@ async function runMigration() {
       }
     }
 
+    // Run V10 table creation (user profiles and preferences)
+    console.log(`\nApplying v10 schema updates - user profiles table (${v10Statements.length} statements)...`);
+    for (let i = 0; i < v10Statements.length; i++) {
+      const statement = v10Statements[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v10-${i + 1}/${v10Statements.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v10-${i + 1}/${v10Statements.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v10-${i + 1}/${v10Statements.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
+      }
+    }
+
+    // Run V10 column additions (user_profile_id FK columns)
+    console.log(`\nApplying v10 schema updates - user profile FK columns (${v10Alterations.length} alterations)...`);
+    for (let i = 0; i < v10Alterations.length; i++) {
+      const statement = v10Alterations[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v10-${i + 1}/${v10Alterations.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists') || error.message.includes('duplicate column')) {
+          console.log(`[v10-${i + 1}/${v10Alterations.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v10-${i + 1}/${v10Alterations.length}] ✗ Error: ${error.message}`);
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -536,7 +616,15 @@ async function runMigration() {
     console.log('\nV7 column additions (grant cycle FK):');
     console.log('  • proposal_searches.grant_cycle_id');
     console.log('  • reviewer_suggestions.grant_cycle_id');
-    console.log('\nIndexes created: 21');
+    console.log('\nV10 new tables: user_profiles, user_preferences');
+    console.log('  • user_profiles (id, name, display_name, avatar_color, is_default,');
+    console.log('    is_active, created_at, last_used_at)');
+    console.log('  • user_preferences (id, user_profile_id, preference_key,');
+    console.log('    preference_value, is_encrypted, created_at, updated_at)');
+    console.log('\nV10 column additions (user profile FK):');
+    console.log('  • proposal_searches.user_profile_id');
+    console.log('  • reviewer_suggestions.user_profile_id');
+    console.log('\nIndexes created: 25');
 
   } catch (error) {
     console.error('\n✗ Migration failed:', error.message);

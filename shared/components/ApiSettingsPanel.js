@@ -4,19 +4,30 @@
  * Used for enrichment features that require additional API credentials:
  * - ORCID (free, for contact lookups)
  * - NCBI (free, for faster PubMed queries)
+ * - SerpAPI (paid, for Google searches)
  *
- * Follows the same patterns as other shared components in this suite.
- * Keys are stored in localStorage with base64 encoding (same as ApiKeyManager).
+ * Now integrates with user profiles for secure storage.
+ * Keys are stored in the database when a profile is selected,
+ * or in localStorage as fallback.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useProfile } from '../context/ProfileContext';
 
-// Storage keys for each API credential
+// Storage keys for localStorage (fallback)
 const STORAGE_KEYS = {
   ORCID_CLIENT_ID: 'orcid_client_id_encrypted',
   ORCID_CLIENT_SECRET: 'orcid_client_secret_encrypted',
   NCBI_API_KEY: 'ncbi_api_key_encrypted',
   SERP_API_KEY: 'serp_api_key_encrypted',
+};
+
+// Preference keys for profile storage
+const PREFERENCE_KEYS = {
+  ORCID_CLIENT_ID: 'api_key_orcid_client_id',
+  ORCID_CLIENT_SECRET: 'api_key_orcid_client_secret',
+  NCBI_API_KEY: 'api_key_ncbi',
+  SERP_API_KEY: 'api_key_serp',
 };
 
 // Helper to mask sensitive values
@@ -73,7 +84,7 @@ function ApiKeyField({
                 rel="noopener noreferrer"
                 className="text-blue-600 hover:underline"
               >
-                Get credentials →
+                Get credentials
               </a>
             </>
           )}
@@ -93,9 +104,52 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
   });
   const [hasStoredSettings, setHasStoredSettings] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null); // 'saved', 'error', null
+  const [isLoading, setIsLoading] = useState(true);
+  const [showMigrationPrompt, setShowMigrationPrompt] = useState(false);
 
-  // Load settings from localStorage on mount
-  useEffect(() => {
+  // Get profile context
+  let profileContext = null;
+  try {
+    profileContext = useProfile();
+  } catch (e) {
+    // ProfileProvider not available
+  }
+
+  const { currentProfile, getDecryptedApiKey, hasPreference } = profileContext || {};
+
+  // Load settings from profile or localStorage
+  const loadSettings = useCallback(async () => {
+    setIsLoading(true);
+    const loaded = {
+      orcidClientId: '',
+      orcidClientSecret: '',
+      ncbiApiKey: '',
+      serpApiKey: '',
+    };
+
+    let fromProfile = false;
+    let fromLocalStorage = false;
+
+    // Try loading from profile first
+    if (currentProfile && getDecryptedApiKey) {
+      try {
+        const [orcidId, orcidSecret, ncbi, serp] = await Promise.all([
+          getDecryptedApiKey(PREFERENCE_KEYS.ORCID_CLIENT_ID),
+          getDecryptedApiKey(PREFERENCE_KEYS.ORCID_CLIENT_SECRET),
+          getDecryptedApiKey(PREFERENCE_KEYS.NCBI_API_KEY),
+          getDecryptedApiKey(PREFERENCE_KEYS.SERP_API_KEY),
+        ]);
+
+        if (orcidId) { loaded.orcidClientId = orcidId; fromProfile = true; }
+        if (orcidSecret) { loaded.orcidClientSecret = orcidSecret; fromProfile = true; }
+        if (ncbi) { loaded.ncbiApiKey = ncbi; fromProfile = true; }
+        if (serp) { loaded.serpApiKey = serp; fromProfile = true; }
+      } catch (err) {
+        console.error('Error loading settings from profile:', err);
+      }
+    }
+
+    // Fall back to or augment with localStorage
     const stored = {
       orcidClientId: localStorage.getItem(STORAGE_KEYS.ORCID_CLIENT_ID),
       orcidClientSecret: localStorage.getItem(STORAGE_KEYS.ORCID_CLIENT_SECRET),
@@ -103,23 +157,45 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
       serpApiKey: localStorage.getItem(STORAGE_KEYS.SERP_API_KEY),
     };
 
-    const decoded = {
-      orcidClientId: stored.orcidClientId ? atob(stored.orcidClientId) : '',
-      orcidClientSecret: stored.orcidClientSecret ? atob(stored.orcidClientSecret) : '',
-      ncbiApiKey: stored.ncbiApiKey ? atob(stored.ncbiApiKey) : '',
-      serpApiKey: stored.serpApiKey ? atob(stored.serpApiKey) : '',
-    };
+    if (stored.orcidClientId && !loaded.orcidClientId) {
+      loaded.orcidClientId = atob(stored.orcidClientId);
+      fromLocalStorage = true;
+    }
+    if (stored.orcidClientSecret && !loaded.orcidClientSecret) {
+      loaded.orcidClientSecret = atob(stored.orcidClientSecret);
+      fromLocalStorage = true;
+    }
+    if (stored.ncbiApiKey && !loaded.ncbiApiKey) {
+      loaded.ncbiApiKey = atob(stored.ncbiApiKey);
+      fromLocalStorage = true;
+    }
+    if (stored.serpApiKey && !loaded.serpApiKey) {
+      loaded.serpApiKey = atob(stored.serpApiKey);
+      fromLocalStorage = true;
+    }
 
-    setSettings(decoded);
+    setSettings(loaded);
 
-    const hasAny = Object.values(decoded).some(v => v && v.length > 0);
+    const hasAny = Object.values(loaded).some(v => v && v.length > 0);
     setHasStoredSettings(hasAny);
+
+    // Show migration prompt if we have localStorage data but also have a profile
+    if (currentProfile && fromLocalStorage && !fromProfile) {
+      setShowMigrationPrompt(true);
+    }
 
     // Notify parent of initial settings
     if (onSettingsChange) {
-      onSettingsChange(decoded);
+      onSettingsChange(loaded);
     }
-  }, []);
+
+    setIsLoading(false);
+  }, [currentProfile, getDecryptedApiKey, onSettingsChange]);
+
+  // Load on mount and when profile changes
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings, currentProfile?.id]);
 
   // Update a single setting
   const updateSetting = (key, value) => {
@@ -127,13 +203,34 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
       ...prev,
       [key]: value
     }));
-    setSaveStatus(null); // Clear save status when editing
+    setSaveStatus(null);
   };
 
-  // Save all settings to localStorage
-  const saveSettings = () => {
+  // Save all settings
+  const saveSettings = async () => {
     try {
-      // Encode and store each setting
+      // Save to profile if available
+      if (currentProfile) {
+        const response = await fetch('/api/user-preferences', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            profileId: currentProfile.id,
+            preferences: {
+              [PREFERENCE_KEYS.ORCID_CLIENT_ID]: settings.orcidClientId || null,
+              [PREFERENCE_KEYS.ORCID_CLIENT_SECRET]: settings.orcidClientSecret || null,
+              [PREFERENCE_KEYS.NCBI_API_KEY]: settings.ncbiApiKey || null,
+              [PREFERENCE_KEYS.SERP_API_KEY]: settings.serpApiKey || null,
+            }
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to save to profile');
+        }
+      }
+
+      // Also save to localStorage as fallback
       if (settings.orcidClientId) {
         localStorage.setItem(STORAGE_KEYS.ORCID_CLIENT_ID, btoa(settings.orcidClientId));
       } else {
@@ -161,6 +258,7 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
       const hasAny = Object.values(settings).some(v => v && v.length > 0);
       setHasStoredSettings(hasAny);
       setSaveStatus('saved');
+      setShowMigrationPrompt(false);
 
       // Notify parent of updated settings
       if (onSettingsChange) {
@@ -175,15 +273,61 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
     }
   };
 
+  // Migrate localStorage settings to profile
+  const migrateToProfile = async () => {
+    if (!currentProfile) return;
+
+    try {
+      const response = await fetch('/api/user-preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profileId: currentProfile.id,
+          preferences: {
+            [PREFERENCE_KEYS.ORCID_CLIENT_ID]: settings.orcidClientId || null,
+            [PREFERENCE_KEYS.ORCID_CLIENT_SECRET]: settings.orcidClientSecret || null,
+            [PREFERENCE_KEYS.NCBI_API_KEY]: settings.ncbiApiKey || null,
+            [PREFERENCE_KEYS.SERP_API_KEY]: settings.serpApiKey || null,
+          }
+        })
+      });
+
+      if (response.ok) {
+        setShowMigrationPrompt(false);
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus(null), 3000);
+      }
+    } catch (error) {
+      console.error('Migration error:', error);
+    }
+  };
+
   // Clear all settings
-  const clearSettings = () => {
+  const clearSettings = async () => {
     if (!confirm('Are you sure you want to remove all stored API keys?')) {
       return;
     }
 
+    // Clear from localStorage
     Object.values(STORAGE_KEYS).forEach(key => {
       localStorage.removeItem(key);
     });
+
+    // Clear from profile if available
+    if (currentProfile) {
+      try {
+        await fetch('/api/user-preferences', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            profileId: currentProfile.id,
+            keys: Object.values(PREFERENCE_KEYS)
+          })
+        });
+      } catch (error) {
+        console.error('Error clearing profile settings:', error);
+      }
+    }
 
     const emptySettings = {
       orcidClientId: '',
@@ -229,6 +373,11 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
               {configuredApis.length} configured
             </span>
           )}
+          {currentProfile && (
+            <span className="text-xs text-gray-500" title={`Profile: ${currentProfile.displayName || currentProfile.name}`}>
+              👤
+            </span>
+          )}
         </div>
         <span className={`text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
           ▼
@@ -238,112 +387,146 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
       {/* Expanded Content */}
       {isExpanded && (
         <div className="p-4 border-t border-gray-200 bg-white">
-          <p className="text-sm text-gray-600 mb-4">
-            Optional API keys for enhanced features. These are stored locally in your browser.
-          </p>
+          {isLoading ? (
+            <p className="text-sm text-gray-500 text-center py-4">Loading settings...</p>
+          ) : (
+            <>
+              <p className="text-sm text-gray-600 mb-4">
+                Optional API keys for enhanced features.
+                {currentProfile
+                  ? ` Saved securely to your profile (${currentProfile.displayName || currentProfile.name}).`
+                  : ' Stored locally in your browser.'}
+              </p>
 
-          {/* ORCID Section */}
-          <div className="mb-6 pb-6 border-b border-gray-100">
-            <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-              <span className="text-green-600">🔗</span>
-              ORCID API
-              <span className="text-xs font-normal text-gray-500">(Free - for contact lookups)</span>
-            </h4>
+              {/* Migration prompt */}
+              {showMigrationPrompt && currentProfile && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800 mb-2">
+                    Migrate your API keys to your profile for secure database storage?
+                  </p>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={() => setShowMigrationPrompt(false)}
+                      className="text-xs px-2 py-1 text-blue-600 hover:bg-blue-100 rounded"
+                    >
+                      Skip
+                    </button>
+                    <button
+                      onClick={migrateToProfile}
+                      className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                    >
+                      Migrate
+                    </button>
+                  </div>
+                </div>
+              )}
 
-            <ApiKeyField
-              label="Client ID"
-              value={settings.orcidClientId}
-              onChange={(v) => updateSetting('orcidClientId', v)}
-              placeholder="APP-XXXXXXXXXXXXXXXX"
-              helpText="Your ORCID public API client ID."
-              helpUrl="https://info.orcid.org/documentation/integration-guide/registering-a-public-api-client/"
-            />
+              {/* ORCID Section */}
+              <div className="mb-6 pb-6 border-b border-gray-100">
+                <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                  <span className="text-green-600">🔗</span>
+                  ORCID API
+                  <span className="text-xs font-normal text-gray-500">(Free - for contact lookups)</span>
+                </h4>
 
-            <ApiKeyField
-              label="Client Secret"
-              value={settings.orcidClientSecret}
-              onChange={(v) => updateSetting('orcidClientSecret', v)}
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-              helpText="Your ORCID public API client secret."
-            />
-          </div>
+                <ApiKeyField
+                  label="Client ID"
+                  value={settings.orcidClientId}
+                  onChange={(v) => updateSetting('orcidClientId', v)}
+                  placeholder="APP-XXXXXXXXXXXXXXXX"
+                  helpText="Your ORCID public API client ID."
+                  helpUrl="https://info.orcid.org/documentation/integration-guide/registering-a-public-api-client/"
+                />
 
-          {/* NCBI Section */}
-          <div className="mb-6 pb-6 border-b border-gray-100">
-            <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-              <span className="text-blue-600">🔬</span>
-              NCBI API Key
-              <span className="text-xs font-normal text-gray-500">(Free - for faster PubMed)</span>
-            </h4>
+                <ApiKeyField
+                  label="Client Secret"
+                  value={settings.orcidClientSecret}
+                  onChange={(v) => updateSetting('orcidClientSecret', v)}
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  helpText="Your ORCID public API client secret."
+                />
+              </div>
 
-            <ApiKeyField
-              label="API Key"
-              value={settings.ncbiApiKey}
-              onChange={(v) => updateSetting('ncbiApiKey', v)}
-              placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-              helpText="Increases PubMed rate limit from 3 to 10 requests/second."
-              helpUrl="https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/"
-            />
-          </div>
+              {/* NCBI Section */}
+              <div className="mb-6 pb-6 border-b border-gray-100">
+                <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                  <span className="text-blue-600">🔬</span>
+                  NCBI API Key
+                  <span className="text-xs font-normal text-gray-500">(Free - for faster PubMed)</span>
+                </h4>
 
-          {/* SerpAPI Section */}
-          <div className="mb-6">
-            <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-              <span className="text-blue-600">🔍</span>
-              SerpAPI Key
-              <span className="text-xs font-normal text-gray-500">(Paid - ~$0.005/search)</span>
-            </h4>
+                <ApiKeyField
+                  label="API Key"
+                  value={settings.ncbiApiKey}
+                  onChange={(v) => updateSetting('ncbiApiKey', v)}
+                  placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  helpText="Increases PubMed rate limit from 3 to 10 requests/second."
+                  helpUrl="https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/"
+                />
+              </div>
 
-            <ApiKeyField
-              label="API Key"
-              value={settings.serpApiKey}
-              onChange={(v) => updateSetting('serpApiKey', v)}
-              placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-              helpText="Enables Google Search for faculty pages and contact info (Tier 4)."
-              helpUrl="https://serpapi.com/manage-api-key"
-            />
-          </div>
+              {/* SerpAPI Section */}
+              <div className="mb-6">
+                <h4 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                  <span className="text-blue-600">🔍</span>
+                  SerpAPI Key
+                  <span className="text-xs font-normal text-gray-500">(Paid - ~$0.005/search)</span>
+                </h4>
 
-          {/* Status Message */}
-          {saveStatus === 'saved' && (
-            <div className="mb-4 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 flex items-center gap-2">
-              <span>✓</span>
-              Settings saved successfully
-            </div>
+                <ApiKeyField
+                  label="API Key"
+                  value={settings.serpApiKey}
+                  onChange={(v) => updateSetting('serpApiKey', v)}
+                  placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  helpText="Enables Google Search for faculty pages and contact info (Tier 4)."
+                  helpUrl="https://serpapi.com/manage-api-key"
+                />
+              </div>
+
+              {/* Status Message */}
+              {saveStatus === 'saved' && (
+                <div className="mb-4 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 flex items-center gap-2">
+                  <span>✓</span>
+                  Settings saved successfully
+                </div>
+              )}
+              {saveStatus === 'error' && (
+                <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
+                  <span>✗</span>
+                  Failed to save settings
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                <button
+                  onClick={clearSettings}
+                  className="text-sm text-gray-500 hover:text-red-600 transition-colors"
+                  disabled={!hasStoredSettings}
+                >
+                  Clear All
+                </button>
+                <button
+                  onClick={saveSettings}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg
+                           hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Save Settings
+                </button>
+              </div>
+
+              {/* Info Box */}
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs text-gray-500">
+                  <strong>🔒 Privacy:</strong> All credentials are
+                  {currentProfile
+                    ? ' encrypted and stored securely in the database, associated with your profile.'
+                    : ' stored locally in your browser using base64 encoding.'}
+                  They are never sent to our servers - only directly to the respective API providers.
+                </p>
+              </div>
+            </>
           )}
-          {saveStatus === 'error' && (
-            <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
-              <span>✗</span>
-              Failed to save settings
-            </div>
-          )}
-
-          {/* Action Buttons */}
-          <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-            <button
-              onClick={clearSettings}
-              className="text-sm text-gray-500 hover:text-red-600 transition-colors"
-              disabled={!hasStoredSettings}
-            >
-              Clear All
-            </button>
-            <button
-              onClick={saveSettings}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg
-                       hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Save Settings
-            </button>
-          </div>
-
-          {/* Info Box */}
-          <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-            <p className="text-xs text-gray-500">
-              <strong>🔒 Privacy:</strong> All credentials are stored locally in your browser
-              using base64 encoding. They are never sent to our servers - only directly to
-              the respective API providers (ORCID, NCBI) when making requests.
-            </p>
-          </div>
         </div>
       )}
     </div>
@@ -351,4 +534,4 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
 }
 
 // Export storage keys for use by services
-export { STORAGE_KEYS };
+export { STORAGE_KEYS, PREFERENCE_KEYS };

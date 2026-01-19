@@ -22,9 +22,13 @@ export default async function handler(req, res) {
 
 async function handleGet(req, res) {
   try {
-    const { cycleId } = req.query;
+    const { cycleId, userProfileId } = req.query;
 
-    // Build query based on cycleId filter
+    // Parse user profile ID for filtering
+    const profileId = userProfileId ? parseInt(userProfileId, 10) : null;
+
+    // Build query based on cycleId and userProfileId filters
+    // Legacy data (user_profile_id = NULL) is visible to all users until migrated
     let result;
     if (cycleId === 'unassigned') {
       // Only unassigned proposals (grant_cycle_id IS NULL)
@@ -39,6 +43,7 @@ async function handleGet(req, res) {
           rs.program_area,
           rs.summary_blob_url,
           rs.grant_cycle_id,
+          rs.user_profile_id,
           rs.relevance_score,
           rs.match_reason,
           rs.sources,
@@ -62,7 +67,9 @@ async function handleGet(req, res) {
           NULL as cycle_short_code
         FROM reviewer_suggestions rs
         JOIN researchers r ON rs.researcher_id = r.id
-        WHERE rs.selected = true AND rs.grant_cycle_id IS NULL
+        WHERE rs.selected = true
+          AND rs.grant_cycle_id IS NULL
+          AND (rs.user_profile_id IS NULL OR rs.user_profile_id = ${profileId})
         ORDER BY rs.suggested_at DESC
       `;
     } else if (cycleId && cycleId !== 'all') {
@@ -78,46 +85,7 @@ async function handleGet(req, res) {
           rs.program_area,
           rs.summary_blob_url,
           rs.grant_cycle_id,
-          rs.relevance_score,
-          rs.match_reason,
-          rs.sources,
-          rs.selected,
-          rs.invited,
-          rs.accepted,
-          rs.declined,
-          rs.notes,
-          rs.email_sent_at,
-          rs.response_type,
-          rs.response_received_at,
-          rs.suggested_at,
-          r.id as researcher_id,
-          r.name,
-          r.primary_affiliation as affiliation,
-          r.email,
-          r.website,
-          r.h_index,
-          r.total_citations,
-          gc.name as cycle_name,
-          gc.short_code as cycle_short_code
-        FROM reviewer_suggestions rs
-        JOIN researchers r ON rs.researcher_id = r.id
-        LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
-        WHERE rs.selected = true AND rs.grant_cycle_id = ${parseInt(cycleId, 10)}
-        ORDER BY rs.suggested_at DESC
-      `;
-    } else {
-      // Get all saved candidates (cycleId === 'all' or not specified)
-      result = await sql`
-        SELECT
-          rs.id as suggestion_id,
-          rs.proposal_id,
-          rs.proposal_title,
-          rs.proposal_abstract,
-          rs.proposal_authors,
-          rs.proposal_institution,
-          rs.program_area,
-          rs.summary_blob_url,
-          rs.grant_cycle_id,
+          rs.user_profile_id,
           rs.relevance_score,
           rs.match_reason,
           rs.sources,
@@ -143,6 +111,50 @@ async function handleGet(req, res) {
         JOIN researchers r ON rs.researcher_id = r.id
         LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
         WHERE rs.selected = true
+          AND rs.grant_cycle_id = ${parseInt(cycleId, 10)}
+          AND (rs.user_profile_id IS NULL OR rs.user_profile_id = ${profileId})
+        ORDER BY rs.suggested_at DESC
+      `;
+    } else {
+      // Get all saved candidates (cycleId === 'all' or not specified)
+      result = await sql`
+        SELECT
+          rs.id as suggestion_id,
+          rs.proposal_id,
+          rs.proposal_title,
+          rs.proposal_abstract,
+          rs.proposal_authors,
+          rs.proposal_institution,
+          rs.program_area,
+          rs.summary_blob_url,
+          rs.grant_cycle_id,
+          rs.user_profile_id,
+          rs.relevance_score,
+          rs.match_reason,
+          rs.sources,
+          rs.selected,
+          rs.invited,
+          rs.accepted,
+          rs.declined,
+          rs.notes,
+          rs.email_sent_at,
+          rs.response_type,
+          rs.response_received_at,
+          rs.suggested_at,
+          r.id as researcher_id,
+          r.name,
+          r.primary_affiliation as affiliation,
+          r.email,
+          r.website,
+          r.h_index,
+          r.total_citations,
+          gc.name as cycle_name,
+          gc.short_code as cycle_short_code
+        FROM reviewer_suggestions rs
+        JOIN researchers r ON rs.researcher_id = r.id
+        LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
+        WHERE rs.selected = true
+          AND (rs.user_profile_id IS NULL OR rs.user_profile_id = ${profileId})
         ORDER BY rs.suggested_at DESC
       `;
     }
@@ -162,6 +174,7 @@ async function handleGet(req, res) {
           grantCycleId: row.grant_cycle_id,
           grantCycleName: row.cycle_name,
           grantCycleShortCode: row.cycle_short_code,
+          userProfileId: row.user_profile_id,
           candidates: []
         };
       }

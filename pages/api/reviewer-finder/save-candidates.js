@@ -72,7 +72,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { proposalId, proposalTitle, proposalAbstract, proposalAuthors, proposalInstitution, programArea, summaryBlobUrl, grantCycleId, candidates } = req.body;
+    const { proposalId, proposalTitle, proposalAbstract, proposalAuthors, proposalInstitution, programArea, summaryBlobUrl, grantCycleId, userProfileId, candidates } = req.body;
 
     if (!proposalId) {
       return res.status(400).json({ error: 'proposalId is required' });
@@ -183,8 +183,9 @@ export default async function handler(req, res) {
         }
 
         // Step 5: Insert/update reviewer suggestion
-        // Parse grantCycleId (may be string from request body)
+        // Parse grantCycleId and userProfileId (may be string from request body)
         const cycleIdValue = grantCycleId ? parseInt(grantCycleId, 10) : null;
+        const profileIdValue = userProfileId ? parseInt(userProfileId, 10) : null;
 
         await sql`
           INSERT INTO reviewer_suggestions (
@@ -196,6 +197,7 @@ export default async function handler(req, res) {
             program_area,
             summary_blob_url,
             grant_cycle_id,
+            user_profile_id,
             researcher_id,
             relevance_score,
             match_reason,
@@ -211,6 +213,7 @@ export default async function handler(req, res) {
             ${programArea || null},
             ${summaryBlobUrl || null},
             ${cycleIdValue},
+            ${profileIdValue},
             ${researcherId},
             ${relevanceScore},
             ${matchReason},
@@ -226,6 +229,7 @@ export default async function handler(req, res) {
             program_area = COALESCE(${programArea}, reviewer_suggestions.program_area),
             summary_blob_url = COALESCE(${summaryBlobUrl}, reviewer_suggestions.summary_blob_url),
             grant_cycle_id = COALESCE(${cycleIdValue}, reviewer_suggestions.grant_cycle_id),
+            user_profile_id = COALESCE(${profileIdValue}, reviewer_suggestions.user_profile_id),
             relevance_score = ${relevanceScore},
             match_reason = ${matchReason},
             sources = ${sources},

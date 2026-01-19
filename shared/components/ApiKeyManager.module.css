@@ -263,3 +263,66 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Profile badge */
+.profileBadge {
+  margin-left: 0.5rem;
+  font-size: 1rem;
+  cursor: help;
+}
+
+/* Migration prompt */
+.migrationPrompt {
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  background-color: #e8f4fd;
+  border: 1px solid #b8daff;
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
+.migrationPrompt p {
+  margin: 0 0 0.75rem 0;
+  color: #004085;
+}
+
+.migrationButtons {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.migrationSkip,
+.migrationConfirm {
+  padding: 0.375rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.migrationSkip {
+  background-color: transparent;
+  border: 1px solid #b8daff;
+  color: #004085;
+}
+
+.migrationSkip:hover {
+  background-color: rgba(0, 64, 133, 0.1);
+}
+
+.migrationConfirm {
+  background-color: #0070f3;
+  border: 1px solid #0070f3;
+  color: white;
+}
+
+.migrationConfirm:hover:not(:disabled) {
+  background-color: #0051cc;
+}
+
+.migrationConfirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

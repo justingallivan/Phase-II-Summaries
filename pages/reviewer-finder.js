@@ -20,6 +20,7 @@ import EmailGeneratorModal from '../shared/components/EmailGeneratorModal';
 import SettingsModal from '../shared/components/SettingsModal';
 import { getModelDisplayName } from '../shared/utils/modelNames';
 import { BASE_CONFIG } from '../shared/config/baseConfig';
+import { useProfile } from '../shared/context/ProfileContext';
 
 // Helper to extract email from affiliation string (fallback when email field is null)
 function extractEmailFromAffiliation(affiliation) {
@@ -377,7 +378,7 @@ function CandidateCard({ candidate, selected, onSelect }) {
 }
 
 // New Search Tab content
-function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, setSearchState }) {
+function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, setSearchState, userProfileId }) {
   // Use lifted state from parent (persists across tab switches)
   const { uploadedFiles, analysisResult, discoveryResult, selectedCandidates } = searchState;
 
@@ -854,6 +855,7 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
           programArea: analysisResult?.proposalInfo?.programArea || null,
           summaryBlobUrl: analysisResult?.summaryBlobUrl || null,
           grantCycleId: currentCycleInfo?.id || null,
+          userProfileId: userProfileId || null,
           candidates: selected
         })
       });
@@ -2841,7 +2843,7 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
 const CURRENT_CYCLE_KEY = 'reviewer_finder_current_cycle';
 
 // My Candidates Tab
-function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
+function MyCandidatesTab({ refreshTrigger, claudeApiKey, userProfileId }) {
   const [proposals, setProposals] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -2886,10 +2888,17 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
     setError(null);
     setSelectedForDeletion(new Set());
     try {
-      // Build URL with cycle filter
-      let url = '/api/reviewer-finder/my-candidates';
+      // Build URL with cycle and user profile filters
+      const params = new URLSearchParams();
       if (selectedCycleId && selectedCycleId !== 'all') {
-        url += `?cycleId=${selectedCycleId}`;
+        params.set('cycleId', selectedCycleId);
+      }
+      if (userProfileId) {
+        params.set('userProfileId', userProfileId);
+      }
+      let url = '/api/reviewer-finder/my-candidates';
+      if (params.toString()) {
+        url += `?${params.toString()}`;
       }
 
       const response = await fetch(url);
@@ -2912,7 +2921,7 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey }) {
 
   useEffect(() => {
     fetchCandidates();
-  }, [refreshTrigger, selectedCycleId]);
+  }, [refreshTrigger, selectedCycleId, userProfileId]);
 
   // Handle cycle filter change
   const handleCycleChange = (value) => {
@@ -4838,6 +4847,15 @@ export default function ReviewerFinderPage() {
     ncbiApiKey: '',
   });
 
+  // Get current profile ID for user scoping
+  let profileContext = null;
+  try {
+    profileContext = useProfile();
+  } catch (e) {
+    // ProfileProvider not available
+  }
+  const userProfileId = profileContext?.currentProfile?.id || null;
+
   // Lifted state from NewSearchTab to persist across tab switches
   const [searchState, setSearchState] = useState({
     uploadedFiles: [],
@@ -4948,8 +4966,8 @@ export default function ReviewerFinderPage() {
 
         {/* Tab Content */}
         <div className="min-h-[400px]">
-          {activeTab === 'search' && <NewSearchTab apiKey={apiKey} apiSettings={apiSettings} onCandidatesSaved={handleCandidatesSaved} searchState={searchState} setSearchState={setSearchState} />}
-          {activeTab === 'candidates' && <MyCandidatesTab refreshTrigger={myCandidatesRefresh} claudeApiKey={apiKey} />}
+          {activeTab === 'search' && <NewSearchTab apiKey={apiKey} apiSettings={apiSettings} onCandidatesSaved={handleCandidatesSaved} searchState={searchState} setSearchState={setSearchState} userProfileId={userProfileId} />}
+          {activeTab === 'candidates' && <MyCandidatesTab refreshTrigger={myCandidatesRefresh} claudeApiKey={apiKey} userProfileId={userProfileId} />}
           {activeTab === 'database' && <DatabaseTab />}
         </div>
       </div>
