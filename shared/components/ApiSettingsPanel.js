@@ -11,7 +11,7 @@
  * or in localStorage as fallback.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useProfile } from '../context/ProfileContext';
 
 // Storage keys for localStorage (fallback)
@@ -29,6 +29,9 @@ const PREFERENCE_KEYS = {
   NCBI_API_KEY: 'api_key_ncbi',
   SERP_API_KEY: 'api_key_serp',
 };
+
+// Track which profiles have been prompted for migration this session
+const migratedProfiles = new Set();
 
 // Helper to mask sensitive values
 const maskValue = (value) => {
@@ -117,9 +120,20 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
 
   const { currentProfile, getDecryptedApiKey, hasPreference } = profileContext || {};
 
+  // Track the last loaded profile to avoid duplicate loads
+  const lastLoadedProfileId = useRef(null);
+  const isLoadingRef = useRef(false);
+
   // Load settings from profile or localStorage
-  const loadSettings = useCallback(async () => {
+  const loadSettings = useCallback(async (profileId) => {
+    // Prevent concurrent loads and duplicate loads for same profile
+    if (isLoadingRef.current) return;
+    if (profileId === lastLoadedProfileId.current && lastLoadedProfileId.current !== null) return;
+
+    isLoadingRef.current = true;
+    lastLoadedProfileId.current = profileId;
     setIsLoading(true);
+
     const loaded = {
       orcidClientId: '',
       orcidClientSecret: '',
@@ -131,7 +145,7 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
     let fromLocalStorage = false;
 
     // Try loading from profile first
-    if (currentProfile && getDecryptedApiKey) {
+    if (profileId && getDecryptedApiKey) {
       try {
         const [orcidId, orcidSecret, ncbi, serp] = await Promise.all([
           getDecryptedApiKey(PREFERENCE_KEYS.ORCID_CLIENT_ID),
@@ -179,9 +193,11 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
     const hasAny = Object.values(loaded).some(v => v && v.length > 0);
     setHasStoredSettings(hasAny);
 
-    // Show migration prompt if we have localStorage data but also have a profile
-    if (currentProfile && fromLocalStorage && !fromProfile) {
+    // Show migration prompt if we have localStorage data but also have a profile (once per session per profile)
+    if (profileId && fromLocalStorage && !fromProfile && !migratedProfiles.has(profileId)) {
       setShowMigrationPrompt(true);
+    } else {
+      setShowMigrationPrompt(false);
     }
 
     // Notify parent of initial settings
@@ -190,12 +206,14 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
     }
 
     setIsLoading(false);
-  }, [currentProfile, getDecryptedApiKey, onSettingsChange]);
+    isLoadingRef.current = false;
+  }, [getDecryptedApiKey, onSettingsChange]);
 
   // Load on mount and when profile changes
   useEffect(() => {
-    loadSettings();
-  }, [loadSettings, currentProfile?.id]);
+    const profileId = currentProfile?.id || null;
+    loadSettings(profileId);
+  }, [currentProfile?.id, loadSettings]);
 
   // Update a single setting
   const updateSetting = (key, value) => {
@@ -293,6 +311,7 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
       });
 
       if (response.ok) {
+        migratedProfiles.add(currentProfile.id);
         setShowMigrationPrompt(false);
         setSaveStatus('saved');
         setTimeout(() => setSaveStatus(null), 3000);
@@ -300,6 +319,14 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
     } catch (error) {
       console.error('Migration error:', error);
     }
+  };
+
+  // Skip migration for this profile
+  const skipMigration = () => {
+    if (currentProfile) {
+      migratedProfiles.add(currentProfile.id);
+    }
+    setShowMigrationPrompt(false);
   };
 
   // Clear all settings
@@ -406,7 +433,7 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
                   </p>
                   <div className="flex gap-2 justify-end">
                     <button
-                      onClick={() => setShowMigrationPrompt(false)}
+                      onClick={skipMigration}
                       className="text-xs px-2 py-1 text-blue-600 hover:bg-blue-100 rounded"
                     >
                       Skip

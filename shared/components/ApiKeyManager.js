@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import styles from './ApiKeyManager.module.css';
 import { getModelDisplayName } from '../utils/modelNames';
 import { BASE_CONFIG } from '../config/baseConfig';
@@ -6,6 +6,9 @@ import { useProfile } from '../context/ProfileContext';
 
 const API_KEY_STORAGE_KEY = 'claude_api_key_encrypted';
 const PREFERENCE_KEY = 'api_key_claude';
+
+// Track which profiles have been prompted for migration this session
+const migratedProfiles = new Set();
 
 /**
  * Get the model for a specific app (client-side version)
@@ -47,25 +50,37 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
     return `${key.substring(0, 3)}••••••${key.substring(key.length - 3)}`;
   };
 
+  // Track the last loaded profile to avoid duplicate loads
+  const lastLoadedProfileId = useRef(null);
+  const isLoadingRef = useRef(false);
+
   // Load API key from profile or localStorage
-  const loadApiKey = useCallback(async () => {
+  const loadApiKey = useCallback(async (profileId) => {
+    // Prevent concurrent loads and duplicate loads for same profile
+    if (isLoadingRef.current) return;
+    if (profileId === lastLoadedProfileId.current && lastLoadedProfileId.current !== null) return;
+
+    isLoadingRef.current = true;
+    lastLoadedProfileId.current = profileId;
     setIsLoading(true);
 
     try {
-      // If profile is selected and has the API key preference
-      if (currentProfile && hasPreference) {
-        const hasKey = hasPreference(PREFERENCE_KEY);
-        if (hasKey) {
-          // Get decrypted key from profile
+      // If profile is selected, try to get key from profile first
+      if (profileId && getDecryptedApiKey) {
+        try {
           const key = await getDecryptedApiKey(PREFERENCE_KEY);
           if (key) {
             setApiKey(key);
             setMaskedKey(maskApiKeyValue(key));
             setIsKeyStored(true);
             onApiKeySet(key);
+            setShowMigrationPrompt(false);
             setIsLoading(false);
+            isLoadingRef.current = false;
             return;
           }
+        } catch (e) {
+          // Profile doesn't have key, continue to localStorage
         }
       }
 
@@ -78,8 +93,8 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
         setIsKeyStored(true);
         onApiKeySet(decrypted);
 
-        // If we have a profile and localStorage key, prompt to migrate
-        if (currentProfile && !hasPreference?.(PREFERENCE_KEY)) {
+        // If we have a profile and localStorage key, prompt to migrate (once per profile per session)
+        if (profileId && !migratedProfiles.has(profileId)) {
           setShowMigrationPrompt(true);
         }
       } else if (required) {
@@ -101,12 +116,14 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
     }
 
     setIsLoading(false);
-  }, [currentProfile, getDecryptedApiKey, hasPreference, onApiKeySet, required]);
+    isLoadingRef.current = false;
+  }, [getDecryptedApiKey, onApiKeySet, required]);
 
   // Reload when profile changes
   useEffect(() => {
-    loadApiKey();
-  }, [loadApiKey, currentProfile?.id]);
+    const profileId = currentProfile?.id || null;
+    loadApiKey(profileId);
+  }, [currentProfile?.id, loadApiKey]);
 
   const saveApiKey = async () => {
     if (!apiKey.trim()) {
@@ -155,6 +172,7 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
         const decrypted = atob(storedKey);
         const success = await setPreference(PREFERENCE_KEY, decrypted);
         if (success) {
+          migratedProfiles.add(currentProfile.id);
           setShowMigrationPrompt(false);
         }
       }
@@ -162,6 +180,13 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
       console.error('Migration error:', error);
     }
     setIsMigrating(false);
+  };
+
+  const skipMigration = () => {
+    if (currentProfile) {
+      migratedProfiles.add(currentProfile.id);
+    }
+    setShowMigrationPrompt(false);
   };
 
   const clearApiKey = async () => {
@@ -273,7 +298,7 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
           </p>
           <div className={styles.migrationButtons}>
             <button
-              onClick={() => setShowMigrationPrompt(false)}
+              onClick={skipMigration}
               className={styles.migrationSkip}
             >
               Skip
