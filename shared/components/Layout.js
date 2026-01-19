@@ -1,7 +1,6 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useState } from 'react';
-import { ProfileProvider } from '../context/ProfileContext';
 import ProfileSelector from './ProfileSelector';
 
 export default function Layout({ 
@@ -28,7 +27,6 @@ export default function Layout({
   ];
 
   return (
-    <ProfileProvider>
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <Head>
         <title>{title}</title>
@@ -135,7 +133,6 @@ export default function Layout({
         </div>
       </footer>
     </div>
-    </ProfileProvider>
   );
 }
 

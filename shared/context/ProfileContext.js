@@ -233,7 +233,7 @@ export function ProfileProvider({ children }) {
   /**
    * Save multiple preferences at once
    */
-  const setPreferences = useCallback(async (prefsToSave) => {
+  const savePreferences = useCallback(async (prefsToSave) => {
     if (!currentProfile) {
       console.warn('No profile selected, cannot save preferences');
       return false;
@@ -357,7 +357,8 @@ export function ProfileProvider({ children }) {
 
     // Preference management
     setPreference,
-    setPreferences,
+    setPreferences: savePreferences,  // Alias for backwards compatibility
+    savePreferences,
     refreshPreferences,
     getDecryptedApiKey,
     hasPreference,
