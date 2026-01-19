@@ -1286,4 +1286,83 @@ Implemented multi-user support without authentication, enabling isolated API key
 
 ---
 
-Last Updated: January 19, 2026
+## Session 30 - January 18, 2026
+
+### Microsoft Azure AD Authentication Implementation
+
+Implemented optional Microsoft Azure AD authentication using NextAuth.js. Authentication is **conditional** - it only activates when Azure credentials are configured in environment variables.
+
+**Key Design Decision:**
+- Authentication is optional until Azure AD app registration is set up
+- App works exactly as before (with ProfileSelector) when credentials not configured
+- Once credentials are added, login via Microsoft becomes required
+
+**Database Schema (V11 Migration):**
+- Added `azure_id` (VARCHAR, UNIQUE) to `user_profiles` - Azure AD user ID
+- Added `azure_email` (VARCHAR) to `user_profiles` - User's Azure email
+- Added `last_login_at` (TIMESTAMP) to `user_profiles` - Last Azure login
+- Added `needs_linking` (BOOLEAN) to `user_profiles` - First-login flag
+- Added indexes for fast Azure ID/email lookups
+
+**Authentication Flow:**
+1. User visits app → `RequireAuth` checks if Azure credentials configured
+2. If not configured → App works as before with ProfileSelector
+3. If configured and unauthenticated → Redirect to Microsoft login
+4. After Azure auth → `signIn` callback checks for linked profile
+5. First login → `ProfileLinkingDialog` lets user pick existing profile or create new
+6. Future logins → Auto-selects linked profile from session
+
+**Files Created:**
+| File | Purpose |
+|------|---------|
+| `pages/api/auth/[...nextauth].js` | NextAuth API route with Azure AD provider |
+| `pages/api/auth/link-profile.js` | API for linking Azure account to profile |
+| `pages/api/auth/status.js` | Returns whether auth is enabled (credentials exist) |
+| `pages/auth/signin.js` | Custom sign-in page with Microsoft branding |
+| `pages/auth/error.js` | Custom error page for auth failures |
+| `shared/components/RequireAuth.js` | Auth guard (passes through if auth disabled) |
+| `shared/components/ProfileLinkingDialog.js` | First-login profile selection modal |
+| `lib/utils/auth.js` | Server-side utilities: `requireAuth`, `requireAuthWithProfile` |
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `pages/_app.js` | Added `SessionProvider` wrapper from NextAuth |
+| `pages/index.js` | Wrapped with `RequireAuth`, conditional user menu |
+| `shared/components/Layout.js` | User menu when authenticated, ProfileSelector when not |
+| `shared/context/ProfileContext.js` | Integrated with `useSession` for auto profile selection |
+| `lib/services/database-service.js` | Added Azure fields to profile queries |
+| `scripts/setup-database.js` | V11 migration for Azure columns |
+| `CLAUDE.md` | Added authentication documentation |
+
+**Environment Variables (Required when enabling auth):**
+```env
+NEXTAUTH_URL=http://localhost:3000     # Base URL
+NEXTAUTH_SECRET=...                     # Generate: openssl rand -base64 32
+AZURE_AD_CLIENT_ID=...                  # From Azure Portal
+AZURE_AD_CLIENT_SECRET=...              # From Azure Portal
+AZURE_AD_TENANT_ID=...                  # Organization tenant ID
+```
+
+**Server-Side Auth Utilities:**
+```javascript
+// In API routes:
+import { requireAuth, requireAuthWithProfile } from '../../lib/utils/auth';
+
+// Option 1: Just require authentication
+const session = await requireAuth(req, res);
+if (!session) return; // 401 already sent
+
+// Option 2: Require auth + profile for data scoping
+const profileId = await requireAuthWithProfile(req, res);
+if (!profileId) return; // 401 or 403 already sent
+```
+
+### Git Commits
+
+- `7de98a5` Add Microsoft Azure AD authentication with NextAuth.js
+- `933ccf6` Make authentication optional when Azure credentials not configured
+
+---
+
+Last Updated: January 18, 2026

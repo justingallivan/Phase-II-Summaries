@@ -1,10 +1,10 @@
-# Document Processing Suite - Session 30 Prompt
+# Document Processing Suite - Session 31 Prompt
 
-## Current State (as of January 19, 2026)
+## Current State (as of January 18, 2026)
 
 ### App Suite Overview
 
-The suite has **10 active apps** with multi-user support:
+The suite has **10 active apps** with multi-user support and optional Microsoft authentication:
 
 | Category | Apps |
 |----------|------|
@@ -13,39 +13,44 @@ The suite has **10 active apps** with multi-user support:
 | **Phase II** | Batch Phase II Summaries, Funding Analysis, Create Phase II Writeup Draft, Reviewer Finder, Summarize Peer Reviews |
 | **Other Tools** | Expense Reporter, Literature Analyzer |
 
-### Session 29 Summary (Completed)
+### Session 30 Summary (Completed)
 
-**User Profiles Phase 1 - Full Implementation:**
+**Microsoft Azure AD Authentication (Optional):**
 
-1. **Database Schema (V10 Migration)**
-   - `user_profiles` table with avatar colors, default flags
-   - `user_preferences` table with AES-256-GCM encryption for API keys
-   - Added `user_profile_id` FK to `proposal_searches` and `reviewer_suggestions`
+Implemented conditional authentication that only activates when Azure credentials are configured.
 
-2. **Profile Selection**
-   - Profile dropdown in header (all pages)
-   - Profile Settings page at `/profile-settings`
-   - Create, edit, archive profiles with colored avatars
+1. **How It Works:**
+   - Without Azure credentials → App works as before (ProfileSelector, no login)
+   - With Azure credentials → Microsoft login required, user menu in header
 
-3. **API Key Isolation**
-   - Each profile has its own encrypted API keys (Claude, ORCID, NCBI, SerpAPI)
-   - Keys stored in database, NOT in localStorage
-   - Switching profiles loads only that profile's keys
+2. **Database Schema (V11 Migration)**
+   - Added `azure_id`, `azure_email`, `last_login_at`, `needs_linking` to `user_profiles`
+   - Indexes for fast Azure lookups
 
-4. **User-Scoped Data**
-   - My Candidates filtered by current profile
-   - New proposals saved with user_profile_id
-   - Legacy data (NULL) visible to all until migrated
+3. **First-Login Flow**
+   - User logs in with Microsoft
+   - ProfileLinkingDialog lets them choose existing profile or create new
+   - Future logins auto-select linked profile
 
-5. **Migration Tools**
-   - `export-proposals-for-migration.js` - Export proposals to CSV
-   - `import-user-assignments.js` - Assign proposals to users
-   - `manage-preferences.js` - View/delete API keys by profile
+4. **Key Files Created:**
+   - `pages/api/auth/[...nextauth].js` - NextAuth with Azure AD provider
+   - `pages/api/auth/link-profile.js` - Profile linking API
+   - `pages/api/auth/status.js` - Returns if auth is enabled
+   - `pages/auth/signin.js` - Custom signin page
+   - `pages/auth/error.js` - Custom error page
+   - `shared/components/RequireAuth.js` - Auth guard (passes through if disabled)
+   - `shared/components/ProfileLinkingDialog.js` - First-login profile selection
+   - `lib/utils/auth.js` - Server-side auth utilities
 
-6. **Bug Fixes**
-   - Fixed SSR compatibility (ProfileProvider in _app.js)
-   - Fixed infinite re-render loop on profile switch
-   - Fixed localStorage keys showing across all profiles
+5. **To Enable Authentication:**
+   ```env
+   NEXTAUTH_URL=http://localhost:3000
+   NEXTAUTH_SECRET=<generate: openssl rand -base64 32>
+   AZURE_AD_CLIENT_ID=<from Azure Portal>
+   AZURE_AD_CLIENT_SECRET=<from Azure Portal>
+   AZURE_AD_TENANT_ID=<organization tenant ID>
+   ```
+   Then run: `node scripts/setup-database.js`
 
 ### Current Users
 
@@ -58,43 +63,62 @@ The suite has **10 active apps** with multi-user support:
 | 5 | Beth Pruitt | 5 |
 | 6 | Tom Rieker | 0 |
 
+## Pending Tasks
+
+### 1. Azure AD App Registration Setup
+When ready to enable authentication:
+1. Go to Azure Portal → Azure Active Directory → App registrations
+2. Create new registration for this app
+3. Configure redirect URIs: `http://localhost:3000/api/auth/callback/azure-ad` (dev) and production URL
+4. Generate client secret
+5. Note: Tenant ID, Client ID, Client Secret
+6. Add environment variables and run migration
+
+### 2. Protect Remaining API Routes (Optional)
+The auth utilities are ready but most API routes aren't protected yet:
+```javascript
+import { requireAuth, requireAuthWithProfile } from '../../lib/utils/auth';
+
+export default async function handler(req, res) {
+  const profileId = await requireAuthWithProfile(req, res);
+  if (!profileId) return; // 401 or 403 already sent
+  // ... rest of handler
+}
+```
+
 ## Future Enhancements (Low Priority)
 
-### 1. User Authentication (If Trust Model Changes)
-Currently profiles are honor-based (no login required). If security between users becomes necessary:
-- Add login system (password, SSO, or OAuth)
-- Per-user encryption keys derived from credentials
-- Session management and logout
-- Note: Current model assumes trusted internal team
-
-### 2. User Profiles Phase 2 (If Needed)
-- Per-user model preferences (override default Claude model)
-- Email template settings per user
-- Sender info (name, email, signature) stored in profile
-
-### 3. Email Integration
+### 1. Email Integration
 - Dynamics 365 integration for email tracking
 - Automated reminder system for non-responders
 - Open/click tracking via webhooks
 
-### 4. Data Management
+### 2. User Profiles Phase 2
+- Per-user model preferences
+- Email template settings per user
+- Sender info stored in profile
+
+### 3. Data Management
 - Archive old proposals
 - Bulk operations across grant cycles
 
 ## Key Files Reference
 
+**Authentication:**
+- `pages/api/auth/[...nextauth].js` - NextAuth configuration
+- `pages/api/auth/link-profile.js` - Profile linking
+- `pages/api/auth/status.js` - Auth enabled check
+- `shared/components/RequireAuth.js` - Auth guard
+- `shared/components/ProfileLinkingDialog.js` - First-login flow
+- `lib/utils/auth.js` - `requireAuth`, `requireAuthWithProfile`
+
 **User Profiles:**
-- `shared/context/ProfileContext.js` - React context for profile state
-- `shared/components/ProfileSelector.js` - Header dropdown
+- `shared/context/ProfileContext.js` - React context (integrated with session)
+- `shared/components/ProfileSelector.js` - Header dropdown (when auth disabled)
 - `pages/profile-settings.js` - Profile management page
 - `pages/api/user-profiles.js` - Profile CRUD API
 - `pages/api/user-preferences.js` - Encrypted preferences API
 - `lib/utils/encryption.js` - AES-256-GCM encryption
-
-**Migration Scripts:**
-- `scripts/export-proposals-for-migration.js`
-- `scripts/import-user-assignments.js`
-- `scripts/manage-preferences.js`
 
 **Reviewer Finder:**
 - `pages/reviewer-finder.js` - Main app with My Candidates, Database tabs
@@ -103,17 +127,26 @@ Currently profiles are honor-based (no login required). If security between user
 
 ## Environment Variables
 
-```
-CLAUDE_API_KEY=        # Required
-POSTGRES_URL=          # Auto-set by Vercel Postgres
-SERP_API_KEY=          # Google/Scholar search (optional)
-NCBI_API_KEY=          # Higher PubMed rate limits (optional)
+```env
+# Required
+CLAUDE_API_KEY=
+
+# Database (auto-set by Vercel Postgres)
+POSTGRES_URL=
+
+# Authentication (optional - enables Microsoft login when all are set)
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=
+AZURE_AD_CLIENT_ID=
+AZURE_AD_CLIENT_SECRET=
+AZURE_AD_TENANT_ID=
+
+# Enhanced features (optional)
+SERP_API_KEY=          # Google/Scholar search
+NCBI_API_KEY=          # Higher PubMed rate limits
 
 # User Profiles (optional - uses dev fallback)
 USER_PREFS_ENCRYPTION_KEY=  # 32-byte hex key for API key encryption
-
-# Per-app model overrides (optional)
-CLAUDE_MODEL_CONCEPT_EVALUATOR=claude-sonnet-4-20250514
 ```
 
 ## Running the App
@@ -130,11 +163,8 @@ node scripts/setup-database.js
 
 Branch: main
 
-Session 29 commits:
-- `943cb65` Implement User Profiles Phase 1 for multi-user support
-- `de60c03` Fix ProfileProvider and setPreferences naming conflict
-- `8277c1b` Fix profile switching loop in API key components
-- `f94ceb5` Isolate API keys per profile - do not show localStorage fallback
-- `f088353` Add migration CSV to gitignore
+Session 30 commits:
+- `7de98a5` Add Microsoft Azure AD authentication with NextAuth.js
+- `933ccf6` Make authentication optional when Azure credentials not configured
 
-52 commits ahead of origin/main (not pushed).
+56 commits ahead of origin/main (not pushed).
