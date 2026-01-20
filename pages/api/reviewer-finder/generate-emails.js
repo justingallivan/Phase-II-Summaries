@@ -5,12 +5,16 @@
  * Supports optional Claude personalization and file attachments via SSE streaming.
  *
  * POST body:
- * - candidates: Array of candidates with name, email, affiliation, suggestionId (optional)
+ * - candidates: Array of candidates with name, email, affiliation, suggestionId (required for multi-proposal)
  * - template: { subject, body } with placeholders
  * - settings: { senderName, senderEmail, signature, grantCycle }
- * - proposalInfo: { title, abstract, authors, institution }
+ * - proposalInfo: { title, abstract, authors, institution } - fallback if no suggestionId
  * - options: { useClaudePersonalization, claudeApiKey, markAsSent }
- * - attachments: { summaryBlobUrl, reviewTemplateBlobUrl } - URLs to fetch and attach
+ * - attachments: { summaryBlobUrl, reviewTemplateBlobUrl } - URLs to fetch and attach (fallback)
+ *
+ * Multi-proposal support:
+ * When candidates have suggestionId, their proposal info is looked up from the database,
+ * allowing each email to have the correct proposal title, PI, and summary attachment.
  */
 
 import { sql } from '@vercel/postgres';
@@ -23,6 +27,83 @@ import {
 } from '../../../lib/utils/email-generator';
 
 import { createPersonalizationPrompt } from '../../../shared/config/prompts/email-reviewer';
+
+/**
+ * Look up proposal info for candidates from the database
+ * Returns a map of suggestionId -> proposalInfo
+ */
+async function lookupProposalInfoForCandidates(suggestionIds) {
+  if (!suggestionIds || suggestionIds.length === 0) {
+    return new Map();
+  }
+
+  try {
+    // Query proposal info for all suggestionIds in one batch
+    const result = await sql`
+      SELECT
+        id as suggestion_id,
+        proposal_title,
+        proposal_abstract,
+        proposal_authors,
+        proposal_institution,
+        summary_blob_url,
+        co_investigators,
+        co_investigator_count
+      FROM reviewer_suggestions
+      WHERE id = ANY(${suggestionIds})
+    `;
+
+    const proposalInfoMap = new Map();
+    for (const row of result.rows) {
+      proposalInfoMap.set(row.suggestion_id, {
+        title: row.proposal_title || '',
+        abstract: row.proposal_abstract || '',
+        authors: row.proposal_authors || '',
+        institution: row.proposal_institution || '',
+        summaryBlobUrl: row.summary_blob_url || '',
+        coInvestigators: row.co_investigators || '',
+        coInvestigatorCount: row.co_investigator_count || 0
+      });
+    }
+
+    return proposalInfoMap;
+  } catch (error) {
+    console.error('Error looking up proposal info:', error.message);
+    return new Map();
+  }
+}
+
+/**
+ * Fetch attachment from URL and cache by URL to avoid re-fetching
+ */
+async function fetchAttachment(url, attachmentCache, filename, contentType) {
+  if (!url) return null;
+
+  // Check cache first
+  if (attachmentCache.has(url)) {
+    return attachmentCache.get(url);
+  }
+
+  try {
+    const response = await fetch(url);
+    if (response.ok) {
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const attachment = {
+        filename,
+        contentType,
+        content: buffer
+      };
+      attachmentCache.set(url, attachment);
+      return attachment;
+    } else {
+      console.warn(`Failed to fetch attachment from ${url}:`, response.status);
+      return null;
+    }
+  } catch (err) {
+    console.error(`Error fetching attachment from ${url}:`, err.message);
+    return null;
+  }
+}
 
 export const config = {
   api: {
@@ -86,46 +167,39 @@ export default async function handler(req, res) {
       return res.end();
     }
 
-    // Fetch attachments if provided
-    const emailAttachments = [];
-    const { summaryBlobUrl, reviewTemplateBlobUrl, additionalAttachments = [] } = attachmentConfig;
+    // Look up proposal info for candidates with suggestionIds (multi-proposal support)
+    const suggestionIds = validCandidates
+      .map(c => c.suggestionId)
+      .filter(id => id != null);
 
-    if (summaryBlobUrl || reviewTemplateBlobUrl || additionalAttachments.length > 0) {
+    let proposalInfoMap = new Map();
+    if (suggestionIds.length > 0) {
+      sendEvent('progress', {
+        stage: 'lookup',
+        message: 'Looking up proposal info for candidates...'
+      });
+      proposalInfoMap = await lookupProposalInfoForCandidates(suggestionIds);
+    }
+
+    // Attachment cache to avoid re-fetching the same files
+    const attachmentCache = new Map();
+
+    // Fetch shared attachments (review template, additional attachments)
+    const { summaryBlobUrl: fallbackSummaryUrl, reviewTemplateBlobUrl, additionalAttachments = [] } = attachmentConfig;
+    const sharedAttachments = [];
+
+    if (reviewTemplateBlobUrl || additionalAttachments.length > 0) {
       sendEvent('progress', {
         stage: 'fetching_attachments',
-        message: 'Fetching attachment files...'
+        message: 'Fetching shared attachment files...'
       });
 
-      // Fetch project summary PDF
-      if (summaryBlobUrl) {
-        try {
-          const summaryResponse = await fetch(summaryBlobUrl);
-          if (summaryResponse.ok) {
-            const buffer = Buffer.from(await summaryResponse.arrayBuffer());
-            emailAttachments.push({
-              filename: 'Project_Summary.pdf',
-              contentType: 'application/pdf',
-              content: buffer
-            });
-            sendEvent('progress', {
-              stage: 'fetching_attachments',
-              message: 'Fetched project summary PDF'
-            });
-          } else {
-            console.warn('Failed to fetch summary PDF:', summaryResponse.status);
-          }
-        } catch (err) {
-          console.error('Error fetching summary PDF:', err.message);
-        }
-      }
-
-      // Fetch review template
+      // Fetch review template (shared across all emails)
       if (reviewTemplateBlobUrl) {
         try {
           const templateResponse = await fetch(reviewTemplateBlobUrl);
           if (templateResponse.ok) {
             const buffer = Buffer.from(await templateResponse.arrayBuffer());
-            // Determine filename and content type from URL or default to PDF
             const urlPath = new URL(reviewTemplateBlobUrl).pathname;
             const ext = urlPath.split('.').pop()?.toLowerCase() || 'pdf';
             const contentType = ext === 'docx'
@@ -133,7 +207,7 @@ export default async function handler(req, res) {
               : ext === 'doc'
               ? 'application/msword'
               : 'application/pdf';
-            emailAttachments.push({
+            sharedAttachments.push({
               filename: `Review_Template.${ext}`,
               contentType,
               content: buffer
@@ -150,14 +224,14 @@ export default async function handler(req, res) {
         }
       }
 
-      // Fetch additional attachments
+      // Fetch additional attachments (shared across all emails)
       for (const attachment of additionalAttachments) {
         if (!attachment.blobUrl) continue;
         try {
           const response = await fetch(attachment.blobUrl);
           if (response.ok) {
             const buffer = Buffer.from(await response.arrayBuffer());
-            emailAttachments.push({
+            sharedAttachments.push({
               filename: attachment.filename || 'Attachment.pdf',
               contentType: attachment.contentType || 'application/octet-stream',
               content: buffer
@@ -175,14 +249,20 @@ export default async function handler(req, res) {
       }
     }
 
-    const hasAttachments = emailAttachments.length > 0;
+    // Count unique summary URLs for progress reporting
+    const uniqueSummaryUrls = new Set();
+    for (const candidate of validCandidates) {
+      const candidateProposalInfo = proposalInfoMap.get(candidate.suggestionId);
+      const summaryUrl = candidateProposalInfo?.summaryBlobUrl || fallbackSummaryUrl;
+      if (summaryUrl) uniqueSummaryUrls.add(summaryUrl);
+    }
 
     sendEvent('progress', {
       stage: 'starting',
-      message: `Generating ${validCandidates.length} emails${hasAttachments ? ` with ${emailAttachments.length} attachment(s)` : ''}...`,
+      message: `Generating ${validCandidates.length} emails (${uniqueSummaryUrls.size} unique proposal${uniqueSummaryUrls.size !== 1 ? 's' : ''})...`,
       total: validCandidates.length,
       skipped: skippedCount,
-      attachmentCount: emailAttachments.length
+      uniqueProposals: uniqueSummaryUrls.size
     });
 
     const generatedEmails = [];
@@ -203,8 +283,11 @@ export default async function handler(req, res) {
       });
 
       try {
-        // Build template data for this candidate
-        const templateData = buildTemplateData(candidate, proposalInfo, settings);
+        // Get this candidate's specific proposal info (from DB lookup or fallback)
+        const candidateProposalInfo = proposalInfoMap.get(candidate.suggestionId) || proposalInfo || {};
+
+        // Build template data for this candidate with their specific proposal
+        const templateData = buildTemplateData(candidate, candidateProposalInfo, settings);
 
         // Replace placeholders in template
         let subject = replacePlaceholders(template.subject, templateData);
@@ -215,7 +298,7 @@ export default async function handler(req, res) {
           try {
             const personalizedBody = await personalizeWithClaude(
               candidate,
-              proposalInfo,
+              candidateProposalInfo,
               body,
               claudeApiKey
             );
@@ -227,6 +310,25 @@ export default async function handler(req, res) {
             // Continue with non-personalized email
           }
         }
+
+        // Build per-candidate attachments (shared + candidate-specific summary)
+        const candidateAttachments = [...sharedAttachments];
+
+        // Fetch this candidate's summary PDF (cached to avoid re-fetching same URL)
+        const summaryUrl = candidateProposalInfo.summaryBlobUrl || fallbackSummaryUrl;
+        if (summaryUrl) {
+          const summaryAttachment = await fetchAttachment(
+            summaryUrl,
+            attachmentCache,
+            'Project_Summary.pdf',
+            'application/pdf'
+          );
+          if (summaryAttachment) {
+            candidateAttachments.unshift(summaryAttachment); // Add at beginning
+          }
+        }
+
+        const hasAttachments = candidateAttachments.length > 0;
 
         // Build sender string
         const from = settings.senderName
@@ -240,7 +342,7 @@ export default async function handler(req, res) {
               to: candidate.email,
               subject,
               body,
-              attachments: emailAttachments
+              attachments: candidateAttachments
             })
           : generateEmlContent({
               from,
