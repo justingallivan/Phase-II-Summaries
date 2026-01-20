@@ -55,7 +55,8 @@ async function lookupProposalInfoForCandidates(suggestionIds) {
 
     const proposalInfoMap = new Map();
     for (const row of result.rows) {
-      proposalInfoMap.set(row.suggestion_id, {
+      // Use string key to match frontend's JSON-serialized suggestionId
+      proposalInfoMap.set(String(row.suggestion_id), {
         title: row.proposal_title || '',
         abstract: row.proposal_abstract || '',
         authors: row.proposal_authors || '',
@@ -284,7 +285,8 @@ export default async function handler(req, res) {
 
       try {
         // Get this candidate's specific proposal info (from DB lookup or fallback)
-        const candidateProposalInfo = proposalInfoMap.get(candidate.suggestionId) || proposalInfo || {};
+        // Convert suggestionId to string to match Map keys
+        const candidateProposalInfo = proposalInfoMap.get(String(candidate.suggestionId)) || proposalInfo || {};
 
         // Build template data for this candidate with their specific proposal
         const templateData = buildTemplateData(candidate, candidateProposalInfo, settings);
