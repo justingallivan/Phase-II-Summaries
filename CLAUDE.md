@@ -149,11 +149,20 @@ The flagship application. Complete pipeline for finding and contacting expert re
 - Sort by name, affiliation, h-index, or last updated
 - Auto-generated tags from discovery (expertise areas, source database)
 - Pagination for large datasets
+- **Add Researcher** - Manually add new researchers to database:
+  - Basic info: Name, affiliation, department
+  - Contact: Email, website, ORCID, Google Scholar ID
+  - Metrics: h-index, i10-index, citations
+  - Expertise keywords (comma-separated)
+  - Notes field for conflicts, preferences, etc.
+  - Optional: Associate with proposal via grant cycle selector
 - **Detail Modal** - Click any row to view full researcher info:
   - Contact info with source (e.g., "from PubMed 2024")
   - Metrics: h-index, i10-index, total citations
+  - Notes field (editable) for tracking conflicts/preferences
   - All expertise keywords grouped by source
   - Proposal associations with status and notes
+  - **Associate with Proposal** - Link existing researcher to any proposal
 
 ### Email Generation Workflow
 

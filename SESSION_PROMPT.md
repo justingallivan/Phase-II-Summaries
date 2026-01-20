@@ -1,6 +1,6 @@
-# Document Processing Suite - Session 31 Prompt
+# Document Processing Suite - Session 32 Prompt
 
-## Current State (as of January 18, 2026)
+## Current State (as of January 19, 2026)
 
 ### App Suite Overview
 
@@ -13,44 +13,48 @@ The suite has **10 active apps** with multi-user support and optional Microsoft 
 | **Phase II** | Batch Phase II Summaries, Funding Analysis, Create Phase II Writeup Draft, Reviewer Finder, Summarize Peer Reviews |
 | **Other Tools** | Expense Reporter, Literature Analyzer |
 
-### Session 30 Summary (Completed)
+### Session 31 Summary (Completed)
 
-**Microsoft Azure AD Authentication (Optional):**
+**Manual Researcher Management:**
 
-Implemented conditional authentication that only activates when Azure credentials are configured.
+1. **Researcher Notes Field**
+   - V12 migration added `notes` column to `researchers` table
+   - Editable in researcher detail modal (yellow highlight for display)
+   - Track conflicts, preferences, decline reasons, past interactions
 
-1. **How It Works:**
-   - Without Azure credentials → App works as before (ProfileSelector, no login)
-   - With Azure credentials → Microsoft login required, user menu in header
+2. **Add Researcher Button**
+   - New "+ Add Researcher" in Database tab
+   - Form with name, affiliation, contact info, metrics, keywords, notes
+   - **Grant cycle → Proposal dropdown** for associating on creation
 
-2. **Database Schema (V11 Migration)**
-   - Added `azure_id`, `azure_email`, `last_login_at`, `needs_linking` to `user_profiles`
-   - Indexes for fast Azure lookups
+3. **Associate with Proposal**
+   - New "+ Add to Proposal" link in researcher detail modal
+   - Links existing researchers to proposals without discovery
+   - Grant cycle selector → Proposal selector → Optional match reason
 
-3. **First-Login Flow**
-   - User logs in with Microsoft
-   - ProfileLinkingDialog lets them choose existing profile or create new
-   - Future logins auto-select linked profile
+4. **Status Tracking**
+   - "No Response" option for closing out non-responders
+   - "Mark as Sent" button for retroactive tracking
 
-4. **Key Files Created:**
-   - `pages/api/auth/[...nextauth].js` - NextAuth with Azure AD provider
-   - `pages/api/auth/link-profile.js` - Profile linking API
-   - `pages/api/auth/status.js` - Returns if auth is enabled
-   - `pages/auth/signin.js` - Custom signin page
-   - `pages/auth/error.js` - Custom error page
-   - `shared/components/RequireAuth.js` - Auth guard (passes through if disabled)
-   - `shared/components/ProfileLinkingDialog.js` - First-login profile selection
-   - `lib/utils/auth.js` - Server-side auth utilities
+**Bug Fixes:**
+- Email generation modal cycling/double-generation issues (refs pattern)
+- ApiSettingsPanel infinite loop (callback ref pattern)
+- Proposal association bug (parseInt on string hash)
 
-5. **To Enable Authentication:**
-   ```env
-   NEXTAUTH_URL=http://localhost:3000
-   NEXTAUTH_SECRET=<generate: openssl rand -base64 32>
-   AZURE_AD_CLIENT_ID=<from Azure Portal>
-   AZURE_AD_CLIENT_SECRET=<from Azure Portal>
-   AZURE_AD_TENANT_ID=<organization tenant ID>
-   ```
-   Then run: `node scripts/setup-database.js`
+**API Changes:**
+- `POST /api/reviewer-finder/researchers` - Now supports create (not just merge)
+- `GET /api/reviewer-finder/my-candidates?mode=proposals` - Fetch proposals for dropdowns
+
+### Database Schema
+
+Current version: **V12**
+
+Key tables:
+- `researchers` - Expert profiles with notes field
+- `reviewer_suggestions` - Proposal-researcher associations
+- `grant_cycles` - Grant cycle management
+- `user_profiles` - Multi-user support with optional Azure AD linking
+- `user_preferences` - Encrypted API keys per user
 
 ### Current Users
 
@@ -121,9 +125,16 @@ export default async function handler(req, res) {
 - `lib/utils/encryption.js` - AES-256-GCM encryption
 
 **Reviewer Finder:**
-- `pages/reviewer-finder.js` - Main app with My Candidates, Database tabs
-- `pages/api/reviewer-finder/my-candidates.js` - User-scoped queries
+- `pages/reviewer-finder.js` - Main app with tabs, AddResearcherModal, ResearcherDetailModal
+- `pages/api/reviewer-finder/researchers.js` - GET/POST(create/merge)/PATCH/DELETE
+- `pages/api/reviewer-finder/my-candidates.js` - User-scoped queries, mode=proposals
 - `pages/api/reviewer-finder/save-candidates.js` - Saves with user_profile_id
+- `shared/components/EmailGeneratorModal.js` - Email generation with .eml download
+
+**Email Generation:**
+- Uses refs pattern to prevent re-render loops during SSE
+- `generationTriggeredRef` prevents double generation
+- `needsRefreshRef` defers parent callback until modal closes
 
 ## Environment Variables
 
@@ -163,8 +174,7 @@ node scripts/setup-database.js
 
 Branch: main
 
-Session 30 commits:
-- `7de98a5` Add Microsoft Azure AD authentication with NextAuth.js
-- `933ccf6` Make authentication optional when Azure credentials not configured
+Session 31 commits:
+- `9553708` Add manual researcher management and fix email generation bugs
 
-56 commits ahead of origin/main (not pushed).
+Pushed to origin/main.

@@ -1365,4 +1365,86 @@ if (!profileId) return; // 401 or 403 already sent
 
 ---
 
-Last Updated: January 18, 2026
+## Session 31 - January 19, 2026
+
+### Manual Researcher Management & Bug Fixes
+
+Added comprehensive manual researcher management features and fixed several critical bugs in the email generation workflow.
+
+**New Features:**
+
+1. **Researcher Notes Field (V12 Migration)**
+   - Added `notes` column to `researchers` table for tracking conflicts, preferences, past interactions
+   - Editable in researcher detail modal with yellow-highlighted display
+   - Useful for recording decline reasons and other contextual information
+
+2. **Add Researcher Button (Database Tab)**
+   - New "+ Add Researcher" button in Database tab header
+   - Opens `AddResearcherModal` with comprehensive form:
+     - Basic Info: Name (required), Affiliation, Department
+     - Contact: Email, Website, ORCID, Google Scholar ID
+     - Metrics: h-index, i10-index, Citations
+     - Expertise: Keywords (comma-separated)
+     - Notes: General notes field
+     - Proposal Association: Grant cycle selector → Proposal dropdown → Match reason
+
+3. **Associate with Proposal (Researcher Detail Modal)**
+   - New "+ Add to Proposal" link in Proposal Associations section
+   - Expandable green form with grant cycle and proposal selectors
+   - Links existing researchers to proposals without re-running discovery
+   - Creates `reviewer_suggestions` entry with source='manual'
+
+4. **Status Tracking Improvements**
+   - Added "No Response" status option for closing out non-responders
+   - Added "Mark as Sent" button for retroactive email tracking on older candidates
+   - Filter support for "No Response" status in My Candidates
+
+**Bug Fixes:**
+
+1. **Email Generation Modal Cycling** (`EmailGeneratorModal.js`)
+   - Fixed infinite loop caused by `onEmailsGenerated` callback triggering parent re-render during SSE
+   - Added `generationTriggeredRef` guard to prevent double generation
+   - Added `needsRefreshRef` to defer parent callback until modal closes
+   - Consolidated initialization into single useEffect with `hasInitializedRef`
+
+2. **ApiSettingsPanel Infinite Loop** (`ApiSettingsPanel.js`)
+   - Fixed infinite re-render caused by `onSettingsChange` in useCallback dependency array
+   - Implemented ref pattern: `onSettingsChangeRef.current` instead of direct callback
+
+3. **Proposal Association Bug**
+   - Fixed `parseInt()` being called on string proposal hash, causing `NaN`
+   - Changed to pass proposalId as string directly
+
+**API Changes:**
+
+1. **POST /api/reviewer-finder/researchers** (Extended)
+   - Now supports creating new researchers (when `name` provided instead of `primaryId`)
+   - Accepts optional `proposalId` to associate with proposal on creation
+   - Accepts `keywords` array for expertise tags
+
+2. **GET /api/reviewer-finder/my-candidates?mode=proposals**
+   - New mode to fetch all proposals (from `reviewer_suggestions`) for dropdowns
+   - Supports `cycleId` filter for grant cycle scoping
+   - Returns distinct proposals with title, hash, and cycle info
+
+**Database:**
+- V12 Migration: `ALTER TABLE researchers ADD COLUMN IF NOT EXISTS notes TEXT`
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `pages/reviewer-finder.js` | AddResearcherModal, notes field UI, associate feature, status tracking |
+| `pages/api/reviewer-finder/researchers.js` | POST create handler, notes in GET/PATCH |
+| `pages/api/reviewer-finder/my-candidates.js` | mode=proposals query |
+| `shared/components/EmailGeneratorModal.js` | Fixed cycling/double-generation bugs |
+| `shared/components/ApiSettingsPanel.js` | Fixed infinite loop |
+| `scripts/setup-database.js` | V12 migration |
+| `lib/db/schema.sql` | Added notes column |
+
+### Git Commits
+
+- `9553708` Add manual researcher management and fix email generation bugs
+
+---
+
+Last Updated: January 19, 2026
