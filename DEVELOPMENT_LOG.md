@@ -1447,4 +1447,103 @@ Added comprehensive manual researcher management features and fixed several crit
 
 ---
 
-Last Updated: January 19, 2026
+## Session 32 - January 20, 2026
+
+### Azure AD (Entra ID) Integration Finalization
+
+IT team completed and refined the Microsoft Azure AD authentication integration using their internal tools. This session focused on reviewing and documenting their changes.
+
+**IMPORTANT: Authentication remains OPTIONAL.** The app continues to work exactly as before (ProfileSelector dropdown, no login required) until Azure credentials are explicitly configured in environment variables. This is by design - authentication only activates when all three Azure variables (`AZURE_AD_CLIENT_ID`, `AZURE_AD_CLIENT_SECRET`, `AZURE_AD_TENANT_ID`) are set.
+
+**What IT Implemented/Refined:**
+
+The authentication infrastructure was built in Sessions 30-31, but IT refined several components and added new utilities:
+
+**1. Auth Status Endpoint** (`pages/api/auth/status.js`) - NEW
+- Simple endpoint returning `{ enabled: true|false }` based on Azure credentials
+- Checks `AZURE_AD_CLIENT_ID`, `AZURE_AD_CLIENT_SECRET`, `AZURE_AD_TENANT_ID`
+- Used by `RequireAuth` client component to determine if login is required
+
+**2. Enhanced Auth Utilities** (`lib/utils/auth.js`) - REFINED
+Added new helper functions:
+| Function | Purpose |
+|----------|---------|
+| `getSession(req, res)` | Get session without sending error response |
+| `requireAuth(req, res)` | Require auth, send 401 if unauthenticated |
+| `requireAuthWithProfile(req, res)` | Require auth + linked profile, send 401/403 |
+| `optionalAuth(req, res)` | Return session if present, null otherwise |
+
+**3. RequireAuth Component** (`shared/components/RequireAuth.js`) - REFINED
+- Now fetches `/api/auth/status` on mount to determine if auth is enabled
+- Caches result in `window.__AUTH_ENABLED__` for subsequent renders
+- Graceful fallback: if status check fails, assumes auth disabled
+- Added `useRequireAuth()` hook for use in other components
+
+**4. ProfileLinkingDialog** (`shared/components/ProfileLinkingDialog.js`) - REFINED
+- Cleaner implementation with proper loading states
+- Filters to only show unlinked profiles (`!p.azureId`)
+- Sign out option to switch accounts
+- Error handling with user-friendly messages
+
+**5. NextAuth Configuration** (`pages/api/auth/[...nextauth].js`) - REFINED
+- Robust signIn callback with multiple profile lookup strategies:
+  1. Check by `azure_id` (returning user)
+  2. Check by `azure_email` (auto-link if email matches)
+  3. Create temp profile with `needs_linking=true` if unlinked profiles exist
+  4. Create new profile if no existing profiles
+- Error-tolerant: allows sign-in even if DB operations fail
+
+**6. Link Profile Endpoint** (`pages/api/auth/link-profile.js`) - REFINED
+- Verifies Azure ID matches session before allowing link
+- Cleans up temporary profiles after linking
+- Prevents linking to already-linked profiles
+
+**New Files Created by IT:**
+| File | Purpose |
+|------|---------|
+| `.env.local.example` | Template for environment variables |
+| `docs/ENTRA_ID_INTEGRATION_SUMMARY.md` | IT's integration documentation |
+
+**Authentication Flow (Finalized):**
+```
+1. RequireAuth → GET /api/auth/status
+2. If enabled && unauthenticated → Show "Sign in with Microsoft" button
+3. User clicks → signIn('azure-ad') → Microsoft OAuth
+4. NextAuth signIn callback → Find/create/link profile in DB
+5. jwt callback → Add profileId, needsLinking to token
+6. session callback → Expose to client
+7. If needsLinking → Show ProfileLinkingDialog
+8. User links → POST /api/auth/link-profile → Reload page
+```
+
+**Environment Variables (Complete List):**
+```env
+# NextAuth Core
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=<openssl rand -base64 32>
+
+# Azure AD Credentials
+AZURE_AD_CLIENT_ID=<from Azure Portal>
+AZURE_AD_CLIENT_SECRET=<from Azure Portal>
+AZURE_AD_TENANT_ID=<organization tenant ID>
+
+# Database (auto-set by Vercel)
+POSTGRES_URL=<connection string>
+```
+
+**Testing Checklist:**
+1. `cp .env.local.example .env.local` and fill values
+2. `npm run dev`
+3. Visit `/api/auth/status` → expect `{"enabled":true}`
+4. Visit any page → should redirect to Microsoft login
+5. Complete OAuth → should show ProfileLinkingDialog (first login)
+6. Link or create profile → should reload with full access
+7. Visit `/api/auth/session` → should show `profileId`, `azureEmail`
+
+**Note:** Azure app registration requires redirect URI:
+- Dev: `http://localhost:3000/api/auth/callback/azure-ad`
+- Prod: `https://your-domain.vercel.app/api/auth/callback/azure-ad`
+
+---
+
+Last Updated: January 20, 2026

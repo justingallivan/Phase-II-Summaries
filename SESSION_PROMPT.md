@@ -1,10 +1,10 @@
-# Document Processing Suite - Session 32 Prompt
+# Document Processing Suite - Session 33 Prompt
 
-## Current State (as of January 19, 2026)
+## Current State (as of January 20, 2026)
 
 ### App Suite Overview
 
-The suite has **10 active apps** with multi-user support and optional Microsoft authentication:
+The suite has **10 active apps** with multi-user support and Microsoft Azure AD authentication:
 
 | Category | Apps |
 |----------|------|
@@ -13,37 +13,37 @@ The suite has **10 active apps** with multi-user support and optional Microsoft 
 | **Phase II** | Batch Phase II Summaries, Funding Analysis, Create Phase II Writeup Draft, Reviewer Finder, Summarize Peer Reviews |
 | **Other Tools** | Expense Reporter, Literature Analyzer |
 
-### Session 31 Summary (Completed)
+### Session 32 Summary (Completed)
 
-**Manual Researcher Management:**
+**Azure AD (Entra ID) Integration Finalization:**
 
-1. **Researcher Notes Field**
-   - V12 migration added `notes` column to `researchers` table
-   - Editable in researcher detail modal (yellow highlight for display)
-   - Track conflicts, preferences, decline reasons, past interactions
+IT team completed and refined the Microsoft Azure AD authentication integration:
 
-2. **Add Researcher Button**
-   - New "+ Add Researcher" in Database tab
-   - Form with name, affiliation, contact info, metrics, keywords, notes
-   - **Grant cycle → Proposal dropdown** for associating on creation
+1. **Auth Status Endpoint** (`pages/api/auth/status.js`)
+   - New endpoint returning `{enabled: true|false}` based on Azure credentials
+   - Used by RequireAuth to determine if login is required
 
-3. **Associate with Proposal**
-   - New "+ Add to Proposal" link in researcher detail modal
-   - Links existing researchers to proposals without discovery
-   - Grant cycle selector → Proposal selector → Optional match reason
+2. **Enhanced Auth Utilities** (`lib/utils/auth.js`)
+   - Added `getSession()` - Get session without error response
+   - Added `optionalAuth()` - Return session if present, null otherwise
+   - Refined `requireAuth()` and `requireAuthWithProfile()`
 
-4. **Status Tracking**
-   - "No Response" option for closing out non-responders
-   - "Mark as Sent" button for retroactive tracking
+3. **RequireAuth Component Refinements**
+   - Now fetches `/api/auth/status` on mount
+   - Caches result in `window.__AUTH_ENABLED__`
+   - Added `useRequireAuth()` hook
 
-**Bug Fixes:**
-- Email generation modal cycling/double-generation issues (refs pattern)
-- ApiSettingsPanel infinite loop (callback ref pattern)
-- Proposal association bug (parseInt on string hash)
+4. **ProfileLinkingDialog Improvements**
+   - Cleaner implementation with proper loading states
+   - Sign out option to switch accounts
 
-**API Changes:**
-- `POST /api/reviewer-finder/researchers` - Now supports create (not just merge)
-- `GET /api/reviewer-finder/my-candidates?mode=proposals` - Fetch proposals for dropdowns
+5. **NextAuth Configuration Refinements**
+   - Robust signIn callback with multiple profile lookup strategies
+   - Error-tolerant: allows sign-in even if DB operations fail
+
+**New Files from IT:**
+- `.env.local.example` - Environment variable template
+- `docs/ENTRA_ID_INTEGRATION_SUMMARY.md` - IT's integration documentation
 
 ### Database Schema
 
@@ -53,7 +53,7 @@ Key tables:
 - `researchers` - Expert profiles with notes field
 - `reviewer_suggestions` - Proposal-researcher associations
 - `grant_cycles` - Grant cycle management
-- `user_profiles` - Multi-user support with optional Azure AD linking
+- `user_profiles` - Multi-user support with Azure AD linking
 - `user_preferences` - Encrypted API keys per user
 
 ### Current Users
@@ -67,21 +67,44 @@ Key tables:
 | 5 | Beth Pruitt | 5 |
 | 6 | Tom Rieker | 0 |
 
+## Authentication Status
+
+**Authentication is OPTIONAL.** The app works exactly as before until you configure Azure credentials.
+
+- **Without credentials**: ProfileSelector dropdown in header, no login required
+- **With credentials**: Microsoft sign-in required, profile auto-linked to Azure account
+
+**To enable authentication (when ready):**
+
+1. Register app in Azure Portal (see DEVELOPMENT_LOG.md Session 32 for walkthrough)
+2. Set environment variables:
+   ```env
+   NEXTAUTH_URL=http://localhost:3000
+   NEXTAUTH_SECRET=<openssl rand -base64 32>
+   AZURE_AD_CLIENT_ID=<from Azure Portal>
+   AZURE_AD_CLIENT_SECRET=<from Azure Portal>
+   AZURE_AD_TENANT_ID=<your tenant ID>
+   ```
+3. Ensure redirect URI is configured: `{NEXTAUTH_URL}/api/auth/callback/azure-ad`
+
+**Testing Checklist:**
+1. Visit `/api/auth/status` → should return `{"enabled":true}`
+2. Visit any page → should show Microsoft sign-in
+3. Complete OAuth → ProfileLinkingDialog appears (first login)
+4. Link profile → Full access with session.user.profileId
+
 ## Pending Tasks
 
-### 1. Azure AD App Registration Setup
-When ready to enable authentication:
-1. Go to Azure Portal → Azure Active Directory → App registrations
-2. Create new registration for this app
-3. Configure redirect URIs: `http://localhost:3000/api/auth/callback/azure-ad` (dev) and production URL
-4. Generate client secret
-5. Note: Tenant ID, Client ID, Client Secret
-6. Add environment variables and run migration
+### 1. Test Azure AD Integration
+Once credentials are configured:
+- Verify sign-in flow works end-to-end
+- Test profile linking for existing users
+- Confirm session contains correct profileId and azureEmail
 
 ### 2. Protect Remaining API Routes (Optional)
-The auth utilities are ready but most API routes aren't protected yet:
+Auth utilities are ready but most API routes aren't protected yet:
 ```javascript
-import { requireAuth, requireAuthWithProfile } from '../../lib/utils/auth';
+import { requireAuth, requireAuthWithProfile, optionalAuth } from '../../lib/utils/auth';
 
 export default async function handler(req, res) {
   const profileId = await requireAuthWithProfile(req, res);
@@ -114,7 +137,9 @@ export default async function handler(req, res) {
 - `pages/api/auth/status.js` - Auth enabled check
 - `shared/components/RequireAuth.js` - Auth guard
 - `shared/components/ProfileLinkingDialog.js` - First-login flow
-- `lib/utils/auth.js` - `requireAuth`, `requireAuthWithProfile`
+- `lib/utils/auth.js` - `getSession`, `requireAuth`, `requireAuthWithProfile`, `optionalAuth`
+- `.env.local.example` - Environment variable template
+- `docs/ENTRA_ID_INTEGRATION_SUMMARY.md` - IT's documentation
 
 **User Profiles:**
 - `shared/context/ProfileContext.js` - React context (integrated with session)
@@ -145,7 +170,7 @@ CLAUDE_API_KEY=
 # Database (auto-set by Vercel Postgres)
 POSTGRES_URL=
 
-# Authentication (optional - enables Microsoft login when all are set)
+# Authentication (enables Microsoft login when all are set)
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=
 AZURE_AD_CLIENT_ID=
@@ -174,7 +199,6 @@ node scripts/setup-database.js
 
 Branch: main
 
-Session 31 commits:
-- `9553708` Add manual researcher management and fix email generation bugs
-
-Pushed to origin/main.
+Session 32 work:
+- IT implemented Azure AD refinements (no commits from Claude Code this session)
+- Documentation updated to reflect IT's changes

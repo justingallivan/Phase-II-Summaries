@@ -308,7 +308,9 @@ Multi-user support with Microsoft Azure AD authentication. Each user has isolate
 
 ### Microsoft Authentication (V11)
 
-**Flow:**
+**IMPORTANT: Authentication is OPTIONAL.** The app works exactly as before until Azure credentials are configured in environment variables. Without credentials, users see the ProfileSelector dropdown and can switch profiles freely. Authentication only activates when all three Azure variables are set.
+
+**Flow (when authentication is enabled):**
 1. User visits app → RequireAuth redirects to Microsoft login
 2. After Azure authentication → signIn callback checks for linked profile
 3. First login → ProfileLinkingDialog lets user pick existing profile or create new
@@ -328,15 +330,28 @@ AZURE_AD_TENANT_ID=<your organization's tenant ID>
 |------|---------|
 | `pages/api/auth/[...nextauth].js` | NextAuth API route with Azure AD provider |
 | `pages/api/auth/link-profile.js` | API for linking Azure account to profile |
+| `pages/api/auth/status.js` | Returns `{enabled: true/false}` based on Azure credentials |
 | `pages/auth/signin.js` | Custom sign-in page |
 | `pages/auth/error.js` | Custom error page |
-| `shared/components/RequireAuth.js` | Auth guard component |
+| `shared/components/RequireAuth.js` | Auth guard component (checks status endpoint) |
 | `shared/components/ProfileLinkingDialog.js` | First-login profile selection |
 | `lib/utils/auth.js` | Server-side auth utilities |
+| `.env.local.example` | Template for environment variables |
+| `docs/ENTRA_ID_INTEGRATION_SUMMARY.md` | IT's integration documentation |
 
 **Protecting API Routes:**
+
+Available server-side auth utilities in `lib/utils/auth.js`:
+
+| Function | Returns | Error Response |
+|----------|---------|----------------|
+| `getSession(req, res)` | Session or null | None |
+| `requireAuth(req, res)` | Session or null | 401 if unauthenticated |
+| `requireAuthWithProfile(req, res)` | profileId or null | 401/403 if no auth/profile |
+| `optionalAuth(req, res)` | Session or null | None |
+
 ```javascript
-import { requireAuth, requireAuthWithProfile } from '../../lib/utils/auth';
+import { requireAuth, requireAuthWithProfile, optionalAuth } from '../../lib/utils/auth';
 
 export default async function handler(req, res) {
   // Option 1: Just require authentication
@@ -346,6 +361,10 @@ export default async function handler(req, res) {
   // Option 2: Require auth + profile for data scoping
   const profileId = await requireAuthWithProfile(req, res);
   if (!profileId) return; // 401 or 403 already sent
+
+  // Option 3: Optional auth - get session if present, proceed either way
+  const session = await optionalAuth(req, res);
+  const profileId = session?.user?.profileId || null;
 }
 ```
 
@@ -588,6 +607,13 @@ Located in `lib/services/`:
 - `POST /api/user-preferences` - Set preference(s)
 - `DELETE /api/user-preferences` - Delete preference
 
+### Authentication
+- `GET /api/auth/status` - Check if Azure AD authentication is enabled
+- `POST /api/auth/link-profile` - Link Azure account to user profile
+- `GET /api/auth/session` - Get current session (NextAuth built-in)
+- `GET /api/auth/signin` - Sign-in page (NextAuth built-in)
+- `GET /api/auth/callback/azure-ad` - OAuth callback (NextAuth built-in)
+
 ### Other
 - `POST /api/analyze-funding-gap` - Federal funding analysis (streaming)
 - `POST /api/process-expenses` - Expense extraction
@@ -609,4 +635,4 @@ For detailed session-by-session development history, see [DEVELOPMENT_LOG.md](./
 
 ---
 
-Last Updated: January 19, 2026
+Last Updated: January 20, 2026
