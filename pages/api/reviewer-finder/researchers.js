@@ -2,7 +2,7 @@
  * API Route: /api/reviewer-finder/researchers
  *
  * GET: Fetch all researchers with search, sort, and pagination
- * POST: Merge researchers (combine duplicates)
+ * POST: Create new researcher OR Merge researchers (combine duplicates)
  * PATCH: Update researcher info
  * DELETE: Delete researcher(s)
  *
@@ -19,7 +19,23 @@
  *   mode: string         - 'keywords' to return keyword list instead of researchers
  *   mode: string         - 'duplicates' to find potential duplicate researchers
  *
- * POST body (merge):
+ * POST body (create - when name provided, no primaryId):
+ *   name: string         - Required: Researcher name
+ *   affiliation: string  - Institution
+ *   department: string   - Department
+ *   email: string        - Email address
+ *   website: string      - Website URL
+ *   orcid: string        - ORCID ID
+ *   googleScholarId: string - Google Scholar user ID
+ *   hIndex: number       - h-index
+ *   i10Index: number     - i10-index
+ *   totalCitations: number - Total citations
+ *   notes: string        - Notes about this researcher
+ *   proposalId: number   - Optional: proposal_searches.id to associate with
+ *   matchReason: string  - Optional: Why this reviewer matches the proposal
+ *   keywords: string[]   - Optional: Expertise keywords
+ *
+ * POST body (merge - when primaryId provided):
  *   primaryId: number    - Researcher ID to keep
  *   secondaryIds: number[] - Researcher IDs to merge into primary and delete
  *
@@ -38,7 +54,15 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     return handleGet(req, res);
   } else if (req.method === 'POST') {
-    return handleMerge(req, res);
+    // Distinguish between create (has name, no primaryId) and merge (has primaryId)
+    const { primaryId, name } = req.body || {};
+    if (primaryId) {
+      return handleMerge(req, res);
+    } else if (name) {
+      return handleCreate(req, res);
+    } else {
+      return res.status(400).json({ error: 'Either primaryId (for merge) or name (for create) is required' });
+    }
   } else if (req.method === 'PATCH') {
     return handlePatch(req, res);
   } else if (req.method === 'DELETE') {
@@ -196,7 +220,7 @@ async function handleGet(req, res) {
           email, email_source, email_year, email_verified_at,
           website, faculty_page_url, orcid, orcid_url,
           google_scholar_id, google_scholar_url,
-          h_index, i10_index, total_citations,
+          h_index, i10_index, total_citations, notes,
           contact_enriched_at, contact_enrichment_source,
           created_at, last_updated, last_checked, metrics_updated_at
         FROM researchers
@@ -249,6 +273,7 @@ async function handleGet(req, res) {
           hIndex: row.h_index,
           i10Index: row.i10_index,
           totalCitations: row.total_citations,
+          notes: row.notes,
           contactEnrichedAt: row.contact_enriched_at,
           contactEnrichmentSource: row.contact_enrichment_source,
           createdAt: row.created_at,
@@ -462,7 +487,8 @@ async function handlePatch(req, res) {
       googleScholarUrl,
       hIndex,
       i10Index,
-      totalCitations
+      totalCitations,
+      notes
     } = req.body;
 
     if (!id) {
@@ -587,6 +613,16 @@ async function handlePatch(req, res) {
       updates.push('totalCitations');
     }
 
+    if (notes !== undefined) {
+      await sql`
+        UPDATE researchers
+        SET notes = ${notes || null},
+            last_updated = NOW()
+        WHERE id = ${researcherId}
+      `;
+      updates.push('notes');
+    }
+
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
     }
@@ -667,6 +703,180 @@ async function handleDelete(req, res) {
     console.error('Delete researcher error:', error);
     return res.status(500).json({
       error: 'Failed to delete researcher',
+      message: error.message
+    });
+  }
+}
+
+/**
+ * Handle POST - Create new researcher
+ * Creates a new researcher with optional proposal association
+ */
+async function handleCreate(req, res) {
+  try {
+    const {
+      name,
+      affiliation,
+      department,
+      email,
+      website,
+      orcid,
+      googleScholarId,
+      hIndex,
+      i10Index,
+      totalCitations,
+      notes,
+      // Optional proposal association
+      proposalId,
+      matchReason,
+      keywords  // Array of expertise keywords
+    } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    const normalizedName = name.trim().toLowerCase();
+    const orcidUrl = orcid ? `https://orcid.org/${orcid}` : null;
+    const googleScholarUrl = googleScholarId
+      ? `https://scholar.google.com/citations?user=${googleScholarId}`
+      : null;
+
+    // Create the researcher
+    const result = await sql`
+      INSERT INTO researchers (
+        name,
+        normalized_name,
+        primary_affiliation,
+        department,
+        email,
+        email_source,
+        website,
+        orcid,
+        orcid_url,
+        google_scholar_id,
+        google_scholar_url,
+        h_index,
+        i10_index,
+        total_citations,
+        notes,
+        created_at,
+        last_updated
+      ) VALUES (
+        ${name.trim()},
+        ${normalizedName},
+        ${affiliation || null},
+        ${department || null},
+        ${email || null},
+        ${email ? 'manual' : null},
+        ${website || null},
+        ${orcid || null},
+        ${orcidUrl},
+        ${googleScholarId || null},
+        ${googleScholarUrl},
+        ${hIndex ? parseInt(hIndex) : null},
+        ${i10Index ? parseInt(i10Index) : null},
+        ${totalCitations ? parseInt(totalCitations) : null},
+        ${notes || null},
+        NOW(),
+        NOW()
+      )
+      RETURNING id
+    `;
+
+    const researcherId = result.rows[0].id;
+
+    // Add keywords if provided
+    if (keywords && Array.isArray(keywords) && keywords.length > 0) {
+      for (const keyword of keywords) {
+        if (keyword && keyword.trim()) {
+          await sql`
+            INSERT INTO researcher_keywords (researcher_id, keyword, relevance_score, source, created_at)
+            VALUES (${researcherId}, ${keyword.trim().toLowerCase()}, 1.0, 'manual', NOW())
+            ON CONFLICT (researcher_id, keyword, source) DO NOTHING
+          `;
+        }
+      }
+    }
+
+    // If proposalId provided, create proposal association
+    // proposalId is the proposal_id string from reviewer_suggestions
+    let proposalAssociation = null;
+    if (proposalId) {
+      // Fetch proposal details from existing reviewer_suggestions entry
+      const proposalResult = await sql`
+        SELECT DISTINCT ON (proposal_id)
+          proposal_id, proposal_title, summary_blob_url, co_investigators, co_investigator_count,
+          grant_cycle_id, user_profile_id
+        FROM reviewer_suggestions
+        WHERE proposal_id = ${proposalId}
+        ORDER BY proposal_id, suggested_at DESC
+        LIMIT 1
+      `;
+
+      if (proposalResult.rows.length > 0) {
+        const proposal = proposalResult.rows[0];
+
+        // Create reviewer_suggestions entry
+        await sql`
+          INSERT INTO reviewer_suggestions (
+            proposal_id,
+            proposal_title,
+            researcher_id,
+            relevance_score,
+            match_reason,
+            sources,
+            selected,
+            suggested_at,
+            summary_blob_url,
+            co_investigators,
+            co_investigator_count,
+            grant_cycle_id,
+            user_profile_id
+          ) VALUES (
+            ${proposal.proposal_id},
+            ${proposal.proposal_title},
+            ${researcherId},
+            ${1.0},
+            ${matchReason || 'Manually added reviewer'},
+            ${['manual']},
+            ${true},
+            NOW(),
+            ${proposal.summary_blob_url},
+            ${proposal.co_investigators},
+            ${proposal.co_investigator_count},
+            ${proposal.grant_cycle_id},
+            ${proposal.user_profile_id}
+          )
+          ON CONFLICT (proposal_id, researcher_id) DO NOTHING
+        `;
+
+        proposalAssociation = {
+          proposalId: proposal.proposal_id,
+          proposalTitle: proposal.proposal_title
+        };
+      }
+    }
+
+    return res.status(201).json({
+      success: true,
+      researcher: {
+        id: researcherId,
+        name: name.trim(),
+        affiliation,
+        email,
+        website
+      },
+      proposalAssociation,
+      message: proposalAssociation
+        ? `Researcher created and associated with "${proposalAssociation.proposalTitle}"`
+        : 'Researcher created successfully'
+    });
+
+  } catch (error) {
+    console.error('Create researcher error:', error);
+    return res.status(500).json({
+      error: 'Failed to create researcher',
       message: error.message
     });
   }

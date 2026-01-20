@@ -21,8 +21,10 @@ const STEPS = {
   DOWNLOAD: 'download'
 };
 
-// Default follow-up email template
-const DEFAULT_FOLLOWUP_TEMPLATE = `{{greeting}},
+// Default follow-up email template (must be object with subject and body)
+const DEFAULT_FOLLOWUP_TEMPLATE = {
+  subject: 'Follow-up: Invitation to Review - {{proposalTitle}}',
+  body: `{{greeting}},
 
 I hope this message finds you well. I am writing to follow up on my previous email regarding an opportunity to serve as an external reviewer for a proposal submitted to {{programName}}.
 
@@ -36,7 +38,8 @@ The review deadline is {{reviewDeadline}}, and I would be most grateful if you c
 
 If you are unable to participate at this time, I completely understand, and I thank you for considering this request.
 
-{{signature}}`;
+{{signature}}`
+};
 
 export default function EmailGeneratorModal({
   isOpen,
@@ -65,36 +68,52 @@ export default function EmailGeneratorModal({
   });
 
   const abortControllerRef = useRef(null);
+  const hasInitializedRef = useRef(false);
 
-  // Load settings, template, and attachment config from localStorage
+  // Single initialization effect - only runs once when modal mounts
+  // The parent only renders this component when showEmailModal is true
   useEffect(() => {
+    // Only initialize once per mount
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
+
+    // Reset UI state
+    setStep(STEPS.REVIEW);
+    setProgress({ current: 0, total: 0, message: '' });
+    setGeneratedEmails([]);
+    setErrors([]);
+    setIsGenerating(false);
+    setShowTemplateEditor(false);
+
+    // Load settings from localStorage
     try {
-      // Load base settings (sender info)
       let loadedSettings = { ...DEFAULT_SETTINGS };
       const storedSettings = localStorage.getItem(STORAGE_KEYS.EMAIL_SETTINGS);
       if (storedSettings) {
         loadedSettings = { ...loadedSettings, ...JSON.parse(atob(storedSettings)) };
       }
 
-      // Load grant cycle settings and merge into settings
+      // Load grant cycle settings
       const storedGrantCycle = localStorage.getItem(STORAGE_KEYS.GRANT_CYCLE);
+      let attachConfig = {
+        reviewTemplateBlobUrl: '',
+        reviewTemplateFilename: '',
+        summaryBlobUrl: proposalInfo?.summaryBlobUrl || '',
+        additionalAttachments: []
+      };
+
       if (storedGrantCycle) {
         const grantCycle = JSON.parse(atob(storedGrantCycle));
-        // Merge grant cycle into settings.grantCycle
         loadedSettings.grantCycle = {
           ...loadedSettings.grantCycle,
           ...grantCycle
         };
-        // Also set attachment config
-        setAttachmentConfig(prev => ({
-          ...prev,
-          reviewTemplateBlobUrl: grantCycle.reviewTemplateBlobUrl || '',
-          reviewTemplateFilename: grantCycle.reviewTemplateFilename || '',
-          additionalAttachments: grantCycle.additionalAttachments || []
-        }));
+        attachConfig.reviewTemplateBlobUrl = grantCycle.reviewTemplateBlobUrl || '';
+        attachConfig.reviewTemplateFilename = grantCycle.reviewTemplateFilename || '';
+        attachConfig.additionalAttachments = grantCycle.additionalAttachments || [];
       }
 
-      // Load sender info from separate storage
+      // Load sender info
       const storedSender = localStorage.getItem(STORAGE_KEYS.SENDER_INFO);
       if (storedSender) {
         const sender = JSON.parse(atob(storedSender));
@@ -104,10 +123,10 @@ export default function EmailGeneratorModal({
       }
 
       setSettings(loadedSettings);
+      setAttachmentConfig(attachConfig);
 
-      // Load appropriate template based on follow-up mode
+      // Load template based on follow-up mode
       if (isFollowUp) {
-        // Check for stored follow-up template, otherwise use default
         const storedFollowUpTemplate = localStorage.getItem(STORAGE_KEYS.EMAIL_TEMPLATE + '_followup');
         if (storedFollowUpTemplate) {
           setTemplate(JSON.parse(atob(storedFollowUpTemplate)));
@@ -125,26 +144,13 @@ export default function EmailGeneratorModal({
     } catch (error) {
       console.error('Failed to load email settings:', error);
     }
-  }, [isOpen, isFollowUp]);
+  }, []); // Empty deps - only run on mount
 
-  // Reset state when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setStep(STEPS.REVIEW);
-      setProgress({ current: 0, total: 0, message: '' });
-      setGeneratedEmails([]);
-      setErrors([]);
-      setIsGenerating(false);
-      setShowTemplateEditor(false);
-      // Set summary blob URL from proposalInfo if available
-      if (proposalInfo?.summaryBlobUrl) {
-        setAttachmentConfig(prev => ({
-          ...prev,
-          summaryBlobUrl: proposalInfo.summaryBlobUrl
-        }));
-      }
-    }
-  }, [isOpen, proposalInfo?.summaryBlobUrl]);
+  // Track if generation has been triggered to prevent double-calls
+  const generationTriggeredRef = useRef(false);
+
+  // Track if we need to refresh candidates when modal closes
+  const needsRefreshRef = useRef(false);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -166,11 +172,18 @@ export default function EmailGeneratorModal({
 
   // Generate emails via API
   const handleGenerate = async () => {
+    // Prevent double generation
+    if (generationTriggeredRef.current || isGenerating) {
+      console.log('Generation already in progress, skipping');
+      return;
+    }
+
     if (!hasSettings) {
       alert('Please configure your email settings first (sender email and signature).');
       return;
     }
 
+    generationTriggeredRef.current = true;
     setStep(STEPS.PROGRESS);
     setIsGenerating(true);
     setProgress({ current: 0, total: withEmail.length, message: 'Starting...' });
@@ -226,10 +239,13 @@ export default function EmailGeneratorModal({
           }
           if (line.startsWith('data:')) {
             try {
-              const data = JSON.parse(line.slice(5).trim());
+              const jsonStr = line.slice(5).trim();
+              const data = JSON.parse(jsonStr);
               handleSSEEvent(data);
             } catch (e) {
-              // Ignore parse errors
+              // Log parse errors for debugging - truncate large strings
+              const preview = line.length > 200 ? line.substring(0, 200) + '...' : line;
+              console.warn('SSE parse error:', e.message, 'Line preview:', preview);
             }
           }
         }
@@ -247,6 +263,8 @@ export default function EmailGeneratorModal({
 
   // Handle SSE events
   const handleSSEEvent = (data) => {
+    console.log('SSE event received:', data.stage || data.message || (data.emails ? 'result with emails' : 'unknown'));
+
     if (data.stage === 'generating' || data.stage === 'starting') {
       setProgress({
         current: data.current || 0,
@@ -256,17 +274,21 @@ export default function EmailGeneratorModal({
       });
     } else if (data.emails) {
       // Result event
+      console.log(`Received ${data.emails.length} emails, first has content: ${!!data.emails[0]?.content}`);
       setGeneratedEmails(data.emails);
       setErrors(data.errors || []);
       setStep(STEPS.DOWNLOAD);
-      // Notify parent to refresh if emails were marked as sent
-      if (markAsSent && data.stats?.markedAsSent > 0 && onEmailsGenerated) {
-        onEmailsGenerated();
+      // Mark that we need to refresh candidates when modal closes
+      // (Don't call onEmailsGenerated here - it causes parent re-render which remounts modal)
+      if (markAsSent && data.stats?.markedAsSent > 0) {
+        needsRefreshRef.current = true;
       }
     } else if (data.message && data.generated !== undefined) {
-      // Complete event
-      setStep(STEPS.DOWNLOAD);
+      // Complete event - don't change step here, result event already handled it
+      console.log('Complete event, generated:', data.generated);
+      // Step already set by result event above
     } else if (data.error || data.message?.includes('error')) {
+      console.error('SSE error event:', data);
       setErrors([{ error: data.message || data.error }]);
       setStep(STEPS.DOWNLOAD);
     }
@@ -274,32 +296,73 @@ export default function EmailGeneratorModal({
 
   // Download single EML file
   const downloadEmail = (email) => {
-    const blob = new Blob([email.content], { type: 'message/rfc822' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = email.filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      if (!email.content) {
+        console.error('Email content is missing for:', email.filename);
+        alert(`Cannot download ${email.filename}: email content is missing.`);
+        return;
+      }
+      const blob = new Blob([email.content], { type: 'message/rfc822' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = email.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading email:', error);
+      alert(`Failed to download ${email.filename}: ${error.message}`);
+    }
   };
 
   // Download all as ZIP
   const downloadAllAsZip = async () => {
-    // Dynamic import JSZip
-    const JSZip = (await import('jszip')).default;
-    const zip = new JSZip();
+    try {
+      if (generatedEmails.length === 0) {
+        alert('No emails to download.');
+        return;
+      }
 
-    for (const email of generatedEmails) {
-      zip.file(email.filename, email.content);
+      // Check if any emails are missing content
+      const missingContent = generatedEmails.filter(e => !e.content);
+      if (missingContent.length > 0) {
+        console.error('Emails missing content:', missingContent.map(e => e.filename));
+        alert(`${missingContent.length} email(s) are missing content. Check console for details.`);
+        return;
+      }
+
+      // Dynamic import JSZip
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+
+      for (const email of generatedEmails) {
+        zip.file(email.filename, email.content);
+      }
+
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `reviewer-emails-${new Date().toISOString().split('T')[0]}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error creating ZIP:', error);
+      alert(`Failed to create ZIP file: ${error.message}`);
     }
+  };
 
-    const content = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(content);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `reviewer-emails-${new Date().toISOString().split('T')[0]}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
+  // Close modal and refresh candidates if needed
+  const handleClose = () => {
+    if (needsRefreshRef.current && onEmailsGenerated) {
+      needsRefreshRef.current = false;
+      onEmailsGenerated();
+    }
+    onClose();
   };
 
   // Cancel generation
@@ -307,7 +370,7 @@ export default function EmailGeneratorModal({
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    onClose();
+    handleClose();
   };
 
   return (
@@ -648,7 +711,7 @@ export default function EmailGeneratorModal({
           {step === STEPS.REVIEW && (
             <>
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className="px-4 py-2 text-gray-600 hover:text-gray-800"
               >
                 Cancel
@@ -694,7 +757,7 @@ export default function EmailGeneratorModal({
 
           {step === STEPS.DOWNLOAD && (
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg
                        hover:bg-gray-200 transition-colors ml-auto"
             >

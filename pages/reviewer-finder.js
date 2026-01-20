@@ -1952,6 +1952,16 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete }) {
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editForm, setEditForm] = useState({});
+  // Proposal association state
+  const [showAssociateForm, setShowAssociateForm] = useState(false);
+  const [grantCycles, setGrantCycles] = useState([]);
+  const [proposals, setProposals] = useState([]);
+  const [selectedCycleId, setSelectedCycleId] = useState('');
+  const [selectedProposalId, setSelectedProposalId] = useState('');
+  const [matchReason, setMatchReason] = useState('');
+  const [isLoadingCycles, setIsLoadingCycles] = useState(false);
+  const [isLoadingProposals, setIsLoadingProposals] = useState(false);
+  const [isAssociating, setIsAssociating] = useState(false);
 
   useEffect(() => {
     if (!researcherId) return;
@@ -1978,7 +1988,8 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete }) {
             googleScholarId: result.researcher.googleScholarId || '',
             hIndex: result.researcher.hIndex || '',
             i10Index: result.researcher.i10Index || '',
-            totalCitations: result.researcher.totalCitations || ''
+            totalCitations: result.researcher.totalCitations || '',
+            notes: result.researcher.notes || ''
           });
         }
       } catch (err) {
@@ -1994,11 +2005,58 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete }) {
   // Handle escape key to close (but not when editing)
   useEffect(() => {
     const handleEscape = (e) => {
-      if (e.key === 'Escape' && !isEditing && !showDeleteConfirm) onClose();
+      if (e.key === 'Escape' && !isEditing && !showDeleteConfirm && !showAssociateForm) onClose();
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [onClose, isEditing, showDeleteConfirm]);
+  }, [onClose, isEditing, showDeleteConfirm, showAssociateForm]);
+
+  // Fetch grant cycles when association form is shown
+  useEffect(() => {
+    if (!showAssociateForm) return;
+
+    const fetchCycles = async () => {
+      setIsLoadingCycles(true);
+      try {
+        const response = await fetch('/api/reviewer-finder/grant-cycles');
+        const result = await response.json();
+        if (result.success && result.cycles) {
+          setGrantCycles(result.cycles);
+        }
+      } catch (err) {
+        console.error('Failed to fetch grant cycles:', err);
+      } finally {
+        setIsLoadingCycles(false);
+      }
+    };
+
+    fetchCycles();
+  }, [showAssociateForm]);
+
+  // Fetch proposals when cycle is selected
+  useEffect(() => {
+    if (!selectedCycleId) {
+      setProposals([]);
+      return;
+    }
+
+    const fetchProposals = async () => {
+      setIsLoadingProposals(true);
+      try {
+        const response = await fetch(`/api/reviewer-finder/my-candidates?mode=proposals&cycleId=${selectedCycleId}`);
+        const result = await response.json();
+        if (result.success && result.proposals) {
+          setProposals(result.proposals);
+        }
+      } catch (err) {
+        console.error('Failed to fetch proposals:', err);
+      } finally {
+        setIsLoadingProposals(false);
+      }
+    };
+
+    fetchProposals();
+  }, [selectedCycleId]);
 
   if (!researcherId) return null;
 
@@ -2042,7 +2100,8 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete }) {
           googleScholarId: editForm.googleScholarId,
           hIndex: editForm.hIndex ? parseInt(editForm.hIndex) : null,
           i10Index: editForm.i10Index ? parseInt(editForm.i10Index) : null,
-          totalCitations: editForm.totalCitations ? parseInt(editForm.totalCitations) : null
+          totalCitations: editForm.totalCitations ? parseInt(editForm.totalCitations) : null,
+          notes: editForm.notes || null
         })
       });
 
@@ -2102,10 +2161,78 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete }) {
         googleScholarId: data.researcher.googleScholarId || '',
         hIndex: data.researcher.hIndex || '',
         i10Index: data.researcher.i10Index || '',
-        totalCitations: data.researcher.totalCitations || ''
+        totalCitations: data.researcher.totalCitations || '',
+        notes: data.researcher.notes || ''
       });
     }
     setIsEditing(false);
+    setError(null);
+  };
+
+  const handleAssociateWithProposal = async () => {
+    if (!selectedProposalId) {
+      setError('Please select a proposal');
+      return;
+    }
+
+    setIsAssociating(true);
+    setError(null);
+
+    try {
+      // Get proposal details from the selected proposal
+      const selectedProposal = proposals.find(p => p.id === selectedProposalId);
+
+      const response = await fetch('/api/reviewer-finder/save-candidates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          proposalId: selectedProposalId,
+          proposalTitle: selectedProposal?.title || 'Unknown Proposal',
+          grantCycleId: selectedCycleId ? parseInt(selectedCycleId) : null,
+          candidates: [{
+            researcherId: researcherId,
+            name: data.researcher.name,
+            affiliation: data.researcher.affiliation,
+            email: data.researcher.email,
+            website: data.researcher.website,
+            hIndex: data.researcher.hIndex,
+            reasoning: matchReason || 'Manually associated',
+            relevanceScore: 1.0,
+            sources: ['manual']
+          }]
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to associate with proposal');
+      }
+
+      // Refresh data to show new association
+      const refreshResponse = await fetch(`/api/reviewer-finder/researchers?id=${researcherId}`);
+      const refreshedData = await refreshResponse.json();
+      setData(refreshedData);
+
+      // Reset form
+      setShowAssociateForm(false);
+      setSelectedCycleId('');
+      setSelectedProposalId('');
+      setMatchReason('');
+
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsAssociating(false);
+    }
+  };
+
+  const handleCancelAssociate = () => {
+    setShowAssociateForm(false);
+    setSelectedCycleId('');
+    setSelectedProposalId('');
+    setMatchReason('');
     setError(null);
   };
 
@@ -2113,7 +2240,7 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete }) {
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
       onClick={(e) => {
-        if (e.target === e.currentTarget && !isEditing && !showDeleteConfirm) onClose();
+        if (e.target === e.currentTarget && !isEditing && !showDeleteConfirm && !showAssociateForm) onClose();
       }}
     >
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
@@ -2410,6 +2537,31 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete }) {
                 )}
               </section>
 
+              {/* Notes */}
+              <section>
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                  Notes
+                </h3>
+                {isEditing ? (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <textarea
+                      value={editForm.notes}
+                      onChange={(e) => handleEditChange('notes', e.target.value)}
+                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm min-h-[100px]"
+                      placeholder="Add notes about this researcher (e.g., conflicts of interest, review preferences, past interactions...)"
+                    />
+                  </div>
+                ) : data.researcher.notes ? (
+                  <div className="bg-yellow-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{data.researcher.notes}</p>
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-sm italic">
+                    No notes. Click Edit to add notes about this researcher.
+                  </p>
+                )}
+              </section>
+
               {/* Expertise Keywords (read-only) */}
               {data.keywords && data.keywords.length > 0 && (
                 <section>
@@ -2447,11 +2599,104 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete }) {
                 </section>
               )}
 
-              {/* Proposal Associations (read-only) */}
+              {/* Proposal Associations */}
               <section>
-                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                  Proposal Associations ({data.proposals?.length || 0})
-                </h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+                    Proposal Associations ({data.proposals?.length || 0})
+                  </h3>
+                  {!showAssociateForm && !isEditing && (
+                    <button
+                      onClick={() => setShowAssociateForm(true)}
+                      className="text-xs text-green-600 hover:text-green-700 hover:underline"
+                    >
+                      + Add to Proposal
+                    </button>
+                  )}
+                </div>
+
+                {/* Associate with Proposal Form */}
+                {showAssociateForm && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-3">
+                    <h4 className="text-sm font-medium text-green-800 mb-3">Associate with Proposal</h4>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs text-gray-600">Grant Cycle</label>
+                        <select
+                          value={selectedCycleId}
+                          onChange={(e) => {
+                            setSelectedCycleId(e.target.value);
+                            setSelectedProposalId('');
+                          }}
+                          className="w-full border border-gray-300 rounded px-3 py-2 text-sm mt-1"
+                          disabled={isLoadingCycles}
+                        >
+                          <option value="">-- Select a grant cycle --</option>
+                          {grantCycles.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.name} ({c.shortCode})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {selectedCycleId && (
+                        <div>
+                          <label className="text-xs text-gray-600">Proposal</label>
+                          <select
+                            value={selectedProposalId}
+                            onChange={(e) => setSelectedProposalId(e.target.value)}
+                            className="w-full border border-gray-300 rounded px-3 py-2 text-sm mt-1"
+                            disabled={isLoadingProposals}
+                          >
+                            <option value="">-- Select a proposal --</option>
+                            {proposals.map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.title || 'Untitled Proposal'}
+                              </option>
+                            ))}
+                          </select>
+                          {isLoadingProposals && (
+                            <p className="text-xs text-gray-400 mt-1">Loading proposals...</p>
+                          )}
+                          {!isLoadingProposals && proposals.length === 0 && (
+                            <p className="text-xs text-gray-400 mt-1">No proposals in this cycle.</p>
+                          )}
+                        </div>
+                      )}
+
+                      {selectedProposalId && (
+                        <div>
+                          <label className="text-xs text-gray-600">Match Reason (optional)</label>
+                          <textarea
+                            value={matchReason}
+                            onChange={(e) => setMatchReason(e.target.value)}
+                            className="w-full border border-gray-300 rounded px-3 py-2 text-sm mt-1 min-h-[60px]"
+                            placeholder="Why is this reviewer a good match for this proposal?"
+                          />
+                        </div>
+                      )}
+
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          onClick={handleAssociateWithProposal}
+                          disabled={!selectedProposalId || isAssociating}
+                          className="px-3 py-1.5 text-sm text-white bg-green-600 rounded hover:bg-green-700 disabled:opacity-50"
+                        >
+                          {isAssociating ? 'Saving...' : 'Associate'}
+                        </button>
+                        <button
+                          onClick={handleCancelAssociate}
+                          disabled={isAssociating}
+                          className="px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {data.proposals && data.proposals.length > 0 ? (
                   <div className="space-y-3">
                     {data.proposals.map((proposal, i) => (
@@ -2488,11 +2733,11 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete }) {
                       </div>
                     ))}
                   </div>
-                ) : (
+                ) : !showAssociateForm ? (
                   <p className="text-gray-500 text-sm italic">
                     Not associated with any proposals yet.
                   </p>
-                )}
+                ) : null}
               </section>
 
               {/* Timestamps */}
@@ -2546,6 +2791,444 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete }) {
   );
 }
 
+// Add Researcher Modal - for manually adding new researchers to the database
+function AddResearcherModal({ isOpen, onClose, onSuccess }) {
+  const [form, setForm] = useState({
+    name: '',
+    affiliation: '',
+    department: '',
+    email: '',
+    website: '',
+    orcid: '',
+    googleScholarId: '',
+    hIndex: '',
+    i10Index: '',
+    totalCitations: '',
+    notes: '',
+    keywords: '',
+    grantCycleId: '',
+    proposalId: '',
+    matchReason: ''
+  });
+  const [grantCycles, setGrantCycles] = useState([]);
+  const [proposals, setProposals] = useState([]);
+  const [isLoadingCycles, setIsLoadingCycles] = useState(false);
+  const [isLoadingProposals, setIsLoadingProposals] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Fetch grant cycles when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const fetchCycles = async () => {
+      setIsLoadingCycles(true);
+      try {
+        const response = await fetch('/api/reviewer-finder/grant-cycles');
+        const data = await response.json();
+        if (data.success && data.cycles) {
+          setGrantCycles(data.cycles);
+        }
+      } catch (err) {
+        console.error('Failed to fetch grant cycles:', err);
+      } finally {
+        setIsLoadingCycles(false);
+      }
+    };
+
+    fetchCycles();
+  }, [isOpen]);
+
+  // Fetch proposals when grant cycle changes
+  useEffect(() => {
+    if (!isOpen || !form.grantCycleId) {
+      setProposals([]);
+      return;
+    }
+
+    const fetchProposals = async () => {
+      setIsLoadingProposals(true);
+      try {
+        const response = await fetch(`/api/reviewer-finder/my-candidates?mode=proposals&cycleId=${form.grantCycleId}`);
+        const data = await response.json();
+        if (data.success && data.proposals) {
+          setProposals(data.proposals);
+        }
+      } catch (err) {
+        console.error('Failed to fetch proposals:', err);
+      } finally {
+        setIsLoadingProposals(false);
+      }
+    };
+
+    fetchProposals();
+  }, [isOpen, form.grantCycleId]);
+
+  // Reset form when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setForm({
+        name: '',
+        affiliation: '',
+        department: '',
+        email: '',
+        website: '',
+        orcid: '',
+        googleScholarId: '',
+        hIndex: '',
+        i10Index: '',
+        totalCitations: '',
+        notes: '',
+        keywords: '',
+        grantCycleId: '',
+        proposalId: '',
+        matchReason: ''
+      });
+      setProposals([]);
+      setError(null);
+    }
+  }, [isOpen]);
+
+  const handleChange = (field, value) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!form.name.trim()) {
+      setError('Name is required');
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      // Parse keywords from comma-separated string
+      const keywordsArray = form.keywords
+        ? form.keywords.split(',').map(k => k.trim()).filter(k => k)
+        : [];
+
+      const response = await fetch('/api/reviewer-finder/researchers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          affiliation: form.affiliation || null,
+          department: form.department || null,
+          email: form.email || null,
+          website: form.website || null,
+          orcid: form.orcid || null,
+          googleScholarId: form.googleScholarId || null,
+          hIndex: form.hIndex ? parseInt(form.hIndex) : null,
+          i10Index: form.i10Index ? parseInt(form.i10Index) : null,
+          totalCitations: form.totalCitations ? parseInt(form.totalCitations) : null,
+          notes: form.notes || null,
+          keywords: keywordsArray.length > 0 ? keywordsArray : null,
+          proposalId: form.proposalId || null,
+          matchReason: form.matchReason || null
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create researcher');
+      }
+
+      onSuccess(data.researcher);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50">
+          <h2 className="text-lg font-semibold text-gray-900">Add New Researcher</h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-xl"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Form Content */}
+        <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 p-6 space-y-6">
+          {error && (
+            <div className="text-red-600 bg-red-50 p-4 rounded-lg">
+              {error}
+            </div>
+          )}
+
+          {/* Basic Info */}
+          <section>
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              Basic Information
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500">Name *</label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => handleChange('name', e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  placeholder="Dr. Jane Smith"
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500">Affiliation</label>
+                  <input
+                    type="text"
+                    value={form.affiliation}
+                    onChange={(e) => handleChange('affiliation', e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                    placeholder="University of California"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">Department</label>
+                  <input
+                    type="text"
+                    value={form.department}
+                    onChange={(e) => handleChange('department', e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                    placeholder="Department of Biology"
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Contact Info */}
+          <section>
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              Contact Information
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500">Email</label>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => handleChange('email', e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  placeholder="jsmith@university.edu"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Website</label>
+                <input
+                  type="url"
+                  value={form.website}
+                  onChange={(e) => handleChange('website', e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  placeholder="https://..."
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500">ORCID ID</label>
+                  <input
+                    type="text"
+                    value={form.orcid}
+                    onChange={(e) => handleChange('orcid', e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                    placeholder="0000-0000-0000-0000"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">Google Scholar ID</label>
+                  <input
+                    type="text"
+                    value={form.googleScholarId}
+                    onChange={(e) => handleChange('googleScholarId', e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                    placeholder="Scholar user ID"
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Metrics */}
+          <section>
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              Metrics (Optional)
+            </h3>
+            <div className="flex gap-4">
+              <div>
+                <label className="text-xs text-gray-500">h-index</label>
+                <input
+                  type="number"
+                  value={form.hIndex}
+                  onChange={(e) => handleChange('hIndex', e.target.value)}
+                  className="w-24 border border-gray-300 rounded px-3 py-2 text-sm"
+                  placeholder="0"
+                  min="0"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">i10-index</label>
+                <input
+                  type="number"
+                  value={form.i10Index}
+                  onChange={(e) => handleChange('i10Index', e.target.value)}
+                  className="w-24 border border-gray-300 rounded px-3 py-2 text-sm"
+                  placeholder="0"
+                  min="0"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Citations</label>
+                <input
+                  type="number"
+                  value={form.totalCitations}
+                  onChange={(e) => handleChange('totalCitations', e.target.value)}
+                  className="w-28 border border-gray-300 rounded px-3 py-2 text-sm"
+                  placeholder="0"
+                  min="0"
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* Expertise */}
+          <section>
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              Expertise Keywords
+            </h3>
+            <div>
+              <label className="text-xs text-gray-500">Keywords (comma-separated)</label>
+              <input
+                type="text"
+                value={form.keywords}
+                onChange={(e) => handleChange('keywords', e.target.value)}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                placeholder="molecular biology, CRISPR, gene therapy"
+              />
+            </div>
+          </section>
+
+          {/* Notes */}
+          <section>
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              Notes
+            </h3>
+            <textarea
+              value={form.notes}
+              onChange={(e) => handleChange('notes', e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm min-h-[80px]"
+              placeholder="Any notes about this researcher..."
+            />
+          </section>
+
+          {/* Proposal Association */}
+          <section>
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              Associate with Proposal (Optional)
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-gray-500">Select Grant Cycle</label>
+                <select
+                  value={form.grantCycleId}
+                  onChange={(e) => {
+                    handleChange('grantCycleId', e.target.value);
+                    handleChange('proposalId', ''); // Reset proposal when cycle changes
+                  }}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                  disabled={isLoadingCycles}
+                >
+                  <option value="">-- Select a grant cycle first --</option>
+                  {grantCycles.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.shortCode})
+                    </option>
+                  ))}
+                </select>
+                {isLoadingCycles && (
+                  <p className="text-xs text-gray-400 mt-1">Loading grant cycles...</p>
+                )}
+              </div>
+              {form.grantCycleId && (
+                <div>
+                  <label className="text-xs text-gray-500">Select Proposal</label>
+                  <select
+                    value={form.proposalId}
+                    onChange={(e) => handleChange('proposalId', e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                    disabled={isLoadingProposals}
+                  >
+                    <option value="">-- No proposal association --</option>
+                    {proposals.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.title || 'Untitled Proposal'}
+                      </option>
+                    ))}
+                  </select>
+                  {isLoadingProposals && (
+                    <p className="text-xs text-gray-400 mt-1">Loading proposals...</p>
+                  )}
+                  {!isLoadingProposals && proposals.length === 0 && (
+                    <p className="text-xs text-gray-400 mt-1">No proposals in this cycle yet.</p>
+                  )}
+                </div>
+              )}
+              {form.proposalId && (
+                <div>
+                  <label className="text-xs text-gray-500">Why is this reviewer a good match?</label>
+                  <textarea
+                    value={form.matchReason}
+                    onChange={(e) => handleChange('matchReason', e.target.value)}
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm min-h-[60px]"
+                    placeholder="Explain why this reviewer is suitable for this proposal..."
+                  />
+                </div>
+              )}
+            </div>
+          </section>
+        </form>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSaving}
+            className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={isSaving || !form.name.trim()}
+            className="px-4 py-2 text-sm text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50"
+          >
+            {isSaving ? 'Saving...' : 'Add Researcher'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Helper to format date for display
 function formatShortDate(dateString) {
   if (!dateString) return null;
@@ -2592,6 +3275,21 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
     await onUpdate(candidate.suggestionId, {
       responseType: 'bounced',
       responseReceivedAt: 'now'
+    });
+  };
+
+  const handleMarkNoResponse = async () => {
+    await onUpdate(candidate.suggestionId, {
+      responseType: 'no_response',
+      responseReceivedAt: 'now'
+    });
+  };
+
+  // Mark as sent (for retroactive tracking of older candidates)
+  const handleMarkAsSent = async () => {
+    await onUpdate(candidate.suggestionId, {
+      invited: true,
+      emailSentAt: 'now'
     });
   };
 
@@ -2697,11 +3395,27 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
           >
             {candidate.declined ? '✓ Declined' : 'Declined'}
           </button>
-          {/* Bounced indicator/button - only show if email was sent */}
+          {/* Bounced indicator - only show if email was sent */}
           {candidate.emailSentAt && candidate.responseType === 'bounced' && (
             <span className="px-2 py-1 text-xs rounded bg-orange-100 text-orange-700">
               ⚠ Bounced
             </span>
+          )}
+          {/* No Response indicator - only show if email was sent */}
+          {candidate.emailSentAt && candidate.responseType === 'no_response' && (
+            <span className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-600">
+              — No Response
+            </span>
+          )}
+          {/* Mark as Sent button - show for candidates without emailSentAt who aren't declined/accepted */}
+          {!candidate.emailSentAt && !candidate.accepted && !candidate.declined && (
+            <button
+              onClick={handleMarkAsSent}
+              className="px-2 py-1 text-xs rounded bg-blue-50 text-blue-600 hover:bg-blue-100"
+              title="Mark email as sent (for retroactive tracking)"
+            >
+              📧 Mark Sent
+            </button>
           )}
           {/* Edit and Remove buttons */}
           <button
@@ -2817,14 +3531,23 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
                     {candidate.responseReceivedAt && ` (${formatShortDate(candidate.responseReceivedAt)})`}
                   </span>
                 )}
-                {candidate.responseType !== 'bounced' && isPending && (
-                  <button
-                    onClick={handleMarkBounced}
-                    className="px-2 py-0.5 text-xs rounded bg-orange-50 text-orange-600 hover:bg-orange-100"
-                    title="Mark email as bounced"
-                  >
-                    Mark Bounced
-                  </button>
+                {candidate.responseType !== 'bounced' && candidate.responseType !== 'no_response' && isPending && (
+                  <>
+                    <button
+                      onClick={handleMarkBounced}
+                      className="px-2 py-0.5 text-xs rounded bg-orange-50 text-orange-600 hover:bg-orange-100"
+                      title="Mark email as bounced"
+                    >
+                      Mark Bounced
+                    </button>
+                    <button
+                      onClick={handleMarkNoResponse}
+                      className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      title="Mark as no response received (close out)"
+                    >
+                      No Response
+                    </button>
+                  </>
                 )}
               </div>
             );
@@ -2864,7 +3587,7 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey, userProfileId }) {
   const [institutionFilter, setInstitutionFilter] = useState('all');
   const [piFilter, setPiFilter] = useState('all');
   const [programFilter, setProgramFilter] = useState('all');
-  const [emailStatusFilter, setEmailStatusFilter] = useState('all'); // 'all', 'not_invited', 'invited', 'pending', 'accepted', 'declined', 'bounced'
+  const [emailStatusFilter, setEmailStatusFilter] = useState('all'); // 'all', 'not_invited', 'invited', 'pending', 'accepted', 'declined', 'bounced', 'no_response'
 
   // Fetch grant cycles
   const fetchCycles = async () => {
@@ -3314,6 +4037,7 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey, userProfileId }) {
     if (emailStatusFilter === 'accepted') return c.accepted || c.responseType === 'accepted';
     if (emailStatusFilter === 'declined') return c.declined || c.responseType === 'declined';
     if (emailStatusFilter === 'bounced') return c.responseType === 'bounced';
+    if (emailStatusFilter === 'no_response') return c.responseType === 'no_response';
     return true;
   };
 
@@ -3359,6 +4083,7 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey, userProfileId }) {
     accepted: allCandidates.filter(c => c.accepted || c.responseType === 'accepted').length,
     declined: allCandidates.filter(c => c.declined || c.responseType === 'declined').length,
     bounced: allCandidates.filter(c => c.responseType === 'bounced').length,
+    noResponse: allCandidates.filter(c => c.responseType === 'no_response').length,
   };
 
   // Response rate (of those invited who have responded)
@@ -3547,6 +4272,17 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey, userProfileId }) {
                 >
                   <div className="text-xl font-bold text-orange-600">{metrics.bounced}</div>
                   <div className="text-xs text-orange-500">Bounced</div>
+                </button>
+              )}
+              {metrics.noResponse > 0 && (
+                <button
+                  onClick={() => setEmailStatusFilter(emailStatusFilter === 'no_response' ? 'all' : 'no_response')}
+                  className={`text-center p-2 rounded-lg transition-colors ${
+                    emailStatusFilter === 'no_response' ? 'bg-gray-300 ring-2 ring-gray-400' : 'bg-gray-100 hover:bg-gray-200'
+                  }`}
+                >
+                  <div className="text-xl font-bold text-gray-600">{metrics.noResponse}</div>
+                  <div className="text-xs text-gray-500">No Response</div>
                 </button>
               )}
               {metrics.invited > 0 && (
@@ -3953,6 +4689,8 @@ function DatabaseTab() {
   const [duplicateGroups, setDuplicateGroups] = useState([]);
   const [isLoadingDuplicates, setIsLoadingDuplicates] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
+  // Add researcher modal state
+  const [showAddResearcherModal, setShowAddResearcherModal] = useState(false);
 
   // Fetch available keywords for filter dropdown
   useEffect(() => {
@@ -4304,6 +5042,13 @@ function DatabaseTab() {
               {pagination.total} researcher{pagination.total !== 1 ? 's' : ''}
             </span>
             <button
+              onClick={() => setShowAddResearcherModal(true)}
+              className="px-3 py-1.5 text-sm text-green-600 bg-white border border-green-300 rounded hover:bg-green-50"
+              title="Add a new researcher manually"
+            >
+              + Add Researcher
+            </button>
+            <button
               onClick={handleFindDuplicates}
               disabled={isLoadingDuplicates}
               className="px-3 py-1.5 text-sm text-orange-600 bg-white border border-orange-300 rounded hover:bg-orange-50 disabled:opacity-50"
@@ -4559,6 +5304,18 @@ function DatabaseTab() {
           isLoading={isLoadingDuplicates}
           isMerging={isMerging}
           onMerge={handleMerge}
+        />
+      )}
+
+      {/* Add Researcher Modal */}
+      {showAddResearcherModal && (
+        <AddResearcherModal
+          isOpen={showAddResearcherModal}
+          onClose={() => setShowAddResearcherModal(false)}
+          onSuccess={(newResearcher) => {
+            setShowAddResearcherModal(false);
+            fetchResearchers();
+          }}
         />
       )}
     </div>

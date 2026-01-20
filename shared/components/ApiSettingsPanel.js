@@ -124,6 +124,12 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
   const lastLoadedProfileId = useRef(null);
   const isLoadingRef = useRef(false);
 
+  // Use ref for onSettingsChange to avoid infinite loops
+  const onSettingsChangeRef = useRef(onSettingsChange);
+  useEffect(() => {
+    onSettingsChangeRef.current = onSettingsChange;
+  }, [onSettingsChange]);
+
   // Load settings from profile or localStorage
   const loadSettings = useCallback(async (profileId) => {
     // Prevent concurrent loads and duplicate loads for same profile
@@ -178,8 +184,8 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
       const hasAny = Object.values(loaded).some(v => v && v.length > 0);
       setHasStoredSettings(hasAny);
 
-      if (onSettingsChange) {
-        onSettingsChange(loaded);
+      if (onSettingsChangeRef.current) {
+        onSettingsChangeRef.current(loaded);
       }
 
       setIsLoading(false);
@@ -205,13 +211,13 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
     const hasAny = Object.values(loaded).some(v => v && v.length > 0);
     setHasStoredSettings(hasAny);
 
-    if (onSettingsChange) {
-      onSettingsChange(loaded);
+    if (onSettingsChangeRef.current) {
+      onSettingsChangeRef.current(loaded);
     }
 
     setIsLoading(false);
     isLoadingRef.current = false;
-  }, [getDecryptedApiKey, onSettingsChange]);
+  }, [getDecryptedApiKey]);
 
   // Load on mount and when profile changes
   useEffect(() => {

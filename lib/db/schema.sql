@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS researchers (
   h_index INTEGER,
   i10_index INTEGER,
   total_citations INTEGER,
+  notes TEXT,  -- V12: General notes about the researcher (conflicts, preferences, etc.)
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   last_checked TIMESTAMP  -- Last time we verified/refreshed this profile

@@ -22,7 +22,59 @@ export default async function handler(req, res) {
 
 async function handleGet(req, res) {
   try {
-    const { cycleId, userProfileId } = req.query;
+    const { cycleId, userProfileId, mode } = req.query;
+
+    // Mode: return all proposals (for Add Researcher modal)
+    // Proposals are stored inline in reviewer_suggestions, get unique proposals
+    if (mode === 'proposals') {
+      const parsedCycleId = cycleId && cycleId !== 'all' ? parseInt(cycleId, 10) : null;
+
+      let proposalsResult;
+      if (parsedCycleId) {
+        proposalsResult = await sql`
+          SELECT DISTINCT ON (rs.proposal_id)
+            rs.proposal_id,
+            rs.proposal_title as title,
+            rs.grant_cycle_id,
+            gc.name as cycle_name,
+            gc.short_code as cycle_short_code,
+            MIN(rs.suggested_at) as created_at
+          FROM reviewer_suggestions rs
+          LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
+          WHERE rs.grant_cycle_id = ${parsedCycleId}
+          GROUP BY rs.proposal_id, rs.proposal_title, rs.grant_cycle_id, gc.name, gc.short_code
+          ORDER BY rs.proposal_id, MIN(rs.suggested_at) DESC
+        `;
+      } else {
+        proposalsResult = await sql`
+          SELECT DISTINCT ON (rs.proposal_id)
+            rs.proposal_id,
+            rs.proposal_title as title,
+            rs.grant_cycle_id,
+            gc.name as cycle_name,
+            gc.short_code as cycle_short_code,
+            MIN(rs.suggested_at) as created_at
+          FROM reviewer_suggestions rs
+          LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
+          GROUP BY rs.proposal_id, rs.proposal_title, rs.grant_cycle_id, gc.name, gc.short_code
+          ORDER BY rs.proposal_id, MIN(rs.suggested_at) DESC
+          LIMIT 100
+        `;
+      }
+
+      return res.status(200).json({
+        success: true,
+        proposals: proposalsResult.rows.map(p => ({
+          id: p.proposal_id,  // Use proposal_id as the identifier
+          title: p.title,
+          proposalHash: p.proposal_id,
+          grantCycleId: p.grant_cycle_id,
+          cycleName: p.cycle_name,
+          cycleShortCode: p.cycle_short_code,
+          createdAt: p.created_at
+        }))
+      });
+    }
 
     // Parse user profile ID for filtering
     const profileId = userProfileId ? parseInt(userProfileId, 10) : null;

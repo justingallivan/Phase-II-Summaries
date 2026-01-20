@@ -300,6 +300,11 @@ const v11Alterations = [
   `CREATE INDEX IF NOT EXISTS idx_user_profiles_azure_email ON user_profiles(azure_email)`,
 ];
 
+// V12: Researcher notes for tracking conflicts, preferences, etc.
+const v12Alterations = [
+  `ALTER TABLE researchers ADD COLUMN IF NOT EXISTS notes TEXT`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -599,6 +604,24 @@ async function runMigration() {
           console.log(`[v11-${i + 1}/${v11Alterations.length}] ○ Already exists: ${preview}...`);
         } else {
           console.error(`[v11-${i + 1}/${v11Alterations.length}] ✗ Error: ${error.message}`);
+        }
+      }
+    }
+
+    // Run V12 column additions (researcher notes)
+    console.log(`\nApplying v12 schema updates - Researcher notes (${v12Alterations.length} alterations)...`);
+    for (let i = 0; i < v12Alterations.length; i++) {
+      const statement = v12Alterations[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v12-${i + 1}/${v12Alterations.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists') || error.message.includes('duplicate column')) {
+          console.log(`[v12-${i + 1}/${v12Alterations.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v12-${i + 1}/${v12Alterations.length}] ✗ Error: ${error.message}`);
         }
       }
     }
