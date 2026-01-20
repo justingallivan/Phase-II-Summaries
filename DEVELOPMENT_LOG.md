@@ -1546,4 +1546,63 @@ POSTGRES_URL=<connection string>
 
 ---
 
+## Session 33 - January 20, 2026
+
+### Per-User Settings Storage for Reviewer Finder
+
+Migrated Reviewer Finder settings from browser localStorage to per-user database storage using the existing `user_preferences` infrastructure.
+
+**Problem:**
+Settings (sender info, grant cycle settings, email template, current cycle ID) were stored in browser localStorage, meaning:
+- Settings didn't persist across browsers/devices
+- All users on the same machine shared the same settings
+- No isolation between user profiles
+
+**Solution:**
+Updated all settings-related components to use profile preferences with localStorage fallback:
+
+**New File:**
+- `shared/config/reviewerFinderPreferences.js` - Preference key constants and legacy storage key mappings
+
+**Updated Components:**
+| Component | Changes |
+|-----------|---------|
+| `SettingsModal.js` | Save/load from profile preferences; auto-migrate from localStorage |
+| `EmailTemplateEditor.js` | Save/load template from profile preferences |
+| `EmailGeneratorModal.js` | Load settings from profile preferences first |
+| `EmailSettingsPanel.js` | Collapsible panel uses profile preferences |
+
+**Preference Keys:**
+| Key | Data |
+|-----|------|
+| `reviewer_finder_sender_info` | Name, email, signature (JSON) |
+| `reviewer_finder_grant_cycle_settings` | Program name, deadline, attachments, summary pages (JSON) |
+| `reviewer_finder_email_template` | Subject and body template (JSON) |
+| `reviewer_finder_current_cycle_id` | Active grant cycle selection |
+
+**Behavior:**
+- With profile: Settings stored in `user_preferences` table
+- Without profile: Falls back to localStorage (backwards compatible)
+- First profile use: Auto-migrates localStorage data to profile
+- Profile switching: Loads that profile's saved settings
+
+**Documentation:**
+- Added "Settings Storage (Per-User)" section to CLAUDE.md
+
+---
+
+## Known Issue for Session 34
+
+### Multi-Proposal Email Generation Bug
+
+**Bug:** When generating reviewer invitation emails across multiple proposals, only the first proposal's information (title and abstract PDF) is used for all emails.
+
+**Expected:** Each email should include the correct proposal title and summary attachment for the specific proposal that candidate is associated with.
+
+**Impact:** All generated emails incorrectly reference the same proposal, making batch email generation unusable for multiple proposals.
+
+**Priority:** HIGH - This is the top priority for the next session.
+
+---
+
 Last Updated: January 20, 2026
