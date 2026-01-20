@@ -247,6 +247,30 @@ Generated .eml files open as "received" messages in email clients. To send:
 
 This is a limitation of the .eml format - it's designed for message import/export, not drafts.
 
+#### Settings Storage (Per-User)
+
+Reviewer Finder settings are stored per-user in the database when a profile is selected, with localStorage fallback when no profile is active.
+
+**Settings stored per-profile:**
+| Setting | Preference Key | Description |
+|---------|---------------|-------------|
+| Sender Info | `reviewer_finder_sender_info` | Name, email, signature |
+| Grant Cycle Settings | `reviewer_finder_grant_cycle_settings` | Program name, deadline, attachments, summary pages |
+| Email Template | `reviewer_finder_email_template` | Custom email subject and body |
+| Current Cycle ID | `reviewer_finder_current_cycle_id` | Active grant cycle selection |
+
+**Behavior:**
+- When a user profile is active, settings are saved to the `user_preferences` table
+- When no profile is active, settings fall back to localStorage (base64 encoded)
+- On first profile selection, localStorage data auto-migrates to profile preferences
+- Profile switching loads that profile's saved settings
+
+**Key Files:**
+- `shared/config/reviewerFinderPreferences.js` - Preference key constants
+- `shared/components/SettingsModal.js` - Main settings UI with dual storage
+- `shared/components/EmailTemplateEditor.js` - Template editor with dual storage
+- `shared/components/EmailGeneratorModal.js` - Loads settings from profile/localStorage
+
 #### Future Considerations: Direct Email Sending
 
 When this app is integrated with a CRM or email service, consider implementing direct email sending:

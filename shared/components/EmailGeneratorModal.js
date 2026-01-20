@@ -6,12 +6,16 @@
  * 2. Options (Claude personalization, template preview)
  * 3. Progress (generation with SSE)
  * 4. Download (individual files or ZIP)
+ *
+ * Loads settings from profile preferences first, with localStorage fallback.
  */
 
 import { useState, useEffect, useRef } from 'react';
 import EmailTemplateEditor from './EmailTemplateEditor';
 import { STORAGE_KEYS, DEFAULT_SETTINGS } from './EmailSettingsPanel';
 import { DEFAULT_TEMPLATE } from '../../lib/utils/email-generator';
+import { useProfile } from '../context/ProfileContext';
+import { PREFERENCE_KEYS } from '../config/reviewerFinderPreferences';
 
 // Modal steps
 const STEPS = {
@@ -50,6 +54,8 @@ export default function EmailGeneratorModal({
   onEmailsGenerated, // Callback to refresh candidates after generation
   isFollowUp = false // Whether this is a follow-up/re-invite email
 }) {
+  const { currentProfile, preferences } = useProfile();
+
   const [step, setStep] = useState(STEPS.REVIEW);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [template, setTemplate] = useState(isFollowUp ? DEFAULT_FOLLOWUP_TEMPLATE : DEFAULT_TEMPLATE);
@@ -85,62 +91,107 @@ export default function EmailGeneratorModal({
     setIsGenerating(false);
     setShowTemplateEditor(false);
 
-    // Load settings from localStorage
+    // Load settings - check profile preferences first, then localStorage fallback
     try {
       let loadedSettings = { ...DEFAULT_SETTINGS };
-      const storedSettings = localStorage.getItem(STORAGE_KEYS.EMAIL_SETTINGS);
-      if (storedSettings) {
-        loadedSettings = { ...loadedSettings, ...JSON.parse(atob(storedSettings)) };
-      }
-
-      // Load grant cycle settings
-      const storedGrantCycle = localStorage.getItem(STORAGE_KEYS.GRANT_CYCLE);
       let attachConfig = {
         reviewTemplateBlobUrl: '',
         reviewTemplateFilename: '',
         summaryBlobUrl: proposalInfo?.summaryBlobUrl || '',
         additionalAttachments: []
       };
+      let loadedTemplate = isFollowUp ? DEFAULT_FOLLOWUP_TEMPLATE : DEFAULT_TEMPLATE;
 
-      if (storedGrantCycle) {
-        const grantCycle = JSON.parse(atob(storedGrantCycle));
-        loadedSettings.grantCycle = {
-          ...loadedSettings.grantCycle,
-          ...grantCycle
-        };
-        attachConfig.reviewTemplateBlobUrl = grantCycle.reviewTemplateBlobUrl || '';
-        attachConfig.reviewTemplateFilename = grantCycle.reviewTemplateFilename || '';
-        attachConfig.additionalAttachments = grantCycle.additionalAttachments || [];
+      // Check profile preferences first
+      if (currentProfile && preferences) {
+        // Load grant cycle settings from profile
+        if (preferences[PREFERENCE_KEYS.GRANT_CYCLE_SETTINGS]) {
+          try {
+            const grantCycle = JSON.parse(preferences[PREFERENCE_KEYS.GRANT_CYCLE_SETTINGS]);
+            loadedSettings.grantCycle = {
+              ...loadedSettings.grantCycle,
+              ...grantCycle
+            };
+            attachConfig.reviewTemplateBlobUrl = grantCycle.reviewTemplateBlobUrl || '';
+            attachConfig.reviewTemplateFilename = grantCycle.reviewTemplateFilename || '';
+            attachConfig.additionalAttachments = grantCycle.additionalAttachments || [];
+          } catch (e) {
+            console.warn('Failed to parse grant cycle from profile:', e);
+          }
+        }
+
+        // Load sender info from profile
+        if (preferences[PREFERENCE_KEYS.SENDER_INFO]) {
+          try {
+            const sender = JSON.parse(preferences[PREFERENCE_KEYS.SENDER_INFO]);
+            loadedSettings.senderName = sender.name || loadedSettings.senderName;
+            loadedSettings.senderEmail = sender.email || loadedSettings.senderEmail;
+            loadedSettings.signature = sender.signature || loadedSettings.signature;
+          } catch (e) {
+            console.warn('Failed to parse sender info from profile:', e);
+          }
+        }
+
+        // Load template from profile
+        if (preferences[PREFERENCE_KEYS.EMAIL_TEMPLATE]) {
+          try {
+            loadedTemplate = JSON.parse(preferences[PREFERENCE_KEYS.EMAIL_TEMPLATE]);
+          } catch (e) {
+            console.warn('Failed to parse email template from profile:', e);
+          }
+        }
       }
 
-      // Load sender info
-      const storedSender = localStorage.getItem(STORAGE_KEYS.SENDER_INFO);
-      if (storedSender) {
-        const sender = JSON.parse(atob(storedSender));
-        loadedSettings.senderName = sender.name || loadedSettings.senderName;
-        loadedSettings.senderEmail = sender.email || loadedSettings.senderEmail;
-        loadedSettings.signature = sender.signature || loadedSettings.signature;
+      // Fallback to localStorage for any missing settings
+      if (!loadedSettings.grantCycle?.programName) {
+        const storedSettings = localStorage.getItem(STORAGE_KEYS.EMAIL_SETTINGS);
+        if (storedSettings) {
+          loadedSettings = { ...loadedSettings, ...JSON.parse(atob(storedSettings)) };
+        }
+
+        const storedGrantCycle = localStorage.getItem(STORAGE_KEYS.GRANT_CYCLE);
+        if (storedGrantCycle) {
+          const grantCycle = JSON.parse(atob(storedGrantCycle));
+          loadedSettings.grantCycle = {
+            ...loadedSettings.grantCycle,
+            ...grantCycle
+          };
+          if (!attachConfig.reviewTemplateBlobUrl) {
+            attachConfig.reviewTemplateBlobUrl = grantCycle.reviewTemplateBlobUrl || '';
+            attachConfig.reviewTemplateFilename = grantCycle.reviewTemplateFilename || '';
+            attachConfig.additionalAttachments = grantCycle.additionalAttachments || [];
+          }
+        }
+      }
+
+      if (!loadedSettings.senderEmail) {
+        const storedSender = localStorage.getItem(STORAGE_KEYS.SENDER_INFO);
+        if (storedSender) {
+          const sender = JSON.parse(atob(storedSender));
+          loadedSettings.senderName = sender.name || loadedSettings.senderName;
+          loadedSettings.senderEmail = sender.email || loadedSettings.senderEmail;
+          loadedSettings.signature = sender.signature || loadedSettings.signature;
+        }
+      }
+
+      // Fallback to localStorage for template if not loaded from profile
+      if (loadedTemplate === DEFAULT_TEMPLATE || loadedTemplate === DEFAULT_FOLLOWUP_TEMPLATE) {
+        if (isFollowUp) {
+          const storedFollowUpTemplate = localStorage.getItem(STORAGE_KEYS.EMAIL_TEMPLATE + '_followup');
+          if (storedFollowUpTemplate) {
+            loadedTemplate = JSON.parse(atob(storedFollowUpTemplate));
+          }
+        } else {
+          const storedTemplate = localStorage.getItem(STORAGE_KEYS.EMAIL_TEMPLATE);
+          if (storedTemplate) {
+            loadedTemplate = JSON.parse(atob(storedTemplate));
+          }
+        }
       }
 
       setSettings(loadedSettings);
       setAttachmentConfig(attachConfig);
-
-      // Load template based on follow-up mode
-      if (isFollowUp) {
-        const storedFollowUpTemplate = localStorage.getItem(STORAGE_KEYS.EMAIL_TEMPLATE + '_followup');
-        if (storedFollowUpTemplate) {
-          setTemplate(JSON.parse(atob(storedFollowUpTemplate)));
-        } else {
-          setTemplate(DEFAULT_FOLLOWUP_TEMPLATE);
-        }
-      } else {
-        const storedTemplate = localStorage.getItem(STORAGE_KEYS.EMAIL_TEMPLATE);
-        if (storedTemplate) {
-          setTemplate(JSON.parse(atob(storedTemplate)));
-        } else {
-          setTemplate(DEFAULT_TEMPLATE);
-        }
-      }
+      setTemplate(loadedTemplate);
     } catch (error) {
       console.error('Failed to load email settings:', error);
     }

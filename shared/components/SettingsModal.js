@@ -5,11 +5,16 @@
  * - Email template configuration
  * - Grant cycle settings (including summary page extraction config)
  * - Sender information
+ *
+ * Settings are stored per-user in the database when a profile is selected,
+ * with fallback to localStorage when no profile is active.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import EmailTemplateEditor from './EmailTemplateEditor';
 import { STORAGE_KEYS } from './EmailSettingsPanel';
+import { useProfile } from '../context/ProfileContext';
+import { PREFERENCE_KEYS, STORAGE_KEYS as RF_STORAGE_KEYS } from '../config/reviewerFinderPreferences';
 
 // Default grant cycle settings
 const DEFAULT_GRANT_CYCLE = {
@@ -34,10 +39,12 @@ const DEFAULT_SENDER = {
   signature: ''
 };
 
-// Storage key for current cycle ID
+// Storage key for current cycle ID (legacy)
 const CURRENT_CYCLE_KEY = 'reviewer_finder_current_cycle';
 
 export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
+  const { currentProfile, preferences, setPreference } = useProfile();
+
   const [activeSection, setActiveSection] = useState('sender');
   const [grantCycle, setGrantCycle] = useState(DEFAULT_GRANT_CYCLE);
   const [sender, setSender] = useState(DEFAULT_SENDER);
@@ -53,37 +60,124 @@ export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
   const [cycleFormData, setCycleFormData] = useState({});
   const [savingCycle, setSavingCycle] = useState(false);
 
-  // Load settings on mount
+  // Track if migration has been attempted
+  const migrationAttemptedRef = useRef(false);
+
+  // Load settings on mount or when profile changes
   useEffect(() => {
     if (isOpen) {
       loadSettings();
       loadCycles();
     }
-  }, [isOpen]);
+  }, [isOpen, currentProfile?.id]);
 
   const loadSettings = () => {
     try {
-      // Load grant cycle (legacy localStorage settings)
+      let loadedGrantCycle = DEFAULT_GRANT_CYCLE;
+      let loadedSender = DEFAULT_SENDER;
+      let loadedCycleId = null;
+
+      // Check profile preferences first, then fallback to localStorage
+      if (currentProfile && preferences) {
+        // Load from profile preferences if available
+        if (preferences[PREFERENCE_KEYS.GRANT_CYCLE_SETTINGS]) {
+          try {
+            const decoded = JSON.parse(preferences[PREFERENCE_KEYS.GRANT_CYCLE_SETTINGS]);
+            loadedGrantCycle = { ...DEFAULT_GRANT_CYCLE, ...decoded };
+          } catch (e) {
+            console.warn('Failed to parse grant cycle from profile:', e);
+          }
+        }
+
+        if (preferences[PREFERENCE_KEYS.SENDER_INFO]) {
+          try {
+            const decoded = JSON.parse(preferences[PREFERENCE_KEYS.SENDER_INFO]);
+            loadedSender = { ...DEFAULT_SENDER, ...decoded };
+          } catch (e) {
+            console.warn('Failed to parse sender info from profile:', e);
+          }
+        }
+
+        if (preferences[PREFERENCE_KEYS.CURRENT_CYCLE_ID]) {
+          loadedCycleId = parseInt(preferences[PREFERENCE_KEYS.CURRENT_CYCLE_ID], 10);
+        }
+
+        // Attempt migration from localStorage if profile has no settings yet
+        if (!migrationAttemptedRef.current) {
+          migrationAttemptedRef.current = true;
+          migrateFromLocalStorage();
+        }
+      }
+
+      // Fallback to localStorage if no profile data
+      if (loadedGrantCycle === DEFAULT_GRANT_CYCLE) {
+        const storedCycle = localStorage.getItem(STORAGE_KEYS.GRANT_CYCLE);
+        if (storedCycle) {
+          const decoded = JSON.parse(atob(storedCycle));
+          loadedGrantCycle = { ...DEFAULT_GRANT_CYCLE, ...decoded };
+        }
+      }
+
+      if (loadedSender === DEFAULT_SENDER) {
+        const storedSender = localStorage.getItem(STORAGE_KEYS.SENDER_INFO);
+        if (storedSender) {
+          const decoded = JSON.parse(atob(storedSender));
+          loadedSender = { ...DEFAULT_SENDER, ...decoded };
+        }
+      }
+
+      if (loadedCycleId === null) {
+        const storedCycleId = localStorage.getItem(CURRENT_CYCLE_KEY);
+        if (storedCycleId) {
+          loadedCycleId = parseInt(storedCycleId, 10);
+        }
+      }
+
+      setGrantCycle(loadedGrantCycle);
+      setSender(loadedSender);
+      setCurrentCycleId(loadedCycleId);
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    }
+  };
+
+  // Migrate settings from localStorage to profile preferences
+  const migrateFromLocalStorage = async () => {
+    if (!currentProfile) return;
+
+    try {
+      // Check if profile already has settings - if so, don't overwrite
+      const hasProfileSettings =
+        preferences[PREFERENCE_KEYS.SENDER_INFO] ||
+        preferences[PREFERENCE_KEYS.GRANT_CYCLE_SETTINGS] ||
+        preferences[PREFERENCE_KEYS.CURRENT_CYCLE_ID];
+
+      if (hasProfileSettings) return;
+
+      // Migrate grant cycle
       const storedCycle = localStorage.getItem(STORAGE_KEYS.GRANT_CYCLE);
       if (storedCycle) {
         const decoded = JSON.parse(atob(storedCycle));
-        setGrantCycle({ ...DEFAULT_GRANT_CYCLE, ...decoded });
+        await setPreference(PREFERENCE_KEYS.GRANT_CYCLE_SETTINGS, JSON.stringify(decoded));
+        console.log('Migrated grant cycle settings to profile');
       }
 
-      // Load sender
+      // Migrate sender info
       const storedSender = localStorage.getItem(STORAGE_KEYS.SENDER_INFO);
       if (storedSender) {
         const decoded = JSON.parse(atob(storedSender));
-        setSender({ ...DEFAULT_SENDER, ...decoded });
+        await setPreference(PREFERENCE_KEYS.SENDER_INFO, JSON.stringify(decoded));
+        console.log('Migrated sender info to profile');
       }
 
-      // Load current cycle ID
+      // Migrate current cycle ID
       const storedCycleId = localStorage.getItem(CURRENT_CYCLE_KEY);
       if (storedCycleId) {
-        setCurrentCycleId(parseInt(storedCycleId, 10));
+        await setPreference(PREFERENCE_KEYS.CURRENT_CYCLE_ID, storedCycleId);
+        console.log('Migrated current cycle ID to profile');
       }
     } catch (error) {
-      console.error('Failed to load settings:', error);
+      console.error('Failed to migrate settings from localStorage:', error);
     }
   };
 
@@ -164,13 +258,24 @@ export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
   };
 
   // Set current cycle
-  const handleSetCurrentCycle = (cycleId) => {
+  const handleSetCurrentCycle = async (cycleId) => {
     setCurrentCycleId(cycleId);
-    if (cycleId) {
-      localStorage.setItem(CURRENT_CYCLE_KEY, cycleId.toString());
+
+    // Save to profile if available, otherwise localStorage
+    if (currentProfile) {
+      if (cycleId) {
+        await setPreference(PREFERENCE_KEYS.CURRENT_CYCLE_ID, cycleId.toString());
+      } else {
+        await setPreference(PREFERENCE_KEYS.CURRENT_CYCLE_ID, '');
+      }
     } else {
-      localStorage.removeItem(CURRENT_CYCLE_KEY);
+      if (cycleId) {
+        localStorage.setItem(CURRENT_CYCLE_KEY, cycleId.toString());
+      } else {
+        localStorage.removeItem(CURRENT_CYCLE_KEY);
+      }
     }
+
     // Notify parent component
     if (onCycleChange) {
       onCycleChange(cycleId);
@@ -210,10 +315,17 @@ export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
     setEditingCycle({});
   };
 
-  const saveSettings = () => {
+  const saveSettings = async () => {
     try {
-      localStorage.setItem(STORAGE_KEYS.GRANT_CYCLE, btoa(JSON.stringify(grantCycle)));
-      localStorage.setItem(STORAGE_KEYS.SENDER_INFO, btoa(JSON.stringify(sender)));
+      if (currentProfile) {
+        // Save to profile preferences
+        await setPreference(PREFERENCE_KEYS.GRANT_CYCLE_SETTINGS, JSON.stringify(grantCycle));
+        await setPreference(PREFERENCE_KEYS.SENDER_INFO, JSON.stringify(sender));
+      } else {
+        // Fallback to localStorage
+        localStorage.setItem(STORAGE_KEYS.GRANT_CYCLE, btoa(JSON.stringify(grantCycle)));
+        localStorage.setItem(STORAGE_KEYS.SENDER_INFO, btoa(JSON.stringify(sender)));
+      }
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus(null), 3000);
     } catch (error) {

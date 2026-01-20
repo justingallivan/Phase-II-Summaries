@@ -6,10 +6,13 @@
  * - Signature block
  * - Grant cycle settings (program name, review deadline, custom fields)
  *
- * Settings are stored in localStorage with base64 encoding.
+ * Settings are stored per-user in the database when a profile is selected,
+ * with fallback to localStorage when no profile is active.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useProfile } from '../context/ProfileContext';
+import { PREFERENCE_KEYS } from '../config/reviewerFinderPreferences';
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -32,28 +35,113 @@ const DEFAULT_SETTINGS = {
 };
 
 export default function EmailSettingsPanel({ onSettingsChange, initialExpanded = false }) {
+  const { currentProfile, preferences, setPreference } = useProfile();
+
   const [isExpanded, setIsExpanded] = useState(initialExpanded);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [hasStoredSettings, setHasStoredSettings] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null);
   const [newFieldName, setNewFieldName] = useState('');
 
-  // Load settings from localStorage on mount
+  // Track if migration has been attempted
+  const migrationAttemptedRef = useRef(false);
+
+  // Load settings on mount or when profile changes
   useEffect(() => {
+    loadSettings();
+  }, [currentProfile?.id]);
+
+  const loadSettings = () => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEYS.EMAIL_SETTINGS);
-      if (stored) {
-        const decoded = JSON.parse(atob(stored));
-        setSettings(decoded);
+      let loadedSettings = null;
+
+      // Check profile preferences first
+      if (currentProfile && preferences) {
+        // Build settings from individual profile preferences
+        let hasAnyProfileSettings = false;
+
+        if (preferences[PREFERENCE_KEYS.SENDER_INFO]) {
+          try {
+            const sender = JSON.parse(preferences[PREFERENCE_KEYS.SENDER_INFO]);
+            loadedSettings = loadedSettings || { ...DEFAULT_SETTINGS };
+            loadedSettings.senderName = sender.name || '';
+            loadedSettings.senderEmail = sender.email || '';
+            loadedSettings.signature = sender.signature || '';
+            hasAnyProfileSettings = true;
+          } catch (e) {
+            console.warn('Failed to parse sender info from profile:', e);
+          }
+        }
+
+        if (preferences[PREFERENCE_KEYS.GRANT_CYCLE_SETTINGS]) {
+          try {
+            const grantCycle = JSON.parse(preferences[PREFERENCE_KEYS.GRANT_CYCLE_SETTINGS]);
+            loadedSettings = loadedSettings || { ...DEFAULT_SETTINGS };
+            loadedSettings.grantCycle = {
+              ...loadedSettings.grantCycle,
+              ...grantCycle
+            };
+            hasAnyProfileSettings = true;
+          } catch (e) {
+            console.warn('Failed to parse grant cycle from profile:', e);
+          }
+        }
+
+        // Attempt migration if profile has no settings yet
+        if (!hasAnyProfileSettings && !migrationAttemptedRef.current) {
+          migrationAttemptedRef.current = true;
+          migrateFromLocalStorage();
+        }
+      }
+
+      // Fallback to localStorage
+      if (!loadedSettings) {
+        const stored = localStorage.getItem(STORAGE_KEYS.EMAIL_SETTINGS);
+        if (stored) {
+          loadedSettings = JSON.parse(atob(stored));
+        }
+      }
+
+      if (loadedSettings) {
+        setSettings(loadedSettings);
         setHasStoredSettings(true);
         if (onSettingsChange) {
-          onSettingsChange(decoded);
+          onSettingsChange(loadedSettings);
         }
       }
     } catch (error) {
       console.error('Failed to load email settings:', error);
     }
-  }, []);
+  };
+
+  // Migrate settings from localStorage to profile preferences
+  const migrateFromLocalStorage = async () => {
+    if (!currentProfile) return;
+
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.EMAIL_SETTINGS);
+      if (stored) {
+        const decoded = JSON.parse(atob(stored));
+
+        // Save as individual preferences
+        if (decoded.senderName || decoded.senderEmail || decoded.signature) {
+          await setPreference(PREFERENCE_KEYS.SENDER_INFO, JSON.stringify({
+            name: decoded.senderName || '',
+            email: decoded.senderEmail || '',
+            signature: decoded.signature || ''
+          }));
+        }
+
+        if (decoded.grantCycle) {
+          await setPreference(PREFERENCE_KEYS.GRANT_CYCLE_SETTINGS, JSON.stringify(decoded.grantCycle));
+        }
+
+        console.log('Migrated email settings to profile');
+      }
+    } catch (error) {
+      console.error('Failed to migrate email settings from localStorage:', error);
+    }
+  };
 
   // Update a single setting
   const updateSetting = (key, value) => {
@@ -127,9 +215,24 @@ export default function EmailSettingsPanel({ onSettingsChange, initialExpanded =
   };
 
   // Save settings
-  const saveSettings = () => {
+  const saveSettings = async () => {
     try {
-      localStorage.setItem(STORAGE_KEYS.EMAIL_SETTINGS, btoa(JSON.stringify(settings)));
+      if (currentProfile) {
+        // Save to profile preferences as separate keys
+        await setPreference(PREFERENCE_KEYS.SENDER_INFO, JSON.stringify({
+          name: settings.senderName || '',
+          email: settings.senderEmail || '',
+          signature: settings.signature || ''
+        }));
+
+        if (settings.grantCycle) {
+          await setPreference(PREFERENCE_KEYS.GRANT_CYCLE_SETTINGS, JSON.stringify(settings.grantCycle));
+        }
+      } else {
+        // Fallback to localStorage
+        localStorage.setItem(STORAGE_KEYS.EMAIL_SETTINGS, btoa(JSON.stringify(settings)));
+      }
+
       setHasStoredSettings(true);
       setSaveStatus('saved');
 
@@ -145,12 +248,19 @@ export default function EmailSettingsPanel({ onSettingsChange, initialExpanded =
   };
 
   // Clear settings
-  const clearSettings = () => {
+  const clearSettings = async () => {
     if (!confirm('Are you sure you want to clear all email settings?')) {
       return;
     }
 
-    localStorage.removeItem(STORAGE_KEYS.EMAIL_SETTINGS);
+    if (currentProfile) {
+      // Clear from profile preferences
+      await setPreference(PREFERENCE_KEYS.SENDER_INFO, '');
+      await setPreference(PREFERENCE_KEYS.GRANT_CYCLE_SETTINGS, '');
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.EMAIL_SETTINGS);
+    }
+
     setSettings(DEFAULT_SETTINGS);
     setHasStoredSettings(false);
     setSaveStatus(null);
@@ -398,8 +508,10 @@ University of Example"
           {/* Info Box */}
           <div className="mt-4 p-3 bg-gray-50 rounded-lg">
             <p className="text-xs text-gray-500">
-              <strong>💾 Storage:</strong> Settings are stored locally in your browser.
-              They will be used when generating reviewer invitation emails.
+              <strong>💾 Storage:</strong> {currentProfile
+                ? `Settings are stored in your profile (${currentProfile.displayName || currentProfile.name}).`
+                : 'Settings are stored locally in your browser.'}
+              {' '}They will be used when generating reviewer invitation emails.
             </p>
           </div>
         </div>

@@ -6,11 +6,16 @@
  * - Body textarea with placeholder insertion buttons
  * - Live preview with sample data
  * - Reset to default template
+ *
+ * Settings are stored per-user in the database when a profile is selected,
+ * with fallback to localStorage when no profile is active.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { STORAGE_KEYS } from './EmailSettingsPanel';
 import { DEFAULT_TEMPLATE, replacePlaceholders, parseRecipientName, formatReviewDeadline } from '../../lib/utils/email-generator';
+import { useProfile } from '../context/ProfileContext';
+import { PREFERENCE_KEYS } from '../config/reviewerFinderPreferences';
 
 // Available placeholders grouped by category
 const PLACEHOLDERS = {
@@ -69,27 +74,78 @@ export default function EmailTemplateEditor({
   initialTemplate = null,
   compact = false
 }) {
+  const { currentProfile, preferences, setPreference } = useProfile();
+
   const [template, setTemplate] = useState(initialTemplate || DEFAULT_TEMPLATE);
   const [showPreview, setShowPreview] = useState(!compact);
   const [saveStatus, setSaveStatus] = useState(null);
 
-  // Load template from localStorage on mount
+  // Track if migration has been attempted
+  const migrationAttemptedRef = useRef(false);
+
+  // Load template on mount or when profile changes
   useEffect(() => {
     if (!initialTemplate) {
-      try {
+      loadTemplate();
+    }
+  }, [initialTemplate, currentProfile?.id]);
+
+  const loadTemplate = () => {
+    try {
+      let loadedTemplate = null;
+
+      // Check profile preferences first
+      if (currentProfile && preferences && preferences[PREFERENCE_KEYS.EMAIL_TEMPLATE]) {
+        try {
+          loadedTemplate = JSON.parse(preferences[PREFERENCE_KEYS.EMAIL_TEMPLATE]);
+        } catch (e) {
+          console.warn('Failed to parse email template from profile:', e);
+        }
+
+        // Attempt migration from localStorage if profile has no template yet
+        if (!loadedTemplate && !migrationAttemptedRef.current) {
+          migrationAttemptedRef.current = true;
+          migrateFromLocalStorage();
+        }
+      }
+
+      // Fallback to localStorage
+      if (!loadedTemplate) {
         const stored = localStorage.getItem(STORAGE_KEYS.EMAIL_TEMPLATE);
         if (stored) {
-          const decoded = JSON.parse(atob(stored));
-          setTemplate(decoded);
-          if (onTemplateChange) {
-            onTemplateChange(decoded);
-          }
+          loadedTemplate = JSON.parse(atob(stored));
         }
-      } catch (error) {
-        console.error('Failed to load email template:', error);
       }
+
+      if (loadedTemplate) {
+        setTemplate(loadedTemplate);
+        if (onTemplateChange) {
+          onTemplateChange(loadedTemplate);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load email template:', error);
     }
-  }, [initialTemplate]);
+  };
+
+  // Migrate template from localStorage to profile preferences
+  const migrateFromLocalStorage = async () => {
+    if (!currentProfile) return;
+
+    try {
+      // Check if profile already has template
+      if (preferences[PREFERENCE_KEYS.EMAIL_TEMPLATE]) return;
+
+      const stored = localStorage.getItem(STORAGE_KEYS.EMAIL_TEMPLATE);
+      if (stored) {
+        const decoded = JSON.parse(atob(stored));
+        await setPreference(PREFERENCE_KEYS.EMAIL_TEMPLATE, JSON.stringify(decoded));
+        console.log('Migrated email template to profile');
+      }
+    } catch (error) {
+      console.error('Failed to migrate email template from localStorage:', error);
+    }
+  };
 
   // Update subject
   const updateSubject = (subject) => {
@@ -132,9 +188,15 @@ export default function EmailTemplateEditor({
   };
 
   // Save template
-  const saveTemplate = () => {
+  const saveTemplate = async () => {
     try {
-      localStorage.setItem(STORAGE_KEYS.EMAIL_TEMPLATE, btoa(JSON.stringify(template)));
+      if (currentProfile) {
+        // Save to profile preferences
+        await setPreference(PREFERENCE_KEYS.EMAIL_TEMPLATE, JSON.stringify(template));
+      } else {
+        // Fallback to localStorage
+        localStorage.setItem(STORAGE_KEYS.EMAIL_TEMPLATE, btoa(JSON.stringify(template)));
+      }
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus(null), 3000);
     } catch (error) {
@@ -144,12 +206,19 @@ export default function EmailTemplateEditor({
   };
 
   // Reset to default
-  const resetToDefault = () => {
+  const resetToDefault = async () => {
     if (!confirm('Reset template to default? Your customizations will be lost.')) {
       return;
     }
     setTemplate(DEFAULT_TEMPLATE);
-    localStorage.removeItem(STORAGE_KEYS.EMAIL_TEMPLATE);
+
+    // Clear from profile or localStorage
+    if (currentProfile) {
+      await setPreference(PREFERENCE_KEYS.EMAIL_TEMPLATE, '');
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.EMAIL_TEMPLATE);
+    }
+
     setSaveStatus(null);
     if (onTemplateChange) {
       onTemplateChange(DEFAULT_TEMPLATE);
