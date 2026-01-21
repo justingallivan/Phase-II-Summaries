@@ -226,17 +226,38 @@ function ApplicantResultCard({ result, onDismiss }) {
       {/* Expanded content */}
       {expanded && (
         <div className="p-4 space-y-4">
-          {/* Retraction Watch matches */}
-          {retractionMatches.length > 0 && (
+          {/* Retraction Watch results */}
+          {result.sources.retraction_watch?.searched && (
             <div>
-              <h4 className="text-sm font-medium text-gray-700 mb-2">
-                Retraction Watch ({retractionMatches.length} match{retractionMatches.length !== 1 ? 'es' : ''})
-              </h4>
-              <div className="space-y-3">
-                {retractionMatches.map((match, i) => (
-                  <RetractionMatchCard key={i} match={match} onDismiss={onDismiss} />
-                ))}
-              </div>
+              {retractionMatches.length > 0 ? (
+                <>
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">
+                    Retraction Watch ({retractionMatches.length} match{retractionMatches.length !== 1 ? 'es' : ''})
+                  </h4>
+                  <div className="space-y-3">
+                    {retractionMatches.map((match, i) => (
+                      <RetractionMatchCard key={i} match={match} onDismiss={onDismiss} />
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
+                  <div className="p-4 bg-gray-50 border-b border-gray-200">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Retraction Watch</span>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                        Clear
+                      </span>
+                    </div>
+                  </div>
+                  <div className="p-4">
+                    <p className="text-sm text-gray-700">No retractions found in the database.</p>
+                  </div>
+                </div>
+              )}
+              {result.sources.retraction_watch?.error && (
+                <p className="text-xs text-red-600 mt-2">Error: {result.sources.retraction_watch.error}</p>
+              )}
             </div>
           )}
 
@@ -260,10 +281,12 @@ function ApplicantResultCard({ result, onDismiss }) {
             />
           )}
 
-          {/* No matches message */}
-          {!result.hasConcerns && retractionMatches.length === 0 && (
+          {/* No sources searched message (shouldn't normally happen) */}
+          {!result.sources.retraction_watch?.searched &&
+           !result.sources.pubpeer?.searched &&
+           !result.sources.news?.searched && (
             <p className="text-sm text-gray-600">
-              No integrity concerns found across all sources.
+              No sources were searched for this applicant.
             </p>
           )}
         </div>
@@ -491,28 +514,37 @@ export default function IntegrityScreenerPage() {
       }
       md += `\n`;
 
-      // Retraction Watch matches
+      // Retraction Watch results
       const retractionMatches = result.sources.retraction_watch?.matches || [];
-      if (retractionMatches.length > 0) {
-        md += `### Retraction Watch (${retractionMatches.length} match${retractionMatches.length !== 1 ? 'es' : ''})\n\n`;
-        retractionMatches.forEach((match, i) => {
-          md += `#### Match ${i + 1}: ${match.title}\n\n`;
-          md += `- **Confidence:** ${match.confidence}%\n`;
-          if (match.journal) md += `- **Journal:** ${match.journal}\n`;
-          if (match.retractionDate) {
-            md += `- **Retraction Date:** ${new Date(match.retractionDate).toLocaleDateString()}\n`;
-          }
-          if (match.reasons && match.reasons.length > 0) {
-            md += `- **Reasons:** ${match.reasons.join(', ')}\n`;
-          }
-          if (match.authors) md += `- **Authors:** ${match.authors}\n`;
-          if (match.matchedAuthor) md += `- **Matched Name:** ${match.matchedAuthor}\n`;
-          if (match.institution) md += `- **Institution:** ${match.institution}\n`;
-          if (match.retractionNature) md += `- **Nature:** ${match.retractionNature}\n`;
-          if (match.doi) md += `- **DOI:** [${match.doi}](https://doi.org/${match.doi})\n`;
-          if (match.urls) md += `- **Source:** [View on Retraction Watch](${match.urls})\n`;
-          md += `\n`;
-        });
+      if (result.sources.retraction_watch?.searched) {
+        md += `### Retraction Watch\n\n`;
+        if (retractionMatches.length > 0) {
+          md += `**${retractionMatches.length} match${retractionMatches.length !== 1 ? 'es' : ''} found**\n\n`;
+          retractionMatches.forEach((match, i) => {
+            md += `#### Match ${i + 1}: ${match.title}\n\n`;
+            md += `- **Confidence:** ${match.confidence}%\n`;
+            if (match.journal) md += `- **Journal:** ${match.journal}\n`;
+            if (match.retractionDate) {
+              md += `- **Retraction Date:** ${new Date(match.retractionDate).toLocaleDateString()}\n`;
+            }
+            if (match.reasons && match.reasons.length > 0) {
+              md += `- **Reasons:** ${match.reasons.join(', ')}\n`;
+            }
+            if (match.authors) md += `- **Authors:** ${match.authors}\n`;
+            if (match.matchedAuthor) md += `- **Matched Name:** ${match.matchedAuthor}\n`;
+            if (match.institution) md += `- **Institution:** ${match.institution}\n`;
+            if (match.retractionNature) md += `- **Nature:** ${match.retractionNature}\n`;
+            if (match.doi) md += `- **DOI:** [${match.doi}](https://doi.org/${match.doi})\n`;
+            if (match.urls) md += `- **Source:** [View on Retraction Watch](${match.urls})\n`;
+            md += `\n`;
+          });
+        } else {
+          md += `- **Status:** ✓ Clear\n\n`;
+          md += `No retractions found in the database.\n\n`;
+        }
+        if (result.sources.retraction_watch?.error) {
+          md += `*Error: ${result.sources.retraction_watch.error}*\n\n`;
+        }
       }
 
       // PubPeer results
@@ -540,10 +572,6 @@ export default function IntegrityScreenerPage() {
         md += `\n${newsResult.summary}\n\n`;
       }
 
-      // No concerns message
-      if (!result.hasConcerns && retractionMatches.length === 0) {
-        md += `*No integrity concerns found across all sources.*\n\n`;
-      }
 
       md += `---\n\n`;
     });
