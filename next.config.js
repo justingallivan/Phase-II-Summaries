@@ -2,10 +2,6 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  experimental: {
-    // Increase body size limit for file uploads
-    isrMemoryCacheSize: 0,
-  },
   // Configure API routes
   async headers() {
     return [

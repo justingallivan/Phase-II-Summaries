@@ -305,6 +305,70 @@ const v12Alterations = [
   `ALTER TABLE researchers ADD COLUMN IF NOT EXISTS notes TEXT`,
 ];
 
+// V13: Applicant Integrity Screener tables
+const v13Statements = [
+  // Table: retractions (Retraction Watch data storage)
+  `CREATE TABLE IF NOT EXISTS retractions (
+    id SERIAL PRIMARY KEY,
+    record_id VARCHAR(50) UNIQUE,
+    title TEXT NOT NULL,
+    authors TEXT NOT NULL,
+    authors_normalized TEXT[],
+    journal VARCHAR(500),
+    publisher VARCHAR(255),
+    subject VARCHAR(255),
+    institution TEXT,
+    country TEXT,
+    retraction_date DATE,
+    original_paper_doi VARCHAR(100),
+    retraction_nature VARCHAR(100),
+    retraction_reasons TEXT[],
+    urls TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+
+  // Table: integrity_screenings (screening history)
+  `CREATE TABLE IF NOT EXISTS integrity_screenings (
+    id SERIAL PRIMARY KEY,
+    user_profile_id INTEGER REFERENCES user_profiles(id),
+    screening_type VARCHAR(50) NOT NULL,
+    screened_names JSONB NOT NULL,
+    results JSONB,
+    match_count INTEGER DEFAULT 0,
+    status VARCHAR(50) DEFAULT 'pending',
+    reviewed_at TIMESTAMP,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+
+  // Table: screening_dismissals (false positive tracking)
+  `CREATE TABLE IF NOT EXISTS screening_dismissals (
+    id SERIAL PRIMARY KEY,
+    screening_id INTEGER REFERENCES integrity_screenings(id) ON DELETE CASCADE,
+    source VARCHAR(50) NOT NULL,
+    source_identifier TEXT,
+    screened_name VARCHAR(255) NOT NULL,
+    dismissal_reason VARCHAR(100) NOT NULL,
+    notes TEXT,
+    dismissed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+
+  // Indexes for retractions table
+  `CREATE INDEX IF NOT EXISTS idx_retractions_authors_gin ON retractions USING GIN(authors_normalized)`,
+  `CREATE INDEX IF NOT EXISTS idx_retractions_date ON retractions(retraction_date DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_retractions_record_id ON retractions(record_id)`,
+
+  // Indexes for integrity_screenings
+  `CREATE INDEX IF NOT EXISTS idx_integrity_screenings_user ON integrity_screenings(user_profile_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_integrity_screenings_status ON integrity_screenings(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_integrity_screenings_created ON integrity_screenings(created_at DESC)`,
+
+  // Indexes for screening_dismissals
+  `CREATE INDEX IF NOT EXISTS idx_screening_dismissals_screening ON screening_dismissals(screening_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_screening_dismissals_source ON screening_dismissals(source)`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -626,6 +690,25 @@ async function runMigration() {
       }
     }
 
+    // Run V13 table creation (Applicant Integrity Screener)
+    console.log(`\nApplying v13 schema updates - Integrity Screener tables (${v13Statements.length} statements)...`);
+    for (let i = 0; i < v13Statements.length; i++) {
+      const statement = v13Statements[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v13-${i + 1}/${v13Statements.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v13-${i + 1}/${v13Statements.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v13-${i + 1}/${v13Statements.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -682,7 +765,11 @@ async function runMigration() {
     console.log('  • user_profiles.azure_email');
     console.log('  • user_profiles.last_login_at');
     console.log('  • user_profiles.needs_linking');
-    console.log('\nIndexes created: 27');
+    console.log('\nV13 new tables (Integrity Screener):');
+    console.log('  • retractions (Retraction Watch data storage)');
+    console.log('  • integrity_screenings (screening history)');
+    console.log('  • screening_dismissals (false positive tracking)');
+    console.log('\nIndexes created: 35');
 
   } catch (error) {
     console.error('\n✗ Migration failed:', error.message);

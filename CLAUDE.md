@@ -54,6 +54,7 @@ A multi-application document processing system using Claude AI for grant-related
 | Summarize Peer Reviews | `peer-review-summarizer.js` | `/api/summarize-reviews` | Phase II | Analyze peer reviews and generate site visit questions |
 | Expense Reporter | `expense-reporter.js` | `/api/process-expenses` | Other | Receipt/invoice processing with CSV export |
 | **Literature Analyzer** | `literature-analyzer.js` | `/api/analyze-literature` | Other | Analyze and synthesize research papers with AI |
+| **Integrity Screener** | `integrity-screener.js` | `/api/integrity-screener/*` | Phase I, II | Screen applicants for research integrity concerns |
 
 ### Deprecated Apps (hidden from UI, files retained)
 
@@ -122,6 +123,49 @@ Analyze and synthesize research papers for literature reviews:
 - `pages/literature-analyzer.js` - Frontend with tabbed results view
 - `pages/api/analyze-literature.js` - Two-stage analysis API
 - `shared/config/prompts/literature-analyzer.js` - Extraction and synthesis prompts
+
+### Applicant Integrity Screener - Feature Summary
+
+Screen grant applicants (PIs and Co-PIs) for research integrity concerns before award decisions:
+
+**Core Pipeline:**
+1. **Name Entry** - Manual input of applicant names with roles and institutions
+2. **Retraction Watch Search** - Query local database (~63,000+ entries) with fuzzy name matching
+3. **PubPeer Search** - Site-restricted Google search via SERP API with Haiku analysis
+4. **News Search** - Google News search via SERP API with Haiku filtering for misconduct
+
+**Data Sources:**
+| Source | Type | Description |
+|--------|------|-------------|
+| Retraction Watch | Database | ~63,000+ retraction records, searchable by author name |
+| PubPeer | AI-analyzed | Post-publication peer review comments |
+| Google News | AI-analyzed | News articles filtered for integrity concerns |
+
+**Name Matching:**
+- Multi-tier confidence scoring (50-100%)
+- Handles initials, name variants, "Last, First" formats
+- Common name detection (high false positive risk warning)
+- Institution-based confidence boost (+15%)
+
+**AI Analysis (Haiku):**
+- Summarizes PubPeer comments for data/image manipulation, statistical issues
+- Filters news for misconduct, legal issues, sanctions, harassment
+- Returns "No concerns found" for clean results
+
+**Database Schema (V13):**
+- `retractions` - Retraction Watch data with GIN-indexed author arrays
+- `integrity_screenings` - Screening history per user
+- `screening_dismissals` - Track false positive dismissals
+
+**Key Files:**
+- `pages/integrity-screener.js` - Frontend with results display
+- `pages/api/integrity-screener/screen.js` - Main screening API (SSE streaming)
+- `pages/api/integrity-screener/history.js` - Screening history
+- `pages/api/integrity-screener/dismiss.js` - False positive dismissal
+- `lib/services/integrity-service.js` - Screening orchestration
+- `lib/services/integrity-matching-service.js` - Name matching algorithms
+- `shared/config/prompts/integrity-screener.js` - Haiku prompts
+- `scripts/import-retraction-watch.js` - Data import script
 
 ### Reviewer Finder - Feature Summary
 
@@ -555,6 +599,7 @@ Located in `scripts/`:
 | `import-user-assignments.js` | Import user profile assignments from CSV |
 | `manage-preferences.js` | View and delete user API key preferences |
 | `test-profiles.js` | Test profile/preference database operations |
+| `import-retraction-watch.js` | Import Retraction Watch CSV into database |
 
 Usage:
 ```bash
@@ -621,6 +666,13 @@ Located in `lib/services/`:
 
 ### Concept Evaluator
 - `POST /api/evaluate-concepts` - Evaluate research concepts with literature search (streaming)
+
+### Applicant Integrity Screener
+- `POST /api/integrity-screener/screen` - Screen applicants against all sources (SSE streaming)
+- `GET /api/integrity-screener/history` - List screening history (`?profileId=N`) or get single (`?id=N`)
+- `PATCH /api/integrity-screener/history` - Update screening status (pending/reviewed/cleared/flagged)
+- `POST /api/integrity-screener/dismiss` - Dismiss a match as false positive
+- `GET /api/integrity-screener/dismiss` - Get dismissals for a screening (`?screeningId=N`)
 
 ### User Profiles
 - `GET /api/user-profiles` - List all profiles (or single by `?id=N`)

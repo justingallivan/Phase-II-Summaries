@@ -105,6 +105,16 @@ const apps = [
     categories: ['other'],
     features: ['Paper Synthesis', 'Theme Extraction', 'Cross-Paper Synthesis', 'Export Reports'],
     path: '/literature-analyzer'
+  },
+  {
+    id: 'integrity-screener',
+    title: 'Applicant Integrity Screener',
+    description: 'Screen grant applicants for research integrity concerns using Retraction Watch, PubPeer, and news sources',
+    icon: '🔍',
+    status: 'active',
+    categories: ['phase-i', 'phase-ii'],
+    features: ['Retraction Watch DB', 'PubPeer Search', 'News Analysis', 'AI Summarization'],
+    path: '/integrity-screener'
   }
 ];
 

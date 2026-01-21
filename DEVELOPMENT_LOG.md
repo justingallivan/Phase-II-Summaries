@@ -1591,17 +1591,68 @@ Updated all settings-related components to use profile preferences with localSto
 
 ---
 
-## Known Issue for Session 34
+## Session 34 - January 20, 2026
 
-### Multi-Proposal Email Generation Bug
+### Multi-Proposal Email Generation Bug Fix
 
-**Bug:** When generating reviewer invitation emails across multiple proposals, only the first proposal's information (title and abstract PDF) is used for all emails.
+Fixed the bug where generating reviewer invitation emails across multiple proposals only used the first proposal's information.
 
-**Expected:** Each email should include the correct proposal title and summary attachment for the specific proposal that candidate is associated with.
+**Root Cause:** Type mismatch in the proposal info Map lookup - search IDs were stored as integers but looked up as strings.
 
-**Impact:** All generated emails incorrectly reference the same proposal, making batch email generation unusable for multiple proposals.
+**Fix:** Added explicit string conversion when storing and looking up proposal info in the Map.
 
-**Priority:** HIGH - This is the top priority for the next session.
+**Files Changed:**
+- `pages/api/reviewer-finder/generate-emails.js` - Fixed Map key type handling
+
+**Commits:**
+- `cc30c26` - Fix multi-proposal email generation bug
+- `8953341` - Fix type mismatch in proposal info Map lookup
+
+---
+
+## Session 35 - January 20, 2026
+
+### Applicant Integrity Screener Implementation
+
+Implemented a new standalone app to screen grant applicants (PIs and Co-PIs) for research integrity concerns before award decisions.
+
+**Features:**
+- **Retraction Watch Database** - Imported 68,248 retraction records for local searching
+- **PubPeer Search** - SERP API integration with Claude Haiku analysis
+- **Google News Search** - SERP API integration with Claude Haiku filtering
+- **Multi-tier Name Matching** - Fuzzy matching with confidence scoring (50-100%)
+- **SSE Streaming** - Real-time progress updates during screening
+- **Dismissal System** - Mark false positives for future reference
+
+**Database Schema (V13 Migration):**
+- `retractions` - Retraction Watch data with GIN-indexed normalized author names
+- `integrity_screenings` - Screening history with results
+- `screening_dismissals` - False positive tracking
+
+**Files Created:**
+- `pages/integrity-screener.js` - Frontend with results display
+- `pages/api/integrity-screener/screen.js` - Main screening API (SSE streaming)
+- `pages/api/integrity-screener/history.js` - Screening history
+- `pages/api/integrity-screener/dismiss.js` - False positive dismissal
+- `lib/services/integrity-service.js` - Core screening orchestration
+- `lib/services/integrity-matching-service.js` - Name matching algorithms
+- `shared/config/prompts/integrity-screener.js` - Haiku prompts for analysis
+- `scripts/import-retraction-watch.js` - CSV import script using pg package
+
+**Files Modified:**
+- `scripts/setup-database.js` - Added V13 migration
+- `pages/index.js` - Added app to landing page
+- `CLAUDE.md` - Documented new app
+
+**Bug Fixes During Implementation:**
+- Fixed ApiKeyManager prop usage (was using wrong props)
+- Fixed Claude model ID for Haiku (`claude-haiku-4-20250514` → `claude-3-5-haiku-20241022`)
+- Added `pg` package for Node.js v22 compatibility with database operations
+
+**Cost Estimates:**
+- SERP API: ~$0.02 per applicant (2 searches)
+- Claude Haiku: ~$0.001 per applicant
+- Retraction Watch search: Free (local database)
 
 ---
 
