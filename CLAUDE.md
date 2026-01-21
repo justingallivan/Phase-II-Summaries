@@ -600,6 +600,7 @@ Located in `scripts/`:
 | `manage-preferences.js` | View and delete user API key preferences |
 | `test-profiles.js` | Test profile/preference database operations |
 | `import-retraction-watch.js` | Import Retraction Watch CSV into database |
+| `test-retractions.js` | Verify Retraction Watch database search functionality |
 
 Usage:
 ```bash
@@ -711,4 +712,4 @@ For detailed session-by-session development history, see [DEVELOPMENT_LOG.md](./
 
 ---
 
-Last Updated: January 20, 2026
+Last Updated: January 21, 2026

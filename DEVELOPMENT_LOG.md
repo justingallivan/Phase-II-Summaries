@@ -1656,4 +1656,43 @@ Implemented a new standalone app to screen grant applicants (PIs and Co-PIs) for
 
 ---
 
-Last Updated: January 20, 2026
+## Session 36 - January 21, 2026
+
+### Integrity Screener Refinements
+
+Improved the Applicant Integrity Screener with bug fixes and new features.
+
+**New Features:**
+
+1. **Markdown Export**
+   - Added "Export Markdown" button alongside JSON export
+   - Generates formatted report with summary, per-applicant results, and status indicators
+
+**Bug Fixes:**
+
+1. **Retraction Watch Display**
+   - Fixed: Section only showed when matches were found
+   - Now displays "Clear" status when searched with no matches
+   - Shows any errors that occurred during search
+
+2. **Middle Initial Search**
+   - Fixed: "Justin Gallivan" wasn't matching "Justin P Gallivan"
+   - Added text-based fallback search using LIKE patterns
+   - Now correctly matches names with middle initials (95% confidence)
+
+**Files Changed:**
+- `pages/integrity-screener.js` - Added markdown export, fixed Retraction Watch display
+- `lib/services/integrity-service.js` - Added text search fallback for middle initials
+
+**Files Added:**
+- `scripts/test-retractions.js` - Database search verification script
+
+**Commits:**
+- `7e06656` - Implement Applicant Integrity Screener
+- `fa7f99c` - Add markdown export option to Integrity Screener
+- `e764483` - Fix Retraction Watch results display in Integrity Screener
+- `43c66fe` - Fix Retraction Watch search to handle middle initials
+
+---
+
+Last Updated: January 21, 2026
