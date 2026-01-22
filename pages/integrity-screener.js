@@ -191,7 +191,6 @@ function ApplicantResultCard({ result, onDismiss }) {
           <div className="flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="text-lg font-semibold text-gray-900">{result.name}</h3>
-              <span className="text-sm text-gray-500">({result.role})</span>
               {result.isCommonName && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700">
                   Common Name
@@ -310,24 +309,12 @@ function ApplicantInputRow({ applicant, index, onUpdate, onRemove, canRemove }) 
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
       </div>
-      <div className="w-32">
-        <select
-          value={applicant.role}
-          onChange={(e) => onUpdate(index, 'role', e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        >
-          <option value="PI">PI</option>
-          <option value="Co-PI">Co-PI</option>
-          <option value="Co-Investigator">Co-Investigator</option>
-          <option value="Other">Other</option>
-        </select>
-      </div>
       <div className="flex-1">
         <input
           type="text"
           value={applicant.institution}
           onChange={(e) => onUpdate(index, 'institution', e.target.value)}
-          placeholder="Institution"
+          placeholder="Institution (optional)"
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
       </div>
@@ -351,7 +338,7 @@ export default function IntegrityScreenerPage() {
 
   // State
   const [applicants, setApplicants] = useState([
-    { name: '', role: 'PI', institution: '' }
+    { name: '', institution: '' }
   ]);
   const [results, setResults] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -364,7 +351,7 @@ export default function IntegrityScreenerPage() {
 
   // Applicant management
   const addApplicant = useCallback(() => {
-    setApplicants(prev => [...prev, { name: '', role: 'Co-PI', institution: '' }]);
+    setApplicants(prev => [...prev, { name: '', institution: '' }]);
   }, []);
 
   const removeApplicant = useCallback((index) => {
@@ -504,7 +491,6 @@ export default function IntegrityScreenerPage() {
 
     results.results.forEach((result, index) => {
       md += `## ${index + 1}. ${result.name}\n\n`;
-      md += `- **Role:** ${result.role}\n`;
       if (result.institution) {
         md += `- **Institution:** ${result.institution}\n`;
       }

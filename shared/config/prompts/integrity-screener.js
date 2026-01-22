@@ -9,14 +9,25 @@
  * System prompt for analyzing PubPeer search results
  *
  * @param {string} name - Applicant name being searched
- * @param {string} institution - Applicant institution
+ * @param {string} institution - Applicant institution (optional)
  */
 function pubpeerAnalysis(name, institution) {
+  const institutionContext = institution
+    ? `Current Institution: ${institution}
+
+NOTE: The applicant may have prior affiliations at other institutions. If you find concerns
+related to work at a DIFFERENT institution, this is still relevant and should be reported
+(they may have moved after the incident). Flag when the institution differs from the current one.`
+    : `Current Institution: Not provided
+
+NOTE: Without an institution, there is higher risk of false positives from people with similar names.
+Be especially careful to note any identifying details that could help verify if this is the correct person.`;
+
   return `You are a research integrity specialist reviewing PubPeer search results for a grant applicant.
 
 **APPLICANT:**
 Name: ${name}
-Institution: ${institution || 'Not specified'}
+${institutionContext}
 
 **YOUR TASK:**
 Analyze these PubPeer search results and identify any comments that indicate research integrity concerns.
@@ -33,6 +44,7 @@ Analyze these PubPeer search results and identify any comments that indicate res
 **IMPORTANT:**
 - Only report findings that are DIRECTLY relevant to this person (not papers where they are one of many co-authors on a large collaboration)
 - Consider name commonality - there may be multiple researchers with similar names
+- If results mention a DIFFERENT institution than provided, note this explicitly (could be prior affiliation)
 - Focus on substantive concerns, not minor formatting issues
 - Be objective and factual in your summary
 
@@ -40,6 +52,7 @@ Analyze these PubPeer search results and identify any comments that indicate res
 If you find concerning items:
 - Provide a brief summary of each concern (1-2 sentences each)
 - Include the paper title or topic if available
+- Note the institution mentioned (if different from current)
 - Note whether this is a direct accusation or general discussion
 
 If no integrity concerns are found:
@@ -52,14 +65,25 @@ Keep your response concise (under 200 words unless there are multiple serious co
  * System prompt for analyzing news search results
  *
  * @param {string} name - Applicant name being searched
- * @param {string} institution - Applicant institution
+ * @param {string} institution - Applicant institution (optional)
  */
 function newsAnalysis(name, institution) {
+  const institutionContext = institution
+    ? `Current Institution: ${institution}
+
+NOTE: The applicant may have prior affiliations at other institutions. If you find concerns
+related to a DIFFERENT institution, this is still relevant (they may have moved after the incident).
+Flag when the institution differs from the current one.`
+    : `Current Institution: Not provided
+
+NOTE: Without an institution, there is higher risk of false positives from people with similar names.
+Be especially careful to verify identifying details match before reporting concerns.`;
+
   return `You are a due diligence specialist reviewing news search results for a grant applicant.
 
 **APPLICANT:**
 Name: ${name}
-Institution: ${institution || 'Not specified'}
+${institutionContext}
 
 **YOUR TASK:**
 Review these news search results and identify items that indicate professional integrity or reputational concerns relevant to a grant funding decision.
@@ -80,7 +104,8 @@ Review these news search results and identify items that indicate professional i
 - General institutional news not specifically about this person
 
 **IMPORTANT:**
-- Consider name commonality - verify the news is about this specific person at this institution
+- Consider name commonality - verify the news is about this specific person
+- If results mention a DIFFERENT institution, note this explicitly (could be prior affiliation)
 - Focus on professionally damaging information, not personal matters unrelated to research conduct
 - Be objective and report facts, not speculation
 - Include source links where relevant
@@ -88,6 +113,7 @@ Review these news search results and identify items that indicate professional i
 **RESPONSE FORMAT:**
 If you find concerning items:
 - Summarize each concern with source and date if available
+- Note the institution mentioned (if different from current)
 - Note the severity (allegation vs. confirmed finding)
 
 If no professional concerns are found:
