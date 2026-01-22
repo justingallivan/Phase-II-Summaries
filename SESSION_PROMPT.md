@@ -1,35 +1,41 @@
-# Session 37 Prompt: Integrity Screener Continued
+# Session 39 Prompt: Integrity Screener Continued
 
-## Session 36 Summary
+## Session 38 Summary
 
-Refined the Applicant Integrity Screener with bug fixes and improvements.
+Major improvements to Integrity Screener name matching and search strategy, plus multi-Mac workflow setup.
 
 ### What Was Completed
 
-1. **Markdown Export**
-   - Added "Export Markdown" button alongside existing JSON export
-   - Generates formatted report with summary statistics, per-applicant results
-   - Includes Retraction Watch matches, PubPeer results, News findings with status indicators
+1. **Name Matching Improvements**
+   - Added 100+ nickname/variant mappings (Bob/Robert, Bill/William, Mike/Michael, etc.)
+   - Added Asian name order swapping ("Wei Zhang" ↔ "Zhang Wei") at 85% confidence
+   - Combined variant + order swap matching at 75% confidence
+   - Added text-based ILIKE fallback for fuzzy database searches
+   - Created test script with 41 passing tests
 
-2. **Retraction Watch Display Fix**
-   - Fixed issue where Retraction Watch results only showed when matches were found
-   - Now displays "Clear" status when searched with no matches (matching PubPeer/News behavior)
-   - Shows any errors that occurred during search
+2. **Two-Phase Web Search Strategy**
+   - Phase 1: Name-only search (catches results from prior institutions)
+   - Phase 2: Name + institution search (higher confidence for current affiliation)
+   - Merged and deduplicated results with tracking of which phase found each
+   - Updated AI prompts to flag when results mention different institutions
 
-3. **Middle Initial Search Fix**
-   - Fixed critical bug where names with middle initials weren't matched
-   - Example: "Justin Gallivan" now correctly matches "Justin P Gallivan" (95% confidence)
-   - Added text-based fallback search using LIKE patterns for first/last name
+3. **UI Simplification**
+   - Removed role dropdown (PI, Co-PI, etc.) - not relevant for screening
+   - Made institution field optional
+   - Updated exports to not include role
 
-4. **Test Script**
-   - Added `scripts/test-retractions.js` for verifying database search functionality
-   - Tests database connectivity, sample records, and name searches
+4. **Multi-Mac Workflow Setup**
+   - Updated `/start` skill: git fetch, pull if behind, repo health check
+   - Updated `/stop` skill: commit changes, push to remote, verify sync
+   - Set up `.git.nosync` to prevent iCloud from syncing git internals
+   - Created `scripts/setup-git-nosync.sh` for setting up other Macs
 
 ### Commits
-- `7e06656` - Implement Applicant Integrity Screener (from Session 35)
-- `fa7f99c` - Add markdown export option to Integrity Screener
-- `e764483` - Fix Retraction Watch results display in Integrity Screener
-- `43c66fe` - Fix Retraction Watch search to handle middle initials
+- `6e284ae` - Enhance Integrity Screener name matching with variants and order swapping
+- `9bfc020` - Improve Integrity Screener search strategy and simplify UI
+- `bbaa054` - Add /start and /stop skills with git housekeeping
+- `dd87370` - Add .git.nosync to gitignore for iCloud compatibility
+- `b3091e0` - Add setup script for .git.nosync on multiple Macs
 
 ## Potential Next Steps
 
@@ -51,53 +57,63 @@ Add PDF report generation for formal documentation:
 - Include all match details with confidence levels
 - Summary page with statistics
 
-### 4. Name Matching Improvements
-Current matching could be enhanced:
-- Handle common name variations (Bob/Robert, Bill/William)
-- Better handling of Asian name formats (family name first)
-- Cross-reference with institution for higher confidence
+### 4. Fix Build Error
+Pre-existing issue: `next-auth/next` module not found in `pages/api/auth/link-profile.js`
+- May need to update next-auth import or install missing dependency
 
-### 5. Retraction Watch Data Refresh
-Add a mechanism to re-import Retraction Watch data periodically:
-- Manual refresh button in UI
-- Or scheduled job (they update daily)
+### 5. Work Mac Setup
+Run the setup script on work Mac:
+```bash
+cd ~/Library/Mobile\ Documents/com~apple~CloudDocs/Documents/Programming/ClaudeCode/Grant_Review_Packages/Phase-II-Summaries
+./scripts/setup-git-nosync.sh
+```
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `pages/integrity-screener.js` | Frontend UI with export buttons |
-| `lib/services/integrity-service.js` | Main screening with text search fallback |
-| `lib/services/integrity-matching-service.js` | Name matching algorithms |
-| `scripts/test-retractions.js` | Database search verification |
-| `scripts/import-retraction-watch.js` | Retraction Watch CSV import |
+| `lib/services/integrity-matching-service.js` | Name matching with variants and order swapping |
+| `lib/services/integrity-service.js` | Two-phase web search, main screening logic |
+| `shared/config/prompts/integrity-screener.js` | AI prompts for PubPeer/News analysis |
+| `pages/integrity-screener.js` | Frontend UI (simplified, no role dropdown) |
+| `scripts/test-name-matching.js` | 41 tests for name matching |
+| `scripts/setup-git-nosync.sh` | iCloud .git.nosync setup script |
+| `.claude/skills/start/SKILL.md` | /start skill with git housekeeping |
+| `.claude/skills/stop/SKILL.md` | /stop skill with push verification |
 
-## Database Statistics
-
-- **68,248** retraction records in database
-- **8,525** unique journals
-- Date range: 1756 to December 2025
-- Average **4.2** authors per record
-
-## Testing the App
+## Testing
 
 ```bash
-# Test database search
-node scripts/test-retractions.js "John Smith"
+# Test name matching
+node scripts/test-name-matching.js
 
 # Start dev server
 npm run dev
 # Go to: http://localhost:3000/integrity-screener
 ```
 
-## Search Algorithm
+## Search Strategy
 
-1. **Exact Array Match** - Uses GIN index for fast lookup of normalized names
-2. **Text Search Fallback** - LIKE query on authors field to catch middle initials
-3. **Confidence Scoring** - Multi-tier matching (50-100%) with institution boost
+### Retraction Watch (Database)
+1. GIN-indexed array search on normalized names
+2. Text-based ILIKE fallback for middle names/variants
+3. Institution used for confidence boost only (not filtering)
+
+### PubPeer & News (Web Search)
+1. **Phase 1**: Name-only search (broad - catches prior institutions)
+2. **Phase 2**: Name + institution (narrow - higher confidence)
+3. Results merged and deduplicated
+4. AI flags when institution differs from current
 
 ## Cost Reference
 
-- SERP API: ~$0.02 per applicant (2 searches: PubPeer + News)
+- SERP API: ~$0.04 per applicant with institution (4 searches), ~$0.02 without
 - Claude Haiku: ~$0.001 per applicant (result analysis)
 - Retraction Watch: Free (local database)
+
+## Git/iCloud Setup
+
+This repo uses `.git.nosync` to prevent iCloud sync corruption:
+- `.git` is a symlink to `.git.nosync`
+- Use `git push/pull` to sync between Macs, not iCloud
+- `/start` and `/stop` skills handle this automatically

@@ -601,12 +601,44 @@ Located in `scripts/`:
 | `test-profiles.js` | Test profile/preference database operations |
 | `import-retraction-watch.js` | Import Retraction Watch CSV into database |
 | `test-retractions.js` | Verify Retraction Watch database search functionality |
+| `test-name-matching.js` | Test name matching variants and order swapping (41 tests) |
+| `setup-git-nosync.sh` | Configure .git.nosync for iCloud compatibility |
 
 Usage:
 ```bash
 node scripts/cleanup-database.js      # Clean up incomplete entries
 node scripts/clear-all-database.js    # Full reset
 node scripts/manage-preferences.js --list  # View all preferences
+node scripts/test-name-matching.js    # Run name matching tests
+./scripts/setup-git-nosync.sh         # Set up .git.nosync (run once per Mac)
+```
+
+## Multi-Mac Development (iCloud)
+
+This repo is designed for development across multiple Macs synced via iCloud.
+
+**Problem:** iCloud can corrupt `.git` directories by syncing partial writes.
+
+**Solution:** The `.git` directory is renamed to `.git.nosync` (which iCloud ignores) with a symlink from `.git`. Git history syncs via GitHub push/pull, not iCloud.
+
+**Setup (once per Mac):**
+```bash
+./scripts/setup-git-nosync.sh
+```
+
+**Workflow:**
+- Use `/start` at the beginning of each session (fetches and pulls if needed)
+- Use `/stop` at the end of each session (commits, updates docs, pushes)
+- GitHub is the source of truth for git history
+- iCloud syncs only working files
+
+**Recovery (if .git is corrupted):**
+```bash
+rm -rf .git .git.nosync
+git clone https://github.com/justingallivan/Phase-II-Summaries.git temp
+mv temp/.git .
+rm -rf temp
+./scripts/setup-git-nosync.sh
 ```
 
 ## Key Conventions
