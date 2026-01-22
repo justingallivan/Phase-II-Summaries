@@ -10,7 +10,7 @@
  *   - displayName: User's name from Azure (for new profiles)
  */
 
-import { getServerSession } from 'next-auth/next';
+import { getServerSession } from 'next-auth';
 import { sql } from '@vercel/postgres';
 import { authOptions } from './[...nextauth]';
 
