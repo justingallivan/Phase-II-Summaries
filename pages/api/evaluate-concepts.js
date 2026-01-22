@@ -7,7 +7,7 @@
  * 2. Literature search + Claude for final evaluation with novelty assessment
  */
 
-import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp, getFallbackModelForApp } from '../../shared/config/baseConfig';
 import { splitPdfToPages } from '../../lib/utils/pdf-page-splitter';
 import {
   createInitialAnalysisPrompt,
@@ -21,8 +21,16 @@ const { ArXivService } = require('../../lib/services/arxiv-service');
 const { BioRxivService } = require('../../lib/services/biorxiv-service');
 const { ChemRxivService } = require('../../lib/services/chemrxiv-service');
 
-// Concurrency limit for processing pages
-const CONCURRENCY_LIMIT = 3;
+// Concurrency limit for processing pages (reduced to avoid rate limits with Opus)
+const CONCURRENCY_LIMIT = 2;
+
+// Retry configuration for Claude API calls
+const RETRY_CONFIG = {
+  MAX_RETRIES: 3,
+  INITIAL_DELAY_MS: 2000,
+  MAX_DELAY_MS: 30000,
+  BACKOFF_MULTIPLIER: 2
+};
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -38,6 +46,11 @@ export default async function handler(req, res) {
 
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'No files provided' });
+    }
+
+    // Limit to single file to avoid rate limits with Opus model
+    if (files.length > 1) {
+      return res.status(400).json({ error: 'Please upload one file at a time. The Concept Evaluator uses a powerful AI model that works best with single-file processing.' });
     }
 
     // Set headers for streaming response
@@ -214,10 +227,72 @@ async function evaluateSingleConcept(page, apiKey, res, processedCount, totalCou
 }
 
 /**
- * Stage 1: Initial analysis using Claude Vision API
+ * Check if an error is retryable (rate limit or overload)
  */
-async function performInitialAnalysis(base64Pdf, apiKey) {
-  const prompt = createInitialAnalysisPrompt();
+function isRetryableError(status, errorText) {
+  if (status === 429 || status === 529 || status === 503) return true;
+  const lowerError = (errorText || '').toLowerCase();
+  return lowerError.includes('overloaded') ||
+         lowerError.includes('rate limit') ||
+         lowerError.includes('too many requests');
+}
+
+/**
+ * Make a Claude API request with retry logic and fallback model
+ */
+async function callClaudeWithRetry(requestBody, apiKey, modelType = 'model') {
+  const primaryModel = getModelForApp('concept-evaluator', modelType);
+  const fallbackModel = getFallbackModelForApp('concept-evaluator');
+
+  let lastError = null;
+  let delay = RETRY_CONFIG.INITIAL_DELAY_MS;
+
+  // Try primary model with retries
+  for (let attempt = 0; attempt <= RETRY_CONFIG.MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      console.log(`[ConceptEvaluator] Retry attempt ${attempt}/${RETRY_CONFIG.MAX_RETRIES} after ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      delay = Math.min(delay * RETRY_CONFIG.BACKOFF_MULTIPLIER, RETRY_CONFIG.MAX_DELAY_MS);
+    }
+
+    try {
+      const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey.trim(),
+          'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
+        },
+        body: JSON.stringify({
+          ...requestBody,
+          model: primaryModel
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return { data, usedFallback: false, model: primaryModel };
+      }
+
+      const errorText = await response.text();
+      console.error(`[ConceptEvaluator] API error (attempt ${attempt + 1}):`, response.status, errorText.substring(0, 200));
+
+      if (!isRetryableError(response.status, errorText)) {
+        throw new Error(`Claude API error ${response.status}: ${errorText.substring(0, 200)}`);
+      }
+
+      lastError = new Error(`Claude API error ${response.status}`);
+    } catch (error) {
+      if (error.message && !error.message.includes('Claude API error')) {
+        // Network error or other non-API error
+        throw error;
+      }
+      lastError = error;
+    }
+  }
+
+  // All retries failed, try fallback model
+  console.log(`[ConceptEvaluator] Primary model (${primaryModel}) failed, trying fallback (${fallbackModel})...`);
 
   const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
     method: 'POST',
@@ -227,35 +302,55 @@ async function performInitialAnalysis(base64Pdf, apiKey) {
       'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
     },
     body: JSON.stringify({
-      model: getModelForApp('concept-evaluator', 'visionModel'),
-      max_tokens: 2000,
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'document',
-            source: {
-              type: 'base64',
-              media_type: 'application/pdf',
-              data: base64Pdf
-            }
-          },
-          {
-            type: 'text',
-            text: prompt
-          }
-        ]
-      }]
+      ...requestBody,
+      model: fallbackModel
     })
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('Claude Vision API error:', errorText);
-    throw new Error(`Claude API error ${response.status}`);
+    console.error('[ConceptEvaluator] Fallback model also failed:', errorText.substring(0, 200));
+    throw lastError || new Error(`Claude API error ${response.status}`);
   }
 
   const data = await response.json();
+  console.log(`[ConceptEvaluator] Fallback model succeeded`);
+  return { data, usedFallback: true, model: fallbackModel };
+}
+
+/**
+ * Stage 1: Initial analysis using Claude Vision API
+ */
+async function performInitialAnalysis(base64Pdf, apiKey) {
+  const prompt = createInitialAnalysisPrompt();
+
+  const requestBody = {
+    max_tokens: 2000,
+    messages: [{
+      role: 'user',
+      content: [
+        {
+          type: 'document',
+          source: {
+            type: 'base64',
+            media_type: 'application/pdf',
+            data: base64Pdf
+          }
+        },
+        {
+          type: 'text',
+          text: prompt
+        }
+      ]
+    }]
+  };
+
+  const { data, usedFallback, model } = await callClaudeWithRetry(requestBody, apiKey, 'visionModel');
+
+  if (usedFallback) {
+    console.log(`[ConceptEvaluator] Initial analysis used fallback model: ${model}`);
+  }
+
   const responseText = data.content[0].text;
 
   // Parse JSON response
@@ -390,31 +485,21 @@ async function searchLiterature(initialAnalysis) {
 async function performFinalEvaluation(initialAnalysis, literatureResults, apiKey) {
   const prompt = createFinalEvaluationPrompt(initialAnalysis, literatureResults);
 
-  const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey.trim(),
-      'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
-    },
-    body: JSON.stringify({
-      model: getModelForApp('concept-evaluator'),
-      max_tokens: 3000,
-      temperature: 0.3,
-      messages: [{
-        role: 'user',
-        content: prompt
-      }]
-    })
-  });
+  const requestBody = {
+    max_tokens: 3000,
+    temperature: 0.3,
+    messages: [{
+      role: 'user',
+      content: prompt
+    }]
+  };
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Claude API error (final eval):', errorText);
-    throw new Error(`Claude API error ${response.status}`);
+  const { data, usedFallback, model } = await callClaudeWithRetry(requestBody, apiKey, 'model');
+
+  if (usedFallback) {
+    console.log(`[ConceptEvaluator] Final evaluation used fallback model: ${model}`);
   }
 
-  const data = await response.json();
   const responseText = data.content[0].text;
 
   // Parse JSON response

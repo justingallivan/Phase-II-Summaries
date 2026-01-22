@@ -517,12 +517,12 @@ export default function ConceptEvaluator() {
               <span>Upload Concepts PDF</span>
             </h2>
             <p className="text-sm text-gray-600">
-              Upload a PDF file where each page contains one research concept
+              Upload a single PDF file where each page contains one research concept (one file at a time for best results)
             </p>
           </div>
           <FileUploaderSimple
             onFilesUploaded={handleFilesUploaded}
-            multiple={true}
+            multiple={false}
             accept=".pdf"
             maxSize={50 * 1024 * 1024}
           />
