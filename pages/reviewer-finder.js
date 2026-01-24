@@ -1944,7 +1944,7 @@ function EditCandidateModal({ isOpen, candidate, onClose, onSave }) {
 }
 
 // Researcher Detail Modal (for Database Tab) - with Edit and Delete support
-function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete }) {
+function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete, onNavigateToProposal }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -2701,8 +2701,18 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete }) {
                   <div className="space-y-3">
                     {data.proposals.map((proposal, i) => (
                       <div key={i} className="bg-gray-50 rounded-lg p-3">
-                        <div className="font-medium text-gray-900 text-sm">
-                          {proposal.proposalTitle}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="font-medium text-gray-900 text-sm">
+                            {proposal.proposalTitle}
+                          </div>
+                          {proposal.grantCycleShortCode && (
+                            <span
+                              className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded shrink-0"
+                              title={proposal.grantCycleName || proposal.grantCycleShortCode}
+                            >
+                              {proposal.grantCycleShortCode}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-3 mt-1 text-xs">
                           <span className="text-gray-500">
@@ -2729,6 +2739,18 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete }) {
                           <p className="text-xs text-gray-700 mt-1 bg-yellow-50 p-2 rounded">
                             Note: {proposal.notes}
                           </p>
+                        )}
+                        {onNavigateToProposal && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onClose();
+                              onNavigateToProposal(proposal.grantCycleId || null, proposal.proposalId);
+                            }}
+                            className="text-xs text-blue-600 hover:text-blue-800 hover:underline mt-2 inline-flex items-center gap-1"
+                          >
+                            View in My Candidates →
+                          </button>
                         )}
                       </div>
                     ))}
@@ -3566,7 +3588,7 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
 const CURRENT_CYCLE_KEY = 'reviewer_finder_current_cycle';
 
 // My Candidates Tab
-function MyCandidatesTab({ refreshTrigger, claudeApiKey, userProfileId }) {
+function MyCandidatesTab({ refreshTrigger, claudeApiKey, userProfileId, navigateToProposal, onNavigationComplete }) {
   const [proposals, setProposals] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -3645,6 +3667,25 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey, userProfileId }) {
   useEffect(() => {
     fetchCandidates();
   }, [refreshTrigger, selectedCycleId, userProfileId]);
+
+  // Handle navigation from other tabs (e.g., Database tab clicking "View in My Candidates")
+  useEffect(() => {
+    if (navigateToProposal) {
+      const { cycleId, proposalId } = navigateToProposal;
+      // Set the cycle filter to show the proposal (use 'all' if no cycle, or the specific cycle)
+      if (cycleId) {
+        setSelectedCycleId(String(cycleId));
+      } else {
+        setSelectedCycleId('all');
+      }
+      // Expand the specific proposal
+      setExpandedProposals(new Set([proposalId]));
+      // Clear the navigation target
+      if (onNavigationComplete) {
+        onNavigationComplete();
+      }
+    }
+  }, [navigateToProposal, onNavigationComplete]);
 
   // Handle cycle filter change
   const handleCycleChange = (value) => {
@@ -4460,6 +4501,26 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey, userProfileId }) {
                   )}
                   <p className="text-xs text-gray-400 flex items-center flex-wrap gap-1">
                     <span>{proposal.candidates.length} candidate(s)</span>
+                    {(() => {
+                      const invitedCount = proposal.candidates.filter(c => c.invited || c.emailSentAt).length;
+                      const acceptedCount = proposal.candidates.filter(c => c.accepted || c.responseType === 'accepted').length;
+                      const pendingCount = proposal.candidates.filter(c => c.emailSentAt && !c.responseType && !c.accepted && !c.declined).length;
+                      return (
+                        <>
+                          {invitedCount > 0 && (
+                            <span className="text-blue-500">· {invitedCount} invited</span>
+                          )}
+                          {pendingCount > 0 && (
+                            <span className="text-amber-500">· {pendingCount} pending</span>
+                          )}
+                          {acceptedCount > 0 && (
+                            <span className={acceptedCount >= 3 ? 'text-green-600 font-medium' : 'text-gray-500'}>
+                              · {acceptedCount} accepted
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
                     <select
                       value={proposal.programArea || ''}
                       onChange={(e) => {
@@ -4660,7 +4721,7 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey, userProfileId }) {
 }
 
 // Database Tab - Browse all researchers
-function DatabaseTab() {
+function DatabaseTab({ onNavigateToProposal }) {
   const [researchers, setResearchers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -5292,6 +5353,7 @@ function DatabaseTab() {
             setSelectedResearcherId(null);
             fetchResearchers();
           }}
+          onNavigateToProposal={onNavigateToProposal}
         />
       )}
 
@@ -5621,6 +5683,15 @@ export default function ReviewerFinderPage() {
     selectedCandidates: new Set(),
   });
 
+  // Navigation target for cross-tab navigation (e.g., from Database to My Candidates)
+  const [navigateToProposal, setNavigateToProposal] = useState(null);
+
+  // Handler to navigate to a specific proposal in My Candidates
+  const handleNavigateToProposal = (cycleId, proposalId) => {
+    setNavigateToProposal({ cycleId, proposalId });
+    setActiveTab('candidates');
+  };
+
   // Load API key from localStorage
   useEffect(() => {
     const savedKey = localStorage.getItem('claudeApiKey');
@@ -5724,8 +5795,8 @@ export default function ReviewerFinderPage() {
         {/* Tab Content */}
         <div className="min-h-[400px]">
           {activeTab === 'search' && <NewSearchTab apiKey={apiKey} apiSettings={apiSettings} onCandidatesSaved={handleCandidatesSaved} searchState={searchState} setSearchState={setSearchState} userProfileId={userProfileId} />}
-          {activeTab === 'candidates' && <MyCandidatesTab refreshTrigger={myCandidatesRefresh} claudeApiKey={apiKey} userProfileId={userProfileId} />}
-          {activeTab === 'database' && <DatabaseTab />}
+          {activeTab === 'candidates' && <MyCandidatesTab refreshTrigger={myCandidatesRefresh} claudeApiKey={apiKey} userProfileId={userProfileId} navigateToProposal={navigateToProposal} onNavigationComplete={() => setNavigateToProposal(null)} />}
+          {activeTab === 'database' && <DatabaseTab onNavigateToProposal={handleNavigateToProposal} />}
         </div>
       </div>
 

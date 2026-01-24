@@ -241,15 +241,17 @@ async function handleGet(req, res) {
         ORDER BY relevance_score DESC, keyword ASC
       `;
 
-      // Fetch proposal associations
+      // Fetch proposal associations with grant cycle info
       const proposalsResult = await sql`
         SELECT
-          proposal_id, proposal_title, relevance_score, match_reason,
-          sources, selected, invited, notes, suggested_at,
-          email_sent_at, response_received_at, response_type
-        FROM reviewer_suggestions
-        WHERE researcher_id = ${researcherId}
-        ORDER BY suggested_at DESC
+          rs.proposal_id, rs.proposal_title, rs.relevance_score, rs.match_reason,
+          rs.sources, rs.selected, rs.invited, rs.notes, rs.suggested_at,
+          rs.email_sent_at, rs.response_received_at, rs.response_type,
+          rs.grant_cycle_id, gc.name as grant_cycle_name, gc.short_code as grant_cycle_short_code
+        FROM reviewer_suggestions rs
+        LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
+        WHERE rs.researcher_id = ${researcherId}
+        ORDER BY rs.suggested_at DESC
       `;
 
       return res.status(200).json({
@@ -300,6 +302,9 @@ async function handleGet(req, res) {
           emailSentAt: p.email_sent_at,
           responseReceivedAt: p.response_received_at,
           responseType: p.response_type,
+          grantCycleId: p.grant_cycle_id,
+          grantCycleName: p.grant_cycle_name,
+          grantCycleShortCode: p.grant_cycle_short_code,
         })),
       });
     }
