@@ -1,40 +1,40 @@
-# Session 40 Prompt: Continue Development
+# Session 41 Prompt: Continue Development
 
-## Session 39 Summary
+## Session 40 Summary
 
-Quick session focused on environment documentation, next-auth compatibility fixes, and Concept Evaluator robustness improvements.
+Focused session on Reviewer Finder UI improvements to enhance tracking and navigation workflows.
 
 ### What Was Completed
 
-1. **Environment Documentation Overhaul**
-   - Rewrote `.env.example` with comprehensive documentation and organization
-   - Removed redundant `.env.local.example` file
-   - Added `docs/MULTI_MAC_SETUP.md` for multi-Mac development guide
+1. **Grant Cycle Display in Proposal Associations**
+   - Added grant cycle short code badge to proposal associations in researcher detail modal
+   - Badge shows on hover the full cycle name
+   - Helps staff quickly identify which cycles a reviewer is associated with
 
-2. **Next-Auth Compatibility Fix**
-   - Downgraded next-auth from 4.24.13 to 4.24.5 for compatibility
-   - Fixed `getServerSession` import in `link-profile.js` (was `next-auth/next`, now `next-auth`)
+2. **Cross-Tab Navigation: "View in My Candidates"**
+   - Added navigation link in researcher detail modal proposal associations
+   - Clicking "View in My Candidates →" closes the modal, switches to My Candidates tab
+   - Automatically sets the correct cycle filter and expands the target proposal
+   - Enables quick follow-up on reviewer associations
 
-3. **Concept Evaluator Rate Limit Handling**
-   - Added `callClaudeWithRetry()` with exponential backoff (2s-30s delay, 3 retries)
-   - Falls back to Sonnet model when Opus is overloaded or rate-limited
-   - Reduced concurrency from 3 to 2 to avoid rate limits
-   - Limited uploads to single file for more reliable processing
-   - Updated UI to reflect single-file guidance
+3. **Proposal Header Status Counts**
+   - Added invited/pending/accepted counts to proposal headers in My Candidates
+   - Display format: `17 candidate(s) · 12 invited · 5 pending · 4 accepted`
+   - Color coding: invited (blue), pending (amber), accepted (green if ≥3)
+   - Green highlight at 3+ accepted indicates enough reviewers committed
 
 ### Commits
-- `6b7f573` - Improve environment documentation and fix next-auth import
-- `427d25b` - Add retry logic and rate limit handling to Concept Evaluator
+- `76fde8d` - Add Reviewer Finder UI improvements for tracking and navigation
 
 ## Potential Next Steps
 
-### 1. Complete Dismissal Functionality
+### 1. Complete Dismissal Functionality (Integrity Screener)
 The dismissal feature currently shows an alert placeholder. To fully implement:
 - Save dismissals to `screening_dismissals` table via API
 - Filter out dismissed matches when displaying results
 - Add UI to view/undo dismissals
 
-### 2. Screening History Tab
+### 2. Screening History Tab (Integrity Screener)
 Add a "History" tab to the Integrity Screener to:
 - View past screenings
 - Re-open previous screening results
@@ -46,21 +46,17 @@ Add PDF report generation for formal documentation:
 - Include all match details with confidence levels
 - Summary page with statistics
 
-### 4. Test Concept Evaluator Retry Logic
-Test the new retry and fallback behavior:
-- Verify exponential backoff works correctly
-- Confirm Sonnet fallback activates on Opus rate limits
-- Check logging output for debugging
+### 4. Reviewer Finder Enhancements
+- Add bulk status update for candidates (mark multiple as invited/accepted)
+- Add email tracking integration with Dynamics 365
+- Consider declined count display in proposal headers
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `.env.example` | Comprehensive environment variable documentation |
-| `docs/MULTI_MAC_SETUP.md` | Multi-Mac development setup guide |
-| `pages/api/evaluate-concepts.js` | Concept Evaluator API with retry/fallback logic |
-| `pages/concept-evaluator.js` | Concept Evaluator frontend (single-file mode) |
-| `pages/api/auth/link-profile.js` | Profile linking with fixed next-auth import |
+| `pages/reviewer-finder.js` | Main Reviewer Finder frontend with all tabs |
+| `pages/api/reviewer-finder/researchers.js` | Researchers API with proposal association query |
 
 ## Testing
 
@@ -68,12 +64,11 @@ Test the new retry and fallback behavior:
 # Start dev server
 npm run dev
 
-# Test Concept Evaluator
-# Go to: http://localhost:3000/concept-evaluator
-# Upload a single PDF with concept pages
-
-# Test authentication
-# Go to: http://localhost:3000/profile-settings
+# Test Reviewer Finder UI improvements
+# Go to: http://localhost:3000/reviewer-finder
+# 1. Database tab → Click researcher with proposal associations → See grant cycle badges
+# 2. Click "View in My Candidates →" → Should navigate to My Candidates with proposal expanded
+# 3. My Candidates tab → See invited/pending/accepted counts on proposal headers
 ```
 
 ## Git/iCloud Setup
