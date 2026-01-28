@@ -1,30 +1,17 @@
-# Session 41 Prompt: Continue Development
+# Session 42 Prompt: Continue Development
 
-## Session 40 Summary
+## Session 41 Summary
 
-Focused session on Reviewer Finder UI improvements to enhance tracking and navigation workflows.
+Brief housekeeping session to commit a pending Next.js dependency upgrade.
 
 ### What Was Completed
 
-1. **Grant Cycle Display in Proposal Associations**
-   - Added grant cycle short code badge to proposal associations in researcher detail modal
-   - Badge shows on hover the full cycle name
-   - Helps staff quickly identify which cycles a reviewer is associated with
-
-2. **Cross-Tab Navigation: "View in My Candidates"**
-   - Added navigation link in researcher detail modal proposal associations
-   - Clicking "View in My Candidates →" closes the modal, switches to My Candidates tab
-   - Automatically sets the correct cycle filter and expands the target proposal
-   - Enables quick follow-up on reviewer associations
-
-3. **Proposal Header Status Counts**
-   - Added invited/pending/accepted counts to proposal headers in My Candidates
-   - Display format: `17 candidate(s) · 12 invited · 5 pending · 4 accepted`
-   - Color coding: invited (blue), pending (amber), accepted (green if ≥3)
-   - Green highlight at 3+ accepted indicates enough reviewers committed
+1. **Next.js Upgrade**
+   - Upgraded Next.js from 14.2.35 to 16.1.6
+   - Package.json and package-lock.json were updated
 
 ### Commits
-- `76fde8d` - Add Reviewer Finder UI improvements for tracking and navigation
+- `91648c8` - Upgrade Next.js from 14.2.35 to 16.1.6
 
 ## Potential Next Steps
 
@@ -51,12 +38,19 @@ Add PDF report generation for formal documentation:
 - Add email tracking integration with Dynamics 365
 - Consider declined count display in proposal headers
 
+### 5. Test Next.js 16 Compatibility
+After the major version upgrade, verify:
+- All pages load correctly
+- API routes function as expected
+- No breaking changes in app behavior
+
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
 | `pages/reviewer-finder.js` | Main Reviewer Finder frontend with all tabs |
-| `pages/api/reviewer-finder/researchers.js` | Researchers API with proposal association query |
+| `pages/integrity-screener.js` | Integrity Screener frontend |
+| `lib/services/integrity-service.js` | Screening orchestration |
 
 ## Testing
 
@@ -64,11 +58,9 @@ Add PDF report generation for formal documentation:
 # Start dev server
 npm run dev
 
-# Test Reviewer Finder UI improvements
-# Go to: http://localhost:3000/reviewer-finder
-# 1. Database tab → Click researcher with proposal associations → See grant cycle badges
-# 2. Click "View in My Candidates →" → Should navigate to My Candidates with proposal expanded
-# 3. My Candidates tab → See invited/pending/accepted counts on proposal headers
+# Test that the app runs correctly after Next.js upgrade
+# Visit: http://localhost:3000
+# Check: Landing page loads, all app links work, API routes function
 ```
 
 ## Git/iCloud Setup
