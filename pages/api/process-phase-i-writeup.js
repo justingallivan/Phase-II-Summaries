@@ -2,11 +2,16 @@ import pdf from 'pdf-parse';
 import { BASE_CONFIG, getModelForApp } from '../../shared/config';
 import { createPhaseIWriteupPrompt } from '../../shared/config/prompts/phase-i-writeup';
 import { createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer';
+import { requireAuth } from '../../lib/utils/auth';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Require authentication
+  const session = await requireAuth(req, res);
+  if (!session) return;
 
   try {
     const { files, apiKey } = req.body;

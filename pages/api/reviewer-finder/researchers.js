@@ -49,8 +49,13 @@
  */
 
 import { sql } from '@vercel/postgres';
+import { requireAuth } from '../../../lib/utils/auth';
 
 export default async function handler(req, res) {
+  // Require authentication
+  const session = await requireAuth(req, res);
+  if (!session) return;
+
   if (req.method === 'GET') {
     return handleGet(req, res);
   } else if (req.method === 'POST') {

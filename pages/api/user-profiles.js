@@ -10,8 +10,13 @@
  */
 
 import { DatabaseService } from '../../lib/services/database-service';
+import { requireAuth } from '../../lib/utils/auth';
 
 export default async function handler(req, res) {
+  // Require authentication
+  const session = await requireAuth(req, res);
+  if (!session) return;
+
   switch (req.method) {
     case 'GET':
       return handleGet(req, res);

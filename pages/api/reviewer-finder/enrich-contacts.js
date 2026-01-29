@@ -18,6 +18,8 @@
  * Response: Server-Sent Events (SSE) stream with progress updates
  */
 
+import { requireAuth } from '../../../lib/utils/auth';
+
 const { ContactEnrichmentService } = require('../../../lib/services/contact-enrichment-service');
 
 export const config = {
@@ -32,6 +34,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Require authentication
+  const session = await requireAuth(req, res);
+  if (!session) return;
 
   const { candidates, credentials = {}, options = {} } = req.body;
 

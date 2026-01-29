@@ -8,6 +8,7 @@
 
 import { sql } from '@vercel/postgres';
 import { DatabaseService } from '../../../lib/services/database-service';
+import { requireAuth } from '../../../lib/utils/auth';
 
 /**
  * Find existing researcher using multi-field matching.
@@ -70,6 +71,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Require authentication
+  const session = await requireAuth(req, res);
+  if (!session) return;
 
   try {
     const { proposalId, proposalTitle, proposalAbstract, proposalAuthors, proposalInstitution, programArea, summaryBlobUrl, grantCycleId, userProfileId, candidates } = req.body;

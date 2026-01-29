@@ -1,4 +1,5 @@
 import { handleUpload } from '@vercel/blob/client';
+import { requireAuth } from '../../lib/utils/auth';
 
 export default async function handler(req, res) {
   // Set CORS headers
@@ -14,6 +15,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Require authentication
+  const session = await requireAuth(req, res);
+  if (!session) return;
 
   try {
     const jsonResponse = await handleUpload({

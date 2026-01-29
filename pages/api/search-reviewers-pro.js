@@ -16,6 +16,7 @@ import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
 import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { createSearchQueryPrompt, parseSearchQueryResponse } from '../../shared/config/prompts/find-reviewers';
+import { requireAuth } from '../../lib/utils/auth';
 
 // Import services (these use CommonJS exports)
 const { DatabaseService } = require('../../lib/services/database-service');
@@ -45,6 +46,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Require authentication
+  const session = await requireAuth(req, res);
+  if (!session) return;
 
   // Apply rate limiting
   const rateLimitResult = await rateLimiter(req, res);

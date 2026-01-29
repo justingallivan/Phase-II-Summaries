@@ -2,12 +2,17 @@ import pdf from 'pdf-parse';
 import { BASE_CONFIG, KECK_GUIDELINES, getModelForApp } from '../../shared/config';
 import { createPhaseISummarizationPrompt } from '../../shared/config/prompts/phase-i-summaries';
 import { createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer';
+import { requireAuth } from '../../lib/utils/auth';
 
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Require authentication
+  const session = await requireAuth(req, res);
+  if (!session) return;
 
   try {
     const { files, apiKey, summaryLength = 2, summaryLevel = 'technical-non-expert' } = req.body;
