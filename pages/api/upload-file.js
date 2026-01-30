@@ -6,6 +6,7 @@
  */
 
 import { put } from '@vercel/blob';
+import { requireAuth } from '../../lib/utils/auth';
 
 export const config = {
   api: {
@@ -17,6 +18,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Require authentication
+  const session = await requireAuth(req, res);
+  if (!session) return;
 
   try {
     // Parse multipart form data

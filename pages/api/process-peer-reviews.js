@@ -2,11 +2,16 @@ import pdf from 'pdf-parse';
 import mammoth from 'mammoth';
 import { BASE_CONFIG, getModelForApp } from '../../shared/config';
 import { createPeerReviewAnalysisPrompt, createPeerReviewQuestionsPrompt } from '../../shared/config/prompts/peer-reviewer';
+import { requireAuth } from '../../lib/utils/auth';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Require authentication
+  const session = await requireAuth(req, res);
+  if (!session) return;
 
   try {
     const { files, apiKey } = req.body;

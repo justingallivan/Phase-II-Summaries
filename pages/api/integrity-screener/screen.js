@@ -10,6 +10,8 @@
  * Uses streaming SSE for real-time progress updates.
  */
 
+import { requireAuth } from '../../../lib/utils/auth';
+
 export const config = {
   api: {
     bodyParser: {
@@ -23,6 +25,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Require authentication (before setting up SSE)
+  const session = await requireAuth(req, res);
+  if (!session) return;
 
   // Set up SSE headers
   res.setHeader('Content-Type', 'text/event-stream');

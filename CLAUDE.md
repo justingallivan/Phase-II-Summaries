@@ -374,9 +374,13 @@ Multi-user support with Microsoft Azure AD authentication. Each user has isolate
 - **Data Scoping**: My Candidates filtered by current profile
 - **Settings Page**: `/profile-settings` for profile management
 
-### Microsoft Authentication (V11)
+### Microsoft Authentication (V11 + V12)
 
-**IMPORTANT: Authentication is OPTIONAL.** The app works exactly as before until Azure credentials are configured in environment variables. Without credentials, users see the ProfileSelector dropdown and can switch profiles freely. Authentication only activates when all three Azure variables are set.
+**Authentication is controlled by two conditions:**
+1. `AUTH_REQUIRED=true` environment variable (kill switch)
+2. Azure AD credentials are configured
+
+Both must be true for authentication to be enforced. This design provides a fail-safe: if Azure credentials are misconfigured, you can disable auth from the Vercel dashboard without code changes.
 
 **Flow (when authentication is enabled):**
 1. User visits app → RequireAuth redirects to Microsoft login
@@ -391,14 +395,28 @@ NEXTAUTH_SECRET=<generate-with: openssl rand -base64 32>
 AZURE_AD_CLIENT_ID=<from Azure Portal>
 AZURE_AD_CLIENT_SECRET=<from Azure Portal>
 AZURE_AD_TENANT_ID=<your organization's tenant ID>
+AUTH_REQUIRED=true                     # Kill switch - set to false to disable auth
 ```
+
+**Kill Switch Usage:**
+If you get locked out due to misconfigured Azure credentials:
+1. Go to Vercel Dashboard → Project → Settings → Environment Variables
+2. Set `AUTH_REQUIRED=false`
+3. Redeploy (takes ~30 seconds)
+4. Fix the Azure configuration
+5. Set `AUTH_REQUIRED=true` and redeploy
+
+**Protection Scope:**
+- All pages are protected via `RequireAuth` wrapper in `_app.js`
+- All API routes (except `/api/auth/*`) require authentication
+- When `AUTH_REQUIRED=false`, the app behaves as before (ProfileSelector dropdown)
 
 **Key Files:**
 | File | Purpose |
 |------|---------|
 | `pages/api/auth/[...nextauth].js` | NextAuth API route with Azure AD provider |
 | `pages/api/auth/link-profile.js` | API for linking Azure account to profile |
-| `pages/api/auth/status.js` | Returns `{enabled: true/false}` based on Azure credentials |
+| `pages/api/auth/status.js` | Returns `{enabled, debug}` based on AUTH_REQUIRED + Azure credentials |
 | `pages/auth/signin.js` | Custom sign-in page |
 | `pages/auth/error.js` | Custom error page |
 | `shared/components/RequireAuth.js` | Auth guard component (checks status endpoint) |
@@ -409,14 +427,17 @@ AZURE_AD_TENANT_ID=<your organization's tenant ID>
 
 **Protecting API Routes:**
 
-Available server-side auth utilities in `lib/utils/auth.js`:
+All API routes (except `/api/auth/*`) are protected with `requireAuth()`. Available server-side auth utilities in `lib/utils/auth.js`:
 
 | Function | Returns | Error Response |
 |----------|---------|----------------|
+| `isAuthRequired()` | boolean | None (checks AUTH_REQUIRED + credentials) |
 | `getSession(req, res)` | Session or null | None |
-| `requireAuth(req, res)` | Session or null | 401 if unauthenticated |
+| `requireAuth(req, res)` | Session or `{authBypassed: true}` | 401 if auth required and unauthenticated |
 | `requireAuthWithProfile(req, res)` | profileId or null | 401/403 if no auth/profile |
 | `optionalAuth(req, res)` | Session or null | None |
+
+**Note:** When `AUTH_REQUIRED=false`, `requireAuth()` returns `{user: {}, authBypassed: true}` allowing the request to proceed.
 
 ```javascript
 import { requireAuth, requireAuthWithProfile, optionalAuth } from '../../lib/utils/auth';

@@ -27,6 +27,7 @@ import {
 } from '../../../lib/utils/email-generator';
 
 import { createPersonalizationPrompt } from '../../../shared/config/prompts/email-reviewer';
+import { requireAuth } from '../../../lib/utils/auth';
 
 /**
  * Look up proposal info for candidates from the database
@@ -119,6 +120,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Require authentication (before setting up SSE)
+  const session = await requireAuth(req, res);
+  if (!session) return;
 
   // Set up SSE headers
   res.setHeader('Content-Type', 'text/event-stream');

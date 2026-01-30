@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
-import RequireAuth from '../shared/components/RequireAuth';
 import ProfileSelector from '../shared/components/ProfileSelector';
 
 const apps = [
@@ -138,7 +137,6 @@ export default function LandingPage() {
   });
 
   return (
-    <RequireAuth>
       <div className="min-h-screen bg-gray-50">
         <Head>
           <title>Document Processing Suite</title>
@@ -332,7 +330,6 @@ export default function LandingPage() {
           </div>
         </footer>
       </div>
-    </RequireAuth>
   );
 }
 

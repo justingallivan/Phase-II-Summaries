@@ -3,6 +3,7 @@ import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
 import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
 import { applySecurityMiddleware } from '../../shared/api/middleware/security';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
+import { requireAuth } from '../../lib/utils/auth';
 
 // Q&A prompt template
 const QA_PROMPT = (context, question, filename) => `You are an expert research assistant helping analyze a research proposal. Based on the document content provided, please answer the question thoroughly and accurately.
@@ -22,6 +23,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Require authentication
+  const session = await requireAuth(req, res);
+  if (!session) return;
 
   try {
     // Apply security middleware

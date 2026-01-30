@@ -4,6 +4,7 @@ import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { createExtractionPrompt, createReviewerPrompt, parseExtractionResponse } from '../../shared/config/prompts/find-reviewers';
 import { parseReviewers, generateReviewerCSV } from '../../shared/utils/reviewerParser';
+import { requireAuth } from '../../lib/utils/auth';
 
 export const config = {
   api: {
@@ -21,10 +22,14 @@ const rateLimiter = nextRateLimiter({
 
 export default async function handler(req, res) {
   console.log('Find Reviewers API called:', new Date().toISOString());
-  
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Require authentication
+  const session = await requireAuth(req, res);
+  if (!session) return;
 
   // Apply rate limiting
   const rateLimitResult = await rateLimiter(req, res);

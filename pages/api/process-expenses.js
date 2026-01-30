@@ -3,6 +3,7 @@ import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
 import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { getModelForApp } from '../../shared/config/baseConfig';
+import { requireAuth } from '../../lib/utils/auth';
 
 export const config = {
   api: {
@@ -104,6 +105,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Require authentication
+  const session = await requireAuth(req, res);
+  if (!session) return;
 
   // Apply rate limiting
   const rateLimitResult = await rateLimiter(req, res);
