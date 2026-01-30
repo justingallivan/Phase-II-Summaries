@@ -1,71 +1,61 @@
-# Session 43 Prompt: Continue Development
+# Session 44 Prompt: Continue Development
 
-## Session 42 Summary
+## Session 43 Summary
 
-Implemented organization-only authentication with Azure AD and a kill switch for emergency access.
+Tested and deployed Azure AD authentication to production, including fixing a profile linking bug.
 
 ### What Was Completed
 
-1. **Azure AD Authentication Implementation**
-   - Added `AUTH_REQUIRED` environment variable as a kill switch
-   - Updated `/api/auth/status.js` to check both AUTH_REQUIRED and Azure credentials
-   - Added `isAuthRequired()` utility function to `lib/utils/auth.js`
-   - Modified `requireAuth()` to respect kill switch (bypasses auth when disabled)
+1. **Tested Authentication PR on Vercel Preview**
+   - Configured Azure AD App Registration (redirect URIs, client secret)
+   - Set environment variables on Vercel Preview environment
+   - Debugged common issues:
+     - Redirect URI mismatch (Vercel generates new URLs per deployment)
+     - Client secret vs client secret ID confusion
+   - Verified Microsoft login flow works
 
-2. **Global Page Protection**
-   - Wrapped all pages with `RequireAuth` in `_app.js`
-   - Removed redundant `RequireAuth` from `index.js`
+2. **Merged Authentication PR to Main**
+   - PR #2 merged: https://github.com/justingallivan/Phase-II-Summaries/pull/2
+   - Configured production environment variables
+   - Added production redirect URI to Azure AD
 
-3. **API Route Protection**
-   - Added `requireAuth()` to all 31 API routes (excluding `/api/auth/*`)
-   - Auth routes remain public for OAuth flow to work
+3. **Fixed Profile Linking Bug**
+   - Issue: Unique constraint violation on `azure_id` when linking profiles
+   - Root cause: Code deleted temporary profile AFTER updating target profile
+   - Fix: Swapped order - delete temporary profile BEFORE updating
+   - Cleaned up stale temporary profile via Neon SQL editor
 
-4. **Documentation**
-   - Created comprehensive setup guide: `docs/AUTHENTICATION_SETUP.md`
-   - Updated `CLAUDE.md` with AUTH_REQUIRED documentation
-
-5. **Feature Branch & PR**
-   - All changes committed to `auth-implementation` branch
-   - PR created: https://github.com/justingallivan/Phase-II-Summaries/pull/2
-
-### Commits (on auth-implementation branch)
-- `50f9cee` - Add organization-only authentication with kill switch
-- `23283ac` - Add detailed authentication setup guide
+### Commits
+- `1d631f7` - Merge pull request #2 (auth-implementation)
+- `a3740ca` - Fix profile linking unique constraint error
 
 ### Current Status
-- Changes are on `auth-implementation` branch, NOT merged to main
-- PR #2 is open and ready for testing on Vercel preview
-- Main branch is unchanged until PR is merged
+- Authentication is fully deployed to production
+- Azure AD single sign-on working for organization members
+- New users can sign in and create/link profiles
+- Kill switch (`AUTH_REQUIRED=false`) available for emergencies
 
 ## Potential Next Steps
 
-### 1. Test and Merge Authentication PR
-Before merging PR #2:
-- Set environment variables on Vercel preview deployment
-- Test Microsoft login flow
-- Verify API routes return 401 when unauthenticated
-- Test kill switch (AUTH_REQUIRED=false)
-- Merge to main when satisfied
-
-### 2. Complete Dismissal Functionality (Integrity Screener)
+### 1. Complete Dismissal Functionality (Integrity Screener)
 The dismissal feature currently shows an alert placeholder. To fully implement:
 - Save dismissals to `screening_dismissals` table via API
 - Filter out dismissed matches when displaying results
 - Add UI to view/undo dismissals
 
-### 3. Screening History Tab (Integrity Screener)
+### 2. Screening History Tab (Integrity Screener)
 Add a "History" tab to the Integrity Screener to:
 - View past screenings
 - Re-open previous screening results
 - Update screening status (pending/reviewed/cleared/flagged)
 
-### 4. PDF Export for Integrity Screener
+### 3. PDF Export for Integrity Screener
 Add PDF report generation for formal documentation:
 - Professional formatting for sharing with committees
 - Include all match details with confidence levels
 - Summary page with statistics
 
-### 5. Reviewer Finder Enhancements
+### 4. Reviewer Finder Enhancements
 - Add bulk status update for candidates (mark multiple as invited/accepted)
 - Add email tracking integration with Dynamics 365
 - Consider declined count display in proposal headers
@@ -77,6 +67,7 @@ Add PDF report generation for formal documentation:
 | `docs/AUTHENTICATION_SETUP.md` | Comprehensive auth setup guide |
 | `lib/utils/auth.js` | Server-side auth utilities with kill switch |
 | `pages/api/auth/status.js` | Auth status endpoint (checks AUTH_REQUIRED) |
+| `pages/api/auth/link-profile.js` | Profile linking API (fixed ordering bug) |
 | `pages/_app.js` | Global RequireAuth wrapper |
 
 ## Environment Variables for Auth
@@ -84,11 +75,17 @@ Add PDF report generation for formal documentation:
 ```env
 AUTH_REQUIRED=true                    # Kill switch
 AZURE_AD_CLIENT_ID=<from Azure>
-AZURE_AD_CLIENT_SECRET=<from Azure>
+AZURE_AD_CLIENT_SECRET=<from Azure>   # Use Value, not Secret ID!
 AZURE_AD_TENANT_ID=<from Azure>
 NEXTAUTH_SECRET=<openssl rand -base64 32>
 NEXTAUTH_URL=https://your-app.vercel.app
 ```
+
+## Azure AD Setup Gotchas
+
+1. **Redirect URIs** - Vercel preview URLs change per deployment; add each one to Azure or use production URL for testing
+2. **Client Secret** - Copy the "Value" column, NOT the "Secret ID"
+3. **Stale Profiles** - If linking fails with duplicate key error, delete temp profile via Neon SQL editor
 
 ## Testing
 
