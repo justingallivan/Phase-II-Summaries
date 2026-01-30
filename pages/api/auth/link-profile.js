@@ -75,18 +75,19 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Profile is already linked to another account' });
     }
 
+    // Remove any temporary profile created during sign-in BEFORE updating
+    // (to avoid unique constraint violation on azure_id)
+    await sql`
+      DELETE FROM user_profiles
+      WHERE azure_id = ${azureId} AND id != ${profileId} AND needs_linking = true
+    `;
+
     // Link the Azure account to this profile
     await sql`
       UPDATE user_profiles
       SET azure_id = ${azureId}, azure_email = ${azureEmail},
           needs_linking = false, last_login_at = CURRENT_TIMESTAMP
       WHERE id = ${profileId}
-    `;
-
-    // Remove any temporary profile created during sign-in
-    await sql`
-      DELETE FROM user_profiles
-      WHERE azure_id = ${azureId} AND id != ${profileId} AND needs_linking = true
     `;
 
     return res.status(200).json({
