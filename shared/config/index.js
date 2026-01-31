@@ -43,13 +43,6 @@ export {
   extractReviewerInfo
 } from './prompts/peer-reviewer';
 
-// Prompt functions - Find Reviewers
-export {
-  createExtractionPrompt,
-  createReviewerPrompt,
-  parseExtractionResponse
-} from './prompts/find-reviewers';
-
 // Prompt functions - Funding Gap Analyzer
 export {
   createFundingExtractionPrompt,
@@ -57,25 +50,6 @@ export {
   createBatchFundingSummaryPrompt,
   getFundingExtractionLimit
 } from './prompts/funding-gap-analyzer';
-
-// Prompt functions - Batch Processor
-export {
-  createBatchProcessingPrompt,
-  createBatchMetadataPrompt,
-  createQualityAssessmentPrompt,
-  createBatchComparisonPrompt,
-  validateBatchParameters
-} from './prompts/batch-processor';
-
-// Prompt functions - Document Analyzer
-export {
-  createDocumentAnalysisPrompt,
-  createMetadataExtractionPrompt,
-  createThemeExtractionPrompt,
-  createSummaryPrompt,
-  createQuestionGenerationPrompt,
-  createDocumentComparisonPrompt
-} from './prompts/document-analyzer';
 
 // Common utilities
 export {
