@@ -1,39 +1,55 @@
-# Session 44 Prompt: Continue Development
+# Session 45 Prompt: Continue Development
 
-## Session 43 Summary
+## Session 44 Summary
 
-Tested and deployed Azure AD authentication to production, including fixing a profile linking bug.
+Performed comprehensive codebase cleanup, removing deprecated code, unused files, and obsolete documentation. Reduced codebase by 15,276 lines across 45 files.
 
 ### What Was Completed
 
-1. **Tested Authentication PR on Vercel Preview**
-   - Configured Azure AD App Registration (redirect URIs, client secret)
-   - Set environment variables on Vercel Preview environment
-   - Debugged common issues:
-     - Redirect URI mismatch (Vercel generates new URLs per deployment)
-     - Client secret vs client secret ID confusion
-   - Verified Microsoft login flow works
+1. **Deleted Deprecated Pages**
+   - `pages/document-analyzer.js` - Duplicate of proposal-summarizer with worse UX
+   - `pages/find-reviewers.js` - Superseded by reviewer-finder.js
+   - `pages/find-reviewers-pro.js` - Merged into reviewer-finder.js
 
-2. **Merged Authentication PR to Main**
-   - PR #2 merged: https://github.com/justingallivan/Phase-II-Summaries/pull/2
-   - Configured production environment variables
-   - Added production redirect URI to Azure AD
+2. **Deleted Deprecated API Endpoints**
+   - `pages/api/find-reviewers.js`
+   - `pages/api/search-reviewers-pro.js`
+   - `pages/api/analyze-documents-simple.js`
+   - `pages/api/process-batch-simple.js`
+   - `pages/api/process-proposals-simple.js`
 
-3. **Fixed Profile Linking Bug**
-   - Issue: Unique constraint violation on `azure_id` when linking profiles
-   - Root cause: Code deleted temporary profile AFTER updating target profile
-   - Fix: Swapped order - delete temporary profile BEFORE updating
-   - Cleaned up stale temporary profile via Neon SQL editor
+3. **Deleted Unused Components**
+   - `shared/components/FileUploader.js` - Replaced by FileUploaderSimple.js
+   - `shared/components/GoogleSearchResults.js`
+   - `shared/components/GoogleSearchModal.js`
+
+4. **Deleted Unused Services & Utilities**
+   - `lib/services/scholar-service.js`
+   - `shared/utils/dataExtraction.js`
+   - `shared/utils/reviewerParser.js`
+   - `lib/config.js` and `lib/config.legacy.js`
+
+5. **Deleted Unused Prompt Files**
+   - `shared/config/prompts/document-analyzer.js`
+   - `shared/config/prompts/batch-processor.js`
+   - `shared/config/prompts/find-reviewers.js`
+
+6. **Cleaned Up Root Directory**
+   - Deleted 23 obsolete planning/migration markdown files
+   - Config migration docs, Expert Reviewer planning docs, etc.
+
+7. **Fixed Broken Exports**
+   - Updated `shared/config/index.js` to remove exports for deleted prompt files
 
 ### Commits
-- `1d631f7` - Merge pull request #2 (auth-implementation)
-- `a3740ca` - Fix profile linking unique constraint error
+- `5cd855c` - Slim down CLAUDE.md and move content to dedicated docs
+- `13cca60` - Remove deprecated code, unused files, and obsolete documentation
 
-### Current Status
-- Authentication is fully deployed to production
-- Azure AD single sign-on working for organization members
-- New users can sign in and create/link profiles
-- Kill switch (`AUTH_REQUIRED=false`) available for emergencies
+### Impact
+- **45 files deleted**
+- **15,276 lines removed**
+- Build verified after each phase
+- All active applications still functional
 
 ## Potential Next Steps
 
@@ -55,53 +71,24 @@ Add PDF report generation for formal documentation:
 - Include all match details with confidence levels
 - Summary page with statistics
 
-### 4. Reviewer Finder Enhancements
-- Add bulk status update for candidates (mark multiple as invited/accepted)
-- Add email tracking integration with Dynamics 365
-- Consider declined count display in proposal headers
+### 4. Future Refactoring Opportunities (Low Priority)
+Identified during cleanup but not implemented:
+- Extract `PrePrintServiceBase` class from ArXiv/BioRxiv/ChemRxiv services (~150 lines reduction)
+- Extract shared contact parsing utilities from contact-enrichment and serp-contact services
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `docs/AUTHENTICATION_SETUP.md` | Comprehensive auth setup guide |
-| `lib/utils/auth.js` | Server-side auth utilities with kill switch |
-| `pages/api/auth/status.js` | Auth status endpoint (checks AUTH_REQUIRED) |
-| `pages/api/auth/link-profile.js` | Profile linking API (fixed ordering bug) |
-| `pages/_app.js` | Global RequireAuth wrapper |
-
-## Environment Variables for Auth
-
-```env
-AUTH_REQUIRED=true                    # Kill switch
-AZURE_AD_CLIENT_ID=<from Azure>
-AZURE_AD_CLIENT_SECRET=<from Azure>   # Use Value, not Secret ID!
-AZURE_AD_TENANT_ID=<from Azure>
-NEXTAUTH_SECRET=<openssl rand -base64 32>
-NEXTAUTH_URL=https://your-app.vercel.app
-```
-
-## Azure AD Setup Gotchas
-
-1. **Redirect URIs** - Vercel preview URLs change per deployment; add each one to Azure or use production URL for testing
-2. **Client Secret** - Copy the "Value" column, NOT the "Secret ID"
-3. **Stale Profiles** - If linking fails with duplicate key error, delete temp profile via Neon SQL editor
+| `shared/config/index.js` | Central config exports (updated to remove deleted prompts) |
+| `shared/components/FileUploaderSimple.js` | Active file upload component |
+| `pages/reviewer-finder.js` | Main reviewer finder (replaces deleted find-reviewers pages) |
 
 ## Testing
 
 ```bash
-# Start dev server (auth disabled locally unless env vars set)
-npm run dev
-
-# To test with auth locally:
-# 1. Set all Azure env vars in .env.local
-# 2. Set AUTH_REQUIRED=true
-# 3. Add http://localhost:3000/api/auth/callback/azure-ad to Azure redirect URIs
+npm run dev              # Run development server
+npm run build            # Verify build succeeds
 ```
 
-## Git/iCloud Setup
-
-This repo uses `.git.nosync` to prevent iCloud sync corruption:
-- `.git` is a symlink to `.git.nosync`
-- Use `git push/pull` to sync between Macs, not iCloud
-- `/start` and `/stop` skills handle this automatically
+All 11 active applications should function normally after cleanup.

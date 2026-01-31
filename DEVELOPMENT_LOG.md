@@ -1695,4 +1695,65 @@ Improved the Applicant Integrity Screener with bug fixes and new features.
 
 ---
 
-Last Updated: January 21, 2026
+## Session 44 - January 30, 2026
+
+### Comprehensive Codebase Cleanup
+
+Performed a major codebase cleanup to remove deprecated code, unused files, and obsolete documentation.
+
+**Impact:**
+- **45 files deleted**
+- **15,276 lines removed**
+
+**Deprecated Pages Removed:**
+- `pages/document-analyzer.js` - Duplicate of proposal-summarizer with worse UX
+- `pages/find-reviewers.js` - Superseded by reviewer-finder.js
+- `pages/find-reviewers-pro.js` - Merged into reviewer-finder.js
+
+**Deprecated API Endpoints Removed:**
+- `pages/api/find-reviewers.js`
+- `pages/api/search-reviewers-pro.js`
+- `pages/api/analyze-documents-simple.js`
+- `pages/api/process-batch-simple.js`
+- `pages/api/process-proposals-simple.js`
+
+**Unused Components Removed:**
+- `shared/components/FileUploader.js` - Replaced by FileUploaderSimple.js
+- `shared/components/GoogleSearchResults.js`
+- `shared/components/GoogleSearchModal.js`
+
+**Unused Services & Utilities Removed:**
+- `lib/services/scholar-service.js`
+- `shared/utils/dataExtraction.js`
+- `shared/utils/reviewerParser.js`
+- `lib/config.js` and `lib/config.legacy.js`
+
+**Unused Prompt Files Removed:**
+- `shared/config/prompts/document-analyzer.js`
+- `shared/config/prompts/batch-processor.js`
+- `shared/config/prompts/find-reviewers.js`
+
+**Root Directory Cleanup:**
+Deleted 23 obsolete planning/migration markdown files:
+- Config migration docs (REMAINING_API_MIGRATIONS.md, CONFIG_MIGRATION_AUDIT.md, etc.)
+- Expert Reviewer planning docs (EXPERT_REVIEWERS_PRO_PLAN.md, etc.)
+- Completed feature docs (ROADMAP_DATABASE_TAB.md, TIER4_SERP_GOOGLE_PLAN.md, etc.)
+
+**Test Files Removed:**
+- `test-nih-api.js`
+- `tests/unit/prompts/find-reviewers.test.js`
+
+**Files Modified:**
+- `shared/config/index.js` - Removed exports for deleted prompt files
+
+**Verification:**
+- Build verified after each phase
+- All 11 active applications remain functional
+
+**Commits:**
+- `5cd855c` - Slim down CLAUDE.md and move content to dedicated docs
+- `13cca60` - Remove deprecated code, unused files, and obsolete documentation
+
+---
+
+Last Updated: January 30, 2026
