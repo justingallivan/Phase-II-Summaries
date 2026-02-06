@@ -16,6 +16,16 @@ const apps = [
     path: '/concept-evaluator'
   },
   {
+    id: 'multi-perspective-evaluator',
+    title: 'Multi-Perspective Evaluator',
+    description: 'Evaluate concepts using three AI perspectives (Optimist, Skeptic, Neutral) with integrated synthesis and recommendations',
+    icon: '🎭',
+    status: 'active',
+    categories: ['concepts'],
+    features: ['3 AI Perspectives', 'Consensus Analysis', 'Disagreement Resolution', 'Framework Selection'],
+    path: '/multi-perspective-evaluator'
+  },
+  {
     id: 'batch-phase-i-summaries',
     title: 'Batch Phase I Summaries',
     description: 'Process multiple Phase I proposals simultaneously with customizable summary length',

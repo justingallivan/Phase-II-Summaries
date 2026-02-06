@@ -29,6 +29,7 @@ export default function Layout({
   const navigationItems = [
     { name: 'Home', href: '/', icon: '🏠' },
     { name: 'Concept Evaluator', href: '/concept-evaluator', icon: '🔬' },
+    { name: 'Multi-Perspective', href: '/multi-perspective-evaluator', icon: '🎭' },
     { name: 'Batch Phase I Summaries', href: '/batch-phase-i-summaries', icon: '📑' },
     { name: 'Batch Phase II Summaries', href: '/batch-proposal-summaries', icon: '📑' },
     { name: 'Funding Analysis', href: '/funding-gap-analyzer', icon: '💵' },
