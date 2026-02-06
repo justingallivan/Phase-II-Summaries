@@ -1,45 +1,95 @@
-# Session 46 Prompt: Continue Development
+# Session 47 Prompt: Evaluation Criteria Prompts Discussion
 
-## Session 45 Summary
+## Priority Topic for Next Session
 
-No work completed - session was started and immediately stopped for continuity sync.
+**Discuss the prompts Claude receives about evaluation criteria** in the Multi-Perspective Evaluator. The relevant prompts are in:
+- `shared/config/prompts/multi-perspective-evaluator.js`
 
-### Commits
-None
+Key areas to review:
+- Framework definitions (Keck, NSF, General Scientific) - lines 15-85
+- Perspective prompts (Optimist, Skeptic, Neutral) - see `createOptimistPrompt`, `createSkepticPrompt`, `createNeutralPrompt`
+- Integrator synthesis prompt - see `createIntegratorPrompt`
+- Proposal summary prompt - see `createProposalSummaryPrompt`
 
-## Potential Next Steps
+## Session 46 Summary
 
-### 1. Complete Dismissal Functionality (Integrity Screener)
-The dismissal feature currently shows an alert placeholder. To fully implement:
-- Save dismissals to `screening_dismissals` table via API
-- Filter out dismissed matches when displaying results
-- Add UI to view/undo dismissals
+Implemented the **Multi-Perspective Concept Evaluator** - a new app that evaluates research concepts using three AI perspectives with fan-out/fan-in architecture.
 
-### 2. Screening History Tab (Integrity Screener)
-Add a "History" tab to the Integrity Screener to:
-- View past screenings
-- Re-open previous screening results
-- Update screening status (pending/reviewed/cleared/flagged)
+### New Features Built
 
-### 3. PDF Export for Integrity Screener
-Add PDF report generation for formal documentation:
-- Professional formatting for sharing with committees
-- Include all match details with confidence levels
-- Summary page with statistics
+1. **Multi-Perspective Evaluator App**
+   - Three parallel AI perspectives: Optimist, Skeptic, Neutral
+   - Integrated synthesis with consensus, disagreements, and weighted recommendation
+   - Configurable evaluation frameworks (Keck, NSF, General Scientific)
+   - Proposal summary stage (what they're proposing + potential impact)
 
-### 4. Future Refactoring Opportunities (Low Priority)
-Identified during cleanup but not implemented:
-- Extract `PrePrintServiceBase` class from ArXiv/BioRxiv/ChemRxiv services (~150 lines reduction)
-- Extract shared contact parsing utilities from contact-enrichment and serp-contact services
+2. **PDF Export System**
+   - Created reusable `PDFReportBuilder` utility in `shared/utils/pdf-export.js`
+   - Fluent API for building PDF reports
+   - Added to Multi-Perspective Evaluator (Export PDF button)
+   - Documented architecture for adding to other apps
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `pages/multi-perspective-evaluator.js` | Frontend UI with framework selector, view toggle |
+| `pages/api/evaluate-multi-perspective.js` | API with fan-out/fan-in architecture |
+| `shared/config/prompts/multi-perspective-evaluator.js` | All prompt templates |
+| `shared/utils/pdf-export.js` | Reusable PDF generation utility |
+| `docs/PDF_EXPORT.md` | PDF export architecture documentation |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `shared/config/baseConfig.js` | Added model config for multi-perspective-evaluator |
+| `pages/index.js` | Added app to homepage |
+| `shared/components/Layout.js` | Added to navigation |
+| `CLAUDE.md` | Updated apps list and docs reference |
+
+### Architecture
+
+```
+Stage 1: Initial Analysis (Vision API)
+    ↓
+Stage 2: Literature Search (shared - runs once)
+    ↓
+Stage 2.5: Proposal Summary (what they're proposing + potential impact)
+    ↓
+Stage 3 (Fan-out): Promise.allSettled()
+    ├── Optimist: Build strongest case FOR
+    ├── Skeptic: Identify weaknesses/concerns
+    └── Neutral: Balanced assessment
+    ↓
+Stage 4 (Fan-in): Integrator
+    ├── Consensus (where all agree)
+    ├── Disagreements (where they diverge + resolution)
+    └── Weighted recommendation
+```
+
+## Pending Work
+
+### PDF Export for Other Apps
+The PDF export utility is ready. Apps that could benefit (see `docs/PDF_EXPORT.md`):
+- Batch Phase I/II Summaries (High priority)
+- Concept Evaluator (Medium)
+- Literature Analyzer (Medium)
+- Peer Review Summarizer (Medium)
+
+### Integrity Screener Enhancements
+- Complete dismissal functionality
+- Add History tab
+- PDF export for formal reports
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `pages/integrity-screener.js` | Main integrity screener UI |
-| `pages/api/integrity-screener/screen.js` | Screening API endpoint |
-| `lib/services/integrity-service.js` | Screening orchestration |
-| `lib/services/integrity-matching-service.js` | Name matching algorithms |
+| `shared/config/prompts/multi-perspective-evaluator.js` | **Review for next session** |
+| `pages/multi-perspective-evaluator.js` | Main UI |
+| `pages/api/evaluate-multi-perspective.js` | API endpoint |
+| `shared/utils/pdf-export.js` | PDF generation utility |
 
 ## Testing
 
@@ -48,4 +98,4 @@ npm run dev              # Run development server
 npm run build            # Verify build succeeds
 ```
 
-All 11 active applications should function normally.
+App accessible at `/multi-perspective-evaluator`

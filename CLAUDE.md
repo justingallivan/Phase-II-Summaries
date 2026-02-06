@@ -40,6 +40,7 @@ A multi-application document processing system using Claude AI for grant-related
 | App | Page | API Endpoint | Description |
 |-----|------|--------------|-------------|
 | Concept Evaluator | `concept-evaluator.js` | `/api/evaluate-concepts` | Pre-Phase I screening with AI + literature search |
+| Multi-Perspective Evaluator | `multi-perspective-evaluator.js` | `/api/evaluate-multi-perspective` | 3-perspective evaluation with synthesis |
 | Batch Phase I Summaries | `batch-phase-i-summaries.js` | `/api/process-phase-i` | Batch Phase I proposal processing |
 | Batch Phase II Summaries | `batch-proposal-summaries.js` | `/api/process` | Batch Phase II proposal processing |
 | Funding Analysis | `funding-gap-analyzer.js` | `/api/analyze-funding-gap` | NSF API integration for federal funding |
@@ -248,9 +249,10 @@ Located in `lib/services/`:
 | `docs/AUTHENTICATION_SETUP.md` | Azure AD configuration guide |
 | `docs/REVIEWER_FINDER.md` | Email workflow, templates, settings |
 | `docs/MULTI_MAC_SETUP.md` | Multi-Mac development setup |
+| `docs/PDF_EXPORT.md` | PDF export utility and architecture |
 | `scripts/README.md` | Database utility scripts |
 | `DEVELOPMENT_LOG.md` | Session-by-session history |
 
 ---
 
-Last Updated: January 2026
+Last Updated: February 2026
