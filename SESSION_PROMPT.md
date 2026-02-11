@@ -1,83 +1,49 @@
-# Session 47 Prompt: Evaluation Criteria Prompts Discussion
+# Session 48 Prompt: Continue Multi-Perspective Evaluator Refinements
 
-## Priority Topic for Next Session
+## Session 47 Summary
 
-**Discuss the prompts Claude receives about evaluation criteria** in the Multi-Perspective Evaluator. The relevant prompts are in:
-- `shared/config/prompts/multi-perspective-evaluator.js`
+Added **Keck Foundation funding eligibility screening** to the Multi-Perspective Evaluator. Concepts that fall into exclusion categories are now flagged early and don't go through full evaluation.
 
-Key areas to review:
-- Framework definitions (Keck, NSF, General Scientific) - lines 15-85
-- Perspective prompts (Optimist, Skeptic, Neutral) - see `createOptimistPrompt`, `createSkepticPrompt`, `createNeutralPrompt`
-- Integrator synthesis prompt - see `createIntegratorPrompt`
-- Proposal summary prompt - see `createProposalSummaryPrompt`
+### What Was Completed
 
-## Session 46 Summary
+1. **Funding Eligibility Screening**
+   - Added `KECK_FUNDING_GUIDELINES` constant with funding priorities, what we look for, and 9 exclusion categories
+   - Eligibility check happens in Stage 1 (initial analysis) before literature search
+   - Flagged concepts short-circuit evaluation (no perspectives or synthesis)
+   - Returns structured flag with category and reason
 
-Implemented the **Multi-Perspective Concept Evaluator** - a new app that evaluates research concepts using three AI perspectives with fan-out/fan-in architecture.
+2. **Updated Keck Guidelines from PDF**
+   - Funding priorities (high-impact basic science, pioneering discoveries, novel approaches)
+   - What we look for in proposals (project overview, methodologies, key personnel, knowledge gap, impact, innovation, risk)
+   - Expanded exclusion list: medical devices/translational, engineering-only, clinical trials, drug development, biomarker screening, digital twin, user facilities, supplements/renewals, conferences/policy
 
-### New Features Built
+3. **Terminology Updates**
+   - "Fund if" → "Further consider if"
+   - "Do not fund if" → "Decline if"
+   - Optimist's "Rebuttals to Concerns" → "Anticipated Concerns & Counterpoints" (clearer that these are anticipated, not responses to actual skeptic)
 
-1. **Multi-Perspective Evaluator App**
-   - Three parallel AI perspectives: Optimist, Skeptic, Neutral
-   - Integrated synthesis with consensus, disagreements, and weighted recommendation
-   - Configurable evaluation frameworks (Keck, NSF, General Scientific)
-   - Proposal summary stage (what they're proposing + potential impact)
+4. **Bug Fixes**
+   - Fixed null check for perspectives in frontend (flagged concepts have `perspectives: null`)
+   - Hide Perspectives tab for flagged concepts
 
-2. **PDF Export System**
-   - Created reusable `PDFReportBuilder` utility in `shared/utils/pdf-export.js`
-   - Fluent API for building PDF reports
-   - Added to Multi-Perspective Evaluator (Export PDF button)
-   - Documented architecture for adding to other apps
+### Commits
+- `dfeab76` - Add Keck funding eligibility screening to Multi-Perspective Evaluator
 
-### Files Created
+## Potential Next Steps
 
-| File | Purpose |
-|------|---------|
-| `pages/multi-perspective-evaluator.js` | Frontend UI with framework selector, view toggle |
-| `pages/api/evaluate-multi-perspective.js` | API with fan-out/fan-in architecture |
-| `shared/config/prompts/multi-perspective-evaluator.js` | All prompt templates |
-| `shared/utils/pdf-export.js` | Reusable PDF generation utility |
-| `docs/PDF_EXPORT.md` | PDF export architecture documentation |
+### 1. Test Eligibility Screening More Thoroughly
+Test with concepts that should be flagged (clinical trials, drug development, etc.) to verify the screening works correctly and the UI displays flagged concepts properly.
 
-### Files Modified
-
-| File | Change |
-|------|--------|
-| `shared/config/baseConfig.js` | Added model config for multi-perspective-evaluator |
-| `pages/index.js` | Added app to homepage |
-| `shared/components/Layout.js` | Added to navigation |
-| `CLAUDE.md` | Updated apps list and docs reference |
-
-### Architecture
-
-```
-Stage 1: Initial Analysis (Vision API)
-    ↓
-Stage 2: Literature Search (shared - runs once)
-    ↓
-Stage 2.5: Proposal Summary (what they're proposing + potential impact)
-    ↓
-Stage 3 (Fan-out): Promise.allSettled()
-    ├── Optimist: Build strongest case FOR
-    ├── Skeptic: Identify weaknesses/concerns
-    └── Neutral: Balanced assessment
-    ↓
-Stage 4 (Fan-in): Integrator
-    ├── Consensus (where all agree)
-    ├── Disagreements (where they diverge + resolution)
-    └── Weighted recommendation
-```
-
-## Pending Work
-
-### PDF Export for Other Apps
+### 2. PDF Export for Other Apps
 The PDF export utility is ready. Apps that could benefit (see `docs/PDF_EXPORT.md`):
 - Batch Phase I/II Summaries (High priority)
 - Concept Evaluator (Medium)
 - Literature Analyzer (Medium)
-- Peer Review Summarizer (Medium)
 
-### Integrity Screener Enhancements
+### 3. Refine Perspective Prompts
+Now that eligibility screening is in place, consider whether the perspective prompts need adjustment. The Keck framework criteria could be expanded based on the "What We Look For" section.
+
+### 4. Integrity Screener Enhancements
 - Complete dismissal functionality
 - Add History tab
 - PDF export for formal reports
@@ -86,15 +52,28 @@ The PDF export utility is ready. Apps that could benefit (see `docs/PDF_EXPORT.m
 
 | File | Purpose |
 |------|---------|
-| `shared/config/prompts/multi-perspective-evaluator.js` | **Review for next session** |
-| `pages/multi-perspective-evaluator.js` | Main UI |
-| `pages/api/evaluate-multi-perspective.js` | API endpoint |
-| `shared/utils/pdf-export.js` | PDF generation utility |
+| `shared/config/prompts/multi-perspective-evaluator.js` | Prompts + KECK_FUNDING_GUIDELINES |
+| `pages/multi-perspective-evaluator.js` | Frontend UI |
+| `pages/api/evaluate-multi-perspective.js` | API with eligibility short-circuit |
+
+## Exclusion Categories (for reference)
+
+| Flag | Category |
+|------|----------|
+| `MEDICAL_DEVICE_TRANSLATIONAL` | Medical devices or bench-to-bedside translational |
+| `ENGINEERING_ONLY` | Engineering-only projects |
+| `CLINICAL_TRIALS` | Clinical trials, therapies, procedures |
+| `DRUG_DEVELOPMENT` | Drug discovery/development/delivery |
+| `BIOMARKER_SCREENING` | Disease biomarker screening |
+| `DIGITAL_TWIN` | Digital twin implementations |
+| `USER_FACILITIES` | User/shared facilities |
+| `SUPPLEMENT_RENEWAL` | Supplements/renewals/follow-on |
+| `CONFERENCE_POLICY` | Conferences or science policy |
 
 ## Testing
 
 ```bash
-npm run dev              # Run development server
+npm run dev              # Run development server (port 3001 if 3000 in use)
 npm run build            # Verify build succeeds
 ```
 
