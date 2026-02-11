@@ -139,6 +139,9 @@ export default async function handler(req, res) {
     }
 
     // Send final results
+    const flaggedConcepts = allResults.filter(r => r.flaggedForReview);
+    const fullyEvaluated = allResults.filter(r => !r.error && !r.flaggedForReview);
+
     const finalData = {
       progress: 100,
       message: 'Multi-perspective evaluation complete!',
@@ -148,7 +151,8 @@ export default async function handler(req, res) {
         frameworkName: EVALUATION_FRAMEWORKS[framework].name,
         summary: {
           totalConcepts: allResults.length,
-          successfulEvaluations: allResults.filter(r => !r.error).length,
+          successfulEvaluations: fullyEvaluated.length,
+          flaggedAsIneligible: flaggedConcepts.length,
           errors: allResults.filter(r => r.error).length,
           timestamp: new Date().toISOString()
         }
@@ -204,6 +208,54 @@ async function evaluateSingleConceptMultiPerspective(page, apiKey, framework, re
       throw new Error(initialAnalysis?.error || 'Initial analysis failed');
     }
 
+    // Check eligibility - short-circuit if concept falls into exclusion category
+    if (initialAnalysis.eligibility && !initialAnalysis.eligibility.isEligible) {
+      sendProgress(res, progressBase + 5, `Concept ${pageNumber} flagged as potentially ineligible`, 'eligibility-flag');
+
+      return {
+        pageNumber,
+        title: initialAnalysis.title,
+        piName: initialAnalysis.piName,
+        institution: initialAnalysis.institution,
+        summary: initialAnalysis.summary,
+        researchArea: initialAnalysis.researchArea,
+        framework: framework,
+        frameworkName: EVALUATION_FRAMEWORKS[framework].name,
+
+        // Eligibility flag - this is the key output for flagged concepts
+        eligibility: {
+          isEligible: false,
+          flag: initialAnalysis.eligibility.flag,
+          flagReason: initialAnalysis.eligibility.flagReason
+        },
+
+        // Minimal evaluation - no need for full multi-perspective analysis
+        flaggedForReview: true,
+        flagCategory: getFlagCategoryName(initialAnalysis.eligibility.flag),
+
+        // Include initial observations for context
+        initialObservations: initialAnalysis.initialObservations,
+
+        // No perspectives or synthesis for flagged concepts
+        perspectives: null,
+        consensus: null,
+        disagreements: null,
+        synthesis: {
+          weightedRecommendation: 'Flagged - Outside Funding Scope',
+          overallNarrative: `This concept has been flagged as potentially falling outside the W. M. Keck Foundation's funding scope. ${initialAnalysis.eligibility.flagReason}`,
+          keyTakeaways: [
+            `Flagged category: ${getFlagCategoryName(initialAnalysis.eligibility.flag)}`,
+            initialAnalysis.eligibility.flagReason
+          ]
+        },
+        forDecisionMakers: {
+          headline: `Flagged: ${getFlagCategoryName(initialAnalysis.eligibility.flag)}`,
+          furtherConsiderIf: 'Reconsider if this assessment is incorrect and the research is actually fundamental/basic science',
+          declineIf: initialAnalysis.eligibility.flagReason
+        }
+      };
+    }
+
     // Stage 2: Literature search based on extracted search queries
     sendProgress(res, progressBase + 5, `Searching literature for concept ${pageNumber}...`, 'literature-search');
     const { results: literatureResults, queriesUsed } = await searchLiterature(initialAnalysis);
@@ -249,6 +301,13 @@ async function evaluateSingleConceptMultiPerspective(page, apiKey, framework, re
       researchArea: initialAnalysis.researchArea,
       framework: framework,
       frameworkName: EVALUATION_FRAMEWORKS[framework].name,
+
+      // Eligibility status (passed screening)
+      eligibility: {
+        isEligible: true,
+        flag: null,
+        flagReason: null
+      },
 
       // Proposal summary (what they're proposing + potential impact)
       proposalSummary: proposalSummary,
@@ -710,6 +769,24 @@ function summarizeLiteratureSources(results) {
     sources[source] = (sources[source] || 0) + 1;
   });
   return sources;
+}
+
+/**
+ * Get human-readable name for eligibility flag
+ */
+function getFlagCategoryName(flag) {
+  const flagNames = {
+    'MEDICAL_DEVICE_TRANSLATIONAL': 'Medical Devices / Translational Research',
+    'ENGINEERING_ONLY': 'Engineering-Only Projects',
+    'CLINICAL_TRIALS': 'Clinical Trials / Therapies / Procedures',
+    'DRUG_DEVELOPMENT': 'Drug Discovery / Development / Delivery',
+    'BIOMARKER_SCREENING': 'Disease Biomarker Screening',
+    'DIGITAL_TWIN': 'Digital Twin Implementations',
+    'USER_FACILITIES': 'User / Shared Facilities',
+    'SUPPLEMENT_RENEWAL': 'Supplements / Renewals / Follow-on Funding',
+    'CONFERENCE_POLICY': 'Conferences / Science Policy'
+  };
+  return flagNames[flag] || flag || 'Unknown Category';
 }
 
 export const config = {

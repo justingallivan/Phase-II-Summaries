@@ -10,6 +10,75 @@
  */
 
 /**
+ * W. M. Keck Foundation Funding Guidelines
+ * Used for eligibility screening before full evaluation
+ */
+export const KECK_FUNDING_GUIDELINES = {
+  fundingPriorities: [
+    'High-impact research in basic physical, life, and biomedical sciences, including instrumentation and engineering in service of basic science',
+    'Pioneering, fundamental discoveries in important and emerging research areas',
+    'Novel approaches that are distinctive, innovative, field-expanding, and challenge existing paradigms',
+    'High-risk, high-reward proposals are welcome'
+  ],
+  whatWeLookFor: [
+    'Project overview: unique aspects, positioning relative to field, preliminary data if available',
+    'Methodologies: what is validated, what is new',
+    'Key personnel: why is this the right team',
+    'Knowledge gap: what is the basic scientific question to be answered',
+    'Impact: what will ~$1M enable',
+    'Innovation: how is this distinctive from existing work, especially any recent similar awards by Keck; in what ways does it challenge existing norms',
+    'Risk: what features of this project are high-risk'
+  ],
+  exclusions: [
+    {
+      category: 'Medical Devices or Translational Research',
+      flag: 'MEDICAL_DEVICE_TRANSLATIONAL',
+      description: 'Medical devices or bench-to-bedside translational research'
+    },
+    {
+      category: 'Engineering-Only Projects',
+      flag: 'ENGINEERING_ONLY',
+      description: 'Projects solely focused on engineering equipment, tools, or materials; engineering for efficiency, optimization, or cost reduction'
+    },
+    {
+      category: 'Clinical Trials or Therapies',
+      flag: 'CLINICAL_TRIALS',
+      description: 'Clinical trials, therapies, or procedures'
+    },
+    {
+      category: 'Drug Discovery/Development',
+      flag: 'DRUG_DEVELOPMENT',
+      description: 'Drug discovery, development, or delivery'
+    },
+    {
+      category: 'Disease Biomarker Screening',
+      flag: 'BIOMARKER_SCREENING',
+      description: 'Disease biomarker screening'
+    },
+    {
+      category: 'Digital Twin Implementations',
+      flag: 'DIGITAL_TWIN',
+      description: 'Digital twin implementations'
+    },
+    {
+      category: 'User/Shared Facilities',
+      flag: 'USER_FACILITIES',
+      description: 'User facilities or equipment for shared facilities'
+    },
+    {
+      category: 'Supplements/Renewals/Follow-on',
+      flag: 'SUPPLEMENT_RENEWAL',
+      description: 'Supplements, renewals, or follow-on funding for previous awards'
+    },
+    {
+      category: 'Conferences or Science Policy',
+      flag: 'CONFERENCE_POLICY',
+      description: 'Conferences or science policy'
+    }
+  ]
+};
+
+/**
  * Evaluation Framework Definitions
  * Each framework defines the criteria and focus areas for evaluation
  */
@@ -88,19 +157,52 @@ export const EVALUATION_FRAMEWORKS = {
 /**
  * Stage 1: Initial Analysis Prompt (Vision API)
  * Sent with a single concept page as a PDF image.
- * Extracts key information and keywords for literature search.
- * This is reused from the original concept evaluator.
+ * Extracts key information, checks eligibility, and generates keywords for literature search.
  */
 export function createInitialAnalysisPrompt() {
-  return `You are an expert research evaluator analyzing research concepts for potential funding.
+  const guidelines = KECK_FUNDING_GUIDELINES;
+  const exclusionsList = guidelines.exclusions
+    .map(e => `- **${e.category}**: ${e.description}`)
+    .join('\n');
+  const prioritiesList = guidelines.fundingPriorities
+    .map(c => `- ${c}`)
+    .join('\n');
+  const lookForList = guidelines.whatWeLookFor
+    .map(c => `- ${c}`)
+    .join('\n');
+  const validFlags = guidelines.exclusions
+    .map(e => `"${e.flag}"`)
+    .join(' | ');
 
-Analyze this single-page research concept and extract key information. This concept page is from a submission packet where researchers propose ideas for potential funding.
+  return `You are an expert research evaluator analyzing research concepts for the W. M. Keck Foundation.
+
+**KECK FOUNDATION FUNDING GUIDELINES**
+
+**Funding Priorities:**
+${prioritiesList}
+
+**What We Look For in Proposals:**
+${lookForList}
+
+**THE FOUNDATION DOES NOT FUND:**
+${exclusionsList}
+
+---
+
+Analyze this single-page research concept and extract key information. This concept page is from a submission packet where researchers propose ideas for potential Keck Foundation funding.
 
 **YOUR TASK:**
 
-Provide a structured analysis with the following information. Return your response as valid JSON.
+FIRST, check if this concept falls into any of the exclusion categories listed above. If it does, flag it as potentially ineligible.
+
+THEN, provide a structured analysis with the following information. Return your response as valid JSON.
 
 {
+  "eligibility": {
+    "isEligible": true or false,
+    "flag": null if eligible, otherwise one of: ${validFlags},
+    "flagReason": null if eligible, otherwise a specific explanation of why this concept appears to fall into an exclusion category (reference specific aspects of the proposal)
+  },
   "title": "The concept title or a descriptive title if not explicitly stated",
   "piName": "Principal Investigator name if mentioned, otherwise null",
   "institution": "Institution name if mentioned, otherwise null",
@@ -118,6 +220,8 @@ Provide a structured analysis with the following information. Return your respon
 
 **IMPORTANT:**
 - Return ONLY valid JSON, no additional text or markdown
+- Check eligibility FIRST - if the concept clearly falls into an exclusion category, set isEligible to false and provide a specific reason
+- Be conservative with eligibility flags: only flag if the concept CLEARLY falls into an exclusion category. Basic science research that COULD eventually inform medical devices or drugs is still eligible if the research itself is fundamental/basic science.
 - Each search query should be SHORT (3-5 words) and focused on one specific aspect
 - Good queries: "CRISPR gene editing", "retroviral vector packaging", "host innate immunity"
 - Bad queries: "CRISPR screening packageable lentiviral vectors Simian Immunodeficiency Virus innate immunity" (too long, combines too many concepts)
@@ -261,10 +365,10 @@ Provide your evaluation as valid JSON:
     "What could go right - upside scenario 2"
   ],
 
-  "rebuttalsToLikelyConcerns": [
+  "anticipatedConcerns": [
     {
-      "likelyConcern": "A concern skeptics might raise",
-      "rebuttal": "Why this concern may be less serious than it appears"
+      "concern": "A concern that skeptics or reviewers might raise about this proposal",
+      "counterpoint": "Why this concern may be addressable or less serious than it appears"
     }
   ],
 
@@ -503,8 +607,8 @@ Provide your synthesis as valid JSON:
 
   "forDecisionMakers": {
     "headline": "One-sentence summary for quick scanning",
-    "fundIf": "Under what conditions this should be funded",
-    "doNotFundIf": "Under what conditions this should not be funded"
+    "furtherConsiderIf": "Under what conditions this should be further considered for funding",
+    "declineIf": "Under what conditions this should be declined"
   }
 }
 

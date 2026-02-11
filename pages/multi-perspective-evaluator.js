@@ -137,12 +137,12 @@ function SynthesisView({ concept }) {
           <p className="text-gray-800 font-medium mb-4">{forDecisionMakers.headline}</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div className="bg-white p-3 rounded border border-green-200">
-              <span className="font-medium text-green-700">Fund if:</span>
-              <p className="text-gray-600 mt-1">{forDecisionMakers.fundIf}</p>
+              <span className="font-medium text-green-700">Further consider if:</span>
+              <p className="text-gray-600 mt-1">{forDecisionMakers.furtherConsiderIf}</p>
             </div>
             <div className="bg-white p-3 rounded border border-red-200">
-              <span className="font-medium text-red-700">Do not fund if:</span>
-              <p className="text-gray-600 mt-1">{forDecisionMakers.doNotFundIf}</p>
+              <span className="font-medium text-red-700">Decline if:</span>
+              <p className="text-gray-600 mt-1">{forDecisionMakers.declineIf}</p>
             </div>
           </div>
         </div>
@@ -360,12 +360,12 @@ function PerspectiveCard({ perspective, data, color }) {
             )}
 
             {/* Perspective-specific expanded content */}
-            {perspective === 'Optimist' && data.rebuttalsToLikelyConcerns?.length > 0 && (
+            {perspective === 'Optimist' && data.anticipatedConcerns?.length > 0 && (
               <div>
-                <h5 className="text-xs font-medium text-green-700 mb-1">Rebuttals to Concerns</h5>
-                {data.rebuttalsToLikelyConcerns.map((r, i) => (
+                <h5 className="text-xs font-medium text-green-700 mb-1">Anticipated Concerns & Counterpoints</h5>
+                {data.anticipatedConcerns.map((r, i) => (
                   <div key={i} className="text-xs text-gray-600 mb-1">
-                    <span className="font-medium">{r.likelyConcern}:</span> {r.rebuttal}
+                    <span className="font-medium">{r.concern}:</span> {r.counterpoint}
                   </div>
                 ))}
               </div>
@@ -538,36 +538,38 @@ function ConceptResult({ concept, index }) {
           </p>
         </div>
 
-        {/* View Toggle */}
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
-          <button
-            onClick={() => setActiveView('synthesis')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeView === 'synthesis'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Synthesis
-          </button>
-          <button
-            onClick={() => setActiveView('perspectives')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeView === 'perspectives'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Perspectives
-          </button>
-        </div>
+        {/* View Toggle - only show if perspectives exist */}
+        {concept.perspectives && (
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+            <button
+              onClick={() => setActiveView('synthesis')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeView === 'synthesis'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Synthesis
+            </button>
+            <button
+              onClick={() => setActiveView('perspectives')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeView === 'perspectives'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Perspectives
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Proposal Summary - always shown above the views */}
       <ProposalSummaryView proposalSummary={concept.proposalSummary} />
 
       {/* Content based on active view */}
-      {activeView === 'synthesis' ? (
+      {activeView === 'synthesis' || !concept.perspectives ? (
         <SynthesisView concept={concept} />
       ) : (
         <PerspectivesView perspectives={concept.perspectives} />
@@ -827,8 +829,8 @@ export default function MultiPerspectiveEvaluator() {
         if (concept.forDecisionMakers) {
           builder.addSection('Executive Summary', 2);
           builder.addParagraph(concept.forDecisionMakers.headline, { font: 'bold' });
-          builder.addKeyValue('Fund if', concept.forDecisionMakers.fundIf);
-          builder.addKeyValue('Do not fund if', concept.forDecisionMakers.doNotFundIf);
+          builder.addKeyValue('Further consider if', concept.forDecisionMakers.furtherConsiderIf);
+          builder.addKeyValue('Decline if', concept.forDecisionMakers.declineIf);
         }
 
         // Consensus
@@ -943,8 +945,8 @@ export default function MultiPerspectiveEvaluator() {
         if (concept.forDecisionMakers) {
           content += `### Executive Summary\n\n`;
           content += `${concept.forDecisionMakers.headline}\n\n`;
-          content += `- **Fund if:** ${concept.forDecisionMakers.fundIf}\n`;
-          content += `- **Do not fund if:** ${concept.forDecisionMakers.doNotFundIf}\n\n`;
+          content += `- **Further consider if:** ${concept.forDecisionMakers.furtherConsiderIf}\n`;
+          content += `- **Decline if:** ${concept.forDecisionMakers.declineIf}\n\n`;
         }
 
         // Consensus
