@@ -23,7 +23,7 @@ export const config = {
 };
 
 const MAX_TOOL_ROUNDS = 10;
-const MAX_RESULT_CHARS = 30000; // Truncate large results
+const MAX_RESULT_CHARS = 8000; // Keep tool results compact to avoid token limits
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -198,7 +198,7 @@ export default async function handler(req, res) {
 async function callClaude({ apiKey, model, fallbackModel, systemPrompt, messages, tools }) {
   const body = {
     model,
-    max_tokens: 4096,
+    max_tokens: 2048,
     system: systemPrompt,
     messages,
     tools,
@@ -240,11 +240,38 @@ async function callClaude({ apiKey, model, fallbackModel, systemPrompt, messages
 
 async function executeTool(name, input) {
   switch (name) {
-    case 'discover_tables':
-      return DynamicsService.getEntityDefinitions(input.search_term);
+    case 'discover_tables': {
+      const allEntities = await DynamicsService.getEntityDefinitions(input.search_term);
+      // Without a search term, return only custom + well-known entities to stay within token limits
+      if (!input.search_term) {
+        const wellKnown = new Set([
+          'email', 'task', 'contact', 'account', 'appointment', 'phonecall',
+          'annotation', 'activitypointer', 'letter', 'fax', 'systemuser',
+          'team', 'businessunit', 'lead', 'opportunity', 'incident',
+        ]);
+        const filtered = allEntities.filter(e => e.isCustom || wellKnown.has(e.logicalName));
+        return {
+          tables: filtered.map(e => ({ logicalName: e.logicalName, displayName: e.displayName, entitySetName: e.entitySetName })),
+          count: filtered.length,
+          totalInSystem: allEntities.length,
+          note: `Showing ${filtered.length} custom + common tables out of ${allEntities.length} total. Use search_term to find specific system tables.`,
+        };
+      }
+      // With a search term, still trim to essentials
+      return {
+        tables: allEntities.slice(0, 50).map(e => ({ logicalName: e.logicalName, displayName: e.displayName, entitySetName: e.entitySetName, description: e.description })),
+        count: allEntities.length,
+      };
+    }
 
-    case 'discover_fields':
-      return DynamicsService.getEntityAttributes(input.table_name);
+    case 'discover_fields': {
+      const attrs = await DynamicsService.getEntityAttributes(input.table_name);
+      // Return compact representation — skip description to save tokens
+      return {
+        fields: attrs.map(a => ({ name: a.logicalName, displayName: a.displayName, type: a.type })),
+        count: attrs.length,
+      };
+    }
 
     case 'discover_relationships':
       return DynamicsService.getEntityRelationships(input.table_name);
