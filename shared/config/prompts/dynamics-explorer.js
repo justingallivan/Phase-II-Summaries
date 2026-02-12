@@ -41,61 +41,44 @@ CROSS-TABLE LOOKUPS:
 OData: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z.
 Present results as markdown tables.
 
-SCHEMA (table_name → entitySet — description):
+SCHEMA (table_name/entitySet: fields):
 
-akoya_request → akoya_requests — proposals/grants (5000+)
-  akoya_requestnum, akoya_requeststatus, akoya_requesttype, akoya_submitdate, akoya_fiscalyear, akoya_paid, akoya_loireceived, createdon, modifiedon, statecode, statuscode, _akoya_applicantid_value, _akoya_primarycontactid_value, _wmkf_programdirector_value, _wmkf_programcoordinator_value, _wmkf_grantprogram_value, _wmkf_type_value, wmkf_request_type, wmkf_typeforrollup, wmkf_meetingdate, wmkf_numberofyearsoffunding, wmkf_numberofconcepts, wmkf_numberofpayments, wmkf_mrconcept1title, wmkf_mrconcept2title, wmkf_mrconcept3title, wmkf_mrconcept4title, wmkf_seconcept1title, wmkf_seconcept2title, wmkf_seconcept3title, wmkf_seconcept4title, wmkf_researchconceptstatus, wmkf_conceptcalldate, wmkf_researchconceptemailsent, wmkf_vendorverified, wmkf_phaseiicheckincomplete, wmkf_pcgoverifycomplete, wmkf_calculatedtime
+akoya_request/akoya_requests — proposals/grants (5000+):
+  akoya_requestnum, akoya_requeststatus, akoya_requesttype, akoya_submitdate, akoya_fiscalyear, akoya_paid, akoya_loireceived, statecode, statuscode, createdon, modifiedon, _akoya_applicantid_value, _akoya_primarycontactid_value, _wmkf_programdirector_value, _wmkf_programcoordinator_value, _wmkf_grantprogram_value, _wmkf_type_value, wmkf_request_type, wmkf_typeforrollup, wmkf_meetingdate, wmkf_numberofyearsoffunding, wmkf_numberofconcepts, wmkf_numberofpayments, wmkf_mrconcept1title..4title, wmkf_seconcept1title..4title, wmkf_researchconceptstatus, wmkf_conceptcalldate, wmkf_researchconceptemailsent, wmkf_vendorverified, wmkf_phaseiicheckincomplete
 
-akoya_concept → akoya_concepts — research concepts / eligibility screening (75)
-  akoya_title, akoya_conceptid, wmkf_conceptnumber, wmkf_conceptstatus, wmkf_concepttype, wmkf_meetingdate, wmkf_readyforreview, wmkf_reviewcompleted, wmkf_datenotified, wmkf_staffoutcome, wmkf_competitiveconcepttitle, wmkf_conceptpapernotes, wmkf_socalprogramorcapital, wmkf_orgleadbyinterimortransition, wmkf_requestforaoneyeargrant, wmkf_organizationqualified501c3, wmkf_organizationpublicchartity, wmkf_stafflocatedinla, wmkf_headquartersincalifornia, wmkf_atleast2yearsauditedfinancials, wmkf_requestforunrestrictedfunding, wmkf_annualoperatingbudgetatleast750000, wmkf_projectserveresidentsoflacounty, wmkf_receivedgrantfromfoundation, wmkf_organizationgovernmentunit, wmkf_ifcapitalrequestdoyouhavesitecontrol, wmkf_projecttitle2, wmkf_projecttitle3, createdon, modifiedon, _akoya_applicant_value, _akoya_request_value, _akoya_primarycontact_value, _wmkf_internalprogram_value
+akoya_concept/akoya_concepts — concepts/eligibility (75):
+  akoya_title, akoya_conceptid, wmkf_conceptnumber, wmkf_conceptstatus, wmkf_concepttype, wmkf_meetingdate, wmkf_readyforreview, wmkf_reviewcompleted, wmkf_datenotified, wmkf_staffoutcome, wmkf_competitiveconcepttitle, wmkf_conceptpapernotes, wmkf_socalprogramorcapital, wmkf_projecttitle2, wmkf_projecttitle3, createdon, modifiedon, _akoya_applicant_value, _akoya_request_value, _akoya_primarycontact_value, _wmkf_internalprogram_value
+  Eligibility flags: wmkf_organizationqualified501c3, wmkf_headquartersincalifornia, wmkf_stafflocatedinla, wmkf_annualoperatingbudgetatleast750000, wmkf_projectserveresidentsoflacounty, wmkf_atleast2yearsauditedfinancials, wmkf_requestforunrestrictedfunding, wmkf_receivedgrantfromfoundation, wmkf_organizationgovernmentunit
 
-akoya_requestpayment → akoya_requestpayments — payments (5000+)
-  akoya_paymentnum, akoya_type, akoya_amount, akoya_netamount, akoya_paymentdate, akoya_postingdate, akoya_estimatedgrantpaydate, akoya_requirementdue, akoya_requirementtype, akoya_folio, wmkf_reporttype, wmkf_billcompaymentid, createdon, modifiedon, statecode, statuscode, _akoya_requestlookup_value, _akoya_requestapplicant_value, _akoya_requestcontact_value, _akoya_payee_value
+akoya_requestpayment/akoya_requestpayments — payments (5000+):
+  akoya_paymentnum, akoya_type, akoya_amount, akoya_netamount, akoya_paymentdate, akoya_postingdate, akoya_estimatedgrantpaydate, akoya_requirementdue, akoya_requirementtype, akoya_folio, wmkf_reporttype, statecode, statuscode, createdon, _akoya_requestlookup_value, _akoya_requestapplicant_value, _akoya_requestcontact_value, _akoya_payee_value
 
-contact → contacts — people (5000+)
-  fullname, firstname, lastname, salutation, emailaddress1, jobtitle, telephone1, akoya_contactnum, createdon, modifiedon, statecode, statuscode, contactid
+contact/contacts — people (5000+):
+  fullname, firstname, lastname, emailaddress1, jobtitle, telephone1, akoya_contactnum, statecode, contactid, createdon
 
-account → accounts — organizations (4500+)
-  name, akoya_constituentnum, akoya_totalgrants, akoya_countofawards, akoya_countofrequests, wmkf_countofprogramgrants, wmkf_countofconcepts, wmkf_countofdiscretionarygrant, wmkf_sumofprogramgrants, wmkf_sumofdiscretionarygrants, wmkf_eastwest, wmkf_financialstatementsneeded, wmkf_bmf509, wmkf_bmfsubsectiondescription, wmkf_bmffoundationcode, address1_line1, address1_city, address1_stateorprovince, address1_postalcode, address1_country, websiteurl, telephone1, akoya_taxid, akoya_institutiontype, createdon, modifiedon, statecode, accountid
+account/accounts — organizations (4500+):
+  name, akoya_constituentnum, akoya_totalgrants, akoya_countofawards, akoya_countofrequests, wmkf_countofprogramgrants, wmkf_countofconcepts, wmkf_countofdiscretionarygrant, wmkf_sumofprogramgrants, wmkf_sumofdiscretionarygrants, wmkf_eastwest, wmkf_financialstatementsneeded, wmkf_bmf509, wmkf_bmfsubsectiondescription, address1_city, address1_stateorprovince, websiteurl, telephone1, akoya_institutiontype, accountid, createdon
 
-email → emails — email activities (5000+)
-  subject, description, sender, torecipients, senton, directioncode, attachmentcount, createdon, modifiedon, statecode, statuscode, activityid, _regardingobjectid_value
+email/emails — email activities (5000+):
+  subject, description, sender, torecipients, createdon, directioncode, statecode, activityid, _regardingobjectid_value
 
-annotation → annotations — notes/attachments (5000+)
-  subject, notetext, filename, mimetype, filesize, isdocument, createdon, modifiedon, annotationid, _objectid_value
+annotation/annotations — notes/attachments (5000+):
+  subject, notetext, filename, mimetype, filesize, isdocument, createdon, annotationid, _objectid_value
 
-wmkf_potentialreviewers → wmkf_potentialreviewerses — potential reviewers (3141)
-  wmkf_name, wmkf_firstname, wmkf_lastname, wmkf_prefix, wmkf_title, wmkf_emailaddress, wmkf_organizationname, wmkf_areaofexpertise, wmkf_source, wmkf_potentialreviewersid
+wmkf_potentialreviewers/wmkf_potentialreviewerses — reviewers (3141):
+  wmkf_name, wmkf_firstname, wmkf_lastname, wmkf_title, wmkf_emailaddress, wmkf_organizationname, wmkf_areaofexpertise, wmkf_potentialreviewersid
 
-wmkf_donors → wmkf_donorses — donors (116)
-  wmkf_name, wmkf_code, wmkf_dc_id, wmkf_donorsid
-
-wmkf_bbstatus → wmkf_bbstatuses — board/grant status codes (88)
-  wmkf_name, wmkf_bbcode, wmkf_bbid, wmkf_requesttype, wmkf_bbstatusid
-
-akoya_program → akoya_programs — grant programs (24)
-  akoya_program, wmkf_code, wmkf_alternatename, wmkf_typeofdiscretionarygrant, akoya_programid
-
-wmkf_supporttype → wmkf_supporttypes — support types (41)
-  wmkf_name, wmkf_supporttypeid
-
-wmkf_programlevel2 → wmkf_programlevel2s — program categories (29)
-  wmkf_name, wmkf_programlevel2id
-
-wmkf_grantprogram → wmkf_grantprograms — grant program lookup (11)
-  wmkf_name, wmkf_code, wmkf_grantprogramid
-
-wmkf_type → wmkf_types — request type lookup (8)
-  wmkf_name, wmkf_typeid
-
-akoya_phase → akoya_phases — application phases (62)
-  akoya_phasename, akoya_phase, akoya_phaseorder, akoya_phasetype, akoya_totalsubmissions, akoya_totalawarded, akoya_totalrequested, _akoya_application_value
-
-akoya_goapplystatustracking → akoya_goapplystatustrackings — application tracking (3293)
-  akoya_id, akoya_applicantemail, akoya_currentphasestatus, akoya_duedate, akoya_progress, akoya_mostrecentsubmitdate, _akoya_request_value, _akoya_goapplyapplication_value, _akoya_goapplyapplicant_value
-
-activitypointer → activitypointers — all activities (5000+)
-  subject, description, activitytypecode, actualend, createdon, modifiedon, statecode, statuscode, activityid, _regardingobjectid_value`;
+Lookup tables (small, use for resolving _value GUIDs):
+  wmkf_grantprogram/wmkf_grantprograms (11): wmkf_name, wmkf_code, wmkf_grantprogramid
+  wmkf_type/wmkf_types (8): wmkf_name, wmkf_typeid
+  wmkf_bbstatus/wmkf_bbstatuses (88): wmkf_name, wmkf_bbcode, wmkf_requesttype, wmkf_bbstatusid
+  wmkf_donors/wmkf_donorses (116): wmkf_name, wmkf_code, wmkf_donorsid
+  wmkf_supporttype/wmkf_supporttypes (41): wmkf_name, wmkf_supporttypeid
+  wmkf_programlevel2/wmkf_programlevel2s (29): wmkf_name, wmkf_programlevel2id
+  akoya_program/akoya_programs (24): akoya_program, wmkf_code, wmkf_alternatename, akoya_programid
+  akoya_phase/akoya_phases (62): akoya_phasename, akoya_phaseorder, akoya_phasetype, akoya_totalsubmissions, akoya_totalawarded, _akoya_application_value
+  akoya_goapplystatustracking/akoya_goapplystatustrackings (3293): akoya_id, akoya_applicantemail, akoya_currentphasestatus, akoya_duedate, akoya_progress, _akoya_request_value
+  activitypointer/activitypointers (5000+): subject, activitytypecode, createdon, statecode, activityid, _regardingobjectid_value`;
 }
 
 /**

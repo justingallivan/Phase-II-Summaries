@@ -273,25 +273,37 @@ async function callClaude({ apiKey, model, fallbackModel, systemPrompt, messages
     tools,
   };
 
+  const callHeaders = {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION,
+  };
+
   let resp = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION,
-    },
+    headers: callHeaders,
     body: JSON.stringify(body),
   });
 
+  // Rate limit: wait and retry once
+  if (resp.status === 429) {
+    const retryAfter = parseInt(resp.headers.get('retry-after') || '30', 10);
+    const waitMs = Math.min(retryAfter, 60) * 1000;
+    console.log(`[DynExp] Rate limited, waiting ${waitMs / 1000}s before retry...`);
+    await new Promise(resolve => setTimeout(resolve, waitMs));
+    resp = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
+      method: 'POST',
+      headers: callHeaders,
+      body: JSON.stringify(body),
+    });
+  }
+
+  // Overloaded: try fallback model
   if (resp.status === 529 && fallbackModel && fallbackModel !== model) {
     body.model = fallbackModel;
     resp = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION,
-      },
+      headers: callHeaders,
       body: JSON.stringify(body),
     });
   }
@@ -447,29 +459,29 @@ async function findEmailsForAccount({ account_name, date_from, date_to }) {
     top: 100,
   });
 
-  // Build a request number lookup for the response
+  // Build a request number lookup
   const requestLookup = {};
   for (const r of requestResult.records) {
     requestLookup[r.akoya_requestid] = r.akoya_requestnum;
   }
 
-  const emails = emailResult.records.map(e => {
-    const cleaned = stripEmpty(e);
-    // Add human-readable request number
-    const reqId = e._regardingobjectid_value;
-    if (reqId && requestLookup[reqId]) {
-      cleaned.request_number = requestLookup[reqId];
-    }
-    return cleaned;
+  // Return compact text format instead of raw JSON to save tokens
+  const lines = emailResult.records.map(e => {
+    const dir = e.directioncode ? 'Out' : 'In';
+    const date = e.createdon_formatted || e.createdon || '';
+    const reqNum = requestLookup[e._regardingobjectid_value] || '?';
+    const subj = (e.subject || '').substring(0, 80);
+    const sender = (e.sender || '').substring(0, 30);
+    const to = (e.torecipients || '').substring(0, 40);
+    return `[${dir}] ${date} | Req ${reqNum} | ${sender} → ${to} | ${subj}`;
   });
 
   return {
     account: account.name,
-    accountId,
     requestCount: requestResult.records.length,
-    emailCount: emails.length,
+    emailCount: emailResult.records.length,
     hasMore: emailResult.hasMore,
-    emails,
+    emails: lines.join('\n'),
   };
 }
 
