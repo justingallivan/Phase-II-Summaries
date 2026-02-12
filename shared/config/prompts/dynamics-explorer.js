@@ -141,6 +141,17 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'find_emails_for_request',
+    description: 'Find all emails linked to a specific request by request number (e.g. "1001585"). Returns the request details and all associated email correspondence.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        request_number: { type: 'string', description: 'The akoya_requestnum (e.g. "1001585")' },
+      },
+      required: ['request_number'],
+    },
+  },
+  {
     name: 'discover_tables',
     description: 'Search for tables by name. Only when user asks about unknown tables.',
     input_schema: {

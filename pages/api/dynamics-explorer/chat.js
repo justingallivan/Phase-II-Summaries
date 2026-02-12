@@ -358,6 +358,10 @@ async function executeTool(name, input) {
       return await findEmailsForAccount(input);
     }
 
+    case 'find_emails_for_request': {
+      return await findEmailsForRequest(input);
+    }
+
     case 'discover_tables': {
       const allEntities = await DynamicsService.getEntityDefinitions(input.search_term);
       return {
@@ -485,6 +489,55 @@ async function findEmailsForAccount({ account_name, date_from, date_to }) {
   };
 }
 
+/**
+ * Find all emails linked to a specific request by request number.
+ */
+async function findEmailsForRequest({ request_number }) {
+  // Step 1: Look up the request by number
+  const reqResult = await DynamicsService.queryRecords('akoya_requests', {
+    select: 'akoya_requestnum,akoya_requestid,akoya_requeststatus,akoya_submitdate,akoya_fiscalyear,_akoya_applicantid_value,_akoya_primarycontactid_value',
+    filter: `akoya_requestnum eq '${request_number.replace(/'/g, "''")}'`,
+    top: 1,
+  });
+
+  if (!reqResult.records.length) {
+    return { error: `No request found with number "${request_number}"` };
+  }
+
+  const req = reqResult.records[0];
+  const reqId = req.akoya_requestid;
+
+  // Step 2: Query all emails linked to this request
+  const emailResult = await DynamicsService.queryRecords('emails', {
+    select: 'subject,sender,torecipients,createdon,directioncode',
+    filter: `_regardingobjectid_value eq ${reqId}`,
+    orderby: 'createdon desc',
+    top: 50,
+  });
+
+  // Format compact results
+  const lines = emailResult.records.map(e => {
+    const dir = e.directioncode ? 'Out' : 'In';
+    const date = e.createdon_formatted || e.createdon || '';
+    const subj = (e.subject || '').substring(0, 80);
+    const sender = (e.sender || '').substring(0, 30);
+    const to = (e.torecipients || '').substring(0, 40);
+    return `[${dir}] ${date} | ${sender} → ${to} | ${subj}`;
+  });
+
+  const cleaned = stripEmpty(req);
+
+  return {
+    request_number: req.akoya_requestnum,
+    status: req.akoya_requeststatus_formatted || req.akoya_requeststatus,
+    submitted: req.akoya_submitdate_formatted || req.akoya_submitdate,
+    applicant: req._akoya_applicantid_value_formatted || req._akoya_applicantid_value,
+    contact: req._akoya_primarycontactid_value_formatted || req._akoya_primarycontactid_value,
+    emailCount: emailResult.records.length,
+    emails: lines.join('\n') || 'No emails found for this request.',
+  };
+}
+
 // ─── Helpers ───
 
 function checkRestriction(toolName, input, restrictions) {
@@ -507,6 +560,7 @@ function getThinkingMessage(toolName, input) {
     case 'get_record': return `Fetching record from ${t}...`;
     case 'count_records': return `Counting ${t}...`;
     case 'find_emails_for_account': return `Finding emails for "${input.account_name}"...`;
+    case 'find_emails_for_request': return `Finding emails for request ${input.request_number}...`;
     default: return `Running ${toolName}...`;
   }
 }
