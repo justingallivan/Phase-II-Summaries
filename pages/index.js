@@ -116,6 +116,16 @@ const apps = [
     path: '/literature-analyzer'
   },
   {
+    id: 'dynamics-explorer',
+    title: 'Dynamics Explorer',
+    description: 'Chat with your CRM data using natural language. Query, explore, and export Dynamics 365 records with AI-powered assistance',
+    icon: '💬',
+    status: 'active',
+    categories: ['other'],
+    features: ['Natural Language Queries', 'Schema Discovery', 'Data Export', 'Multi-Turn Chat'],
+    path: '/dynamics-explorer'
+  },
+  {
     id: 'integrity-screener',
     title: 'Applicant Integrity Screener',
     description: 'Screen grant applicants for research integrity concerns using Retraction Watch, PubPeer, and news sources',

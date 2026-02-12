@@ -84,6 +84,11 @@ export const BASE_CONFIG = {
     'email-personalization': {
       model: 'claude-3-5-haiku-20241022',
       fallback: 'claude-3-haiku-20240307'
+    },
+    // Dynamics Explorer - Sonnet for good tool-use in agentic loop
+    'dynamics-explorer': {
+      model: 'claude-sonnet-4-20250514',
+      fallback: 'claude-3-5-haiku-20241022'
     }
   },
 

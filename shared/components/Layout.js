@@ -39,6 +39,7 @@ export default function Layout({
     { name: 'Summarize Peer Reviews', href: '/peer-review-summarizer', icon: '📝' },
     { name: 'Expense Reporter', href: '/expense-reporter', icon: '💰' },
     { name: 'Literature Analyzer', href: '/literature-analyzer', icon: '📖' },
+    { name: 'Dynamics Explorer', href: '/dynamics-explorer', icon: '💬' },
   ];
 
   return (

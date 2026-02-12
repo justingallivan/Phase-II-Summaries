@@ -369,6 +369,49 @@ const v13Statements = [
   `CREATE INDEX IF NOT EXISTS idx_screening_dismissals_source ON screening_dismissals(source)`,
 ];
 
+// V14: Dynamics Explorer tables
+const v14Statements = [
+  // Table: dynamics_user_roles
+  `CREATE TABLE IF NOT EXISTS dynamics_user_roles (
+    id SERIAL PRIMARY KEY,
+    user_profile_id INTEGER REFERENCES user_profiles(id) UNIQUE,
+    role VARCHAR(20) NOT NULL DEFAULT 'read_only',
+    granted_by INTEGER REFERENCES user_profiles(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+
+  // Table: dynamics_restrictions
+  `CREATE TABLE IF NOT EXISTS dynamics_restrictions (
+    id SERIAL PRIMARY KEY,
+    table_name VARCHAR(255) NOT NULL,
+    field_name VARCHAR(255),
+    restriction_type VARCHAR(20) NOT NULL DEFAULT 'block',
+    reason TEXT,
+    created_by INTEGER REFERENCES user_profiles(id)
+  )`,
+
+  // Table: dynamics_query_log
+  `CREATE TABLE IF NOT EXISTS dynamics_query_log (
+    id SERIAL PRIMARY KEY,
+    user_profile_id INTEGER REFERENCES user_profiles(id),
+    session_id VARCHAR(100),
+    query_type VARCHAR(50),
+    table_name VARCHAR(255),
+    query_params JSONB,
+    record_count INTEGER,
+    execution_time_ms INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+
+  // Indexes
+  `CREATE INDEX IF NOT EXISTS idx_dynamics_user_roles_user ON dynamics_user_roles(user_profile_id)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_dynamics_restrictions_unique ON dynamics_restrictions(table_name, COALESCE(field_name, ''))`,
+  `CREATE INDEX IF NOT EXISTS idx_dynamics_restrictions_table ON dynamics_restrictions(table_name)`,
+  `CREATE INDEX IF NOT EXISTS idx_dynamics_query_log_user ON dynamics_query_log(user_profile_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_dynamics_query_log_session ON dynamics_query_log(session_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_dynamics_query_log_created ON dynamics_query_log(created_at DESC)`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -709,6 +752,25 @@ async function runMigration() {
       }
     }
 
+    // Run V14 table creation (Dynamics Explorer)
+    console.log(`\nApplying v14 schema updates - Dynamics Explorer tables (${v14Statements.length} statements)...`);
+    for (let i = 0; i < v14Statements.length; i++) {
+      const statement = v14Statements[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v14-${i + 1}/${v14Statements.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v14-${i + 1}/${v14Statements.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v14-${i + 1}/${v14Statements.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -769,7 +831,11 @@ async function runMigration() {
     console.log('  • retractions (Retraction Watch data storage)');
     console.log('  • integrity_screenings (screening history)');
     console.log('  • screening_dismissals (false positive tracking)');
-    console.log('\nIndexes created: 35');
+    console.log('\nV14 new tables (Dynamics Explorer):');
+    console.log('  • dynamics_user_roles (user role assignments)');
+    console.log('  • dynamics_restrictions (table/field access restrictions)');
+    console.log('  • dynamics_query_log (audit trail)');
+    console.log('\nIndexes created: 40');
 
   } catch (error) {
     console.error('\n✗ Migration failed:', error.message);
