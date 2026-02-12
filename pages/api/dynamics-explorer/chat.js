@@ -306,63 +306,18 @@ function isSystemField(name) {
 
 async function executeTool(name, input) {
   switch (name) {
-    case 'discover_tables': {
-      const allEntities = await DynamicsService.getEntityDefinitions(input.search_term);
-      if (!input.search_term) {
-        const wellKnown = new Set([
-          'email', 'task', 'contact', 'account', 'appointment', 'phonecall',
-          'annotation', 'activitypointer', 'systemuser',
-        ]);
-        const filtered = allEntities.filter(e => e.isCustom || wellKnown.has(e.logicalName));
-        return {
-          tables: filtered.map(e => `${e.logicalName} (${e.entitySetName})`),
-          count: filtered.length,
-          total: allEntities.length,
-          hint: 'Use search_term to find other tables.',
-        };
-      }
-      return {
-        tables: allEntities.slice(0, 30).map(e => `${e.logicalName} (${e.entitySetName})${e.description ? ': ' + e.description.substring(0, 60) : ''}`),
-        count: allEntities.length,
-      };
-    }
-
-    case 'discover_fields': {
-      const attrs = await DynamicsService.getEntityAttributes(input.table_name);
-      const filtered = attrs.filter(a => !isSystemField(a.logicalName));
-      // Return as compact strings instead of objects
-      return {
-        fields: filtered.map(a => `${a.logicalName} (${a.type})`),
-        count: filtered.length,
-      };
-    }
-
-    case 'discover_relationships': {
-      const rels = await DynamicsService.getEntityRelationships(input.table_name);
-      // Return compact strings
-      return {
-        lookups: rels.manyToOne.map(r => `${r.referencingAttribute} → ${r.referencedEntity}`),
-        referencedBy: rels.oneToMany.slice(0, 20).map(r => `${r.referencingEntity}.${r.referencingAttribute}`),
-      };
-    }
-
     case 'query_records': {
       const entitySet = await DynamicsService.resolveEntitySetName(input.table_name);
-      return DynamicsService.queryRecords(entitySet, {
+      const result = await DynamicsService.queryRecords(entitySet, {
         select: input.select,
         filter: input.filter,
         orderby: input.orderby,
         top: input.top || 10,
         expand: input.expand,
       });
-    }
-
-    case 'get_record': {
-      const entitySet = await DynamicsService.resolveEntitySetName(input.table_name);
-      return DynamicsService.getRecord(entitySet, input.record_id, {
-        select: input.select,
-        expand: input.expand,
-      });
+      // Strip null/empty values to dramatically reduce token usage
+      result.records = result.records.map(stripEmpty);
+      return result;
     }
 
     case 'count_records': {
@@ -371,9 +326,55 @@ async function executeTool(name, input) {
       return { count };
     }
 
+    case 'get_record': {
+      const entitySet = await DynamicsService.resolveEntitySetName(input.table_name);
+      const record = await DynamicsService.getRecord(entitySet, input.record_id, {
+        select: input.select,
+        expand: input.expand,
+      });
+      return stripEmpty(record);
+    }
+
+    case 'discover_tables': {
+      const allEntities = await DynamicsService.getEntityDefinitions(input.search_term);
+      return {
+        tables: allEntities.slice(0, 30).map(e => `${e.logicalName} (${e.entitySetName})`),
+        count: allEntities.length,
+      };
+    }
+
+    case 'discover_fields': {
+      const attrs = await DynamicsService.getEntityAttributes(input.table_name);
+      const filtered = attrs.filter(a => !isSystemField(a.logicalName));
+      return {
+        fields: filtered.map(a => `${a.logicalName} (${a.type})`),
+        count: filtered.length,
+      };
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
+}
+
+/**
+ * Strip null, empty string, false, and 0 values from a record.
+ * Also remove internal fields (starting with @ or containing "odata").
+ * This dramatically reduces payload for sparse Dynamics records.
+ */
+function stripEmpty(record) {
+  if (!record || typeof record !== 'object') return record;
+  const cleaned = {};
+  for (const [key, value] of Object.entries(record)) {
+    // Skip OData metadata
+    if (key.startsWith('@') || key.includes('odata')) continue;
+    // Skip null/empty/zero/false
+    if (value === null || value === undefined || value === '' || value === false || value === 0) continue;
+    // Skip GUID-like null values (all zeros)
+    if (typeof value === 'string' && /^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(value)) continue;
+    cleaned[key] = value;
+  }
+  return cleaned;
 }
 
 // ─── Helpers ───
@@ -392,9 +393,8 @@ function checkRestriction(toolName, input, restrictions) {
 function getThinkingMessage(toolName, input) {
   const t = input.table_name;
   switch (toolName) {
-    case 'discover_tables': return input.search_term ? `Searching tables for "${input.search_term}"...` : 'Listing tables...';
+    case 'discover_tables': return `Searching tables for "${input.search_term}"...`;
     case 'discover_fields': return `Getting fields for ${t}...`;
-    case 'discover_relationships': return `Getting relationships for ${t}...`;
     case 'query_records': return `Querying ${t}...`;
     case 'get_record': return `Fetching record from ${t}...`;
     case 'count_records': return `Counting ${t}...`;
