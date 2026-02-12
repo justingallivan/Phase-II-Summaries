@@ -33,7 +33,6 @@ CROSS-TABLE LOOKUPS:
 - Requests by org: query account for accountid → filter akoya_request by _akoya_applicantid_value eq GUID
 - Requests by person: query contact for contactid → filter by _akoya_primarycontactid_value eq GUID
 - Payments for request: filter akoya_requestpayment by _akoya_requestlookup_value eq request-GUID
-- Concepts for request: filter akoya_concept by _akoya_request_value eq request-GUID
 - Notes/attachments on record: filter annotation by _objectid_value eq record-GUID
 - Grant program name: lookup wmkf_grantprogram by _wmkf_grantprogram_value from request
 - Request type name: lookup wmkf_type by _wmkf_type_value from request
@@ -49,21 +48,17 @@ Present results as markdown tables.
 SCHEMA (table_name/entitySet: fields):
 
 akoya_request/akoya_requests — proposals/grants (5000+):
-  akoya_requestnum, akoya_requeststatus, akoya_requesttype, akoya_submitdate, akoya_fiscalyear, akoya_paid, akoya_loireceived, statecode, statuscode, createdon, modifiedon, _akoya_applicantid_value, _akoya_primarycontactid_value, _wmkf_programdirector_value, _wmkf_programcoordinator_value, _wmkf_grantprogram_value, _wmkf_type_value, wmkf_request_type, wmkf_typeforrollup, wmkf_meetingdate, wmkf_numberofyearsoffunding, wmkf_numberofconcepts, wmkf_numberofpayments, wmkf_mrconcept1title..4title, wmkf_seconcept1title..4title, wmkf_researchconceptstatus, wmkf_conceptcalldate, wmkf_researchconceptemailsent, wmkf_vendorverified, wmkf_phaseiicheckincomplete
+  akoya_requestnum, akoya_requeststatus, akoya_requesttype (rarely used), akoya_submitdate, akoya_fiscalyear, akoya_paid (total amount paid), akoya_loireceived (Phase I proposal received date), statecode, statuscode, createdon, modifiedon, _akoya_applicantid_value, _akoya_primarycontactid_value, _wmkf_programdirector_value (Keck staff program director), _wmkf_programcoordinator_value (Keck staff coordinator), _wmkf_grantprogram_value, _wmkf_type_value (organizational code), wmkf_request_type (category: concept, phone call, site visit, or grant application), wmkf_meetingdate (board meeting date), wmkf_numberofyearsoffunding, wmkf_numberofconcepts, wmkf_numberofpayments, wmkf_mrconcept1title..4title (Medical Research concept titles), wmkf_seconcept1title..4title (Science & Engineering concept titles), wmkf_researchconceptstatus (concept status: active/denied/pending), wmkf_conceptcalldate (scheduled concept discussion call), wmkf_vendorverified (applicant payment info verified), wmkf_phaseiicheckincomplete (Phase II check-in complete)
   Reviewers: _wmkf_potentialreviewer1_value.._wmkf_potentialreviewer5_value (lookups to wmkf_potentialreviewers), wmkf_excludedreviewers (text with names and reasons)
 
-akoya_concept/akoya_concepts — concepts/eligibility (75):
-  akoya_title, akoya_conceptid, wmkf_conceptnumber, wmkf_conceptstatus, wmkf_concepttype, wmkf_meetingdate, wmkf_readyforreview, wmkf_reviewcompleted, wmkf_datenotified, wmkf_staffoutcome, wmkf_competitiveconcepttitle, wmkf_conceptpapernotes, wmkf_socalprogramorcapital, wmkf_projecttitle2, wmkf_projecttitle3, createdon, modifiedon, _akoya_applicant_value, _akoya_request_value, _akoya_primarycontact_value, _wmkf_internalprogram_value
-  Eligibility flags: wmkf_organizationqualified501c3, wmkf_headquartersincalifornia, wmkf_stafflocatedinla, wmkf_annualoperatingbudgetatleast750000, wmkf_projectserveresidentsoflacounty, wmkf_atleast2yearsauditedfinancials, wmkf_requestforunrestrictedfunding, wmkf_receivedgrantfromfoundation, wmkf_organizationgovernmentunit
-
-akoya_requestpayment/akoya_requestpayments — payments (5000+):
-  akoya_paymentnum, akoya_type, akoya_amount, akoya_netamount, akoya_paymentdate, akoya_postingdate, akoya_estimatedgrantpaydate, akoya_requirementdue, akoya_requirementtype, akoya_folio, wmkf_reporttype, statecode, statuscode, createdon, _akoya_requestlookup_value, _akoya_requestapplicant_value, _akoya_requestcontact_value, _akoya_payee_value
+akoya_requestpayment/akoya_requestpayments — payments and reporting requirements (5000+):
+  akoya_paymentnum, akoya_type (payment vs reporting requirement), akoya_amount, akoya_netamount, akoya_paymentdate, akoya_postingdate, akoya_estimatedgrantpaydate, akoya_requirementdue (report due date), akoya_requirementtype (interim or final), akoya_folio (payment status), wmkf_reporttype (detailed report type), statecode, statuscode, createdon, _akoya_requestlookup_value, _akoya_requestapplicant_value, _akoya_requestcontact_value, _akoya_payee_value
 
 contact/contacts — people (5000+):
   fullname, firstname, lastname, emailaddress1, jobtitle, telephone1, akoya_contactnum, statecode, contactid, createdon
 
 account/accounts — organizations (4500+):
-  name, akoya_constituentnum, akoya_totalgrants, akoya_countofawards, akoya_countofrequests, wmkf_countofprogramgrants, wmkf_countofconcepts, wmkf_countofdiscretionarygrant, wmkf_sumofprogramgrants, wmkf_sumofdiscretionarygrants, wmkf_eastwest, wmkf_financialstatementsneeded, wmkf_bmf509, wmkf_bmfsubsectiondescription, address1_city, address1_stateorprovince, websiteurl, telephone1, akoya_institutiontype, accountid, createdon
+  name, akoya_constituentnum (unique org ID), akoya_totalgrants, akoya_countofawards, akoya_countofrequests, wmkf_countofprogramgrants, wmkf_countofconcepts, wmkf_countofdiscretionarygrant, wmkf_sumofprogramgrants, wmkf_sumofdiscretionarygrants, wmkf_eastwest (geographic region: east/west US), wmkf_financialstatementsneeded (needs financial statements), wmkf_bmf509 (IRS 509(a) status), wmkf_bmfsubsectiondescription (IRS subsection), address1_city, address1_stateorprovince, websiteurl, telephone1, akoya_institutiontype, accountid, createdon
 
 email/emails — email activities (5000+):
   subject, description, sender, torecipients, createdon, directioncode, statecode, activityid, _regardingobjectid_value
