@@ -43,6 +43,7 @@ CROSS-TABLE LOOKUPS:
 FISCAL YEAR vs CALENDAR YEAR: akoya_fiscalyear stores grant cycle labels like "June 2025", "December 2026" — these do NOT match the calendar year. When a user asks for requests "in 2025", use BOTH criteria with OR: (contains(akoya_fiscalyear,'2025') or (akoya_submitdate ge 2025-01-01T00:00:00Z and akoya_submitdate lt 2026-01-01T00:00:00Z)). This captures discretionary awards assigned to 2025 cycles AND research requests submitted during 2025.
 
 OData: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z.
+OPTION SETS: Fields marked "int option set" are integers. Do NOT filter with string values. To find valid codes, query a few records first and inspect the _formatted values. The _formatted suffix fields are auto-returned — never include them in $select.
 Present results as markdown tables.
 
 SCHEMA (table_name/entitySet: fields):
@@ -52,7 +53,7 @@ akoya_request/akoya_requests — proposals/grants (5000+):
   Reviewers: _wmkf_potentialreviewer1_value.._wmkf_potentialreviewer5_value (lookups to wmkf_potentialreviewers), wmkf_excludedreviewers (text with names and reasons)
 
 akoya_requestpayment/akoya_requestpayments — payments and reporting requirements (5000+):
-  akoya_paymentnum, akoya_type (payment vs reporting requirement), akoya_amount, akoya_netamount, akoya_paymentdate, akoya_postingdate, akoya_estimatedgrantpaydate, akoya_requirementdue (report due date), akoya_requirementtype (interim or final), akoya_folio (payment status), wmkf_reporttype (detailed report type), statecode, statuscode, createdon, _akoya_requestlookup_value, _akoya_requestapplicant_value, _akoya_requestcontact_value, _akoya_payee_value
+  akoya_paymentnum, akoya_type (boolean: true=requirement, false=payment), akoya_amount, akoya_netamount, akoya_paymentdate, akoya_postingdate, akoya_estimatedgrantpaydate, akoya_requirementdue (report due date), akoya_requirementtype (int option set — interim or final; do NOT filter as string), akoya_folio (payment status), wmkf_reporttype (int option set — detailed report type), statecode, statuscode, createdon, _akoya_requestlookup_value, _akoya_requestapplicant_value, _akoya_requestcontact_value, _akoya_payee_value
 
 contact/contacts — people (5000+):
   fullname, firstname, lastname, emailaddress1, jobtitle, telephone1, akoya_contactnum, statecode, contactid, createdon
