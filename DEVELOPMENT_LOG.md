@@ -4,6 +4,20 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## February 2026 — Dynamics Explorer (Sessions 47-48)
+
+Built a natural-language chatbot for querying the Keck Foundation's Microsoft Dynamics 365 CRM. Uses an agentic tool-use loop: user asks a question → Claude picks tools (query_records, find_emails_for_account, etc.) → server executes against the Dynamics API → results fed back → Claude responds or calls more tools.
+
+**Key architecture decisions:**
+- Server-side composite tools for complex multi-step queries (email lookups across account → requests → emails) rather than relying on Claude to chain OData queries
+- Hardcoded schema of populated fields in the system prompt (from `scripts/dynamics-schema-map.js` introspection)
+- Haiku 4.5 model for higher rate limits (Sonnet 4 hit 30k token/min limit, Haiku 3.5 couldn't handle tool-use)
+- Token optimization: conversation compaction between agentic rounds, compact text results instead of raw JSON, HTML stripping for email bodies
+
+**Files:** `pages/dynamics-explorer.js`, `pages/api/dynamics-explorer/chat.js`, `lib/services/dynamics-service.js`, `shared/config/prompts/dynamics-explorer.js`
+
+---
+
 ## September 2025 - Frontend-Backend Data Structure Consistency Audit
 
 **Problem Identified:**

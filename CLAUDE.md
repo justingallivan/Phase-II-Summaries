@@ -51,6 +51,7 @@ A multi-application document processing system using Claude AI for grant-related
 | Expense Reporter | `expense-reporter.js` | `/api/process-expenses` | Receipt/invoice processing |
 | Literature Analyzer | `literature-analyzer.js` | `/api/analyze-literature` | Research paper synthesis |
 | Integrity Screener | `integrity-screener.js` | `/api/integrity-screener/*` | Screen applicants for research integrity |
+| Dynamics Explorer | `dynamics-explorer.js` | `/api/dynamics-explorer/*` | Natural language CRM queries via agentic tool-use |
 
 ## Tech Stack
 
@@ -87,6 +88,12 @@ ORCID_CLIENT_SECRET=...
 
 # Optional - User Profiles
 USER_PREFS_ENCRYPTION_KEY=...  # 32-byte hex key for API key encryption
+
+# Optional - Dynamics Explorer (CRM queries)
+DYNAMICS_URL=https://wmkf.crm.dynamics.com
+DYNAMICS_TENANT_ID=...
+DYNAMICS_CLIENT_ID=...
+DYNAMICS_CLIENT_SECRET=...
 ```
 
 ## Per-App Model Configuration
@@ -101,6 +108,7 @@ Each app uses a model optimized for its task. Configured in `shared/config/baseC
 | Reviewer Finder | Sonnet 4 | - |
 | Expense Reporter | Haiku 3.5 | `CLAUDE_MODEL_EXPENSE_REPORTER` |
 | Contact Enrichment | Haiku 3.5 | - |
+| Dynamics Explorer | Haiku 4.5 | - |
 
 ## Development
 
@@ -150,6 +158,7 @@ Located in `lib/services/`:
 - `serp-contact-service.js` - Google/Scholar search via SerpAPI
 - `integrity-service.js` - Integrity screening orchestration
 - `integrity-matching-service.js` - Name matching algorithms
+- `dynamics-service.js` - Microsoft Dynamics 365 CRM API (OAuth, OData queries)
 
 ---
 
@@ -227,6 +236,11 @@ Located in `lib/services/`:
 - `GET/PATCH /api/integrity-screener/history` - Screening history
 - `POST/GET /api/integrity-screener/dismiss` - Manage dismissals
 
+### Dynamics Explorer
+- `POST /api/dynamics-explorer/chat` - Agentic chat with Dynamics 365 CRM (SSE streaming)
+- `GET/POST/DELETE /api/dynamics-explorer/roles` - User role management (superuser only)
+- `GET/POST/DELETE /api/dynamics-explorer/restrictions` - Table/field restrictions (superuser only)
+
 ### User Management
 - `GET/POST/PATCH/DELETE /api/user-profiles` - Profile CRUD
 - `GET/POST/DELETE /api/user-preferences` - Preference management
@@ -252,6 +266,7 @@ Located in `lib/services/`:
 | `docs/PDF_EXPORT.md` | PDF export utility and architecture |
 | `scripts/README.md` | Database utility scripts |
 | `DEVELOPMENT_LOG.md` | Session-by-session history |
+| `docs/DYNAMICS_SCHEMA_ANNOTATION.md` | CRM field annotation plan for Dynamics Explorer |
 
 ---
 
