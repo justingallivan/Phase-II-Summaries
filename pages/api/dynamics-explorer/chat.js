@@ -141,8 +141,10 @@ export default async function handler(req, res) {
         logQuery({ userProfileId, sessionId, queryType: name, tableName: input.table_name || null, queryParams: input, recordCount, executionTime });
 
         let resultStr = JSON.stringify(result);
-        if (resultStr.length > MAX_RESULT_CHARS) {
-          resultStr = resultStr.substring(0, MAX_RESULT_CHARS) + '... [truncated, use more specific filter]';
+        // Composite email tools need more room for body text
+        const charLimit = (name === 'find_emails_for_request') ? 12000 : MAX_RESULT_CHARS;
+        if (resultStr.length > charLimit) {
+          resultStr = resultStr.substring(0, charLimit) + '... [truncated, use more specific filter]';
         }
 
         toolResults.push({ type: 'tool_result', tool_use_id: id, content: resultStr });
@@ -507,22 +509,26 @@ async function findEmailsForRequest({ request_number }) {
   const req = reqResult.records[0];
   const reqId = req.akoya_requestid;
 
-  // Step 2: Query all emails linked to this request
+  // Step 2: Query all emails linked to this request (include description for full text)
   const emailResult = await DynamicsService.queryRecords('emails', {
-    select: 'subject,sender,torecipients,createdon,directioncode',
+    select: 'subject,sender,torecipients,createdon,directioncode,description,activityid',
     filter: `_regardingobjectid_value eq ${reqId}`,
     orderby: 'createdon desc',
     top: 50,
   });
 
-  // Format compact results
+  // Format results with email body text
   const lines = emailResult.records.map(e => {
     const dir = e.directioncode ? 'Out' : 'In';
     const date = e.createdon_formatted || e.createdon || '';
     const subj = (e.subject || '').substring(0, 80);
     const sender = (e.sender || '').substring(0, 30);
     const to = (e.torecipients || '').substring(0, 40);
-    return `[${dir}] ${date} | ${sender} → ${to} | ${subj}`;
+    // Strip HTML tags from email body and truncate
+    const rawBody = (e.description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const body = rawBody.length > 800 ? rawBody.substring(0, 800) + '...[truncated, use get_record with activityid for full text]' : rawBody;
+    const id = e.activityid || '';
+    return `[${dir}] ${date} | ${sender} → ${to} | ${subj}\nID: ${id}\n${body || '(no body text)'}`;
   });
 
   const cleaned = stripEmpty(req);
@@ -534,7 +540,7 @@ async function findEmailsForRequest({ request_number }) {
     applicant: req._akoya_applicantid_value_formatted || req._akoya_applicantid_value,
     contact: req._akoya_primarycontactid_value_formatted || req._akoya_primarycontactid_value,
     emailCount: emailResult.records.length,
-    emails: lines.join('\n') || 'No emails found for this request.',
+    emails: lines.join('\n---\n') || 'No emails found for this request.',
   };
 }
 

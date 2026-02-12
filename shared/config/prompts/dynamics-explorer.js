@@ -37,6 +37,7 @@ CROSS-TABLE LOOKUPS:
 - Grant program name: lookup wmkf_grantprogram by _wmkf_grantprogram_value from request
 - Request type name: lookup wmkf_type by _wmkf_type_value from request
 - Emails for org: use the find_emails_for_account tool — it handles the multi-step lookup automatically (finds account → gets request IDs → batch queries emails). Emails are linked to requests, not accounts.
+- Emails for request: use find_emails_for_request — returns headers + body text (truncated). For full email body, use get_record on email table with the activityid.
 
 OData: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z.
 Present results as markdown tables.
@@ -142,7 +143,7 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: 'find_emails_for_request',
-    description: 'Find all emails linked to a specific request by request number (e.g. "1001585"). Returns the request details and all associated email correspondence.',
+    description: 'Find all emails linked to a specific request by request number (e.g. "1001585"). Returns request details, email headers, AND body text (truncated to 800 chars). For full email text, use get_record with table_name="email" and the activityid from results.',
     input_schema: {
       type: 'object',
       properties: {
