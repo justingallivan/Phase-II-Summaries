@@ -342,6 +342,10 @@ async function executeTool(name, input) {
       return stripEmpty(record);
     }
 
+    case 'find_emails_for_account': {
+      return await findEmailsForAccount(input);
+    }
+
     case 'discover_tables': {
       const allEntities = await DynamicsService.getEntityDefinitions(input.search_term);
       return {
@@ -384,6 +388,89 @@ function stripEmpty(record) {
   return cleaned;
 }
 
+// ─── Composite tools ───
+
+/**
+ * Find all emails for an organization by name.
+ * Handles the full 3-step lookup: account → request IDs → batch email query.
+ */
+async function findEmailsForAccount({ account_name, date_from, date_to }) {
+  // Step 1: Find the account (prefer exact match)
+  const accountResult = await DynamicsService.queryRecords('accounts', {
+    select: 'name,accountid',
+    filter: `contains(name,'${account_name.replace(/'/g, "''")}')`,
+    top: 10,
+  });
+
+  if (!accountResult.records.length) {
+    return { error: `No account found matching "${account_name}"` };
+  }
+
+  // Prefer exact name match over partial
+  const exactMatch = accountResult.records.find(
+    a => a.name?.toLowerCase() === account_name.toLowerCase()
+  );
+  const account = exactMatch || accountResult.records[0];
+  const accountId = account.accountid;
+
+  // Step 2: Get all request IDs for this account
+  const requestResult = await DynamicsService.queryRecords('akoya_requests', {
+    select: 'akoya_requestnum,akoya_requestid,akoya_requeststatus',
+    filter: `_akoya_applicantid_value eq ${accountId}`,
+    top: 100,
+  });
+
+  if (!requestResult.records.length) {
+    return {
+      account: account.name,
+      accountId,
+      requestCount: 0,
+      emails: [],
+      message: 'No requests found for this account, so no linked emails.',
+    };
+  }
+
+  // Step 3: Batch query emails with OR filter on request IDs
+  const requestIds = requestResult.records.map(r => r.akoya_requestid);
+  const orClauses = requestIds.map(id => `_regardingobjectid_value eq ${id}`).join(' or ');
+
+  let dateFilter = '';
+  if (date_from) dateFilter += ` and createdon ge ${date_from}`;
+  if (date_to) dateFilter += ` and createdon lt ${date_to}`;
+
+  const emailResult = await DynamicsService.queryRecords('emails', {
+    select: 'subject,sender,torecipients,createdon,directioncode,_regardingobjectid_value',
+    filter: `(${orClauses})${dateFilter}`,
+    orderby: 'createdon desc',
+    top: 100,
+  });
+
+  // Build a request number lookup for the response
+  const requestLookup = {};
+  for (const r of requestResult.records) {
+    requestLookup[r.akoya_requestid] = r.akoya_requestnum;
+  }
+
+  const emails = emailResult.records.map(e => {
+    const cleaned = stripEmpty(e);
+    // Add human-readable request number
+    const reqId = e._regardingobjectid_value;
+    if (reqId && requestLookup[reqId]) {
+      cleaned.request_number = requestLookup[reqId];
+    }
+    return cleaned;
+  });
+
+  return {
+    account: account.name,
+    accountId,
+    requestCount: requestResult.records.length,
+    emailCount: emails.length,
+    hasMore: emailResult.hasMore,
+    emails,
+  };
+}
+
 // ─── Helpers ───
 
 function checkRestriction(toolName, input, restrictions) {
@@ -405,6 +492,7 @@ function getThinkingMessage(toolName, input) {
     case 'query_records': return `Querying ${t}...`;
     case 'get_record': return `Fetching record from ${t}...`;
     case 'count_records': return `Counting ${t}...`;
+    case 'find_emails_for_account': return `Finding emails for "${input.account_name}"...`;
     default: return `Running ${toolName}...`;
   }
 }

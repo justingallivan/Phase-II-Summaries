@@ -36,7 +36,7 @@ CROSS-TABLE LOOKUPS:
 - Notes/attachments on record: filter annotation by _objectid_value eq record-GUID
 - Grant program name: lookup wmkf_grantprogram by _wmkf_grantprogram_value from request
 - Request type name: lookup wmkf_type by _wmkf_type_value from request
-- Emails for org (3 steps): (1) find account, (2) get request IDs, (3) query emails with OR filter: (_regardingobjectid_value eq GUID1 or _regardingobjectid_value eq GUID2 or ...) and createdon ge DATE. This returns ALL emails in ONE query. Emails are linked to REQUESTS, not accounts. Use createdon not senton (senton is null for incoming emails).
+- Emails for org: use the find_emails_for_account tool — it handles the multi-step lookup automatically (finds account → gets request IDs → batch queries emails). Emails are linked to requests, not accounts.
 
 OData: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z.
 Present results as markdown tables.
@@ -142,6 +142,19 @@ export const TOOL_DEFINITIONS = [
         expand: { type: 'string' },
       },
       required: ['table_name', 'record_id'],
+    },
+  },
+  {
+    name: 'find_emails_for_account',
+    description: 'Find all emails for an organization. Handles the multi-step lookup: finds account → gets request IDs → batch queries emails linked to those requests.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        account_name: { type: 'string', description: 'Organization name to search for' },
+        date_from: { type: 'string', description: 'Start date (ISO format, e.g. 2025-01-01T00:00:00Z)' },
+        date_to: { type: 'string', description: 'End date (ISO format, e.g. 2026-01-01T00:00:00Z)' },
+      },
+      required: ['account_name'],
     },
   },
   {
