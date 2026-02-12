@@ -1,39 +1,70 @@
 /**
  * Prompt templates and tool definitions for Dynamics Explorer
  *
- * Optimized for low token usage — entity set names are hardcoded so
- * Claude can query directly without discovery rounds. Null fields are
- * stripped server-side so results stay compact.
+ * Schema derived from scripts/dynamics-schema-map.js — only includes
+ * fields that are actually populated in the database.
  */
 
 /**
- * Build the system prompt for the Dynamics Explorer agentic loop.
+ * Build the system prompt with hardcoded schema of populated fields.
  */
 export function buildSystemPrompt({ userRole = 'read_only', restrictions = [] } = {}) {
   const restrictionBlock = restrictions.length > 0
-    ? `\nRESTRICTED: ${restrictions.map(r =>
-        r.field_name ? `${r.table_name}.${r.field_name}` : `${r.table_name}`
+    ? `RESTRICTED: ${restrictions.map(r =>
+        r.field_name ? `${r.table_name}.${r.field_name}` : r.table_name
       ).join(', ')}\n`
     : '';
 
-  return `CRM assistant for W. M. Keck Foundation Dynamics 365. Role: ${userRole}.
+  return `CRM assistant for Keck Foundation Dynamics 365. Role: ${userRole}.
 ${restrictionBlock}
-Tables (logical → entity set): akoya_request→akoya_requests, email→emails, task→tasks, contact→contacts, account→accounts, appointment→appointments, phonecall→phonecalls, annotation→annotations, activitypointer→activitypointers.
+IMPORTANT: Query directly — do NOT call discover_fields or discover_tables unless the user asks about an unknown table. Null fields are stripped from results. Use $select with fields from the schema below.
 
-Query directly using query_records or count_records — do NOT call discover_fields/discover_tables first unless the user asks about an unknown table. Null/empty fields are stripped from results automatically, so you will only see populated fields.
+SCHEMA (table → entitySet — key populated fields):
 
-Use $select for specific fields, $top default 10. Present results as markdown tables. Prefer _formatted values over GUIDs.
-OData filters: eq, contains(), gt/lt. Dates: 2024-01-01T00:00:00Z. Lookups: _fieldid_value.
-If a query fails, read the error and adjust.`;
+akoya_request → akoya_requests — proposals/grants (5000+)
+  akoya_requestnum, akoya_requeststatus, akoya_requesttype, akoya_submitdate, akoya_fiscalyear, akoya_paid, akoya_loireceived, createdon, modifiedon, statecode, statuscode, _akoya_applicantid_value, _akoya_primarycontactid_value, _wmkf_programdirector_value, _wmkf_programcoordinator_value, _wmkf_grantprogram_value, _wmkf_type_value, wmkf_request_type, wmkf_typeforrollup, wmkf_meetingdate, wmkf_numberofyearsoffunding, wmkf_numberofconcepts, wmkf_numberofpayments, wmkf_mrconcept1title, wmkf_mrconcept2title
+
+akoya_concept → akoya_concepts — research concepts (75)
+  akoya_title, akoya_conceptid, wmkf_conceptnumber, wmkf_conceptstatus, wmkf_concepttype, wmkf_meetingdate, wmkf_readyforreview, wmkf_reviewcompleted, wmkf_datenotified, wmkf_staffoutcome, wmkf_competitiveconcepttitle, createdon, modifiedon, _akoya_applicant_value, _akoya_request_value, _akoya_primarycontact_value, _wmkf_internalprogram_value
+
+akoya_requestpayment → akoya_requestpayments — payments (5000+)
+  akoya_paymentnum, akoya_type, akoya_amount, akoya_netamount, akoya_paymentdate, akoya_postingdate, akoya_estimatedgrantpaydate, akoya_requirementdue, akoya_requirementtype, akoya_folio, wmkf_reporttype, createdon, modifiedon, statecode, statuscode, _akoya_requestlookup_value, _akoya_requestapplicant_value, _akoya_requestcontact_value, _akoya_payee_value
+
+contact → contacts — people (5000+)
+  fullname, firstname, lastname, salutation, emailaddress1, jobtitle, telephone1, akoya_contactnum, createdon, modifiedon, statecode, statuscode, contactid
+
+account → accounts — organizations (4500+)
+  name, akoya_constituentnum, akoya_totalgrants, akoya_countofawards, akoya_countofrequests, wmkf_countofprogramgrants, wmkf_countofconcepts, address1_line1, address1_city, address1_stateorprovince, address1_postalcode, address1_country, websiteurl, telephone1, akoya_taxid, akoya_institutiontype, wmkf_eastwest, createdon, modifiedon, statecode, accountid
+
+email → emails — email activities (5000+)
+  subject, description, sender, torecipients, senton, directioncode, attachmentcount, createdon, modifiedon, statecode, statuscode, activityid, _regardingobjectid_value
+
+annotation → annotations — notes/attachments (5000+)
+  subject, notetext, filename, mimetype, filesize, isdocument, createdon, modifiedon, annotationid, _objectid_value
+
+akoya_program → akoya_programs — grant programs (24)
+  akoya_program, wmkf_code, wmkf_alternatename, akoya_programid
+
+akoya_phase → akoya_phases — application phases (62)
+  akoya_phasename, akoya_phase, akoya_phaseorder, akoya_phasetype, akoya_totalsubmissions, akoya_totalawarded, akoya_totalrequested, _akoya_application_value
+
+akoya_goapplystatustracking → akoya_goapplystatustrackings — application tracking (3293)
+  akoya_id, akoya_applicantemail, akoya_currentphasestatus, akoya_duedate, akoya_progress, akoya_mostrecentsubmitdate, _akoya_request_value, _akoya_goapplyapplication_value, _akoya_goapplyapplicant_value
+
+activitypointer → activitypointers — all activities (5000+)
+  subject, description, activitytypecode, actualend, createdon, modifiedon, statecode, statuscode, activityid, _regardingobjectid_value
+
+OData: eq, contains(), gt/lt, and/or. Dates: 2024-01-01T00:00:00Z. Lookups use _fieldid_value.
+Present results as markdown tables. Prefer _formatted values over GUIDs when available.`;
 }
 
 /**
- * Claude tool definitions — minimal to reduce token overhead.
+ * Claude tool definitions — minimal set for low token overhead.
  */
 export const TOOL_DEFINITIONS = [
   {
     name: 'query_records',
-    description: 'Query records. table_name resolves automatically. Null fields stripped from results.',
+    description: 'Query records. Null fields stripped. Use $select from schema above.',
     input_schema: {
       type: 'object',
       properties: {
@@ -75,18 +106,18 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: 'discover_tables',
-    description: 'Search for tables by name. Only use when the user asks about unknown tables.',
+    description: 'Search for tables by name. Only when user asks about unknown tables.',
     input_schema: {
       type: 'object',
       properties: {
-        search_term: { type: 'string', description: 'Required search term' },
+        search_term: { type: 'string' },
       },
       required: ['search_term'],
     },
   },
   {
     name: 'discover_fields',
-    description: 'List fields for a table. Only use when the user explicitly asks what fields exist.',
+    description: 'List all fields for a table. Only when user explicitly asks.',
     input_schema: {
       type: 'object',
       properties: {
