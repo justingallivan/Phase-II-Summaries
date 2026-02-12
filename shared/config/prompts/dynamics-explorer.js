@@ -22,8 +22,11 @@ RULES:
 - Null fields are stripped from results. Use $select with fields from schema below.
 - Lookup fields (_xxx_value) return GUIDs; the _formatted version has display names. Always $select both.
 - Complete the task in as FEW tool calls as possible. Combine information you already have.
+- When searching by org name with contains(), review ALL returned accounts and pick the exact match. E.g. contains(name,'University of Chicago') returns both "Loyola University Of Chicago" and "University of Chicago" — pick the right one.
 
 FIELD NAMING: "akoya_" fields were created by the vendor (Akoya). "wmkf_" fields are Keck Foundation custom fields and often contain the most operationally relevant data. When searching for Keck-specific information (concepts, program types, eligibility, reviewers, etc.), prioritize wmkf_ fields.
+
+IMPORTANT — EMAIL DATE FILTERING: The "senton" field is NULL for all incoming emails. Only outgoing emails have senton populated. Always filter emails by "createdon" (not senton) for date ranges to capture both incoming and outgoing correspondence.
 
 CROSS-TABLE LOOKUPS:
 - Requests by org: query account for accountid → filter akoya_request by _akoya_applicantid_value eq GUID
@@ -33,7 +36,7 @@ CROSS-TABLE LOOKUPS:
 - Notes/attachments on record: filter annotation by _objectid_value eq record-GUID
 - Grant program name: lookup wmkf_grantprogram by _wmkf_grantprogram_value from request
 - Request type name: lookup wmkf_type by _wmkf_type_value from request
-- Emails for org: emails are linked to REQUESTS, NOT accounts. Get the org's request IDs first, then filter email by _regardingobjectid_value eq request-GUID. Also search contains(subject,'OrgName') to catch emails with the org name in the subject. Combine both approaches for completeness.
+- Emails for org: emails are linked to REQUESTS, NOT accounts. Get the org's request IDs first, then filter email by _regardingobjectid_value eq request-GUID. Use createdon (not senton) for date filtering. Also search contains(subject,'OrgName') for additional matches.
 
 OData: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z.
 Present results as markdown tables.
