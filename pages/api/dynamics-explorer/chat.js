@@ -413,10 +413,12 @@ async function findEmailsForAccount({ account_name, date_from, date_to }) {
   const account = exactMatch || accountResult.records[0];
   const accountId = account.accountid;
 
-  // Step 2: Get all request IDs for this account
+  // Step 2: Get request IDs for this account (most recent first, since
+  // old requests from the 1990s are unlikely to have recent email activity)
   const requestResult = await DynamicsService.queryRecords('akoya_requests', {
     select: 'akoya_requestnum,akoya_requestid,akoya_requeststatus',
     filter: `_akoya_applicantid_value eq ${accountId}`,
+    orderby: 'createdon desc',
     top: 100,
   });
 
