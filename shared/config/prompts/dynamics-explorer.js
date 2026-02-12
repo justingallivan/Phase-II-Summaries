@@ -33,6 +33,7 @@ CROSS-TABLE LOOKUPS:
 - Notes/attachments on record: filter annotation by _objectid_value eq record-GUID
 - Grant program name: lookup wmkf_grantprogram by _wmkf_grantprogram_value from request
 - Request type name: lookup wmkf_type by _wmkf_type_value from request
+- Emails for org: emails are linked to REQUESTS, NOT accounts. Get the org's request IDs first, then filter email by _regardingobjectid_value eq request-GUID. Also search contains(subject,'OrgName') to catch emails with the org name in the subject. Combine both approaches for completeness.
 
 OData: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z.
 Present results as markdown tables.
