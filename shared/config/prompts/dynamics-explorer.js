@@ -20,7 +20,7 @@ ${restrictionBlock}
 RULES:
 - Query directly — do NOT call discover_fields/discover_tables unless user asks about an unknown table.
 - Null fields are stripped from results. Use $select with fields from schema below.
-- Lookup fields (_xxx_value) return GUIDs; the _formatted version has display names. Always $select both.
+- Lookup fields (_xxx_value) return GUIDs; the _formatted version has display names. Always $select the _value field — _formatted values are auto-returned and MUST NOT appear in $select (they cause API errors).
 - Complete the task in as FEW tool calls as possible. Combine information you already have.
 - NEVER fabricate or guess data. Only present information returned by tool calls. If data is not available, say so.
 - When searching by org name with contains(), review ALL returned accounts and pick the exact match. E.g. contains(name,'University of Chicago') returns both "Loyola University Of Chicago" and "University of Chicago" — pick the right one.
@@ -32,7 +32,8 @@ IMPORTANT — EMAIL DATE FILTERING: The "senton" field is NULL for all incoming 
 CROSS-TABLE LOOKUPS:
 - Requests by org: query account for accountid → filter akoya_request by _akoya_applicantid_value eq GUID
 - Requests by person: query contact for contactid → filter by _akoya_primarycontactid_value eq GUID
-- Payments for request: filter akoya_requestpayment by _akoya_requestlookup_value eq request-GUID
+- Payments/reports for request: filter akoya_requestpayment by _akoya_requestlookup_value eq request-GUID. Use akoya_type eq true for requirements only, eq false for payments only.
+- Reports due in date range: use find_reports_due tool — returns all reports with org names, request numbers, and types in one call.
 - Notes/attachments on record: filter annotation by _objectid_value eq record-GUID
 - Grant program name: lookup wmkf_grantprogram by _wmkf_grantprogram_value from request
 - Request type name: lookup wmkf_type by _wmkf_type_value from request
@@ -43,8 +44,8 @@ CROSS-TABLE LOOKUPS:
 FISCAL YEAR vs CALENDAR YEAR: akoya_fiscalyear stores grant cycle labels like "June 2025", "December 2026" — these do NOT match the calendar year. When a user asks for requests "in 2025", use BOTH criteria with OR: (contains(akoya_fiscalyear,'2025') or (akoya_submitdate ge 2025-01-01T00:00:00Z and akoya_submitdate lt 2026-01-01T00:00:00Z)). This captures discretionary awards assigned to 2025 cycles AND research requests submitted during 2025.
 
 OData: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z.
-OPTION SETS: Fields marked "int option set" are integers. Do NOT filter with string values. To find valid codes, query a few records first and inspect the _formatted values. The _formatted suffix fields are auto-returned — never include them in $select.
-Present results as markdown tables.
+OPTION SETS: Fields marked "int option set" are integers. Do NOT filter with string values. To find valid codes, query a few records first and inspect the _formatted values.
+Present results as markdown tables. If totalCount > records shown, tell user the total and summarize (e.g. group by date or type). Do NOT claim fewer results than totalCount.
 
 SCHEMA (table_name/entitySet: fields):
 
@@ -97,7 +98,7 @@ export const TOOL_DEFINITIONS = [
         select: { type: 'string', description: 'Comma-separated fields' },
         filter: { type: 'string', description: 'OData $filter' },
         orderby: { type: 'string', description: 'OData $orderby' },
-        top: { type: 'integer', description: '1-100, default 10' },
+        top: { type: 'integer', description: '1-100, default 50' },
         expand: { type: 'string', description: 'OData $expand' },
       },
       required: ['table_name'],
@@ -151,6 +152,18 @@ export const TOOL_DEFINITIONS = [
         request_number: { type: 'string', description: 'The akoya_requestnum (e.g. "1001585")' },
       },
       required: ['request_number'],
+    },
+  },
+  {
+    name: 'find_reports_due',
+    description: 'Find all reporting requirements due in a date range. Returns report#, due date, type, request#, organization, and status for every requirement. Use this for questions about upcoming or overdue reports.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        date_from: { type: 'string', description: 'Start date (ISO format, e.g. 2026-02-01T00:00:00Z)' },
+        date_to: { type: 'string', description: 'End date exclusive (ISO format, e.g. 2026-03-01T00:00:00Z)' },
+      },
+      required: ['date_from', 'date_to'],
     },
   },
   {

@@ -26,7 +26,7 @@ export const config = {
 };
 
 const MAX_TOOL_ROUNDS = 10;
-const MAX_RESULT_CHARS = 4000;
+const MAX_RESULT_CHARS = 8000;
 
 // System fields to exclude from discover_fields results
 const SYSTEM_FIELD_PREFIXES = [
@@ -140,12 +140,9 @@ export default async function handler(req, res) {
 
         logQuery({ userProfileId, sessionId, queryType: name, tableName: input.table_name || null, queryParams: input, recordCount, executionTime });
 
-        let resultStr = JSON.stringify(result);
-        // Composite email tools need more room for body text
-        const charLimit = (name === 'find_emails_for_request') ? 12000 : MAX_RESULT_CHARS;
-        if (resultStr.length > charLimit) {
-          resultStr = resultStr.substring(0, charLimit) + '... [truncated, use more specific filter]';
-        }
+        // Composite tools return compact text and need more room
+        const charLimit = (name === 'find_emails_for_request' || name === 'find_reports_due') ? 12000 : MAX_RESULT_CHARS;
+        let resultStr = truncateResult(result, charLimit);
 
         toolResults.push({ type: 'tool_result', tool_use_id: id, content: resultStr });
       }
@@ -325,15 +322,26 @@ function isSystemField(name) {
   return SYSTEM_FIELD_PREFIXES.some(p => name.startsWith(p));
 }
 
+/**
+ * Strip _formatted fields from $select — they are auto-returned via the
+ * Prefer: odata.include-annotations="*" header and cannot be $selected.
+ * The model sometimes includes them despite the system prompt rule.
+ */
+function sanitizeSelect(select) {
+  if (!select) return select;
+  const fields = select.split(',').map(f => f.trim()).filter(f => !f.endsWith('_formatted'));
+  return fields.length > 0 ? fields.join(',') : undefined;
+}
+
 async function executeTool(name, input) {
   switch (name) {
     case 'query_records': {
       const entitySet = await DynamicsService.resolveEntitySetName(input.table_name);
       const result = await DynamicsService.queryRecords(entitySet, {
-        select: input.select,
+        select: sanitizeSelect(input.select),
         filter: input.filter,
         orderby: input.orderby,
-        top: input.top || 10,
+        top: input.top || 50,
         expand: input.expand,
       });
       // Strip null/empty values to dramatically reduce token usage
@@ -350,7 +358,7 @@ async function executeTool(name, input) {
     case 'get_record': {
       const entitySet = await DynamicsService.resolveEntitySetName(input.table_name);
       const record = await DynamicsService.getRecord(entitySet, input.record_id, {
-        select: input.select,
+        select: sanitizeSelect(input.select),
         expand: input.expand,
       });
       return stripEmpty(record);
@@ -362,6 +370,10 @@ async function executeTool(name, input) {
 
     case 'find_emails_for_request': {
       return await findEmailsForRequest(input);
+    }
+
+    case 'find_reports_due': {
+      return await findReportsDue(input);
     }
 
     case 'discover_tables': {
@@ -404,6 +416,38 @@ function stripEmpty(record) {
     cleaned[key] = value;
   }
   return cleaned;
+}
+
+/**
+ * Truncate a tool result to fit within charLimit while preserving valid JSON.
+ * For results with records arrays, trims records and reports how many were cut
+ * so Claude knows to paginate if needed.
+ */
+function truncateResult(result, charLimit) {
+  let str = JSON.stringify(result);
+  if (str.length <= charLimit) return str;
+
+  // Record-aware truncation: trim records array rather than cutting JSON mid-string
+  if (result?.records && Array.isArray(result.records) && result.records.length > 0) {
+    const totalReturned = result.records.length;
+    const totalCount = result.totalCount || totalReturned;
+    const avgCharsPerRecord = str.length / totalReturned;
+    // Leave room for metadata fields (count, totalCount, hasMore, note)
+    const maxRecords = Math.max(1, Math.floor((charLimit - 300) / avgCharsPerRecord));
+
+    if (maxRecords < totalReturned) {
+      const trimmed = {
+        records: result.records.slice(0, maxRecords),
+        count: maxRecords,
+        totalCount,
+        note: `Showing ${maxRecords} of ${totalCount} total matching records. Present the totalCount to the user. Use narrower $filter or $orderby with $skip-style pagination to see all.`,
+      };
+      return JSON.stringify(trimmed);
+    }
+  }
+
+  // Fallback: string truncation for non-record results
+  return str.substring(0, charLimit) + '... [truncated]';
 }
 
 // ─── Composite tools ───
@@ -544,6 +588,56 @@ async function findEmailsForRequest({ request_number }) {
   };
 }
 
+/**
+ * Find all reporting requirements due in a date range.
+ * Single Dynamics query with _formatted annotations for org/request names.
+ * Returns compact text to fit large result sets in the token budget.
+ */
+async function findReportsDue({ date_from, date_to }) {
+  const filter = `akoya_type eq true and akoya_requirementdue ge ${date_from} and akoya_requirementdue lt ${date_to}`;
+
+  const result = await DynamicsService.queryRecords('akoya_requestpayments', {
+    select: 'akoya_paymentnum,akoya_requirementdue,akoya_requirementtype,wmkf_reporttype,_akoya_requestlookup_value,_akoya_requestapplicant_value,statecode',
+    filter,
+    orderby: 'akoya_requirementdue asc',
+    top: 100,
+  });
+
+  if (!result.records.length) {
+    return { reportCount: 0, totalCount: result.totalCount, message: 'No reports due in this date range.' };
+  }
+
+  // Group by due date for summary
+  const byDate = {};
+  const lines = result.records.map(r => {
+    const num = r.akoya_paymentnum || '?';
+    const due = r.akoya_requirementdue_formatted || r.akoya_requirementdue || '?';
+    const type = r.akoya_requirementtype_formatted || '?';
+    const detail = r.wmkf_reporttype_formatted || '';
+    const reqNum = r._akoya_requestlookup_value_formatted || r._akoya_requestlookup_value || '?';
+    const org = r._akoya_requestapplicant_value_formatted || '?';
+    const status = r.statecode_formatted || '';
+
+    // Track date grouping
+    byDate[due] = (byDate[due] || 0) + 1;
+
+    return `${num} | ${due} | ${type}${detail ? ' - ' + detail : ''} | Req ${reqNum} | ${org} | ${status}`;
+  });
+
+  const summary = Object.entries(byDate)
+    .map(([date, count]) => `${date}: ${count}`)
+    .join(', ');
+
+  return {
+    totalCount: result.totalCount,
+    reportCount: result.records.length,
+    hasMore: result.totalCount > result.records.length,
+    byDate: summary,
+    header: 'Report# | Due | Type | Request# | Organization | Status',
+    reports: lines.join('\n'),
+  };
+}
+
 // ─── Helpers ───
 
 function checkRestriction(toolName, input, restrictions) {
@@ -567,6 +661,7 @@ function getThinkingMessage(toolName, input) {
     case 'count_records': return `Counting ${t}...`;
     case 'find_emails_for_account': return `Finding emails for "${input.account_name}"...`;
     case 'find_emails_for_request': return `Finding emails for request ${input.request_number}...`;
+    case 'find_reports_due': return `Finding reports due ${input.date_from ? 'from ' + input.date_from.substring(0, 10) : ''}...`;
     default: return `Running ${toolName}...`;
   }
 }
