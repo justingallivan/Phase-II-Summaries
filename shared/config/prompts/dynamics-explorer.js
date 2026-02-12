@@ -22,6 +22,7 @@ RULES:
 - Null fields are stripped from results. Use $select with fields from schema below.
 - Lookup fields (_xxx_value) return GUIDs; the _formatted version has display names. Always $select both.
 - Complete the task in as FEW tool calls as possible. Combine information you already have.
+- NEVER fabricate or guess data. Only present information returned by tool calls. If data is not available, say so.
 - When searching by org name with contains(), review ALL returned accounts and pick the exact match. E.g. contains(name,'University of Chicago') returns both "Loyola University Of Chicago" and "University of Chicago" — pick the right one.
 
 FIELD NAMING: "akoya_" fields were created by the vendor (Akoya). "wmkf_" fields are Keck Foundation custom fields and often contain the most operationally relevant data. When searching for Keck-specific information (concepts, program types, eligibility, reviewers, etc.), prioritize wmkf_ fields.
@@ -36,8 +37,11 @@ CROSS-TABLE LOOKUPS:
 - Notes/attachments on record: filter annotation by _objectid_value eq record-GUID
 - Grant program name: lookup wmkf_grantprogram by _wmkf_grantprogram_value from request
 - Request type name: lookup wmkf_type by _wmkf_type_value from request
+- Reviewers for request: $select _wmkf_potentialreviewer1_value through 5 on the request record — the _formatted values have display names. For full reviewer details, look up the GUIDs in wmkf_potentialreviewers table.
 - Emails for org: use the find_emails_for_account tool — it handles the multi-step lookup automatically (finds account → gets request IDs → batch queries emails). Emails are linked to requests, not accounts.
 - Emails for request: use find_emails_for_request — returns headers + body text (truncated). For full email body, use get_record on email table with the activityid.
+
+FISCAL YEAR vs CALENDAR YEAR: akoya_fiscalyear stores grant cycle labels like "June 2025", "December 2026" — these do NOT match the calendar year. When a user asks for requests "in 2025", use BOTH criteria with OR: (contains(akoya_fiscalyear,'2025') or (akoya_submitdate ge 2025-01-01T00:00:00Z and akoya_submitdate lt 2026-01-01T00:00:00Z)). This captures discretionary awards assigned to 2025 cycles AND research requests submitted during 2025.
 
 OData: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z.
 Present results as markdown tables.
@@ -46,6 +50,7 @@ SCHEMA (table_name/entitySet: fields):
 
 akoya_request/akoya_requests — proposals/grants (5000+):
   akoya_requestnum, akoya_requeststatus, akoya_requesttype, akoya_submitdate, akoya_fiscalyear, akoya_paid, akoya_loireceived, statecode, statuscode, createdon, modifiedon, _akoya_applicantid_value, _akoya_primarycontactid_value, _wmkf_programdirector_value, _wmkf_programcoordinator_value, _wmkf_grantprogram_value, _wmkf_type_value, wmkf_request_type, wmkf_typeforrollup, wmkf_meetingdate, wmkf_numberofyearsoffunding, wmkf_numberofconcepts, wmkf_numberofpayments, wmkf_mrconcept1title..4title, wmkf_seconcept1title..4title, wmkf_researchconceptstatus, wmkf_conceptcalldate, wmkf_researchconceptemailsent, wmkf_vendorverified, wmkf_phaseiicheckincomplete
+  Reviewers: _wmkf_potentialreviewer1_value.._wmkf_potentialreviewer5_value (lookups to wmkf_potentialreviewers), wmkf_excludedreviewers (text with names and reasons)
 
 akoya_concept/akoya_concepts — concepts/eligibility (75):
   akoya_title, akoya_conceptid, wmkf_conceptnumber, wmkf_conceptstatus, wmkf_concepttype, wmkf_meetingdate, wmkf_readyforreview, wmkf_reviewcompleted, wmkf_datenotified, wmkf_staffoutcome, wmkf_competitiveconcepttitle, wmkf_conceptpapernotes, wmkf_socalprogramorcapital, wmkf_projecttitle2, wmkf_projecttitle3, createdon, modifiedon, _akoya_applicant_value, _akoya_request_value, _akoya_primarycontact_value, _wmkf_internalprogram_value

@@ -85,9 +85,9 @@ export const BASE_CONFIG = {
       model: 'claude-3-5-haiku-20241022',
       fallback: 'claude-3-haiku-20240307'
     },
-    // Dynamics Explorer - Sonnet for good tool-use in agentic loop
+    // Dynamics Explorer - Haiku 4.5 for fast tool-use with higher rate limits than Sonnet
     'dynamics-explorer': {
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-haiku-4-5-20251001',
       fallback: 'claude-3-5-haiku-20241022'
     }
   },
