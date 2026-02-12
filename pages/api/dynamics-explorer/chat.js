@@ -25,7 +25,7 @@ export const config = {
   maxDuration: 300,
 };
 
-const MAX_TOOL_ROUNDS = 6;
+const MAX_TOOL_ROUNDS = 10;
 const MAX_RESULT_CHARS = 4000;
 
 // System fields to exclude from discover_fields results
@@ -114,6 +114,8 @@ export default async function handler(req, res) {
       for (const toolBlock of toolBlocks) {
         const { id, name, input } = toolBlock;
 
+        console.log(`[DynExp] Round ${round} tool: ${name}`, JSON.stringify(input).substring(0, 200));
+
         const restricted = checkRestriction(name, input, restrictions);
         if (restricted) {
           sendEvent('thinking', { message: `Blocked: ${restricted}` });
@@ -128,11 +130,15 @@ export default async function handler(req, res) {
         try {
           result = await executeTool(name, input);
         } catch (err) {
+          console.log(`[DynExp] Round ${round} ${name} ERROR:`, err.message.substring(0, 200));
           result = { error: err.message };
         }
         const executionTime = Date.now() - startTime;
 
-        logQuery({ userProfileId, sessionId, queryType: name, tableName: input.table_name || null, queryParams: input, recordCount: result?.records?.length || result?.count || (result?.error ? -1 : 0), executionTime });
+        const recordCount = result?.records?.length || result?.count || (result?.error ? -1 : 0);
+        console.log(`[DynExp] Round ${round} ${name} → ${recordCount} records, ${executionTime}ms`);
+
+        logQuery({ userProfileId, sessionId, queryType: name, tableName: input.table_name || null, queryParams: input, recordCount, executionTime });
 
         let resultStr = JSON.stringify(result);
         if (resultStr.length > MAX_RESULT_CHARS) {
@@ -156,6 +162,7 @@ export default async function handler(req, res) {
       currentMessages = compactMessages(currentMessages);
     }
 
+    console.log(`[DynExp] Hit max rounds (${MAX_TOOL_ROUNDS}) without final answer`);
     sendEvent('response', { content: 'Reached maximum query steps. Please refine your question.' });
     sendEvent('complete', { rounds: round, maxRoundsReached: true });
   } catch (error) {
