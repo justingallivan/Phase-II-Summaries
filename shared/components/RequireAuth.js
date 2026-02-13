@@ -15,31 +15,30 @@ import { useSession, signIn } from 'next-auth/react';
 import { useEffect, useState } from 'react';
 import ProfileLinkingDialog from './ProfileLinkingDialog';
 
-// Check if auth is configured (set at build time via next.config.js or runtime)
-const AUTH_ENABLED = typeof window !== 'undefined'
-  ? window.__AUTH_ENABLED__
-  : process.env.AZURE_AD_CLIENT_ID && process.env.AZURE_AD_CLIENT_SECRET;
-
 export default function RequireAuth({ children }) {
   const { data: session, status } = useSession();
   const [showLinkingDialog, setShowLinkingDialog] = useState(false);
-  const [authEnabled, setAuthEnabled] = useState(AUTH_ENABLED);
+  // Start as null (unknown) on both server and client to avoid hydration mismatch
+  const [authEnabled, setAuthEnabled] = useState(null);
 
   // Check auth status on mount (client-side)
   useEffect(() => {
-    // Fetch auth status from API if not already known
-    if (typeof window !== 'undefined' && window.__AUTH_ENABLED__ === undefined) {
-      fetch('/api/auth/status')
-        .then(res => res.json())
-        .then(data => {
-          window.__AUTH_ENABLED__ = data.enabled;
-          setAuthEnabled(data.enabled);
-        })
-        .catch(() => {
-          // If check fails, assume auth is disabled
-          setAuthEnabled(false);
-        });
+    // Use cached value if available
+    if (typeof window !== 'undefined' && window.__AUTH_ENABLED__ !== undefined) {
+      setAuthEnabled(window.__AUTH_ENABLED__);
+      return;
     }
+    fetch('/api/auth/status')
+      .then(res => res.json())
+      .then(data => {
+        if (typeof window !== 'undefined') {
+          window.__AUTH_ENABLED__ = data.enabled;
+        }
+        setAuthEnabled(data.enabled);
+      })
+      .catch(() => {
+        setAuthEnabled(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -48,6 +47,18 @@ export default function RequireAuth({ children }) {
       setShowLinkingDialog(true);
     }
   }, [status, session?.user?.needsLinking]);
+
+  // Auth status unknown yet — show loading (same on server and client)
+  if (authEnabled === null) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-gray-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   // If auth is not enabled, just render children
   if (!authEnabled) {
