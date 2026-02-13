@@ -475,12 +475,12 @@ const ENTITY_TYPE_CONFIGS = {
   account: {
     entitySet: 'accounts',
     idField: 'accountid',
-    select: 'name,akoya_aka,wmkf_legalname,akoya_constituentnum,akoya_totalgrants,akoya_countofawards,akoya_countofrequests,wmkf_countofprogramgrants,wmkf_countofconcepts,wmkf_countofdiscretionarygrant,wmkf_sumofprogramgrants,wmkf_sumofdiscretionarygrants,wmkf_eastwest,address1_city,address1_stateorprovince,websiteurl,telephone1,akoya_institutiontype,accountid,createdon',
+    select: 'name,akoya_aka,wmkf_legalname,wmkf_dc_aka,akoya_constituentnum,akoya_totalgrants,akoya_countofawards,akoya_countofrequests,wmkf_countofprogramgrants,wmkf_countofconcepts,wmkf_countofdiscretionarygrant,wmkf_sumofprogramgrants,wmkf_sumofdiscretionarygrants,wmkf_eastwest,address1_city,address1_stateorprovince,websiteurl,telephone1,akoya_institutiontype,accountid,createdon',
     filterField: 'name',
-    altFilterField: 'akoya_aka', // common/short name — searched in parallel with name
+    altFilterFields: ['akoya_aka', 'wmkf_dc_aka'], // common name + abbreviation — searched alongside primary name
     filterExact: false, // contains
     nameField: 'name',
-    altNameField: 'akoya_aka',
+    altNameFields: ['akoya_aka', 'wmkf_dc_aka'],
   },
   contact: {
     entitySet: 'contacts',
@@ -546,9 +546,10 @@ async function getEntity({ type, identifier }) {
   let filter;
   if (cfg.filterExact) {
     filter = `${cfg.filterField} eq '${escaped}'`;
-  } else if (cfg.altFilterField) {
-    // Search both primary name and alternate name (e.g. legal name + common name)
-    filter = `(contains(${cfg.filterField},'${escaped}') or contains(${cfg.altFilterField},'${escaped}'))`;
+  } else if (cfg.altFilterFields) {
+    // Search primary name + all alternate name fields (common name, abbreviation, etc.)
+    const clauses = [cfg.filterField, ...cfg.altFilterFields].map(f => `contains(${f},'${escaped}')`);
+    filter = `(${clauses.join(' or ')})`;
   } else {
     filter = `contains(${cfg.filterField},'${escaped}')`;
   }
@@ -570,9 +571,11 @@ async function getEntity({ type, identifier }) {
     const exactMatches = result.records.filter(r => {
       const primary = r[cfg.nameField];
       if (primary && primary.toLowerCase() === lowerIdent) return true;
-      if (cfg.altNameField) {
-        const alt = r[cfg.altNameField];
-        if (alt && alt.toLowerCase() === lowerIdent) return true;
+      if (cfg.altNameFields) {
+        for (const altField of cfg.altNameFields) {
+          const alt = r[altField];
+          if (alt && alt.toLowerCase() === lowerIdent) return true;
+        }
       }
       return false;
     });
@@ -590,8 +593,10 @@ async function getEntity({ type, identifier }) {
     if (!exact) {
       const names = result.records.map(r => {
         const n = r[cfg.nameField] || '';
-        const aka = cfg.altNameField && r[cfg.altNameField] ? ` (aka ${r[cfg.altNameField]})` : '';
-        return n + aka;
+        const akas = (cfg.altNameFields || [])
+          .map(f => r[f]).filter(Boolean);
+        const akaStr = akas.length ? ` (aka ${akas.join(', ')})` : '';
+        return n + akaStr;
       }).filter(Boolean);
       const cleaned = stripEmpty(match);
       cleaned._note = `Multiple matches (${result.records.length}). Showing first. All matches: ${names.join('; ')}`;
