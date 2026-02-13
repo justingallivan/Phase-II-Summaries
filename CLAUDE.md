@@ -249,6 +249,9 @@ Located in `lib/services/`:
 - `GET /api/auth/status` - Check if auth is enabled
 - `POST /api/auth/link-profile` - Link Azure account to profile
 
+### Operations
+- `GET /api/health` - Service health check (database, Claude, Azure AD, Dynamics, encryption)
+
 ### Other
 - `POST /api/analyze-funding-gap` - Federal funding analysis
 - `POST /api/process-expenses` - Expense extraction
@@ -267,6 +270,9 @@ Located in `lib/services/`:
 | `scripts/README.md` | Database utility scripts |
 | `DEVELOPMENT_LOG.md` | Session-by-session history |
 | `docs/DYNAMICS_SCHEMA_ANNOTATION.md` | CRM field annotation plan for Dynamics Explorer |
+| `docs/CREDENTIALS_RUNBOOK.md` | Environment variables, secret rotation, diagnostics |
+| `docs/SYSTEM_OVERVIEW.md` | One-page system overview for administrators |
+| `docs/SECURITY_ARCHITECTURE.md` | Security architecture and threat model |
 
 ---
 
