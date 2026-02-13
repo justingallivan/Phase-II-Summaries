@@ -102,7 +102,11 @@ export const TABLE_ANNOTATIONS = {
     description: 'Organizations — universities, institutions, companies (4500+).',
     entitySet: 'accounts',
     fields: {
-      name: 'string — organization name',
+      name: 'string — organization name (may be legal name or common name)',
+      akoya_aka: 'string — common/short name (e.g. "Stanford University" when name is the legal entity). 95% populated.',
+      wmkf_legalname: 'string — official legal/incorporated name. 83% populated.',
+      wmkf_dc_aka: 'string — abbreviations and alternate names (e.g. "MRN", "MGH"). 21% populated.',
+      wmkf_formerlyknownas: 'string — historical names after rebranding. Sparse.',
       akoya_constituentnum: 'string — unique organization ID',
       akoya_totalgrants: 'currency — total grant amount',
       akoya_countofawards: 'int — number of awards',
@@ -126,6 +130,7 @@ export const TABLE_ANNOTATIONS = {
     },
     rules: [
       'When searching by name with contains(), multiple orgs may match (e.g. "University of Chicago" matches "Loyola University Of Chicago"). Prefer exact match.',
+      'Many orgs use legal names different from their common names. get_entity searches both name and akoya_aka automatically. E.g. "Stanford University" (akoya_aka) matches "The Board of Trustees of the Leland Stanford Junior University" (name).',
     ],
   },
   email: {

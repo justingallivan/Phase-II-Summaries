@@ -475,10 +475,12 @@ const ENTITY_TYPE_CONFIGS = {
   account: {
     entitySet: 'accounts',
     idField: 'accountid',
-    select: 'name,akoya_constituentnum,akoya_totalgrants,akoya_countofawards,akoya_countofrequests,wmkf_countofprogramgrants,wmkf_countofconcepts,wmkf_countofdiscretionarygrant,wmkf_sumofprogramgrants,wmkf_sumofdiscretionarygrants,wmkf_eastwest,address1_city,address1_stateorprovince,websiteurl,telephone1,akoya_institutiontype,accountid,createdon',
+    select: 'name,akoya_aka,wmkf_legalname,akoya_constituentnum,akoya_totalgrants,akoya_countofawards,akoya_countofrequests,wmkf_countofprogramgrants,wmkf_countofconcepts,wmkf_countofdiscretionarygrant,wmkf_sumofprogramgrants,wmkf_sumofdiscretionarygrants,wmkf_eastwest,address1_city,address1_stateorprovince,websiteurl,telephone1,akoya_institutiontype,accountid,createdon',
     filterField: 'name',
+    altFilterField: 'akoya_aka', // common/short name — searched in parallel with name
     filterExact: false, // contains
     nameField: 'name',
+    altNameField: 'akoya_aka',
   },
   contact: {
     entitySet: 'contacts',
@@ -541,9 +543,15 @@ async function getEntity({ type, identifier }) {
   }
 
   const escaped = identifier.replace(/'/g, "''");
-  const filter = cfg.filterExact
-    ? `${cfg.filterField} eq '${escaped}'`
-    : `contains(${cfg.filterField},'${escaped}')`;
+  let filter;
+  if (cfg.filterExact) {
+    filter = `${cfg.filterField} eq '${escaped}'`;
+  } else if (cfg.altFilterField) {
+    // Search both primary name and alternate name (e.g. legal name + common name)
+    filter = `(contains(${cfg.filterField},'${escaped}') or contains(${cfg.altFilterField},'${escaped}'))`;
+  } else {
+    filter = `contains(${cfg.filterField},'${escaped}')`;
+  }
 
   const result = await DynamicsService.queryRecords(cfg.entitySet, {
     select: cfg.select,
@@ -555,17 +563,36 @@ async function getEntity({ type, identifier }) {
     return { error: `No ${type} found matching "${identifier}"` };
   }
 
-  // Prefer exact match for contains() lookups
+  // Prefer exact match — check both primary and alternate name fields
   let match;
   if (!cfg.filterExact && result.records.length > 1) {
-    const exact = result.records.find(r => {
-      const val = r[cfg.nameField];
-      return val && val.toLowerCase() === identifier.toLowerCase();
+    const lowerIdent = identifier.toLowerCase();
+    const exactMatches = result.records.filter(r => {
+      const primary = r[cfg.nameField];
+      if (primary && primary.toLowerCase() === lowerIdent) return true;
+      if (cfg.altNameField) {
+        const alt = r[cfg.altNameField];
+        if (alt && alt.toLowerCase() === lowerIdent) return true;
+      }
+      return false;
     });
+    // If multiple exact matches, prefer the one with the most requests (most active)
+    let exact;
+    if (exactMatches.length > 1) {
+      exact = exactMatches.sort((a, b) =>
+        (b.akoya_countofrequests || b.akoya_countofawards || 0) - (a.akoya_countofrequests || a.akoya_countofawards || 0)
+      )[0];
+    } else {
+      exact = exactMatches[0];
+    }
     match = exact || result.records[0];
 
     if (!exact) {
-      const names = result.records.map(r => r[cfg.nameField]).filter(Boolean);
+      const names = result.records.map(r => {
+        const n = r[cfg.nameField] || '';
+        const aka = cfg.altNameField && r[cfg.altNameField] ? ` (aka ${r[cfg.altNameField]})` : '';
+        return n + aka;
+      }).filter(Boolean);
       const cleaned = stripEmpty(match);
       cleaned._note = `Multiple matches (${result.records.length}). Showing first. All matches: ${names.join('; ')}`;
       return cleaned;
