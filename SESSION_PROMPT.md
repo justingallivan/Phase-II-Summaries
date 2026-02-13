@@ -1,59 +1,91 @@
-# Session 50 Prompt: Dynamics Explorer Database Architecture Discussion
+# Session 51 Prompt: Dynamics Explorer Architecture Planning — New Tools from Dataverse Search
 
-## Session 49 Summary
+## Session 50 Summary
 
-Continued refining the **Dynamics Explorer** chatbot — completed schema annotations with the domain expert and then iteratively fixed query result handling issues.
+Discussed **Dynamics database architecture** and discovered that **Dataverse Search** (full-text search powered by Azure AI Search) is enabled on the CRM instance. Integrated it as a new `search_records` tool, and fixed a pagination issue.
 
 ### What Was Completed
 
-1. **Schema annotations** — Went through all tables with the domain expert and added brief parenthetical hints to ambiguous field names (e.g., `akoya_loireceived (Phase I proposal received date)`, `akoya_folio (payment status)`, `wmkf_bmf509 (IRS 509(a) status)`). Dropped deprecated `akoya_concept` table and two unused fields (`wmkf_typeforrollup`, `wmkf_researchconceptemailsent`).
+1. **Database architecture mapping** — Mapped the full entity relationship model centered on `akoya_request` as the hub entity, with connections to accounts, contacts, payments/reports, emails, annotations, reviewers, and lookup tables.
 
-2. **Field type hints** — Added boolean/int option set markers to prevent the model from filtering with string values on integer fields (e.g., `akoya_requirementtype (int option set — interim or final; do NOT filter as string)`).
+2. **Discovered Dataverse Search API** — Tested `{DYNAMICS_URL}/api/search/v1.0/query` and confirmed it's active: 77,774 documents indexed, 154 MB. Supports full-text search across all indexed tables simultaneously with relevance ranking, stemming, and fuzzy matching.
 
-3. **Server-side `$select` sanitization** — The model frequently puts `_formatted` fields in `$select` despite system prompt rules. New `sanitizeSelect()` function silently strips them before sending to Dynamics. The `Prefer: odata.include-annotations="*"` header ensures `_formatted` values are still auto-returned.
+3. **Discovered `wmkf_abstract` field** — Found that `akoya_request` has a `wmkf_abstract` field containing full proposal abstract text. It wasn't in the schema because the schema mapper's 25-record sample missed it. Now added to the system prompt schema.
 
-4. **`$count=true` on all queries** — Dynamics now always returns `totalCount` alongside records, so the model knows the true total even when records are truncated.
+4. **Integrated `search_records` tool** — New composite tool in the Dynamics Explorer that calls the Dataverse Search API. Searches titles, abstracts, names, notes across all indexed tables in one call. Returns results grouped by entity with highlighted match text. Successfully tested "find all grants about fungi" — returned 10 relevant results across requests and contacts.
 
-5. **Record-aware truncation** — Replaced naive string-cutting with a function that trims the records array while preserving valid JSON and reporting `totalCount`. Model is instructed to present the `totalCount` to the user.
+5. **Fixed result truncation/pagination issue** — Discovered that Dynamics CRM does NOT support `$skip` (error `0x80060888`). Doubled `MAX_RESULT_CHARS` from 8K → 16K so queries returning ~50 records fit without truncation. Strengthened `$select` guidance so the model requests only fields it will display.
 
-6. **Default `top` increased** — 10 → 50, `MAX_RESULT_CHARS` 4000 → 8000.
-
-7. **`find_reports_due` composite tool** — New server-side tool that queries all reporting requirements in a date range with org names, request numbers, and types in compact text. Handles the common "what reports are due in [month]?" query in one tool call.
-
-### Current State
-
-The "What reports are due in February 2026?" query now correctly identifies **84 reports** (verified by direct API call). The model summarizes by date and shows details. Still needs testing to confirm the composite tool returns all 84 with full details in one round.
+6. **Fixed Next.js API handler warning** — Separated `return res.end()` into `res.end(); return;` to avoid "API handler should not return a value" warning.
 
 ### Commits
-- `1e0d1be` - Annotate Dynamics schema fields and drop deprecated concept table
-- `06816b3` - Add field type hints for option sets and boolean fields
-- `fa5790a` - Add find_reports_due composite tool and fix query result handling
+- `25f6957` - Add full-text search via Dataverse Search API to Dynamics Explorer
+- `8fd6b85` - Add skip parameter (reverted next commit)
+- `8c3b8b2` - Remove $skip (unsupported in CRM), double result char limit to 16K
+- `9ab053f` - Fix Next.js API handler warning
 
-## Primary Next Step: Database Architecture Discussion
+## Primary Next Step: Architecture Planning — New Tools from Dataverse Search
 
-**The user wants to discuss the Dynamics database architecture before further optimization.** The goal is to better define the problem space and determine the most efficient patterns for querying the CRM. Topics to cover:
+**Enter planning mode to discuss how to adapt the architecture given what we learned.** Key insights from Session 50 that should inform the plan:
 
-1. **How the data is structured** — What are the key entity relationships? How do requests, payments, accounts, contacts, and emails connect? Are there patterns the current schema doesn't capture well?
+### What We Now Know About the Database
 
-2. **Common query patterns** — What questions do staff ask most often? Which queries require multi-step lookups that could be simplified with more composite tools?
+1. **Entity relationships** — Everything flows through `akoya_request`:
+   ```
+   account (4500+ orgs)
+       │  _akoya_applicantid_value
+       ▼
+   akoya_request (5000+ proposals/grants) ◄── contact (5000+)
+       │
+       ├──→ akoya_requestpayment (5000+)  [payments AND reports, akoya_type bool]
+       ├──→ email (5000+)                 [via _regardingobjectid_value]
+       ├──→ annotation (5000+)            [notes/attachments]
+       ├──→ wmkf_potentialreviewers       [5 lookup fields on request]
+       └──→ lookup tables                 [grant program, type, bbstatus, etc.]
+   ```
 
-3. **Performance bottlenecks** — The `$count` endpoint fails with complex filters (returns "Could not find property on Edm.Int32" error). Should we work around this or use `$count=true` exclusively?
+2. **Dataverse Search capabilities** — The `/api/search/v1.0/query` endpoint:
+   - Searches ALL indexed text fields across multiple tables simultaneously
+   - Auto query expansion: "fungi" → `(fungus* | fungi)^2 OR (fungi~1)`
+   - Returns `@search.highlights` showing exactly where terms matched
+   - Returns `@search.score` for relevance ranking
+   - Can filter to specific entities: `entities: [{ name: 'akoya_request' }]`
+   - Also has `/api/search/v1.0/suggest` for autocomplete
+   - Index: 77,774 documents, 154 MB
 
-4. **Field coverage** — Are there important fields NOT in the current schema? The `scripts/dynamics-schema-map.js` utility can identify populated fields.
+3. **Hidden fields** — `wmkf_abstract` on `akoya_request` contains full proposal abstracts but wasn't in the original schema. There may be other populated fields not yet exposed. The schema mapper (`scripts/dynamics-schema-map.js`) samples only 25 records and can miss sparsely populated fields.
 
-5. **Result volume** — Some queries return 84+ records. When should the model summarize vs. list everything? Should there be a pagination pattern?
+4. **CRM limitations**:
+   - `$skip` is NOT supported (error `0x80060888`)
+   - `$count` endpoint fails with complex filters
+   - OData `contains()` only searches one field at a time
+   - No server-side joins — every cross-table lookup is a separate API call
+   - `_formatted` fields cannot appear in `$select`
+
+### Questions for the Planning Discussion
+
+1. **What new composite tools would be most valuable?** Candidates:
+   - `find_request_summary` — Given a request number, return a comprehensive one-page summary (request details + org + contact + payments + reports + reviewers) in one tool call
+   - `find_payments_for_account` — All payments for an org, similar to `find_emails_for_account`
+   - `find_requests_by_topic` — Wrapper around Dataverse Search filtered to `akoya_request`, with richer result formatting
+   - `find_reviewer_assignments` — Which requests is a reviewer assigned to?
+   - `find_active_grants` — Active grants with payment summaries
+
+2. **Should Dataverse Search replace some OData queries?** For questions like "show me all requests from Stanford," should the model use `search_records` with entity filter instead of the multi-step account→request lookup? Trade-offs: search is faster (one call) but may be less precise than exact GUID filtering.
+
+3. **Are there more hidden fields to discover?** Should we re-run the schema mapper with a larger sample size (e.g., 100 records) to catch sparsely populated fields like `wmkf_abstract`?
+
+4. **Token budget with new tools** — Current system prompt is ~3K tokens. Each new tool definition adds ~100-150 tokens. How many tools can we add before hitting rate limits? The 30K input token/min rate limit is the constraint.
+
+5. **Should the char limits be tool-specific?** Currently: 16K for regular queries, 12K for composite tools. Search results might need their own limit since abstracts are long.
 
 ## Other Potential Next Steps
 
-### 1. Additional Composite Tools
-Based on usage patterns, consider more server-side tools (similar to `find_reports_due`). Candidates: payments by org, request summaries, reviewer assignments.
-
-### 2. Multi-Perspective Evaluator Refinements
+### 1. Multi-Perspective Evaluator Refinements
 - Test eligibility screening more thoroughly
 - PDF export for Batch Summaries apps
-- Refine perspective prompts
 
-### 3. Integrity Screener Enhancements
+### 2. Integrity Screener Enhancements
 - Complete dismissal functionality
 - Add History tab
 - PDF export for formal reports
@@ -64,24 +96,27 @@ Based on usage patterns, consider more server-side tools (similar to `find_repor
 |------|---------|
 | `shared/config/prompts/dynamics-explorer.js` | System prompt + schema + tool definitions |
 | `pages/api/dynamics-explorer/chat.js` | Chat API with agentic loop + composite tools |
-| `lib/services/dynamics-service.js` | Dynamics API service with entity set resolution |
+| `lib/services/dynamics-service.js` | Dynamics API service (OData + Dataverse Search) |
 | `shared/config/baseConfig.js` | Model config (currently Haiku 4.5) |
-| `docs/DYNAMICS_SCHEMA_ANNOTATION.md` | Schema annotation plan (mostly completed) |
 | `scripts/dynamics-schema-map.js` | Schema introspection utility |
+| `scripts/test-dataverse-search.js` | Dataverse Search API test script |
 
 ## Architecture Notes
 
 - **Agentic loop**: User question → Claude picks tools → server executes against Dynamics → results fed back → Claude responds or calls more tools
-- **Composite tools**: `find_emails_for_account`, `find_emails_for_request`, `find_reports_due` — handle multi-step queries server-side
+- **Composite tools**: `find_emails_for_account`, `find_emails_for_request`, `find_reports_due`, `search_records` — handle multi-step or cross-table queries server-side
 - **Token budget**: System prompt ~3,000 tokens. 30k input tokens/min rate limit. Results compacted (stripped nulls, text summaries, conversation compaction between rounds)
 - **Model**: Haiku 4.5 primary, Haiku 3.5 fallback
-- **Query limits**: Default top=50, max 100 per query, 8K char limit per tool result (12K for composite tools)
+- **Query limits**: Default top=50, max 100 per query, 16K char limit per tool result (12K for composite tools)
+- **Dataverse Search**: Full-text search across 77K+ indexed documents. Used by `search_records` tool.
 
 ## Testing
 
 ```bash
-npm run dev              # Run development server
-npm run build            # Verify build succeeds
+npm run dev                              # Run development server
+npm run build                            # Verify build succeeds
+node scripts/test-dataverse-search.js    # Test Dataverse Search API
+node scripts/test-dataverse-search.js "CRISPR"  # Search with custom term
 ```
 
 App accessible at `/dynamics-explorer`
