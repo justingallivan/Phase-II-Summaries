@@ -19,7 +19,7 @@ export function buildSystemPrompt({ userRole = 'read_only', restrictions = [] } 
 ${restrictionBlock}
 RULES:
 - Query directly — do NOT call discover_fields/discover_tables unless user asks about an unknown table.
-- Null fields are stripped from results. Use $select with fields from schema below.
+- Null fields are stripped from results. ALWAYS use $select with ONLY the fields you will display — fewer fields means more records fit in the response. If results are truncated, use skip to paginate.
 - Lookup fields (_xxx_value) return GUIDs; the _formatted version has display names. Always $select the _value field — _formatted values are auto-returned and MUST NOT appear in $select (they cause API errors).
 - Complete the task in as FEW tool calls as possible. Combine information you already have.
 - NEVER fabricate or guess data. Only present information returned by tool calls. If data is not available, say so.
@@ -93,15 +93,16 @@ Lookup tables (small, use for resolving _value GUIDs):
 export const TOOL_DEFINITIONS = [
   {
     name: 'query_records',
-    description: 'Query records. Null fields stripped. Use $select from schema above.',
+    description: 'Query records. Null fields stripped. Use $select with ONLY the fields you need — fewer fields = more records fit in the response.',
     input_schema: {
       type: 'object',
       properties: {
         table_name: { type: 'string' },
-        select: { type: 'string', description: 'Comma-separated fields' },
+        select: { type: 'string', description: 'Comma-separated fields. IMPORTANT: only select fields you will display.' },
         filter: { type: 'string', description: 'OData $filter' },
         orderby: { type: 'string', description: 'OData $orderby' },
         top: { type: 'integer', description: '1-100, default 50' },
+        skip: { type: 'integer', description: 'Skip first N records (for pagination). Use with same filter/orderby to get next page.' },
         expand: { type: 'string', description: 'OData $expand' },
       },
       required: ['table_name'],

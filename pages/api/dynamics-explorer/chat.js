@@ -342,6 +342,7 @@ async function executeTool(name, input) {
         filter: input.filter,
         orderby: input.orderby,
         top: input.top || 50,
+        skip: input.skip,
         expand: input.expand,
       });
       // Strip null/empty values to dramatically reduce token usage
@@ -444,7 +445,7 @@ function truncateResult(result, charLimit) {
         records: result.records.slice(0, maxRecords),
         count: maxRecords,
         totalCount,
-        note: `Showing ${maxRecords} of ${totalCount} total matching records. Present the totalCount to the user. Use narrower $filter or $orderby with $skip-style pagination to see all.`,
+        note: `Showing ${maxRecords} of ${totalCount} total. Present the totalCount to the user. To get the next page, call query_records again with the same filter/orderby and skip=${maxRecords}.`,
       };
       return JSON.stringify(trimmed);
     }
