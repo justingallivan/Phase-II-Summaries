@@ -782,6 +782,8 @@ Set by `shared/api/middleware/security.js`:
 
 **Recommendation:** Fail hard (throw/exit) if the env var is missing in production (`NODE_ENV=production`).
 
+**Status:** REMEDIATED. `getEncryptionKey()` in `lib/utils/encryption.js` now throws in production if `USER_PREFS_ENCRYPTION_KEY` is unset. `shared/utils/apiKeyManager.js` crypto methods use `getSecretKey()` which throws if `API_SECRET_KEY` is missing in production. Dev fallbacks remain for local development.
+
 #### M2: Dynamics Restrictions Are Application-Layer Only
 
 **Finding:** CRM access restrictions (table/field blocks) are enforced in the chat API handler. The `DynamicsService` class itself has no restriction awareness — any code that imports the service directly can bypass restrictions.
@@ -789,6 +791,8 @@ Set by `shared/api/middleware/security.js`:
 **Location:** `pages/api/dynamics-explorer/chat.js` (restriction check), `lib/services/dynamics-service.js` (no restriction awareness)
 
 **Recommendation:** Move restriction enforcement into the `DynamicsService` class so all code paths are protected.
+
+**Status:** REMEDIATED. `DynamicsService` now has `setRestrictions()`, `checkRestriction()`, and `resolveLogicalName()` static methods. Restriction checks are enforced in `queryRecords`, `getRecord`, `countRecords`, `searchRecords`, and `getEntityAttributes`. The chat handler sets restrictions on the service via `DynamicsService.setRestrictions(restrictions)` at request start. Field-level matching bug (substring `includes` → exact split-and-match) also fixed in `chat.js`.
 
 #### M3: Auth Bypass Allows Profile Switching
 
@@ -798,6 +802,8 @@ Set by `shared/api/middleware/security.js`:
 
 **Recommendation:** This is acceptable for development but must never be enabled in production. Add a startup check that fails if `AUTH_REQUIRED=false` in a production environment.
 
+**Status:** REMEDIATED. `isAuthRequired()` now logs a warning when auth is disabled in production. `requireAuthWithProfile()` returns 403 if `authBypassed` is true in production, preventing request-body profile ID impersonation.
+
 #### M4: No HSTS Header
 
 **Finding:** The application relies on Vercel's platform-level HTTPS redirect but does not set the `Strict-Transport-Security` header.
@@ -805,6 +811,8 @@ Set by `shared/api/middleware/security.js`:
 **Location:** `shared/api/middleware/security.js`
 
 **Recommendation:** Add `Strict-Transport-Security: max-age=31536000; includeSubDomains` to `setSecurityHeaders()`.
+
+**Status:** REMEDIATED. HSTS header added to `setSecurityHeaders()` in security middleware (production only) and to `next.config.js` `headers()` for framework-level coverage on all routes. Both use `max-age=31536000; includeSubDomains`.
 
 ### Low
 

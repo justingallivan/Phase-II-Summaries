@@ -72,6 +72,7 @@ export default async function handler(req, res) {
 
     const userRole = await getUserRole(userProfileId);
     const restrictions = await getActiveRestrictions();
+    DynamicsService.setRestrictions(restrictions);
     const systemPrompt = buildSystemPrompt({ userRole, restrictions });
 
     // Only send the last few user/assistant exchanges to stay within token limits
@@ -1308,7 +1309,10 @@ function checkRestriction(toolName, input, restrictions) {
   for (const r of restrictions) {
     if (r.table_name === input.table_name) {
       if (!r.field_name) return `Table "${r.table_name}" is restricted`;
-      if (input.select && input.select.includes(r.field_name)) return `Field "${r.field_name}" is restricted`;
+      if (input.select) {
+        const fields = input.select.split(',').map(f => f.trim());
+        if (fields.includes(r.field_name)) return `Field "${r.field_name}" is restricted`;
+      }
     }
   }
   return null;

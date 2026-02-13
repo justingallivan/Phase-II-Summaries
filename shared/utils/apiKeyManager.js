@@ -1,8 +1,15 @@
 import crypto from 'crypto';
 
 const ALGORITHM = 'aes-256-gcm';
-const SECRET_KEY = process.env.API_SECRET_KEY || 'default-secret-key-change-in-production';
 const SALT = 'api-key-salt';
+
+function getSecretKey() {
+  const key = process.env.API_SECRET_KEY;
+  if (!key && process.env.NODE_ENV === 'production') {
+    throw new Error('API_SECRET_KEY is not set in production');
+  }
+  return key || 'default-secret-key-change-in-production';
+}
 
 export class ApiKeyManager {
   constructor() {
@@ -17,10 +24,10 @@ export class ApiKeyManager {
    */
   encryptForClient(apiKey) {
     try {
-      const key = crypto.scryptSync(SECRET_KEY, SALT, 32);
+      const key = crypto.scryptSync(getSecretKey(), SALT, 32);
       const iv = crypto.randomBytes(16);
       const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-      
+
       let encrypted = cipher.update(apiKey, 'utf8', 'hex');
       encrypted += cipher.final('hex');
       
@@ -47,7 +54,7 @@ export class ApiKeyManager {
     try {
       const { encrypted, iv, authTag } = encryptedData;
       
-      const key = crypto.scryptSync(SECRET_KEY, SALT, 32);
+      const key = crypto.scryptSync(getSecretKey(), SALT, 32);
       const decipher = crypto.createDecipheriv(
         ALGORITHM,
         key,
