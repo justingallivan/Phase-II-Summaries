@@ -13,9 +13,16 @@
 
 import { useSession, signIn } from 'next-auth/react';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/router';
 import ProfileLinkingDialog from './ProfileLinkingDialog';
 
 export default function RequireAuth({ children }) {
+  const router = useRouter();
+
+  // Never wrap NextAuth's own pages — they handle auth state themselves
+  if (router.pathname.startsWith('/auth/')) {
+    return children;
+  }
   const { data: session, status } = useSession();
   const [showLinkingDialog, setShowLinkingDialog] = useState(false);
   // Start as false on both server and client — avoids hydration mismatch
