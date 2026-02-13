@@ -5692,11 +5692,10 @@ export default function ReviewerFinderPage() {
     setActiveTab('candidates');
   };
 
-  // Load API key from localStorage
+  // Clean up legacy plain-text localStorage key if present
   useEffect(() => {
-    const savedKey = localStorage.getItem('claudeApiKey');
-    if (savedKey) {
-      setApiKey(savedKey);
+    if (localStorage.getItem('claudeApiKey')) {
+      localStorage.removeItem('claudeApiKey');
     }
   }, []);
 
@@ -5713,7 +5712,6 @@ export default function ReviewerFinderPage() {
   const handleApiKeyChange = (e) => {
     const key = e.target.value;
     setApiKey(key);
-    localStorage.setItem('claudeApiKey', key);
   };
 
   const tabs = [

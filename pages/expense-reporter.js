@@ -15,18 +15,6 @@ export default function ExpenseReporter() {
   const [editingRow, setEditingRow] = useState(null);
   const [editedData, setEditedData] = useState({});
 
-  useEffect(() => {
-    const savedKey = localStorage.getItem('claude_api_key_encrypted');
-    if (savedKey) {
-      try {
-        const decrypted = atob(savedKey);
-        setApiKey(decrypted);
-      } catch (e) {
-        console.error('Failed to decrypt API key');
-      }
-    }
-  }, []);
-
   const formatFileSize = (bytes) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;

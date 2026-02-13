@@ -40,7 +40,7 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
   try {
     profileContext = useProfile();
   } catch (e) {
-    // ProfileProvider not available, will use localStorage fallback
+    // ProfileProvider not available
   }
 
   const { currentProfile, setPreference, getDecryptedApiKey, hasPreference } = profileContext || {};
@@ -103,32 +103,13 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
         return;
       }
 
-      // No profile selected - use localStorage
-      const storedKey = localStorage.getItem(API_KEY_STORAGE_KEY);
-      if (storedKey) {
-        const decrypted = atob(storedKey);
-        setApiKey(decrypted);
-        setMaskedKey(maskApiKeyValue(decrypted));
-        setIsKeyStored(true);
-        onApiKeySet(decrypted);
-      } else if (required) {
+      // No profile selected — cannot load key without a profile
+      if (required) {
         setShowModal(true);
       }
     } catch (error) {
       console.error('Error loading API key:', error);
-      // Only use localStorage if no profile is selected
-      if (!profileId) {
-        const storedKey = localStorage.getItem(API_KEY_STORAGE_KEY);
-        if (storedKey) {
-          const decrypted = atob(storedKey);
-          setApiKey(decrypted);
-          setMaskedKey(maskApiKeyValue(decrypted));
-          setIsKeyStored(true);
-          onApiKeySet(decrypted);
-        } else if (required) {
-          setShowModal(true);
-        }
-      } else if (required) {
+      if (required) {
         setShowModal(true);
       }
     }
@@ -150,17 +131,15 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
     }
 
     try {
-      // If profile is selected, save to profile preferences
-      if (currentProfile && setPreference) {
-        const success = await setPreference(PREFERENCE_KEY, apiKey.trim());
-        if (!success) {
-          throw new Error('Failed to save to profile');
-        }
+      if (!currentProfile || !setPreference) {
+        alert('Please select a profile before saving your API key.');
+        return;
       }
 
-      // Also save to localStorage as fallback
-      const encrypted = btoa(apiKey.trim());
-      localStorage.setItem(API_KEY_STORAGE_KEY, encrypted);
+      const success = await setPreference(PREFERENCE_KEY, apiKey.trim());
+      if (!success) {
+        throw new Error('Failed to save to profile');
+      }
 
       setMaskedKey(maskApiKeyValue(apiKey.trim()));
       setIsKeyStored(true);
@@ -169,13 +148,7 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
       onApiKeySet(apiKey.trim());
     } catch (error) {
       console.error('Error saving API key:', error);
-      // Fall back to localStorage only
-      const encrypted = btoa(apiKey.trim());
-      localStorage.setItem(API_KEY_STORAGE_KEY, encrypted);
-      setMaskedKey(maskApiKeyValue(apiKey.trim()));
-      setIsKeyStored(true);
-      setShowModal(false);
-      onApiKeySet(apiKey.trim());
+      alert('Failed to save API key. Please try again.');
     }
   };
 
@@ -190,6 +163,7 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
         const decrypted = atob(storedKey);
         const success = await setPreference(PREFERENCE_KEY, decrypted);
         if (success) {
+          localStorage.removeItem(API_KEY_STORAGE_KEY);
           migratedProfiles.add(currentProfile.id);
           setShowMigrationPrompt(false);
         }
@@ -352,7 +326,7 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
                 {currentProfile ? (
                   <> Your key will be saved to your profile ({currentProfile.displayName || currentProfile.name}) and encrypted in the database.</>
                 ) : (
-                  <> Your key will be stored locally in your browser.</>
+                  <> Please select a profile first to save your key securely.</>
                 )}
               </p>
 
@@ -383,7 +357,7 @@ export default function ApiKeyManager({ onApiKeySet, required = true, appKey = n
 
               <div className={styles.helpText}>
                 <p>
-                  🔒 Your API key is encrypted and {currentProfile ? 'stored securely in your profile' : 'stored locally in your browser'}.
+                  🔒 Your API key is encrypted and stored securely in your profile.
                   It is never sent to our servers.
                 </p>
                 <p>

@@ -6,9 +6,8 @@
  * - NCBI (free, for faster PubMed queries)
  * - SerpAPI (paid, for Google searches)
  *
- * Now integrates with user profiles for secure storage.
- * Keys are stored in the database when a profile is selected,
- * or in localStorage as fallback.
+ * Keys are stored encrypted in the database via user profiles.
+ * A profile must be selected to save keys.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -193,23 +192,9 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
       return;
     }
 
-    // No profile selected - use localStorage
-    const stored = {
-      orcidClientId: localStorage.getItem(STORAGE_KEYS.ORCID_CLIENT_ID),
-      orcidClientSecret: localStorage.getItem(STORAGE_KEYS.ORCID_CLIENT_SECRET),
-      ncbiApiKey: localStorage.getItem(STORAGE_KEYS.NCBI_API_KEY),
-      serpApiKey: localStorage.getItem(STORAGE_KEYS.SERP_API_KEY),
-    };
-
-    if (stored.orcidClientId) { loaded.orcidClientId = atob(stored.orcidClientId); }
-    if (stored.orcidClientSecret) { loaded.orcidClientSecret = atob(stored.orcidClientSecret); }
-    if (stored.ncbiApiKey) { loaded.ncbiApiKey = atob(stored.ncbiApiKey); }
-    if (stored.serpApiKey) { loaded.serpApiKey = atob(stored.serpApiKey); }
-
+    // No profile selected — cannot load keys without a profile
     setSettings(loaded);
-
-    const hasAny = Object.values(loaded).some(v => v && v.length > 0);
-    setHasStoredSettings(hasAny);
+    setHasStoredSettings(false);
 
     if (onSettingsChangeRef.current) {
       onSettingsChangeRef.current(loaded);
@@ -237,50 +222,27 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
   // Save all settings
   const saveSettings = async () => {
     try {
-      // Save to profile if available
-      if (currentProfile) {
-        const response = await fetch('/api/user-preferences', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            profileId: currentProfile.id,
-            preferences: {
-              [PREFERENCE_KEYS.ORCID_CLIENT_ID]: settings.orcidClientId || null,
-              [PREFERENCE_KEYS.ORCID_CLIENT_SECRET]: settings.orcidClientSecret || null,
-              [PREFERENCE_KEYS.NCBI_API_KEY]: settings.ncbiApiKey || null,
-              [PREFERENCE_KEYS.SERP_API_KEY]: settings.serpApiKey || null,
-            }
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to save to profile');
-        }
+      if (!currentProfile) {
+        setSaveStatus('error');
+        return;
       }
 
-      // Also save to localStorage as fallback
-      if (settings.orcidClientId) {
-        localStorage.setItem(STORAGE_KEYS.ORCID_CLIENT_ID, btoa(settings.orcidClientId));
-      } else {
-        localStorage.removeItem(STORAGE_KEYS.ORCID_CLIENT_ID);
-      }
+      const response = await fetch('/api/user-preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profileId: currentProfile.id,
+          preferences: {
+            [PREFERENCE_KEYS.ORCID_CLIENT_ID]: settings.orcidClientId || null,
+            [PREFERENCE_KEYS.ORCID_CLIENT_SECRET]: settings.orcidClientSecret || null,
+            [PREFERENCE_KEYS.NCBI_API_KEY]: settings.ncbiApiKey || null,
+            [PREFERENCE_KEYS.SERP_API_KEY]: settings.serpApiKey || null,
+          }
+        })
+      });
 
-      if (settings.orcidClientSecret) {
-        localStorage.setItem(STORAGE_KEYS.ORCID_CLIENT_SECRET, btoa(settings.orcidClientSecret));
-      } else {
-        localStorage.removeItem(STORAGE_KEYS.ORCID_CLIENT_SECRET);
-      }
-
-      if (settings.ncbiApiKey) {
-        localStorage.setItem(STORAGE_KEYS.NCBI_API_KEY, btoa(settings.ncbiApiKey));
-      } else {
-        localStorage.removeItem(STORAGE_KEYS.NCBI_API_KEY);
-      }
-
-      if (settings.serpApiKey) {
-        localStorage.setItem(STORAGE_KEYS.SERP_API_KEY, btoa(settings.serpApiKey));
-      } else {
-        localStorage.removeItem(STORAGE_KEYS.SERP_API_KEY);
+      if (!response.ok) {
+        throw new Error('Failed to save to profile');
       }
 
       const hasAny = Object.values(settings).some(v => v && v.length > 0);
@@ -321,6 +283,8 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
       });
 
       if (response.ok) {
+        // Clean up insecure localStorage copies
+        Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
         migratedProfiles.add(currentProfile.id);
         setShowMigrationPrompt(false);
         setSaveStatus('saved');
@@ -432,7 +396,7 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
                 Optional API keys for enhanced features.
                 {currentProfile
                   ? ` Saved securely to your profile (${currentProfile.displayName || currentProfile.name}).`
-                  : ' Stored locally in your browser.'}
+                  : ' Select a profile to save keys securely.'}
               </p>
 
               {/* Migration prompt */}
@@ -555,10 +519,7 @@ export default function ApiSettingsPanel({ onSettingsChange }) {
               {/* Info Box */}
               <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                 <p className="text-xs text-gray-500">
-                  <strong>🔒 Privacy:</strong> All credentials are
-                  {currentProfile
-                    ? ' encrypted and stored securely in the database, associated with your profile.'
-                    : ' stored locally in your browser using base64 encoding.'}
+                  <strong>🔒 Privacy:</strong> All credentials are encrypted and stored securely in the database, associated with your profile.
                   They are never sent to our servers - only directly to the respective API providers.
                 </p>
               </div>

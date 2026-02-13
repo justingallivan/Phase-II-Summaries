@@ -8,6 +8,7 @@
 
 import { sql } from '@vercel/postgres';
 import { requireAuth } from '../../../lib/utils/auth';
+import { proxifyBlobUrl } from '../../../lib/utils/blob-proxy';
 
 export default async function handler(req, res) {
   // Require authentication
@@ -227,7 +228,7 @@ async function handleGet(req, res) {
           proposalAuthors: row.proposal_authors,
           proposalInstitution: row.proposal_institution,
           programArea: row.program_area,
-          summaryBlobUrl: row.summary_blob_url,
+          summaryBlobUrl: proxifyBlobUrl(row.summary_blob_url),
           grantCycleId: row.grant_cycle_id,
           grantCycleName: row.cycle_name,
           grantCycleShortCode: row.cycle_short_code,

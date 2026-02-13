@@ -39,7 +39,7 @@ export const securityMiddleware = {
         styleSrc: ["'self'", "'unsafe-inline'"],
         scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
         imgSrc: ["'self'", "data:", "https:"],
-        connectSrc: ["'self'", "https://api.anthropic.com", "https://blob.vercel-storage.com"],
+        connectSrc: ["'self'", "https://api.anthropic.com"],
       },
     },
     crossOriginEmbedderPolicy: false,

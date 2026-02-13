@@ -9,6 +9,16 @@
 
 import { sql } from '@vercel/postgres';
 import { requireAuth } from '../../../lib/utils/auth';
+import { proxifyBlobUrl } from '../../../lib/utils/blob-proxy';
+
+// Proxify blobUrl fields inside an additionalAttachments JSON array
+function proxifyAttachments(attachments) {
+  if (!attachments || !Array.isArray(attachments)) return attachments;
+  return attachments.map(att => ({
+    ...att,
+    blobUrl: att.blobUrl ? proxifyBlobUrl(att.blobUrl) : att.blobUrl
+  }));
+}
 
 export default async function handler(req, res) {
   // Require authentication
@@ -101,9 +111,9 @@ async function handleGet(req, res) {
       programName: row.program_name,
       reviewDeadline: row.review_deadline,
       summaryPages: row.summary_pages,
-      reviewTemplateBlobUrl: row.review_template_blob_url,
+      reviewTemplateBlobUrl: proxifyBlobUrl(row.review_template_blob_url),
       reviewTemplateFilename: row.review_template_filename,
-      additionalAttachments: row.additional_attachments,
+      additionalAttachments: proxifyAttachments(row.additional_attachments),
       customFields: row.custom_fields,
       isActive: row.is_active,
       createdAt: row.created_at,
@@ -199,9 +209,9 @@ async function handlePost(req, res) {
         programName: row.program_name,
         reviewDeadline: row.review_deadline,
         summaryPages: row.summary_pages,
-        reviewTemplateBlobUrl: row.review_template_blob_url,
+        reviewTemplateBlobUrl: proxifyBlobUrl(row.review_template_blob_url),
         reviewTemplateFilename: row.review_template_filename,
-        additionalAttachments: row.additional_attachments,
+        additionalAttachments: proxifyAttachments(row.additional_attachments),
         customFields: row.custom_fields,
         isActive: row.is_active,
         createdAt: row.created_at,
@@ -320,9 +330,9 @@ async function handlePatch(req, res) {
         programName: row.program_name,
         reviewDeadline: row.review_deadline,
         summaryPages: row.summary_pages,
-        reviewTemplateBlobUrl: row.review_template_blob_url,
+        reviewTemplateBlobUrl: proxifyBlobUrl(row.review_template_blob_url),
         reviewTemplateFilename: row.review_template_filename,
-        additionalAttachments: row.additional_attachments,
+        additionalAttachments: proxifyAttachments(row.additional_attachments),
         customFields: row.custom_fields,
         isActive: row.is_active,
         createdAt: row.created_at,
