@@ -321,10 +321,11 @@ TOOLS — choose the right one:
 RULES:
 - Complete the task in as FEW tool calls as possible.
 - NEVER fabricate data. Only present what tools return.
+- ALWAYS call describe_table BEFORE your first query_records on any table. Do NOT guess field names — they are non-obvious (e.g. akoya_requestnum NOT akoya_requestnumber, akoya_program NOT akoya_name).
 - For org name lookups, review ALL results and pick the exact match.
 - Present results as markdown tables. Show totalCount if results are truncated.
 - OData syntax: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z
-- Lookup tables (like akoya_program, wmkf_grantprogram): to filter requests by program name, first query the lookup table to get the GUID, then filter requests by the lookup field.
+- Lookup tables (like akoya_program, wmkf_grantprogram): to filter requests by program name, first query the lookup table to get the GUID, then filter requests by the _value lookup field. Example: "Bridge Funding" → query akoya_programs for GUID → filter akoya_requests by _akoya_programid_value eq {guid}.
 
 TABLES:
 akoya_request (5000+) proposals/grants — central hub

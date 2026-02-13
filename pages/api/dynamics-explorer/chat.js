@@ -24,7 +24,7 @@ export const config = {
   maxDuration: 300,
 };
 
-const MAX_TOOL_ROUNDS = 10;
+const MAX_TOOL_ROUNDS = 15;
 const MAX_RESULT_CHARS = 16000;
 
 // Per-tool char limits — composite tools return compact text and need more room
