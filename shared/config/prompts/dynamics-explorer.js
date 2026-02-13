@@ -30,7 +30,8 @@ export const TABLE_ANNOTATIONS = {
       _akoya_primarycontactid_value: 'lookup → contact — primary contact person',
       _wmkf_programdirector_value: 'lookup → systemuser — Keck staff program director',
       _wmkf_programcoordinator_value: 'lookup → systemuser — Keck staff coordinator',
-      _wmkf_grantprogram_value: 'lookup → wmkf_grantprogram — grant program (11 values)',
+      _wmkf_grantprogram_value: 'lookup → wmkf_grantprogram — grant program (11 values: Research, Undergraduate Education, etc.)',
+      _akoya_programid_value: 'lookup → akoya_program — GoApply program (24 values including "Bridge Funding"). To find requests by program name, first look up the program GUID in akoya_programs, then filter requests by _akoya_programid_value.',
       _wmkf_type_value: 'lookup → wmkf_type — organizational type code (8 values)',
       wmkf_request_type: 'string — category: concept, phone call, site visit, or grant application',
       wmkf_meetingdate: 'datetime — board meeting date',
@@ -241,15 +242,17 @@ export const TABLE_ANNOTATIONS = {
     rules: [],
   },
   akoya_program: {
-    description: 'GoApply program definitions (24 values).',
+    description: 'GoApply program definitions (24 values, e.g. "Bridge Funding", "Phase II", "Phase I"). Linked to requests via _akoya_programid_value.',
     entitySet: 'akoya_programs',
     fields: {
-      akoya_program: 'string — program name',
+      akoya_program: 'string — program name (e.g. "Bridge Funding")',
       wmkf_code: 'string — program code',
       wmkf_alternatename: 'string — alternate name',
-      akoya_programid: 'guid — primary key',
+      akoya_programid: 'guid — primary key. Use this GUID to filter requests: _akoya_programid_value eq {guid}',
     },
-    rules: [],
+    rules: [
+      'To find requests by program name: 1) query akoya_programs with contains(akoya_program,\'name\') to get the GUID, 2) query akoya_requests with _akoya_programid_value eq {guid}.',
+    ],
   },
   akoya_phase: {
     description: 'GoApply application phases (62 values).',
@@ -321,6 +324,7 @@ RULES:
 - For org name lookups, review ALL results and pick the exact match.
 - Present results as markdown tables. Show totalCount if results are truncated.
 - OData syntax: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z
+- Lookup tables (like akoya_program, wmkf_grantprogram): to filter requests by program name, first query the lookup table to get the GUID, then filter requests by the lookup field.
 
 TABLES:
 akoya_request (5000+) proposals/grants — central hub
