@@ -158,7 +158,7 @@ Located in `lib/services/`:
 - `serp-contact-service.js` - Google/Scholar search via SerpAPI
 - `integrity-service.js` - Integrity screening orchestration
 - `integrity-matching-service.js` - Name matching algorithms
-- `dynamics-service.js` - Microsoft Dynamics 365 CRM API (OAuth, OData queries)
+- `dynamics-service.js` - Microsoft Dynamics 365 CRM API (OAuth, OData queries, Dataverse Search)
 
 ---
 
