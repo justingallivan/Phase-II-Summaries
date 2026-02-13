@@ -42,7 +42,8 @@ const SYSTEM_FIELD_NAMES = new Set([
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
   }
 
   const session = await requireAuth(req, res);
@@ -64,12 +65,14 @@ export default async function handler(req, res) {
 
     if (!claudeApiKey) {
       sendEvent('error', { message: 'Claude API key is required' });
-      return res.end();
+      res.end();
+      return;
     }
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       sendEvent('error', { message: 'At least one message is required' });
-      return res.end();
+      res.end();
+      return;
     }
 
     const userRole = await getUserRole(userProfileId);
@@ -106,7 +109,8 @@ export default async function handler(req, res) {
         const finalText = textBlocks.map(b => b.text).join('\n');
         sendEvent('response', { content: finalText });
         sendEvent('complete', { rounds: round });
-        return res.end();
+        res.end();
+      return;
       }
 
       // Execute tool calls
