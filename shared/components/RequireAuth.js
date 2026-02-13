@@ -18,8 +18,9 @@ import ProfileLinkingDialog from './ProfileLinkingDialog';
 export default function RequireAuth({ children }) {
   const { data: session, status } = useSession();
   const [showLinkingDialog, setShowLinkingDialog] = useState(false);
-  // Start as null (unknown) on both server and client to avoid hydration mismatch
-  const [authEnabled, setAuthEnabled] = useState(null);
+  // Start as false on both server and client — avoids hydration mismatch
+  // and prevents loading-state flicker. Auth UI appears after the fetch.
+  const [authEnabled, setAuthEnabled] = useState(false);
 
   // Check auth status on mount (client-side)
   useEffect(() => {
@@ -47,18 +48,6 @@ export default function RequireAuth({ children }) {
       setShowLinkingDialog(true);
     }
   }, [status, session?.user?.needsLinking]);
-
-  // Auth status unknown yet — show loading (same on server and client)
-  if (authEnabled === null) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-gray-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
 
   // If auth is not enabled, just render children
   if (!authEnabled) {
