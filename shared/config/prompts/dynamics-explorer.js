@@ -45,12 +45,15 @@ FISCAL YEAR vs CALENDAR YEAR: akoya_fiscalyear stores grant cycle labels like "J
 
 OData: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z.
 OPTION SETS: Fields marked "int option set" are integers. Do NOT filter with string values. To find valid codes, query a few records first and inspect the _formatted values.
+FULL-TEXT SEARCH: Use search_records for keyword/topic searches across the database (e.g. "find grants about fungi", "search for CRISPR proposals"). It searches all indexed text fields (titles, abstracts, names, notes) across all tables simultaneously with relevance ranking. Use query_records when you need structured filtering (dates, statuses, specific field values).
+
 Present results as markdown tables. If totalCount > records shown, tell user the total and summarize (e.g. group by date or type). Do NOT claim fewer results than totalCount.
 
 SCHEMA (table_name/entitySet: fields):
 
 akoya_request/akoya_requests — proposals/grants (5000+):
   akoya_requestnum, akoya_requeststatus, akoya_requesttype (rarely used), akoya_submitdate, akoya_fiscalyear, akoya_paid (total amount paid), akoya_loireceived (Phase I proposal received date), statecode, statuscode, createdon, modifiedon, _akoya_applicantid_value, _akoya_primarycontactid_value, _wmkf_programdirector_value (Keck staff program director), _wmkf_programcoordinator_value (Keck staff coordinator), _wmkf_grantprogram_value, _wmkf_type_value (organizational code), wmkf_request_type (category: concept, phone call, site visit, or grant application), wmkf_meetingdate (board meeting date), wmkf_numberofyearsoffunding, wmkf_numberofconcepts, wmkf_numberofpayments, wmkf_mrconcept1title..4title (Medical Research concept titles), wmkf_seconcept1title..4title (Science & Engineering concept titles), wmkf_researchconceptstatus (concept status: active/denied/pending), wmkf_conceptcalldate (scheduled concept discussion call), wmkf_vendorverified (applicant payment info verified), wmkf_phaseiicheckincomplete (Phase II check-in complete)
+  wmkf_abstract (full proposal abstract text — use search_records to search by keyword, or $select to retrieve for a known request)
   Reviewers: _wmkf_potentialreviewer1_value.._wmkf_potentialreviewer5_value (lookups to wmkf_potentialreviewers), wmkf_excludedreviewers (text with names and reasons)
 
 akoya_requestpayment/akoya_requestpayments — payments and reporting requirements (5000+):
@@ -164,6 +167,23 @@ export const TOOL_DEFINITIONS = [
         date_to: { type: 'string', description: 'End date exclusive (ISO format, e.g. 2026-03-01T00:00:00Z)' },
       },
       required: ['date_from', 'date_to'],
+    },
+  },
+  {
+    name: 'search_records',
+    description: 'Full-text search across all indexed tables (requests, contacts, accounts, notes, etc.). Searches titles, abstracts, names, and other text fields simultaneously with relevance ranking. Use for keyword/topic searches. Returns matched records with highlighted text showing where the term was found.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        search: { type: 'string', description: 'Search term(s). Supports stemming and fuzzy matching.' },
+        entities: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional: limit to specific tables (e.g. ["akoya_request","contact"])',
+        },
+        top: { type: 'integer', description: '1-100, default 20' },
+      },
+      required: ['search'],
     },
   },
   {

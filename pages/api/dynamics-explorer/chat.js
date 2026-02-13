@@ -141,7 +141,7 @@ export default async function handler(req, res) {
         logQuery({ userProfileId, sessionId, queryType: name, tableName: input.table_name || null, queryParams: input, recordCount, executionTime });
 
         // Composite tools return compact text and need more room
-        const charLimit = (name === 'find_emails_for_request' || name === 'find_reports_due') ? 12000 : MAX_RESULT_CHARS;
+        const charLimit = (name === 'find_emails_for_request' || name === 'find_reports_due' || name === 'search_records') ? 12000 : MAX_RESULT_CHARS;
         let resultStr = truncateResult(result, charLimit);
 
         toolResults.push({ type: 'tool_result', tool_use_id: id, content: resultStr });
@@ -374,6 +374,10 @@ async function executeTool(name, input) {
 
     case 'find_reports_due': {
       return await findReportsDue(input);
+    }
+
+    case 'search_records': {
+      return await searchRecords(input);
     }
 
     case 'discover_tables': {
@@ -638,6 +642,73 @@ async function findReportsDue({ date_from, date_to }) {
   };
 }
 
+/**
+ * Full-text search across all indexed Dynamics tables.
+ * Calls the Dataverse Search API and returns compact results with highlights.
+ */
+async function searchRecords({ search, entities, top }) {
+  const result = await DynamicsService.searchRecords(search, {
+    entities,
+    top: top || 20,
+  });
+
+  if (!result.results.length) {
+    return {
+      totalCount: 0,
+      query: result.queryContext?.alteredquery || search,
+      message: 'No results found.',
+    };
+  }
+
+  // Group results by entity for readable output
+  const byEntity = {};
+  for (const r of result.results) {
+    if (!byEntity[r.entity]) byEntity[r.entity] = [];
+    byEntity[r.entity].push(r);
+  }
+
+  const sections = [];
+  for (const [entity, results] of Object.entries(byEntity)) {
+    const lines = results.map(r => {
+      const a = r.attributes;
+
+      // Build a one-line identifier based on entity type
+      let label;
+      if (entity === 'akoya_request') {
+        label = `Req ${a.akoya_requestnum || '?'} | ${a.akoya_applicantidname || '?'} | ${(a.akoya_title || '').substring(0, 80)}`;
+      } else if (entity === 'contact') {
+        label = `${a.fullname || '?'} | ${a.jobtitle || ''} | ${a.emailaddress1 || ''}`;
+      } else if (entity === 'account') {
+        label = `${a.name || '?'} | ${a.address1_city || ''}, ${a.address1_stateorprovince || ''}`;
+      } else if (entity === 'annotation') {
+        label = `Note: ${(a.subject || a.notetext || '').substring(0, 80)}`;
+      } else if (entity === 'email') {
+        label = `Email: ${(a.subject || '').substring(0, 80)} | ${a.createdon || ''}`;
+      } else {
+        label = `${a.wmkf_name || a.akoya_title || r.objectId}`;
+      }
+
+      // Format highlights — strip {crmhit} tags and show matched text
+      const hlParts = [];
+      for (const [field, values] of Object.entries(r.highlights)) {
+        const cleanValues = (Array.isArray(values) ? values : [values])
+          .map(v => v.replace(/\{crmhit\}/g, '**').replace(/\{\/crmhit\}/g, '**'));
+        hlParts.push(`${field}: ${cleanValues[0].substring(0, 200)}`);
+      }
+
+      return `${label}\n  ID: ${r.objectId}\n  ${hlParts.join('\n  ')}`;
+    });
+
+    sections.push(`[${entity}] (${results.length} results)\n${lines.join('\n')}`);
+  }
+
+  return {
+    totalCount: result.totalCount,
+    query: result.queryContext?.alteredquery || search,
+    results: sections.join('\n\n'),
+  };
+}
+
 // ─── Helpers ───
 
 function checkRestriction(toolName, input, restrictions) {
@@ -659,6 +730,7 @@ function getThinkingMessage(toolName, input) {
     case 'query_records': return `Querying ${t}...`;
     case 'get_record': return `Fetching record from ${t}...`;
     case 'count_records': return `Counting ${t}...`;
+    case 'search_records': return `Searching for "${input.search}"...`;
     case 'find_emails_for_account': return `Finding emails for "${input.account_name}"...`;
     case 'find_emails_for_request': return `Finding emails for request ${input.request_number}...`;
     case 'find_reports_due': return `Finding reports due ${input.date_from ? 'from ' + input.date_from.substring(0, 10) : ''}...`;
