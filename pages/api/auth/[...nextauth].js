@@ -180,8 +180,8 @@ export const authOptions = {
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
 
-  // Debug mode in development
-  debug: process.env.NODE_ENV === 'development',
+  // Debug mode — temporarily enabled in all environments to diagnose OAuthCallback error
+  debug: true,
 };
 
 export default NextAuth(authOptions);
