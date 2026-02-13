@@ -308,8 +308,8 @@ export function buildSystemPrompt({ userRole = 'read_only', restrictions = [] } 
 
 TOOLS — choose the right one:
 - search: keyword/topic discovery across all tables ("find grants about fungi")
-- get_entity: fetch one record by name, number, or GUID ("tell me about request 1001585")
-- get_related: follow relationships ("get emails for Stanford", "payments for request 1001585")
+- get_entity: fetch one record by name, number, or GUID ("tell me about request 1001585", "look up Stanford")
+- get_related: follow relationships — use for ANY "show me X for Y" query ("requests from Stanford", "emails for Stanford", "payments for request 1001585", "reviewers for request 1001585")
 - describe_table: understand field names/types/meanings BEFORE building OData queries
 - query_records: structured OData queries (date ranges, exact filters, aggregation). Call describe_table first if unsure about field names.
 - count_records: count records with optional filter
@@ -374,7 +374,7 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: 'get_related',
-    description: 'Follow relationships from a source entity. Handles multi-step lookups server-side. E.g. account→emails, request→payments, request→reviewers.',
+    description: 'Follow relationships from a source entity. Handles multi-step lookups server-side. Paths: account→requests/emails/payments/reports, request→payments/reports/emails/annotations/reviewers, contact→requests, reviewer→requests. Use for ANY "show me X for Y" query.',
     input_schema: {
       type: 'object',
       properties: {
