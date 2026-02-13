@@ -554,11 +554,31 @@ async function getEntity({ type, identifier }) {
     filter = `contains(${cfg.filterField},'${escaped}')`;
   }
 
-  const result = await DynamicsService.queryRecords(cfg.entitySet, {
+  // For accounts, run Dataverse Search in parallel with OData to catch
+  // abbreviation/synonym matches that contains() can't find (e.g. "USC" → "University of Southern California")
+  const odataPromise = DynamicsService.queryRecords(cfg.entitySet, {
     select: cfg.select,
     filter,
     top: 10,
   });
+  const searchPromise = type === 'account'
+    ? DynamicsService.searchRecords(identifier, { entities: ['account'], top: 3 }).catch(() => null)
+    : Promise.resolve(null);
+
+  const [result, searchResult] = await Promise.all([odataPromise, searchPromise]);
+
+  // Enrich OData results with high-scoring search results not already found
+  if (searchResult?.results?.length) {
+    const existingIds = new Set(result.records.map(r => r[cfg.idField]));
+    for (const sr of searchResult.results) {
+      if (!existingIds.has(sr.objectId) && sr.score > 5) {
+        try {
+          const fullRecord = await DynamicsService.getRecord(cfg.entitySet, sr.objectId, { select: cfg.select });
+          result.records.push(fullRecord);
+        } catch (e) { /* search enrichment is best-effort */ }
+      }
+    }
+  }
 
   if (!result.records.length) {
     return { error: `No ${type} found matching "${identifier}"` };
@@ -588,6 +608,29 @@ async function getEntity({ type, identifier }) {
     } else {
       exact = exactMatches[0];
     }
+
+    // If exact match exists but a more-active account also matched (e.g. "USC" matches
+    // South Carolina via dc_aka but Southern California has 6x more requests), present
+    // all candidates so the model can disambiguate based on conversation context.
+    if (exact) {
+      const mostActive = [...result.records].sort((a, b) =>
+        (b.akoya_countofrequests || 0) - (a.akoya_countofrequests || 0)
+      )[0];
+      if (mostActive[cfg.idField] !== exact[cfg.idField]) {
+        match = mostActive;
+        const names = result.records.map(r => {
+          const n = r[cfg.nameField] || '';
+          const akas = (cfg.altNameFields || []).map(f => r[f]).filter(Boolean);
+          const akaStr = akas.length ? ` (aka ${akas.join(', ')})` : '';
+          const count = r.akoya_countofrequests || 0;
+          return `${n}${akaStr} [${count} requests]`;
+        }).filter(Boolean);
+        const cleaned = stripEmpty(match);
+        cleaned._note = `Ambiguous: "${identifier}" matched multiple accounts. Returning most active. All candidates: ${names.join('; ')}. If the user meant a different one, ask them to clarify.`;
+        return cleaned;
+      }
+    }
+
     match = exact || result.records[0];
 
     if (!exact) {
