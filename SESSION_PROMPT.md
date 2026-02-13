@@ -1,83 +1,73 @@
-# Session 51 Prompt: Dynamics Explorer Architecture Planning — New Tools from Dataverse Search
+# Session 53 Prompt: Dynamics Explorer — Search Heuristics & Query Optimization
 
-## Session 50 Summary
+## Session 52 Summary
 
-Discussed **Dynamics database architecture** and discovered that **Dataverse Search** (full-text search powered by Azure AI Search) is enabled on the CRM instance. Integrated it as a new `search_records` tool, and fixed a pagination issue.
+Completed the **Dynamics Explorer architecture redesign** (planned in Session 51) and then iteratively fixed account name resolution issues discovered through live testing with real queries.
 
 ### What Was Completed
 
-1. **Database architecture mapping** — Mapped the full entity relationship model centered on `akoya_request` as the hub entity, with connections to accounts, contacts, payments/reports, emails, annotations, reviewers, and lookup tables.
+1. **Architecture redesign: search-first tools** (from Session 51 plan)
+   - Replaced 9 tools with 7: `search`, `get_entity`, `get_related`, `describe_table`, `query_records`, `count_records`, `find_reports_due`
+   - Rewrote system prompt from ~3,000 tokens to ~800 tokens — field descriptions moved to on-demand `describe_table`
+   - Built `TABLE_ANNOTATIONS` with 17 annotated tables
+   - Built `get_entity` with per-type lookup configs and GUID detection
+   - Built `get_related` with 11 relationship paths (account→requests/emails/payments/reports, request→payments/reports/emails/annotations/reviewers, contact→requests, reviewer→requests)
+   - Ran 26 automated tests against live API — 25 passed
 
-2. **Discovered Dataverse Search API** — Tested `{DYNAMICS_URL}/api/search/v1.0/query` and confirmed it's active: 77,774 documents indexed, 154 MB. Supports full-text search across all indexed tables simultaneously with relevance ranking, stemming, and fuzzy matching.
+2. **Account name resolution fixes** (discovered through testing)
+   - **akoya_aka (common name)**: Added as alternate search field so "Stanford University" finds "The Board of Trustees of the Leland Stanford Junior University" (akoya_aka = "Stanford University")
+   - **wmkf_dc_aka (abbreviation)**: Added as third search field so "UCLA" finds "Regents of the University of California at Los Angeles" (wmkf_dc_aka = "UCLA")
+   - **Dataverse Search fallback**: For accounts, runs Dataverse Search in parallel with OData to catch abbreviations not stored in any name field (e.g. "USC" → "University of Southern California")
+   - **Ambiguity handling**: When exact match isn't the most-active account, returns most-active with disambiguation note (handles "USC" matching both Southern California and South Carolina)
+   - **Tiebreaker logic**: Multiple exact matches resolved by `akoya_countofrequests` (most active wins)
 
-3. **Discovered `wmkf_abstract` field** — Found that `akoya_request` has a `wmkf_abstract` field containing full proposal abstract text. It wasn't in the schema because the schema mapper's 25-record sample missed it. Now added to the system prompt schema.
+3. **Bridge Funding / lookup table fix**
+   - Added missing `_akoya_programid_value` lookup field to request annotations
+   - Enriched `akoya_program` table annotations with 2-step lookup pattern
+   - Added explicit system prompt rule: "ALWAYS call describe_table BEFORE first query_records"
+   - Increased MAX_TOOL_ROUNDS from 10 → 15
 
-4. **Integrated `search_records` tool** — New composite tool in the Dynamics Explorer that calls the Dataverse Search API. Searches titles, abstracts, names, notes across all indexed tables in one call. Returns results grouped by entity with highlighted match text. Successfully tested "find all grants about fungi" — returned 10 relevant results across requests and contacts.
-
-5. **Fixed result truncation/pagination issue** — Discovered that Dynamics CRM does NOT support `$skip` (error `0x80060888`). Doubled `MAX_RESULT_CHARS` from 8K → 16K so queries returning ~50 records fit without truncation. Strengthened `$select` guidance so the model requests only fields it will display.
-
-6. **Fixed Next.js API handler warning** — Separated `return res.end()` into `res.end(); return;` to avoid "API handler should not return a value" warning.
+4. **Search entity filter fix**
+   - Fixed Dataverse Search entity filter format: `entities.map(name => ({ name }))` → `entities` (simple string array)
 
 ### Commits
-- `25f6957` - Add full-text search via Dataverse Search API to Dynamics Explorer
-- `8fd6b85` - Add skip parameter (reverted next commit)
-- `8c3b8b2` - Remove $skip (unsupported in CRM), double result char limit to 16K
-- `9ab053f` - Fix Next.js API handler warning
+- `60b7ba2` - Redesign Dynamics Explorer: search-first tools with server-side relationship traversal
+- `7d9543b` - Fix account lookup to search both legal name and common name (akoya_aka)
+- `51519b2` - Fix search entity filter format and improve get_related routing in prompts
+- `40c910a` - Add wmkf_dc_aka (abbreviation) to account name lookups
+- `4d59b8c` - Add Dataverse Search fallback for account lookups + ambiguity handling
+- `10fe262` - Add _akoya_programid_value lookup to request schema and annotations
+- `809b457` - Increase max rounds to 15 and strengthen describe_table-first rule
 
-## Primary Next Step: Architecture Planning — New Tools from Dataverse Search
+## Primary Next Step: Search Heuristics & Query Optimization
 
-**Enter planning mode to discuss how to adapt the architecture given what we learned.** Key insights from Session 50 that should inform the plan:
+**Discuss and implement heuristics that help the chatbot avoid wasting rounds on trial-and-error.** The model (Haiku 4.5) struggles with unfamiliar query patterns and burns rounds guessing field names and wrong tables. We can encode domain knowledge to shortcut common patterns.
 
-### What We Now Know About the Database
+### Observations from Testing
 
-1. **Entity relationships** — Everything flows through `akoya_request`:
-   ```
-   account (4500+ orgs)
-       │  _akoya_applicantid_value
-       ▼
-   akoya_request (5000+ proposals/grants) ◄── contact (5000+)
-       │
-       ├──→ akoya_requestpayment (5000+)  [payments AND reports, akoya_type bool]
-       ├──→ email (5000+)                 [via _regardingobjectid_value]
-       ├──→ annotation (5000+)            [notes/attachments]
-       ├──→ wmkf_potentialreviewers       [5 lookup fields on request]
-       └──→ lookup tables                 [grant program, type, bbstatus, etc.]
-   ```
+The model consistently fails in predictable ways:
+1. **Guesses wrong field names** — `akoya_requestnumber` instead of `akoya_requestnum`, `akoya_name` instead of `akoya_program`
+2. **Tries wrong tables** — searched `wmkf_supporttype` for "Bridge Funding" instead of `akoya_program`
+3. **Doesn't call describe_table first** — despite the rule, the model often guesses before asking
+4. **Doesn't know lookup patterns** — doesn't understand that filtering by program name requires a 2-step GUID lookup
 
-2. **Dataverse Search capabilities** — The `/api/search/v1.0/query` endpoint:
-   - Searches ALL indexed text fields across multiple tables simultaneously
-   - Auto query expansion: "fungi" → `(fungus* | fungi)^2 OR (fungi~1)`
-   - Returns `@search.highlights` showing exactly where terms matched
-   - Returns `@search.score` for relevance ranking
-   - Can filter to specific entities: `entities: [{ name: 'akoya_request' }]`
-   - Also has `/api/search/v1.0/suggest` for autocomplete
-   - Index: 77,774 documents, 154 MB
+### Ideas to Discuss
 
-3. **Hidden fields** — `wmkf_abstract` on `akoya_request` contains full proposal abstracts but wasn't in the original schema. There may be other populated fields not yet exposed. The schema mapper (`scripts/dynamics-schema-map.js`) samples only 25 records and can miss sparsely populated fields.
+1. **Pre-query classification** — Before the agentic loop starts, classify the user's question and inject a routing hint into the first message:
+   - "Find X awards/grants/requests" → suggest `query_records` with relevant table
+   - "Show me X for Y" → suggest `get_related`
+   - "Tell me about X" → suggest `get_entity`
+   - "Find [program name] awards" → suggest the 2-step lookup pattern
 
-4. **CRM limitations**:
-   - `$skip` is NOT supported (error `0x80060888`)
-   - `$count` endpoint fails with complex filters
-   - OData `contains()` only searches one field at a time
-   - No server-side joins — every cross-table lookup is a separate API call
-   - `_formatted` fields cannot appear in `$select`
+2. **Common field name aliases** — Server-side mapping of common field name mistakes to correct names (e.g. `akoya_requestnumber` → `akoya_requestnum`). Could be done in the `sanitizeSelect` function or as a pre-filter on query_records input.
 
-### Questions for the Planning Discussion
+3. **Smart describe_table injection** — When `query_records` fails with "Could not find a property named X", automatically return the `describe_table` output for that table alongside the error message, so the model gets the correct field names without burning an extra round.
 
-1. **What new composite tools would be most valuable?** Candidates:
-   - `find_request_summary` — Given a request number, return a comprehensive one-page summary (request details + org + contact + payments + reports + reviewers) in one tool call
-   - `find_payments_for_account` — All payments for an org, similar to `find_emails_for_account`
-   - `find_requests_by_topic` — Wrapper around Dataverse Search filtered to `akoya_request`, with richer result formatting
-   - `find_reviewer_assignments` — Which requests is a reviewer assigned to?
-   - `find_active_grants` — Active grants with payment summaries
+4. **Lookup table auto-resolution** — When `query_records` filter contains `contains(lookup_field, 'text')` and the lookup field is a GUID field, automatically resolve the text to a GUID and rewrite the filter. This handles the "Bridge Funding" pattern without the model needing to know the 2-step pattern.
 
-2. **Should Dataverse Search replace some OData queries?** For questions like "show me all requests from Stanford," should the model use `search_records` with entity filter instead of the multi-step account→request lookup? Trade-offs: search is faster (one call) but may be less precise than exact GUID filtering.
+5. **Search-first routing** — For vague queries where the model might struggle to find the right table/field, automatically run a Dataverse Search first and use the results to guide the model toward the right tables.
 
-3. **Are there more hidden fields to discover?** Should we re-run the schema mapper with a larger sample size (e.g., 100 records) to catch sparsely populated fields like `wmkf_abstract`?
-
-4. **Token budget with new tools** — Current system prompt is ~3K tokens. Each new tool definition adds ~100-150 tokens. How many tools can we add before hitting rate limits? The 30K input token/min rate limit is the constraint.
-
-5. **Should the char limits be tool-specific?** Currently: 16K for regular queries, 12K for composite tools. Search results might need their own limit since abstracts are long.
+6. **Tool result enrichment** — When a tool returns 0 results, add suggestions like "Did you mean table X?" or "Try searching for this term instead."
 
 ## Other Potential Next Steps
 
@@ -94,21 +84,19 @@ Discussed **Dynamics database architecture** and discovered that **Dataverse Sea
 
 | File | Purpose |
 |------|---------|
-| `shared/config/prompts/dynamics-explorer.js` | System prompt + schema + tool definitions |
-| `pages/api/dynamics-explorer/chat.js` | Chat API with agentic loop + composite tools |
+| `shared/config/prompts/dynamics-explorer.js` | System prompt + TABLE_ANNOTATIONS + 7 tool definitions |
+| `pages/api/dynamics-explorer/chat.js` | Chat API: agentic loop, get_entity, get_related, describe_table handlers |
 | `lib/services/dynamics-service.js` | Dynamics API service (OData + Dataverse Search) |
-| `shared/config/baseConfig.js` | Model config (currently Haiku 4.5) |
-| `scripts/dynamics-schema-map.js` | Schema introspection utility |
-| `scripts/test-dataverse-search.js` | Dataverse Search API test script |
+| `shared/config/baseConfig.js` | Model config (Haiku 4.5 primary) |
 
 ## Architecture Notes
 
-- **Agentic loop**: User question → Claude picks tools → server executes against Dynamics → results fed back → Claude responds or calls more tools
-- **Composite tools**: `find_emails_for_account`, `find_emails_for_request`, `find_reports_due`, `search_records` — handle multi-step or cross-table queries server-side
-- **Token budget**: System prompt ~3,000 tokens. 30k input tokens/min rate limit. Results compacted (stripped nulls, text summaries, conversation compaction between rounds)
-- **Model**: Haiku 4.5 primary, Haiku 3.5 fallback
-- **Query limits**: Default top=50, max 100 per query, 16K char limit per tool result (12K for composite tools)
-- **Dataverse Search**: Full-text search across 77K+ indexed documents. Used by `search_records` tool.
+- **7 tools**: search, get_entity, get_related, describe_table, query_records, count_records, find_reports_due
+- **System prompt**: ~800-1000 tokens (down from ~3000). Field details served on-demand via describe_table.
+- **Account resolution**: OData `contains()` on name + akoya_aka + wmkf_dc_aka, PLUS Dataverse Search in parallel, with exact-match tiebreaker by request count
+- **get_related**: 11 relationship paths, server-side multi-step traversal (account→emails requires account→requests→emails)
+- **Conversation compaction**: Old tool rounds summarized to one-liners to save tokens
+- **MAX_TOOL_ROUNDS**: 15 (increased from 10)
 
 ## Testing
 
@@ -116,7 +104,12 @@ Discussed **Dynamics database architecture** and discovered that **Dataverse Sea
 npm run dev                              # Run development server
 npm run build                            # Verify build succeeds
 node scripts/test-dataverse-search.js    # Test Dataverse Search API
-node scripts/test-dataverse-search.js "CRISPR"  # Search with custom term
 ```
 
-App accessible at `/dynamics-explorer`
+Test queries in the chat UI at `/dynamics-explorer`:
+- "Tell me about request 1001585" → get_entity (1 round)
+- "Show me requests from Stanford in 2021-2026" → get_entity + get_related (2 rounds)
+- "Show me requests from UCLA in 2023" → get_entity + get_related (2 rounds)
+- "Show me requests from USC in 2024" → get_entity + get_related (2-3 rounds, disambiguation)
+- "Find all Bridge Funding awards" → describe_table + query_records + query_records (3-4 rounds)
+- "Find grants about CRISPR" → search (1 round)

@@ -4,6 +4,20 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## February 2026 — Dynamics Explorer Architecture Redesign (Sessions 51-52)
+
+Redesigned the Dynamics Explorer from an OData-centric architecture (9 tools, ~3000 token system prompt) to a search-first architecture (7 tools, ~800 token prompt). Key changes:
+
+- **New tool set**: `search`, `get_entity`, `get_related`, `describe_table`, `query_records`, `count_records`, `find_reports_due`. Removed 5 old tools, added 3 new ones.
+- **`get_entity`**: Finds accounts by name, abbreviation, or Dataverse Search (handles "Stanford", "UCLA", "USC" → correct institutions). Runs OData + Search in parallel with exact-match tiebreaker.
+- **`get_related`**: 11 server-side relationship paths replacing individual composite tools. Handles account→requests/emails/payments/reports, request→payments/reports/emails/annotations/reviewers, contact→requests, reviewer→requests.
+- **`describe_table`**: On-demand field metadata from `TABLE_ANNOTATIONS` (17 tables). Replaces hardcoded schema in system prompt.
+- **Account name resolution**: Triple-field search (name + akoya_aka + wmkf_dc_aka), Dataverse Search fallback for abbreviations, ambiguity handling when multiple accounts match.
+
+**Files:** `pages/api/dynamics-explorer/chat.js`, `shared/config/prompts/dynamics-explorer.js`, `lib/services/dynamics-service.js`
+
+---
+
 ## February 2026 — Dynamics Explorer (Sessions 47-48)
 
 Built a natural-language chatbot for querying the Keck Foundation's Microsoft Dynamics 365 CRM. Uses an agentic tool-use loop: user asks a question → Claude picks tools (query_records, find_emails_for_account, etc.) → server executes against the Dynamics API → results fed back → Claude responds or calls more tools.
