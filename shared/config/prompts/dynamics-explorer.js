@@ -1,99 +1,410 @@
 /**
  * Prompt templates and tool definitions for Dynamics Explorer
  *
- * Schema derived from scripts/dynamics-schema-map.js — only includes
- * fields that are actually populated in the database.
+ * Architecture: Search-first discovery with server-side relationship traversal.
+ * The system prompt is lean (~800-1000 tokens). Detailed field semantics and
+ * rules live in TABLE_ANNOTATIONS and are returned on-demand via describe_table.
  */
 
 /**
- * Build the system prompt with hardcoded schema of populated fields.
+ * Annotated schema: per-table field metadata, types, semantic descriptions,
+ * and OData rules. Returned by the describe_table tool on demand.
+ */
+export const TABLE_ANNOTATIONS = {
+  akoya_request: {
+    description: 'Proposals and grants (5000+). Central hub entity — most queries start here.',
+    entitySet: 'akoya_requests',
+    fields: {
+      akoya_requestnum: 'string — unique request number (e.g. "1001585")',
+      akoya_requeststatus: 'string — current status',
+      akoya_requesttype: 'string — rarely used legacy field',
+      akoya_submitdate: 'datetime — submission date',
+      akoya_fiscalyear: 'string — grant cycle label like "June 2025" (NOT calendar year)',
+      akoya_paid: 'currency — total amount paid',
+      akoya_loireceived: 'datetime — Phase I proposal received date',
+      statecode: 'int — record state (0=active, 1=inactive)',
+      statuscode: 'int — status reason',
+      createdon: 'datetime — record creation date',
+      modifiedon: 'datetime — last modified date',
+      _akoya_applicantid_value: 'lookup → account — applicant organization',
+      _akoya_primarycontactid_value: 'lookup → contact — primary contact person',
+      _wmkf_programdirector_value: 'lookup → systemuser — Keck staff program director',
+      _wmkf_programcoordinator_value: 'lookup → systemuser — Keck staff coordinator',
+      _wmkf_grantprogram_value: 'lookup → wmkf_grantprogram — grant program (11 values)',
+      _wmkf_type_value: 'lookup → wmkf_type — organizational type code (8 values)',
+      wmkf_request_type: 'string — category: concept, phone call, site visit, or grant application',
+      wmkf_meetingdate: 'datetime — board meeting date',
+      wmkf_numberofyearsoffunding: 'int — years of funding',
+      wmkf_numberofconcepts: 'int — concept count',
+      wmkf_numberofpayments: 'int — payment count',
+      'wmkf_mrconcept1title..4title': 'string — Medical Research concept titles (4 slots)',
+      'wmkf_seconcept1title..4title': 'string — Science & Engineering concept titles (4 slots)',
+      wmkf_researchconceptstatus: 'string — concept status: active/denied/pending',
+      wmkf_conceptcalldate: 'datetime — scheduled concept discussion call',
+      wmkf_vendorverified: 'boolean — applicant payment info verified',
+      wmkf_phaseiicheckincomplete: 'boolean — Phase II check-in complete',
+      wmkf_abstract: 'string — full proposal abstract text (use search tool for keyword discovery)',
+      '_wmkf_potentialreviewer1_value..5': 'lookup → wmkf_potentialreviewers — assigned reviewers (5 slots)',
+      wmkf_excludedreviewers: 'string — excluded reviewer names and reasons',
+    },
+    rules: [
+      'FISCAL YEAR: akoya_fiscalyear stores labels like "June 2025". When filtering by year, use OR: (contains(akoya_fiscalyear,\'2025\') or (akoya_submitdate ge 2025-01-01T00:00:00Z and akoya_submitdate lt 2026-01-01T00:00:00Z))',
+      'Lookup _value fields return GUIDs; _formatted versions auto-return display names. Only $select the _value field — never $select _formatted (causes API error).',
+      'Null fields are stripped from results. Only $select fields you will display.',
+    ],
+  },
+  akoya_requestpayment: {
+    description: 'Payments and reporting requirements (5000+). Dual-purpose table.',
+    entitySet: 'akoya_requestpayments',
+    fields: {
+      akoya_paymentnum: 'string — unique payment/report number',
+      akoya_type: 'boolean — true=reporting requirement, false=payment. CRITICAL for filtering.',
+      akoya_amount: 'currency — payment amount',
+      akoya_netamount: 'currency — net payment amount',
+      akoya_paymentdate: 'datetime — payment date',
+      akoya_postingdate: 'datetime — posting date',
+      akoya_estimatedgrantpaydate: 'datetime — estimated payment date',
+      akoya_requirementdue: 'datetime — report due date',
+      akoya_requirementtype: 'int option set — interim or final. Do NOT filter as string; query records first to find valid integer codes.',
+      akoya_folio: 'string — payment status',
+      wmkf_reporttype: 'int option set — detailed report type. Do NOT filter as string.',
+      statecode: 'int — record state',
+      statuscode: 'int — status reason',
+      createdon: 'datetime — record creation date',
+      _akoya_requestlookup_value: 'lookup → akoya_request — parent request',
+      _akoya_requestapplicant_value: 'lookup → account — applicant organization',
+      _akoya_requestcontact_value: 'lookup → contact — contact person',
+      _akoya_payee_value: 'lookup → account — payee organization',
+    },
+    rules: [
+      'Use akoya_type eq false for payments only, akoya_type eq true for reporting requirements only.',
+      'Option set fields (akoya_requirementtype, wmkf_reporttype) are integers. To find valid codes, query a few records and inspect the _formatted values.',
+    ],
+  },
+  contact: {
+    description: 'People — contacts associated with organizations and requests (5000+).',
+    entitySet: 'contacts',
+    fields: {
+      fullname: 'string — full name',
+      firstname: 'string — first name',
+      lastname: 'string — last name',
+      emailaddress1: 'string — primary email',
+      jobtitle: 'string — job title',
+      telephone1: 'string — phone number',
+      akoya_contactnum: 'string — unique contact number',
+      statecode: 'int — record state',
+      contactid: 'guid — primary key',
+      createdon: 'datetime — record creation date',
+    },
+    rules: [],
+  },
+  account: {
+    description: 'Organizations — universities, institutions, companies (4500+).',
+    entitySet: 'accounts',
+    fields: {
+      name: 'string — organization name',
+      akoya_constituentnum: 'string — unique organization ID',
+      akoya_totalgrants: 'currency — total grant amount',
+      akoya_countofawards: 'int — number of awards',
+      akoya_countofrequests: 'int — number of requests',
+      wmkf_countofprogramgrants: 'int — program grant count',
+      wmkf_countofconcepts: 'int — concept count',
+      wmkf_countofdiscretionarygrant: 'int — discretionary grant count',
+      wmkf_sumofprogramgrants: 'currency — sum of program grants',
+      wmkf_sumofdiscretionarygrants: 'currency — sum of discretionary grants',
+      wmkf_eastwest: 'string — geographic region: east/west US',
+      wmkf_financialstatementsneeded: 'boolean — needs financial statements',
+      wmkf_bmf509: 'string — IRS 509(a) status',
+      wmkf_bmfsubsectiondescription: 'string — IRS subsection',
+      address1_city: 'string — city',
+      address1_stateorprovince: 'string — state',
+      websiteurl: 'string — website',
+      telephone1: 'string — phone number',
+      akoya_institutiontype: 'string — institution type',
+      accountid: 'guid — primary key',
+      createdon: 'datetime — record creation date',
+    },
+    rules: [
+      'When searching by name with contains(), multiple orgs may match (e.g. "University of Chicago" matches "Loyola University Of Chicago"). Prefer exact match.',
+    ],
+  },
+  email: {
+    description: 'Email activities linked to requests (5000+).',
+    entitySet: 'emails',
+    fields: {
+      subject: 'string — email subject',
+      description: 'string — email body (HTML)',
+      sender: 'string — sender address',
+      torecipients: 'string — recipients',
+      createdon: 'datetime — record creation date',
+      directioncode: 'boolean — true=outgoing, false=incoming',
+      statecode: 'int — record state',
+      activityid: 'guid — primary key',
+      _regardingobjectid_value: 'lookup — linked request or record',
+    },
+    rules: [
+      'DATE FILTERING: The "senton" field is NULL for all incoming emails. ALWAYS filter by "createdon" (not senton) to capture both incoming and outgoing.',
+    ],
+  },
+  annotation: {
+    description: 'Notes and attachments on records (5000+).',
+    entitySet: 'annotations',
+    fields: {
+      subject: 'string — note subject',
+      notetext: 'string — note body text',
+      filename: 'string — attachment filename',
+      mimetype: 'string — attachment MIME type',
+      filesize: 'int — attachment size in bytes',
+      isdocument: 'boolean — has attachment',
+      createdon: 'datetime — record creation date',
+      annotationid: 'guid — primary key',
+      _objectid_value: 'lookup — parent record',
+    },
+    rules: [],
+  },
+  wmkf_potentialreviewers: {
+    description: 'Reviewer pool (3141). Linked to requests via 5 reviewer slots.',
+    entitySet: 'wmkf_potentialreviewerses',
+    fields: {
+      wmkf_name: 'string — full name',
+      wmkf_firstname: 'string — first name',
+      wmkf_lastname: 'string — last name',
+      wmkf_title: 'string — title/position',
+      wmkf_emailaddress: 'string — email',
+      wmkf_organizationname: 'string — organization',
+      wmkf_areaofexpertise: 'string — area of expertise',
+      wmkf_potentialreviewersid: 'guid — primary key',
+    },
+    rules: [],
+  },
+  wmkf_grantprogram: {
+    description: 'Grant program lookup (11 values).',
+    entitySet: 'wmkf_grantprograms',
+    fields: {
+      wmkf_name: 'string — program name',
+      wmkf_code: 'string — program code',
+      wmkf_grantprogramid: 'guid — primary key',
+    },
+    rules: [],
+  },
+  wmkf_type: {
+    description: 'Organizational type codes (8 values).',
+    entitySet: 'wmkf_types',
+    fields: {
+      wmkf_name: 'string — type name',
+      wmkf_typeid: 'guid — primary key',
+    },
+    rules: [],
+  },
+  wmkf_bbstatus: {
+    description: 'Status codes (88 values).',
+    entitySet: 'wmkf_bbstatuses',
+    fields: {
+      wmkf_name: 'string — status name',
+      wmkf_bbcode: 'string — status code',
+      wmkf_requesttype: 'string — request type',
+      wmkf_bbstatusid: 'guid — primary key',
+    },
+    rules: [],
+  },
+  wmkf_donors: {
+    description: 'Donor codes (116 values).',
+    entitySet: 'wmkf_donorses',
+    fields: {
+      wmkf_name: 'string — donor name',
+      wmkf_code: 'string — donor code',
+      wmkf_donorsid: 'guid — primary key',
+    },
+    rules: [],
+  },
+  wmkf_supporttype: {
+    description: 'Support types (41 values).',
+    entitySet: 'wmkf_supporttypes',
+    fields: {
+      wmkf_name: 'string — support type name',
+      wmkf_supporttypeid: 'guid — primary key',
+    },
+    rules: [],
+  },
+  wmkf_programlevel2: {
+    description: 'Program sub-categories (29 values).',
+    entitySet: 'wmkf_programlevel2s',
+    fields: {
+      wmkf_name: 'string — program level 2 name',
+      wmkf_programlevel2id: 'guid — primary key',
+    },
+    rules: [],
+  },
+  akoya_program: {
+    description: 'GoApply program definitions (24 values).',
+    entitySet: 'akoya_programs',
+    fields: {
+      akoya_program: 'string — program name',
+      wmkf_code: 'string — program code',
+      wmkf_alternatename: 'string — alternate name',
+      akoya_programid: 'guid — primary key',
+    },
+    rules: [],
+  },
+  akoya_phase: {
+    description: 'GoApply application phases (62 values).',
+    entitySet: 'akoya_phases',
+    fields: {
+      akoya_phasename: 'string — phase name',
+      akoya_phaseorder: 'int — display order',
+      akoya_phasetype: 'string — phase type',
+      akoya_totalsubmissions: 'int — submission count',
+      akoya_totalawarded: 'int — award count',
+      _akoya_application_value: 'lookup → akoya_program — parent program',
+    },
+    rules: [],
+  },
+  akoya_goapplystatustracking: {
+    description: 'GoApply status tracking (3293 records).',
+    entitySet: 'akoya_goapplystatustrackings',
+    fields: {
+      akoya_id: 'string — tracking ID',
+      akoya_applicantemail: 'string — applicant email',
+      akoya_currentphasestatus: 'string — current phase status',
+      akoya_duedate: 'datetime — due date',
+      akoya_progress: 'string — progress',
+      _akoya_request_value: 'lookup → akoya_request — linked request',
+    },
+    rules: [],
+  },
+  activitypointer: {
+    description: 'All activity types — emails, tasks, appointments, etc. (5000+).',
+    entitySet: 'activitypointers',
+    fields: {
+      subject: 'string — activity subject',
+      activitytypecode: 'string — activity type (email, task, etc.)',
+      createdon: 'datetime — record creation date',
+      statecode: 'int — record state',
+      activityid: 'guid — primary key',
+      _regardingobjectid_value: 'lookup — linked record',
+    },
+    rules: [],
+  },
+};
+
+/**
+ * Build the lean system prompt (~800-1000 tokens).
+ * Detailed field semantics and rules live in TABLE_ANNOTATIONS,
+ * returned on-demand via describe_table.
  */
 export function buildSystemPrompt({ userRole = 'read_only', restrictions = [] } = {}) {
   const restrictionBlock = restrictions.length > 0
-    ? `RESTRICTED: ${restrictions.map(r =>
+    ? `\nRESTRICTED: ${restrictions.map(r =>
         r.field_name ? `${r.table_name}.${r.field_name}` : r.table_name
-      ).join(', ')}\n`
+      ).join(', ')}`
     : '';
 
-  return `CRM assistant for W. M. Keck Foundation Dynamics 365. Role: ${userRole}.
-${restrictionBlock}
+  return `CRM assistant for W. M. Keck Foundation Dynamics 365. Role: ${userRole}.${restrictionBlock}
+
+TOOLS — choose the right one:
+- search: keyword/topic discovery across all tables ("find grants about fungi")
+- get_entity: fetch one record by name, number, or GUID ("tell me about request 1001585")
+- get_related: follow relationships ("get emails for Stanford", "payments for request 1001585")
+- describe_table: understand field names/types/meanings BEFORE building OData queries
+- query_records: structured OData queries (date ranges, exact filters, aggregation). Call describe_table first if unsure about field names.
+- count_records: count records with optional filter
+- find_reports_due: all reporting requirements in a date range
+
 RULES:
-- Query directly — do NOT call discover_fields/discover_tables unless user asks about an unknown table.
-- Null fields are stripped from results. ALWAYS use $select with ONLY the fields you will display — fewer fields means more records fit in the response. If results are truncated, use skip to paginate.
-- Lookup fields (_xxx_value) return GUIDs; the _formatted version has display names. Always $select the _value field — _formatted values are auto-returned and MUST NOT appear in $select (they cause API errors).
-- Complete the task in as FEW tool calls as possible. Combine information you already have.
-- NEVER fabricate or guess data. Only present information returned by tool calls. If data is not available, say so.
-- When searching by org name with contains(), review ALL returned accounts and pick the exact match. E.g. contains(name,'University of Chicago') returns both "Loyola University Of Chicago" and "University of Chicago" — pick the right one.
+- Complete the task in as FEW tool calls as possible.
+- NEVER fabricate data. Only present what tools return.
+- For org name lookups, review ALL results and pick the exact match.
+- Present results as markdown tables. Show totalCount if results are truncated.
+- OData syntax: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z
 
-FIELD NAMING: "akoya_" fields were created by the vendor (Akoya). "wmkf_" fields are Keck Foundation custom fields and often contain the most operationally relevant data. When searching for Keck-specific information (concepts, program types, eligibility, reviewers, etc.), prioritize wmkf_ fields.
+TABLES:
+akoya_request (5000+) proposals/grants — central hub
+akoya_requestpayment (5000+) payments & reporting requirements
+contact (5000+) people
+account (4500+) organizations
+email (5000+) email activities
+annotation (5000+) notes/attachments
+wmkf_potentialreviewers (3141) reviewers
+Lookup: wmkf_grantprogram(11), wmkf_type(8), wmkf_bbstatus(88), wmkf_donors(116), wmkf_supporttype(41), wmkf_programlevel2(29), akoya_program(24), akoya_phase(62), akoya_goapplystatustracking(3293), activitypointer(5000+)
 
-IMPORTANT — EMAIL DATE FILTERING: The "senton" field is NULL for all incoming emails. Only outgoing emails have senton populated. Always filter emails by "createdon" (not senton) for date ranges to capture both incoming and outgoing correspondence.
-
-CROSS-TABLE LOOKUPS:
-- Requests by org: query account for accountid → filter akoya_request by _akoya_applicantid_value eq GUID
-- Requests by person: query contact for contactid → filter by _akoya_primarycontactid_value eq GUID
-- Payments/reports for request: filter akoya_requestpayment by _akoya_requestlookup_value eq request-GUID. Use akoya_type eq true for requirements only, eq false for payments only.
-- Reports due in date range: use find_reports_due tool — returns all reports with org names, request numbers, and types in one call.
-- Notes/attachments on record: filter annotation by _objectid_value eq record-GUID
-- Grant program name: lookup wmkf_grantprogram by _wmkf_grantprogram_value from request
-- Request type name: lookup wmkf_type by _wmkf_type_value from request
-- Reviewers for request: $select _wmkf_potentialreviewer1_value through 5 on the request record — the _formatted values have display names. For full reviewer details, look up the GUIDs in wmkf_potentialreviewers table.
-- Emails for org: use the find_emails_for_account tool — it handles the multi-step lookup automatically (finds account → gets request IDs → batch queries emails). Emails are linked to requests, not accounts.
-- Emails for request: use find_emails_for_request — returns headers + body text (truncated). For full email body, use get_record on email table with the activityid.
-
-FISCAL YEAR vs CALENDAR YEAR: akoya_fiscalyear stores grant cycle labels like "June 2025", "December 2026" — these do NOT match the calendar year. When a user asks for requests "in 2025", use BOTH criteria with OR: (contains(akoya_fiscalyear,'2025') or (akoya_submitdate ge 2025-01-01T00:00:00Z and akoya_submitdate lt 2026-01-01T00:00:00Z)). This captures discretionary awards assigned to 2025 cycles AND research requests submitted during 2025.
-
-OData: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z.
-OPTION SETS: Fields marked "int option set" are integers. Do NOT filter with string values. To find valid codes, query a few records first and inspect the _formatted values.
-FULL-TEXT SEARCH: Use search_records for keyword/topic searches across the database (e.g. "find grants about fungi", "search for CRISPR proposals"). It searches all indexed text fields (titles, abstracts, names, notes) across all tables simultaneously with relevance ranking. Use query_records when you need structured filtering (dates, statuses, specific field values).
-
-Present results as markdown tables. If totalCount > records shown, tell user the total and summarize (e.g. group by date or type). Do NOT claim fewer results than totalCount.
-
-SCHEMA (table_name/entitySet: fields):
-
-akoya_request/akoya_requests — proposals/grants (5000+):
-  akoya_requestnum, akoya_requeststatus, akoya_requesttype (rarely used), akoya_submitdate, akoya_fiscalyear, akoya_paid (total amount paid), akoya_loireceived (Phase I proposal received date), statecode, statuscode, createdon, modifiedon, _akoya_applicantid_value, _akoya_primarycontactid_value, _wmkf_programdirector_value (Keck staff program director), _wmkf_programcoordinator_value (Keck staff coordinator), _wmkf_grantprogram_value, _wmkf_type_value (organizational code), wmkf_request_type (category: concept, phone call, site visit, or grant application), wmkf_meetingdate (board meeting date), wmkf_numberofyearsoffunding, wmkf_numberofconcepts, wmkf_numberofpayments, wmkf_mrconcept1title..4title (Medical Research concept titles), wmkf_seconcept1title..4title (Science & Engineering concept titles), wmkf_researchconceptstatus (concept status: active/denied/pending), wmkf_conceptcalldate (scheduled concept discussion call), wmkf_vendorverified (applicant payment info verified), wmkf_phaseiicheckincomplete (Phase II check-in complete)
-  wmkf_abstract (full proposal abstract text — use search_records to search by keyword, or $select to retrieve for a known request)
-  Reviewers: _wmkf_potentialreviewer1_value.._wmkf_potentialreviewer5_value (lookups to wmkf_potentialreviewers), wmkf_excludedreviewers (text with names and reasons)
-
-akoya_requestpayment/akoya_requestpayments — payments and reporting requirements (5000+):
-  akoya_paymentnum, akoya_type (boolean: true=requirement, false=payment), akoya_amount, akoya_netamount, akoya_paymentdate, akoya_postingdate, akoya_estimatedgrantpaydate, akoya_requirementdue (report due date), akoya_requirementtype (int option set — interim or final; do NOT filter as string), akoya_folio (payment status), wmkf_reporttype (int option set — detailed report type), statecode, statuscode, createdon, _akoya_requestlookup_value, _akoya_requestapplicant_value, _akoya_requestcontact_value, _akoya_payee_value
-
-contact/contacts — people (5000+):
-  fullname, firstname, lastname, emailaddress1, jobtitle, telephone1, akoya_contactnum, statecode, contactid, createdon
-
-account/accounts — organizations (4500+):
-  name, akoya_constituentnum (unique org ID), akoya_totalgrants, akoya_countofawards, akoya_countofrequests, wmkf_countofprogramgrants, wmkf_countofconcepts, wmkf_countofdiscretionarygrant, wmkf_sumofprogramgrants, wmkf_sumofdiscretionarygrants, wmkf_eastwest (geographic region: east/west US), wmkf_financialstatementsneeded (needs financial statements), wmkf_bmf509 (IRS 509(a) status), wmkf_bmfsubsectiondescription (IRS subsection), address1_city, address1_stateorprovince, websiteurl, telephone1, akoya_institutiontype, accountid, createdon
-
-email/emails — email activities (5000+):
-  subject, description, sender, torecipients, createdon, directioncode, statecode, activityid, _regardingobjectid_value
-
-annotation/annotations — notes/attachments (5000+):
-  subject, notetext, filename, mimetype, filesize, isdocument, createdon, annotationid, _objectid_value
-
-wmkf_potentialreviewers/wmkf_potentialreviewerses — reviewers (3141):
-  wmkf_name, wmkf_firstname, wmkf_lastname, wmkf_title, wmkf_emailaddress, wmkf_organizationname, wmkf_areaofexpertise, wmkf_potentialreviewersid
-
-Lookup tables (small, use for resolving _value GUIDs):
-  wmkf_grantprogram/wmkf_grantprograms (11): wmkf_name, wmkf_code, wmkf_grantprogramid
-  wmkf_type/wmkf_types (8): wmkf_name, wmkf_typeid
-  wmkf_bbstatus/wmkf_bbstatuses (88): wmkf_name, wmkf_bbcode, wmkf_requesttype, wmkf_bbstatusid
-  wmkf_donors/wmkf_donorses (116): wmkf_name, wmkf_code, wmkf_donorsid
-  wmkf_supporttype/wmkf_supporttypes (41): wmkf_name, wmkf_supporttypeid
-  wmkf_programlevel2/wmkf_programlevel2s (29): wmkf_name, wmkf_programlevel2id
-  akoya_program/akoya_programs (24): akoya_program, wmkf_code, wmkf_alternatename, akoya_programid
-  akoya_phase/akoya_phases (62): akoya_phasename, akoya_phaseorder, akoya_phasetype, akoya_totalsubmissions, akoya_totalawarded, _akoya_application_value
-  akoya_goapplystatustracking/akoya_goapplystatustrackings (3293): akoya_id, akoya_applicantemail, akoya_currentphasestatus, akoya_duedate, akoya_progress, _akoya_request_value
-  activitypointer/activitypointers (5000+): subject, activitytypecode, createdon, statecode, activityid, _regardingobjectid_value`;
+FIELD NAMING: "akoya_" = vendor fields. "wmkf_" = Keck Foundation custom fields.`;
 }
 
 /**
- * Claude tool definitions — minimal set for low token overhead.
+ * Claude tool definitions — 7 tools for the search-first architecture.
  */
 export const TOOL_DEFINITIONS = [
   {
+    name: 'search',
+    description: 'Full-text search across all indexed tables (requests, contacts, accounts, notes, etc.). Searches titles, abstracts, names, and other text fields simultaneously with relevance ranking. Use for keyword/topic searches. Returns matched records with highlighted text.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        search: { type: 'string', description: 'Search term(s). Supports stemming and fuzzy matching.' },
+        entities: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional: limit to specific tables (e.g. ["akoya_request","contact"])',
+        },
+        top: { type: 'integer', description: '1-100, default 20' },
+      },
+      required: ['search'],
+    },
+  },
+  {
+    name: 'get_entity',
+    description: 'Find one entity by name, number, or GUID. Returns full details with resolved lookup display names.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        type: {
+          type: 'string',
+          enum: ['account', 'request', 'contact', 'reviewer', 'email', 'payment'],
+          description: 'Entity type to look up',
+        },
+        identifier: { type: 'string', description: 'Name, number, or GUID' },
+      },
+      required: ['type', 'identifier'],
+    },
+  },
+  {
+    name: 'get_related',
+    description: 'Follow relationships from a source entity. Handles multi-step lookups server-side. E.g. account→emails, request→payments, request→reviewers.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        source_type: {
+          type: 'string',
+          enum: ['account', 'request', 'contact', 'reviewer'],
+          description: 'Source entity type',
+        },
+        source_id: { type: 'string', description: 'GUID from a previous result' },
+        source_name: { type: 'string', description: 'Name or number (alternative to source_id — tool resolves it)' },
+        target_type: {
+          type: 'string',
+          enum: ['requests', 'payments', 'reports', 'emails', 'annotations', 'reviewers'],
+          description: 'Related entity type to retrieve',
+        },
+        date_from: { type: 'string', description: 'Optional ISO date filter start (e.g. 2025-01-01T00:00:00Z)' },
+        date_to: { type: 'string', description: 'Optional ISO date filter end' },
+      },
+      required: ['source_type', 'target_type'],
+    },
+  },
+  {
+    name: 'describe_table',
+    description: 'Get field names, types, meanings, and OData rules for a table. Call BEFORE constructing query_records filters. If table name is unknown, returns list of all available tables.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        table_name: { type: 'string', description: 'Table to describe (e.g. "akoya_request"). Omit or pass unknown name to get table listing.' },
+      },
+      required: [],
+    },
+  },
+  {
     name: 'query_records',
-    description: 'Query records. Null fields stripped. Use $select with ONLY the fields you need — fewer fields = more records fit in the response.',
+    description: 'OData query. Null fields stripped. Use $select with ONLY the fields you need — fewer fields = more records fit. Call describe_table first if unsure about field names.',
     input_schema: {
       type: 'object',
       properties: {
@@ -120,46 +431,8 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
-    name: 'get_record',
-    description: 'Get one record by GUID.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        table_name: { type: 'string' },
-        record_id: { type: 'string' },
-        select: { type: 'string' },
-        expand: { type: 'string' },
-      },
-      required: ['table_name', 'record_id'],
-    },
-  },
-  {
-    name: 'find_emails_for_account',
-    description: 'Find all emails for an organization. Handles the multi-step lookup: finds account → gets request IDs → batch queries emails linked to those requests.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        account_name: { type: 'string', description: 'Organization name to search for' },
-        date_from: { type: 'string', description: 'Start date (ISO format, e.g. 2025-01-01T00:00:00Z)' },
-        date_to: { type: 'string', description: 'End date (ISO format, e.g. 2026-01-01T00:00:00Z)' },
-      },
-      required: ['account_name'],
-    },
-  },
-  {
-    name: 'find_emails_for_request',
-    description: 'Find all emails linked to a specific request by request number (e.g. "1001585"). Returns request details, email headers, AND body text (truncated to 800 chars). For full email text, use get_record with table_name="email" and the activityid from results.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        request_number: { type: 'string', description: 'The akoya_requestnum (e.g. "1001585")' },
-      },
-      required: ['request_number'],
-    },
-  },
-  {
     name: 'find_reports_due',
-    description: 'Find all reporting requirements due in a date range. Returns report#, due date, type, request#, organization, and status for every requirement. Use this for questions about upcoming or overdue reports.',
+    description: 'Find all reporting requirements due in a date range. Returns report#, due date, type, request#, organization, and status.',
     input_schema: {
       type: 'object',
       properties: {
@@ -167,45 +440,6 @@ export const TOOL_DEFINITIONS = [
         date_to: { type: 'string', description: 'End date exclusive (ISO format, e.g. 2026-03-01T00:00:00Z)' },
       },
       required: ['date_from', 'date_to'],
-    },
-  },
-  {
-    name: 'search_records',
-    description: 'Full-text search across all indexed tables (requests, contacts, accounts, notes, etc.). Searches titles, abstracts, names, and other text fields simultaneously with relevance ranking. Use for keyword/topic searches. Returns matched records with highlighted text showing where the term was found.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        search: { type: 'string', description: 'Search term(s). Supports stemming and fuzzy matching.' },
-        entities: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Optional: limit to specific tables (e.g. ["akoya_request","contact"])',
-        },
-        top: { type: 'integer', description: '1-100, default 20' },
-      },
-      required: ['search'],
-    },
-  },
-  {
-    name: 'discover_tables',
-    description: 'Search for tables by name. Only when user asks about unknown tables.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        search_term: { type: 'string' },
-      },
-      required: ['search_term'],
-    },
-  },
-  {
-    name: 'discover_fields',
-    description: 'List all fields for a table. Only when user explicitly asks.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        table_name: { type: 'string' },
-      },
-      required: ['table_name'],
     },
   },
 ];

@@ -5,16 +5,15 @@
  * Runs a server-side tool-use loop: user question → Claude tool calls
  * → Dynamics API execution → Claude response → SSE stream to client.
  *
- * Optimized for low token usage (30k input token/minute rate limit):
- * - Compact system prompt and tool definitions
- * - Conversation compaction between agentic rounds
- * - Aggressive result truncation and field filtering
+ * Architecture: Search-first discovery with server-side relationship traversal.
+ * 7 tools: search, get_entity, get_related, describe_table, query_records,
+ * count_records, find_reports_due.
  */
 
 import { requireAuth } from '../../../lib/utils/auth';
 import { sql } from '@vercel/postgres';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
-import { buildSystemPrompt, TOOL_DEFINITIONS } from '../../../shared/config/prompts/dynamics-explorer';
+import { buildSystemPrompt, TOOL_DEFINITIONS, TABLE_ANNOTATIONS } from '../../../shared/config/prompts/dynamics-explorer';
 import { getModelForApp, getFallbackModelForApp } from '../../../shared/config/baseConfig';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 
@@ -28,17 +27,13 @@ export const config = {
 const MAX_TOOL_ROUNDS = 10;
 const MAX_RESULT_CHARS = 16000;
 
-// System fields to exclude from discover_fields results
-const SYSTEM_FIELD_PREFIXES = [
-  'overridden', 'versionnumber', 'timezonerule', 'utcconversion',
-  'importsequencenumber', 'exchangerate', '_transactioncurrency',
-  '_owningbusinessunit', '_owningteam', '_ownerid', '_organizationid',
-  '_modifiedonbehalfby', '_createdonbehalfby',
-];
-const SYSTEM_FIELD_NAMES = new Set([
-  'versionnumber', 'timezoneruleversionnumber', 'utcconversiontimezonecode',
-  'importsequencenumber', 'overriddencreatedon', 'exchangerate',
-]);
+// Per-tool char limits — composite tools return compact text and need more room
+const TOOL_CHAR_LIMITS = {
+  search: 12000,
+  get_related: 12000,
+  find_reports_due: 12000,
+  describe_table: 12000,
+};
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -144,8 +139,7 @@ export default async function handler(req, res) {
 
         logQuery({ userProfileId, sessionId, queryType: name, tableName: input.table_name || null, queryParams: input, recordCount, executionTime });
 
-        // Composite tools return compact text and need more room
-        const charLimit = (name === 'find_emails_for_request' || name === 'find_reports_due' || name === 'search_records') ? 12000 : MAX_RESULT_CHARS;
+        const charLimit = TOOL_CHAR_LIMITS[name] || MAX_RESULT_CHARS;
         let resultStr = truncateResult(result, charLimit);
 
         toolResults.push({ type: 'tool_result', tool_use_id: id, content: resultStr });
@@ -254,11 +248,13 @@ function summarizeToolResult(content) {
   try {
     const data = JSON.parse(content);
     if (data.error) return `Error: ${data.error.substring(0, 80)}`;
+    if (data.totalCount !== undefined && data.results) return `Search: ${data.totalCount} results`;
     if (data.count !== undefined && data.tables) return `Found ${data.count} tables`;
-    if (data.count !== undefined && data.fields) return `Found ${data.count} fields`;
     if (data.count !== undefined && !data.records) return `Count: ${data.count}`;
     if (data.records) return `Returned ${data.records.length} records`;
-    if (data.manyToOne || data.oneToMany) return `Relationships loaded`;
+    if (data.emailCount !== undefined) return `Found ${data.emailCount} emails`;
+    if (data.reportCount !== undefined) return `Found ${data.reportCount} reports`;
+    if (data.fields) return `Table schema returned`;
     return content.substring(0, 100) + '...';
   } catch {
     return content.substring(0, 100) + '...';
@@ -321,11 +317,6 @@ async function callClaude({ apiKey, model, fallbackModel, systemPrompt, messages
 
 // ─── Tool execution ───
 
-function isSystemField(name) {
-  if (SYSTEM_FIELD_NAMES.has(name)) return true;
-  return SYSTEM_FIELD_PREFIXES.some(p => name.startsWith(p));
-}
-
 /**
  * Strip _formatted fields from $select — they are auto-returned via the
  * Prefer: odata.include-annotations="*" header and cannot be $selected.
@@ -339,6 +330,18 @@ function sanitizeSelect(select) {
 
 async function executeTool(name, input) {
   switch (name) {
+    case 'search':
+      return await searchRecords(input);
+
+    case 'get_entity':
+      return await getEntity(input);
+
+    case 'get_related':
+      return await getRelated(input);
+
+    case 'describe_table':
+      return describeTable(input);
+
     case 'query_records': {
       const entitySet = await DynamicsService.resolveEntitySetName(input.table_name);
       const result = await DynamicsService.queryRecords(entitySet, {
@@ -348,7 +351,6 @@ async function executeTool(name, input) {
         top: input.top || 50,
         expand: input.expand,
       });
-      // Strip null/empty values to dramatically reduce token usage
       result.records = result.records.map(stripEmpty);
       return result;
     }
@@ -359,47 +361,8 @@ async function executeTool(name, input) {
       return { count };
     }
 
-    case 'get_record': {
-      const entitySet = await DynamicsService.resolveEntitySetName(input.table_name);
-      const record = await DynamicsService.getRecord(entitySet, input.record_id, {
-        select: sanitizeSelect(input.select),
-        expand: input.expand,
-      });
-      return stripEmpty(record);
-    }
-
-    case 'find_emails_for_account': {
-      return await findEmailsForAccount(input);
-    }
-
-    case 'find_emails_for_request': {
-      return await findEmailsForRequest(input);
-    }
-
-    case 'find_reports_due': {
+    case 'find_reports_due':
       return await findReportsDue(input);
-    }
-
-    case 'search_records': {
-      return await searchRecords(input);
-    }
-
-    case 'discover_tables': {
-      const allEntities = await DynamicsService.getEntityDefinitions(input.search_term);
-      return {
-        tables: allEntities.slice(0, 30).map(e => `${e.logicalName} (${e.entitySetName})`),
-        count: allEntities.length,
-      };
-    }
-
-    case 'discover_fields': {
-      const attrs = await DynamicsService.getEntityAttributes(input.table_name);
-      const filtered = attrs.filter(a => !isSystemField(a.logicalName));
-      return {
-        fields: filtered.map(a => `${a.logicalName} (${a.type})`),
-        count: filtered.length,
-      };
-    }
 
     default:
       throw new Error(`Unknown tool: ${name}`);
@@ -458,33 +421,187 @@ function truncateResult(result, charLimit) {
   return str.substring(0, charLimit) + '... [truncated]';
 }
 
-// ─── Composite tools ───
+// ─── describe_table ───
 
 /**
- * Find all emails for an organization by name.
- * Handles the full 3-step lookup: account → request IDs → batch email query.
+ * Return annotated field metadata for a table, or list all tables if unknown.
  */
-async function findEmailsForAccount({ account_name, date_from, date_to }) {
-  // Step 1: Find the account (prefer exact match)
-  const accountResult = await DynamicsService.queryRecords('accounts', {
-    select: 'name,accountid',
-    filter: `contains(name,'${account_name.replace(/'/g, "''")}')`,
+function describeTable({ table_name }) {
+  if (!table_name || !TABLE_ANNOTATIONS[table_name]) {
+    // Return table listing
+    const tables = Object.entries(TABLE_ANNOTATIONS).map(([name, info]) =>
+      `${name} (${info.entitySet}) — ${info.description}`
+    );
+    return {
+      tables: tables.join('\n'),
+      count: tables.length,
+      note: table_name ? `Unknown table "${table_name}". Available tables listed above.` : 'All available tables listed above. Call with a specific table_name for field details.',
+    };
+  }
+
+  const table = TABLE_ANNOTATIONS[table_name];
+  const fieldLines = Object.entries(table.fields).map(([field, desc]) =>
+    `  ${field}: ${desc}`
+  );
+  const rulesBlock = table.rules.length > 0
+    ? `\nRULES:\n${table.rules.map(r => `  - ${r}`).join('\n')}`
+    : '';
+
+  return {
+    table: table_name,
+    entitySet: table.entitySet,
+    description: table.description,
+    fields: fieldLines.join('\n'),
+    rules: rulesBlock,
+  };
+}
+
+// ─── get_entity ───
+
+/**
+ * Entity type configurations for get_entity lookups.
+ * Each type defines its entity set, primary key, curated $select, and
+ * the field + strategy used for name/number lookups.
+ */
+const ENTITY_TYPE_CONFIGS = {
+  request: {
+    entitySet: 'akoya_requests',
+    idField: 'akoya_requestid',
+    select: 'akoya_requestnum,akoya_requeststatus,akoya_submitdate,akoya_fiscalyear,akoya_paid,wmkf_request_type,wmkf_meetingdate,wmkf_numberofyearsoffunding,wmkf_abstract,wmkf_researchconceptstatus,wmkf_mrconcept1title,wmkf_mrconcept2title,wmkf_mrconcept3title,wmkf_mrconcept4title,wmkf_seconcept1title,wmkf_seconcept2title,wmkf_seconcept3title,wmkf_seconcept4title,wmkf_numberofconcepts,wmkf_numberofpayments,wmkf_excludedreviewers,_akoya_applicantid_value,_akoya_primarycontactid_value,_wmkf_programdirector_value,_wmkf_grantprogram_value,_wmkf_type_value,_wmkf_potentialreviewer1_value,_wmkf_potentialreviewer2_value,_wmkf_potentialreviewer3_value,_wmkf_potentialreviewer4_value,_wmkf_potentialreviewer5_value,statecode,createdon',
+    filterField: 'akoya_requestnum',
+    filterExact: true, // eq instead of contains
+    nameField: 'akoya_requestnum',
+  },
+  account: {
+    entitySet: 'accounts',
+    idField: 'accountid',
+    select: 'name,akoya_constituentnum,akoya_totalgrants,akoya_countofawards,akoya_countofrequests,wmkf_countofprogramgrants,wmkf_countofconcepts,wmkf_countofdiscretionarygrant,wmkf_sumofprogramgrants,wmkf_sumofdiscretionarygrants,wmkf_eastwest,address1_city,address1_stateorprovince,websiteurl,telephone1,akoya_institutiontype,accountid,createdon',
+    filterField: 'name',
+    filterExact: false, // contains
+    nameField: 'name',
+  },
+  contact: {
+    entitySet: 'contacts',
+    idField: 'contactid',
+    select: 'fullname,firstname,lastname,emailaddress1,jobtitle,telephone1,akoya_contactnum,statecode,contactid,createdon',
+    filterField: 'fullname',
+    filterExact: false,
+    nameField: 'fullname',
+  },
+  reviewer: {
+    entitySet: 'wmkf_potentialreviewerses',
+    idField: 'wmkf_potentialreviewersid',
+    select: 'wmkf_name,wmkf_firstname,wmkf_lastname,wmkf_title,wmkf_emailaddress,wmkf_organizationname,wmkf_areaofexpertise,wmkf_potentialreviewersid',
+    filterField: 'wmkf_name',
+    filterExact: false,
+    nameField: 'wmkf_name',
+  },
+  email: {
+    entitySet: 'emails',
+    idField: 'activityid',
+    select: 'subject,description,sender,torecipients,createdon,directioncode,activityid,_regardingobjectid_value,statecode',
+    filterField: null, // GUID-only
+    nameField: 'subject',
+  },
+  payment: {
+    entitySet: 'akoya_requestpayments',
+    idField: 'akoya_requestpaymentid',
+    select: 'akoya_paymentnum,akoya_type,akoya_amount,akoya_netamount,akoya_paymentdate,akoya_postingdate,akoya_requirementdue,akoya_requirementtype,akoya_folio,wmkf_reporttype,_akoya_requestlookup_value,_akoya_requestapplicant_value,statecode,createdon',
+    filterField: 'akoya_paymentnum',
+    filterExact: true,
+    nameField: 'akoya_paymentnum',
+  },
+};
+
+const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Find a specific entity by human-readable identifier or GUID.
+ * Returns full details with resolved lookup display names.
+ */
+async function getEntity({ type, identifier }) {
+  const cfg = ENTITY_TYPE_CONFIGS[type];
+  if (!cfg) {
+    return { error: `Unknown entity type: "${type}". Valid types: ${Object.keys(ENTITY_TYPE_CONFIGS).join(', ')}` };
+  }
+
+  const isGuid = GUID_PATTERN.test(identifier);
+
+  // GUID lookup — direct fetch
+  if (isGuid) {
+    const record = await DynamicsService.getRecord(cfg.entitySet, identifier, {
+      select: cfg.select,
+    });
+    return stripEmpty(record);
+  }
+
+  // Name/number lookup
+  if (!cfg.filterField) {
+    return { error: `${type} requires a GUID identifier. Use search to find ${type} records first.` };
+  }
+
+  const escaped = identifier.replace(/'/g, "''");
+  const filter = cfg.filterExact
+    ? `${cfg.filterField} eq '${escaped}'`
+    : `contains(${cfg.filterField},'${escaped}')`;
+
+  const result = await DynamicsService.queryRecords(cfg.entitySet, {
+    select: cfg.select,
+    filter,
     top: 10,
   });
 
-  if (!accountResult.records.length) {
-    return { error: `No account found matching "${account_name}"` };
+  if (!result.records.length) {
+    return { error: `No ${type} found matching "${identifier}"` };
   }
 
-  // Prefer exact name match over partial
-  const exactMatch = accountResult.records.find(
-    a => a.name?.toLowerCase() === account_name.toLowerCase()
-  );
-  const account = exactMatch || accountResult.records[0];
-  const accountId = account.accountid;
+  // Prefer exact match for contains() lookups
+  let match;
+  if (!cfg.filterExact && result.records.length > 1) {
+    const exact = result.records.find(r => {
+      const val = r[cfg.nameField];
+      return val && val.toLowerCase() === identifier.toLowerCase();
+    });
+    match = exact || result.records[0];
 
-  // Step 2: Get request IDs for this account (most recent first, since
-  // old requests from the 1990s are unlikely to have recent email activity)
+    if (!exact) {
+      const names = result.records.map(r => r[cfg.nameField]).filter(Boolean);
+      const cleaned = stripEmpty(match);
+      cleaned._note = `Multiple matches (${result.records.length}). Showing first. All matches: ${names.join('; ')}`;
+      return cleaned;
+    }
+  } else {
+    match = result.records[0];
+  }
+
+  return stripEmpty(match);
+}
+
+// ─── get_related ───
+
+/**
+ * Resolve a source entity by name/number to get its GUID.
+ * Used by get_related when source_name is provided instead of source_id.
+ */
+async function resolveEntity(sourceType, sourceName) {
+  const result = await getEntity({ type: sourceType, identifier: sourceName });
+  if (result.error) return { error: result.error };
+
+  // Extract the GUID from the result
+  const cfg = ENTITY_TYPE_CONFIGS[sourceType];
+  const id = result[cfg.idField];
+  if (!id) {
+    return { error: `Could not resolve ${sourceType} "${sourceName}" to a GUID` };
+  }
+
+  return { id, record: result };
+}
+
+/**
+ * Get request IDs for an account. Shared helper for account→emails/payments/reports.
+ * Returns { requestIds, requestLookup, account } or { error }.
+ */
+async function getAccountRequestIds(accountId) {
   const requestResult = await DynamicsService.queryRecords('akoya_requests', {
     select: 'akoya_requestnum,akoya_requestid,akoya_requeststatus',
     filter: `_akoya_applicantid_value eq ${accountId}`,
@@ -493,22 +610,159 @@ async function findEmailsForAccount({ account_name, date_from, date_to }) {
   });
 
   if (!requestResult.records.length) {
+    return { requestIds: [], requestLookup: {} };
+  }
+
+  const requestIds = requestResult.records.map(r => r.akoya_requestid);
+  const requestLookup = {};
+  for (const r of requestResult.records) {
+    requestLookup[r.akoya_requestid] = r.akoya_requestnum;
+  }
+
+  return { requestIds, requestLookup, totalRequests: requestResult.totalCount };
+}
+
+/**
+ * Valid relationship paths and their target types.
+ */
+const VALID_RELATIONSHIPS = {
+  account: ['requests', 'emails', 'payments', 'reports'],
+  request: ['payments', 'reports', 'emails', 'annotations', 'reviewers'],
+  contact: ['requests'],
+  reviewer: ['requests'],
+};
+
+/**
+ * Follow relationships from a source entity. Handles multi-step lookups server-side.
+ */
+async function getRelated({ source_type, source_id, source_name, target_type, date_from, date_to }) {
+  // Validate relationship
+  const validTargets = VALID_RELATIONSHIPS[source_type];
+  if (!validTargets) {
+    return { error: `Unknown source type: "${source_type}". Valid: ${Object.keys(VALID_RELATIONSHIPS).join(', ')}` };
+  }
+  if (!validTargets.includes(target_type)) {
+    return { error: `Unknown relationship: ${source_type}→${target_type}. Valid targets for ${source_type}: ${validTargets.join(', ')}` };
+  }
+
+  // Must have source_id or source_name
+  if (!source_id && !source_name) {
+    return { error: 'Either source_id (GUID) or source_name (name/number) is required.' };
+  }
+
+  // Resolve source_name to GUID if needed
+  let resolvedId = source_id;
+  let sourceRecord = null;
+  if (!resolvedId) {
+    const resolved = await resolveEntity(source_type, source_name);
+    if (resolved.error) return { error: resolved.error };
+    resolvedId = resolved.id;
+    sourceRecord = resolved.record;
+  }
+
+  // Build date filter fragment
+  const buildDateFilter = (field) => {
+    let df = '';
+    if (date_from) df += ` and ${field} ge ${date_from}`;
+    if (date_to) df += ` and ${field} lt ${date_to}`;
+    return df;
+  };
+
+  // Dispatch to relationship handler
+  const key = `${source_type}→${target_type}`;
+  switch (key) {
+    // ─── account relationships ───
+
+    case 'account→requests':
+      return await handleAccountRequests(resolvedId, sourceRecord, buildDateFilter);
+
+    case 'account→emails':
+      return await handleAccountEmails(resolvedId, sourceRecord, buildDateFilter);
+
+    case 'account→payments':
+      return await handleAccountPayments(resolvedId, sourceRecord, buildDateFilter);
+
+    case 'account→reports':
+      return await handleAccountReports(resolvedId, sourceRecord, buildDateFilter);
+
+    // ─── request relationships ───
+
+    case 'request→payments':
+      return await handleRequestPayments(resolvedId, buildDateFilter);
+
+    case 'request→reports':
+      return await handleRequestReports(resolvedId, buildDateFilter);
+
+    case 'request→emails':
+      return await handleRequestEmails(resolvedId);
+
+    case 'request→annotations':
+      return await handleRequestAnnotations(resolvedId, buildDateFilter);
+
+    case 'request→reviewers':
+      return await handleRequestReviewers(resolvedId);
+
+    // ─── contact relationships ───
+
+    case 'contact→requests':
+      return await handleContactRequests(resolvedId, buildDateFilter);
+
+    // ─── reviewer relationships ───
+
+    case 'reviewer→requests':
+      return await handleReviewerRequests(resolvedId, buildDateFilter);
+
+    default:
+      return { error: `Unimplemented relationship: ${key}` };
+  }
+}
+
+// ─── Relationship handlers ───
+
+async function handleAccountRequests(accountId, sourceRecord, buildDateFilter) {
+  const dateFilter = buildDateFilter('akoya_submitdate');
+  const result = await DynamicsService.queryRecords('akoya_requests', {
+    select: 'akoya_requestnum,akoya_requeststatus,akoya_submitdate,akoya_fiscalyear,akoya_paid,wmkf_request_type,_akoya_primarycontactid_value,_wmkf_grantprogram_value',
+    filter: `_akoya_applicantid_value eq ${accountId}${dateFilter}`,
+    orderby: 'akoya_submitdate desc',
+    top: 100,
+  });
+
+  const lines = result.records.map(r => {
+    const num = r.akoya_requestnum || '?';
+    const status = r.akoya_requeststatus_formatted || r.akoya_requeststatus || '';
+    const date = r.akoya_submitdate_formatted || r.akoya_submitdate || '';
+    const fy = r.akoya_fiscalyear || '';
+    const paid = r.akoya_paid_formatted || r.akoya_paid || '';
+    const type = r.wmkf_request_type || '';
+    const program = r._wmkf_grantprogram_value_formatted || '';
+    return `Req ${num} | ${status} | ${date} | FY: ${fy} | ${type} | ${program} | Paid: ${paid}`;
+  });
+
+  return {
+    account: sourceRecord?.name || accountId,
+    requestCount: result.records.length,
+    totalCount: result.totalCount,
+    hasMore: result.totalCount > result.records.length,
+    header: 'Request# | Status | Submitted | FY | Type | Program | Paid',
+    requests: lines.join('\n') || 'No requests found.',
+  };
+}
+
+async function handleAccountEmails(accountId, sourceRecord, buildDateFilter) {
+  const { requestIds, requestLookup, totalRequests } = await getAccountRequestIds(accountId);
+
+  if (!requestIds.length) {
     return {
-      account: account.name,
-      accountId,
+      account: sourceRecord?.name || accountId,
       requestCount: 0,
-      emails: [],
-      message: 'No requests found for this account, so no linked emails.',
+      emailCount: 0,
+      emails: 'No requests found for this account, so no linked emails.',
     };
   }
 
-  // Step 3: Batch query emails with OR filter on request IDs
-  const requestIds = requestResult.records.map(r => r.akoya_requestid);
   const orClauses = requestIds.map(id => `_regardingobjectid_value eq ${id}`).join(' or ');
-
-  let dateFilter = '';
-  if (date_from) dateFilter += ` and createdon ge ${date_from}`;
-  if (date_to) dateFilter += ` and createdon lt ${date_to}`;
+  const dateFilter = buildDateFilter('createdon');
 
   const emailResult = await DynamicsService.queryRecords('emails', {
     select: 'subject,sender,torecipients,createdon,directioncode,_regardingobjectid_value',
@@ -517,13 +771,6 @@ async function findEmailsForAccount({ account_name, date_from, date_to }) {
     top: 100,
   });
 
-  // Build a request number lookup
-  const requestLookup = {};
-  for (const r of requestResult.records) {
-    requestLookup[r.akoya_requestid] = r.akoya_requestnum;
-  }
-
-  // Return compact text format instead of raw JSON to save tokens
   const lines = emailResult.records.map(e => {
     const dir = e.directioncode ? 'Out' : 'In';
     const date = e.createdon_formatted || e.createdon || '';
@@ -535,71 +782,338 @@ async function findEmailsForAccount({ account_name, date_from, date_to }) {
   });
 
   return {
-    account: account.name,
-    requestCount: requestResult.records.length,
+    account: sourceRecord?.name || accountId,
+    requestCount: totalRequests,
     emailCount: emailResult.records.length,
+    totalEmailCount: emailResult.totalCount,
     hasMore: emailResult.hasMore,
-    emails: lines.join('\n'),
+    emails: lines.join('\n') || 'No emails found.',
   };
 }
 
-/**
- * Find all emails linked to a specific request by request number.
- */
-async function findEmailsForRequest({ request_number }) {
-  // Step 1: Look up the request by number
-  const reqResult = await DynamicsService.queryRecords('akoya_requests', {
-    select: 'akoya_requestnum,akoya_requestid,akoya_requeststatus,akoya_submitdate,akoya_fiscalyear,_akoya_applicantid_value,_akoya_primarycontactid_value',
-    filter: `akoya_requestnum eq '${request_number.replace(/'/g, "''")}'`,
-    top: 1,
-  });
+async function handleAccountPayments(accountId, sourceRecord, buildDateFilter) {
+  const { requestIds, requestLookup } = await getAccountRequestIds(accountId);
 
-  if (!reqResult.records.length) {
-    return { error: `No request found with number "${request_number}"` };
+  if (!requestIds.length) {
+    return {
+      account: sourceRecord?.name || accountId,
+      paymentCount: 0,
+      payments: 'No requests found for this account.',
+    };
   }
 
-  const req = reqResult.records[0];
-  const reqId = req.akoya_requestid;
+  const orClauses = requestIds.map(id => `_akoya_requestlookup_value eq ${id}`).join(' or ');
+  const dateFilter = buildDateFilter('akoya_paymentdate');
 
-  // Step 2: Query all emails linked to this request (include description for full text)
+  const result = await DynamicsService.queryRecords('akoya_requestpayments', {
+    select: 'akoya_paymentnum,akoya_amount,akoya_netamount,akoya_paymentdate,akoya_folio,_akoya_requestlookup_value',
+    filter: `akoya_type eq false and (${orClauses})${dateFilter}`,
+    orderby: 'akoya_paymentdate desc',
+    top: 100,
+  });
+
+  const lines = result.records.map(r => {
+    const num = r.akoya_paymentnum || '?';
+    const amt = r.akoya_amount_formatted || r.akoya_amount || '';
+    const net = r.akoya_netamount_formatted || r.akoya_netamount || '';
+    const date = r.akoya_paymentdate_formatted || r.akoya_paymentdate || '';
+    const status = r.akoya_folio || '';
+    const reqNum = requestLookup[r._akoya_requestlookup_value] || '?';
+    return `${num} | ${date} | ${amt} | Net: ${net} | ${status} | Req ${reqNum}`;
+  });
+
+  return {
+    account: sourceRecord?.name || accountId,
+    paymentCount: result.records.length,
+    totalCount: result.totalCount,
+    hasMore: result.totalCount > result.records.length,
+    header: 'Payment# | Date | Amount | Net | Status | Request#',
+    payments: lines.join('\n') || 'No payments found.',
+  };
+}
+
+async function handleAccountReports(accountId, sourceRecord, buildDateFilter) {
+  const { requestIds, requestLookup } = await getAccountRequestIds(accountId);
+
+  if (!requestIds.length) {
+    return {
+      account: sourceRecord?.name || accountId,
+      reportCount: 0,
+      reports: 'No requests found for this account.',
+    };
+  }
+
+  const orClauses = requestIds.map(id => `_akoya_requestlookup_value eq ${id}`).join(' or ');
+  const dateFilter = buildDateFilter('akoya_requirementdue');
+
+  const result = await DynamicsService.queryRecords('akoya_requestpayments', {
+    select: 'akoya_paymentnum,akoya_requirementdue,akoya_requirementtype,wmkf_reporttype,_akoya_requestlookup_value,statecode',
+    filter: `akoya_type eq true and (${orClauses})${dateFilter}`,
+    orderby: 'akoya_requirementdue asc',
+    top: 100,
+  });
+
+  const lines = result.records.map(r => {
+    const num = r.akoya_paymentnum || '?';
+    const due = r.akoya_requirementdue_formatted || r.akoya_requirementdue || '';
+    const type = r.akoya_requirementtype_formatted || '?';
+    const detail = r.wmkf_reporttype_formatted || '';
+    const reqNum = requestLookup[r._akoya_requestlookup_value] || '?';
+    const status = r.statecode_formatted || '';
+    return `${num} | ${due} | ${type}${detail ? ' - ' + detail : ''} | Req ${reqNum} | ${status}`;
+  });
+
+  return {
+    account: sourceRecord?.name || accountId,
+    reportCount: result.records.length,
+    totalCount: result.totalCount,
+    hasMore: result.totalCount > result.records.length,
+    header: 'Report# | Due | Type | Request# | Status',
+    reports: lines.join('\n') || 'No reports found.',
+  };
+}
+
+async function handleRequestPayments(requestId, buildDateFilter) {
+  const dateFilter = buildDateFilter('akoya_paymentdate');
+  const result = await DynamicsService.queryRecords('akoya_requestpayments', {
+    select: 'akoya_paymentnum,akoya_amount,akoya_netamount,akoya_paymentdate,akoya_postingdate,akoya_folio,_akoya_requestapplicant_value,statecode',
+    filter: `_akoya_requestlookup_value eq ${requestId} and akoya_type eq false${dateFilter}`,
+    orderby: 'akoya_paymentdate desc',
+    top: 100,
+  });
+
+  const lines = result.records.map(r => {
+    const num = r.akoya_paymentnum || '?';
+    const amt = r.akoya_amount_formatted || r.akoya_amount || '';
+    const net = r.akoya_netamount_formatted || r.akoya_netamount || '';
+    const date = r.akoya_paymentdate_formatted || r.akoya_paymentdate || '';
+    const status = r.akoya_folio || '';
+    return `${num} | ${date} | ${amt} | Net: ${net} | ${status}`;
+  });
+
+  return {
+    requestId,
+    paymentCount: result.records.length,
+    totalCount: result.totalCount,
+    hasMore: result.totalCount > result.records.length,
+    header: 'Payment# | Date | Amount | Net | Status',
+    payments: lines.join('\n') || 'No payments found for this request.',
+  };
+}
+
+async function handleRequestReports(requestId, buildDateFilter) {
+  const dateFilter = buildDateFilter('akoya_requirementdue');
+  const result = await DynamicsService.queryRecords('akoya_requestpayments', {
+    select: 'akoya_paymentnum,akoya_requirementdue,akoya_requirementtype,wmkf_reporttype,_akoya_requestapplicant_value,statecode',
+    filter: `_akoya_requestlookup_value eq ${requestId} and akoya_type eq true${dateFilter}`,
+    orderby: 'akoya_requirementdue asc',
+    top: 100,
+  });
+
+  const lines = result.records.map(r => {
+    const num = r.akoya_paymentnum || '?';
+    const due = r.akoya_requirementdue_formatted || r.akoya_requirementdue || '';
+    const type = r.akoya_requirementtype_formatted || '?';
+    const detail = r.wmkf_reporttype_formatted || '';
+    const status = r.statecode_formatted || '';
+    return `${num} | ${due} | ${type}${detail ? ' - ' + detail : ''} | ${status}`;
+  });
+
+  return {
+    requestId,
+    reportCount: result.records.length,
+    totalCount: result.totalCount,
+    hasMore: result.totalCount > result.records.length,
+    header: 'Report# | Due | Type | Status',
+    reports: lines.join('\n') || 'No reports found for this request.',
+  };
+}
+
+async function handleRequestEmails(requestId) {
   const emailResult = await DynamicsService.queryRecords('emails', {
     select: 'subject,sender,torecipients,createdon,directioncode,description,activityid',
-    filter: `_regardingobjectid_value eq ${reqId}`,
+    filter: `_regardingobjectid_value eq ${requestId}`,
     orderby: 'createdon desc',
     top: 50,
   });
 
-  // Format results with email body text
   const lines = emailResult.records.map(e => {
     const dir = e.directioncode ? 'Out' : 'In';
     const date = e.createdon_formatted || e.createdon || '';
     const subj = (e.subject || '').substring(0, 80);
     const sender = (e.sender || '').substring(0, 30);
     const to = (e.torecipients || '').substring(0, 40);
-    // Strip HTML tags from email body and truncate
     const rawBody = (e.description || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-    const body = rawBody.length > 800 ? rawBody.substring(0, 800) + '...[truncated, use get_record with activityid for full text]' : rawBody;
+    const body = rawBody.length > 800 ? rawBody.substring(0, 800) + '...[truncated]' : rawBody;
     const id = e.activityid || '';
     return `[${dir}] ${date} | ${sender} → ${to} | ${subj}\nID: ${id}\n${body || '(no body text)'}`;
   });
 
-  const cleaned = stripEmpty(req);
-
   return {
-    request_number: req.akoya_requestnum,
-    status: req.akoya_requeststatus_formatted || req.akoya_requeststatus,
-    submitted: req.akoya_submitdate_formatted || req.akoya_submitdate,
-    applicant: req._akoya_applicantid_value_formatted || req._akoya_applicantid_value,
-    contact: req._akoya_primarycontactid_value_formatted || req._akoya_primarycontactid_value,
+    requestId,
     emailCount: emailResult.records.length,
+    totalCount: emailResult.totalCount,
+    hasMore: emailResult.hasMore,
     emails: lines.join('\n---\n') || 'No emails found for this request.',
   };
 }
 
+async function handleRequestAnnotations(requestId, buildDateFilter) {
+  const dateFilter = buildDateFilter('createdon');
+  const result = await DynamicsService.queryRecords('annotations', {
+    select: 'subject,notetext,filename,mimetype,filesize,isdocument,createdon,annotationid',
+    filter: `_objectid_value eq ${requestId}${dateFilter}`,
+    orderby: 'createdon desc',
+    top: 50,
+  });
+
+  const lines = result.records.map(r => {
+    const subj = (r.subject || '').substring(0, 80);
+    const date = r.createdon_formatted || r.createdon || '';
+    const text = (r.notetext || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 200);
+    const file = r.filename ? ` | File: ${r.filename} (${r.mimetype}, ${r.filesize} bytes)` : '';
+    return `${date} | ${subj}${file}\n  ${text || '(no text)'}`;
+  });
+
+  return {
+    requestId,
+    annotationCount: result.records.length,
+    totalCount: result.totalCount,
+    hasMore: result.totalCount > result.records.length,
+    annotations: lines.join('\n') || 'No notes/attachments found for this request.',
+  };
+}
+
+async function handleRequestReviewers(requestId) {
+  // Get the request record with reviewer lookup fields
+  const req = await DynamicsService.getRecord('akoya_requests', requestId, {
+    select: '_wmkf_potentialreviewer1_value,_wmkf_potentialreviewer2_value,_wmkf_potentialreviewer3_value,_wmkf_potentialreviewer4_value,_wmkf_potentialreviewer5_value,wmkf_excludedreviewers',
+  });
+
+  const processed = DynamicsService.processAnnotations(req);
+
+  // Collect reviewer GUIDs and their _formatted names
+  const reviewers = [];
+  for (let i = 1; i <= 5; i++) {
+    const guid = processed[`_wmkf_potentialreviewer${i}_value`];
+    const name = processed[`_wmkf_potentialreviewer${i}_value_formatted`];
+    if (guid && !/^0{8}-/.test(guid)) {
+      reviewers.push({ slot: i, id: guid, name: name || 'Unknown' });
+    }
+  }
+
+  // If we have GUIDs, batch lookup full reviewer details
+  if (reviewers.length > 0) {
+    const orClauses = reviewers.map(r => `wmkf_potentialreviewersid eq ${r.id}`).join(' or ');
+    const detailResult = await DynamicsService.queryRecords('wmkf_potentialreviewerses', {
+      select: 'wmkf_name,wmkf_title,wmkf_emailaddress,wmkf_organizationname,wmkf_areaofexpertise,wmkf_potentialreviewersid',
+      filter: orClauses,
+      top: 5,
+    });
+
+    // Merge details back
+    const detailMap = {};
+    for (const r of detailResult.records) {
+      detailMap[r.wmkf_potentialreviewersid] = r;
+    }
+
+    for (const rev of reviewers) {
+      const detail = detailMap[rev.id];
+      if (detail) {
+        rev.title = detail.wmkf_title || '';
+        rev.email = detail.wmkf_emailaddress || '';
+        rev.organization = detail.wmkf_organizationname || '';
+        rev.expertise = detail.wmkf_areaofexpertise || '';
+      }
+    }
+  }
+
+  const lines = reviewers.map(r => {
+    const parts = [`Slot ${r.slot}: ${r.name}`];
+    if (r.title) parts.push(r.title);
+    if (r.organization) parts.push(r.organization);
+    if (r.email) parts.push(r.email);
+    if (r.expertise) parts.push(`Expertise: ${r.expertise.substring(0, 100)}`);
+    return parts.join(' | ');
+  });
+
+  const excluded = processed.wmkf_excludedreviewers || '';
+
+  return {
+    requestId,
+    reviewerCount: reviewers.length,
+    reviewers: lines.join('\n') || 'No reviewers assigned to this request.',
+    excludedReviewers: excluded || null,
+  };
+}
+
+async function handleContactRequests(contactId, buildDateFilter) {
+  const dateFilter = buildDateFilter('akoya_submitdate');
+  const result = await DynamicsService.queryRecords('akoya_requests', {
+    select: 'akoya_requestnum,akoya_requeststatus,akoya_submitdate,akoya_fiscalyear,akoya_paid,wmkf_request_type,_akoya_applicantid_value,_wmkf_grantprogram_value',
+    filter: `_akoya_primarycontactid_value eq ${contactId}${dateFilter}`,
+    orderby: 'akoya_submitdate desc',
+    top: 100,
+  });
+
+  const lines = result.records.map(r => {
+    const num = r.akoya_requestnum || '?';
+    const status = r.akoya_requeststatus_formatted || r.akoya_requeststatus || '';
+    const date = r.akoya_submitdate_formatted || r.akoya_submitdate || '';
+    const org = r._akoya_applicantid_value_formatted || '';
+    const program = r._wmkf_grantprogram_value_formatted || '';
+    const paid = r.akoya_paid_formatted || r.akoya_paid || '';
+    return `Req ${num} | ${status} | ${date} | ${org} | ${program} | Paid: ${paid}`;
+  });
+
+  return {
+    contactId,
+    requestCount: result.records.length,
+    totalCount: result.totalCount,
+    hasMore: result.totalCount > result.records.length,
+    header: 'Request# | Status | Submitted | Organization | Program | Paid',
+    requests: lines.join('\n') || 'No requests found for this contact.',
+  };
+}
+
+async function handleReviewerRequests(reviewerId, buildDateFilter) {
+  const dateFilter = buildDateFilter('akoya_submitdate');
+  // OR across all 5 reviewer slots
+  const orClauses = [1, 2, 3, 4, 5]
+    .map(i => `_wmkf_potentialreviewer${i}_value eq ${reviewerId}`)
+    .join(' or ');
+
+  const result = await DynamicsService.queryRecords('akoya_requests', {
+    select: 'akoya_requestnum,akoya_requeststatus,akoya_submitdate,akoya_fiscalyear,_akoya_applicantid_value,_wmkf_grantprogram_value',
+    filter: `(${orClauses})${dateFilter}`,
+    orderby: 'akoya_submitdate desc',
+    top: 100,
+  });
+
+  const lines = result.records.map(r => {
+    const num = r.akoya_requestnum || '?';
+    const status = r.akoya_requeststatus_formatted || r.akoya_requeststatus || '';
+    const date = r.akoya_submitdate_formatted || r.akoya_submitdate || '';
+    const org = r._akoya_applicantid_value_formatted || '';
+    const program = r._wmkf_grantprogram_value_formatted || '';
+    return `Req ${num} | ${status} | ${date} | ${org} | ${program}`;
+  });
+
+  return {
+    reviewerId,
+    requestCount: result.records.length,
+    totalCount: result.totalCount,
+    hasMore: result.totalCount > result.records.length,
+    header: 'Request# | Status | Submitted | Organization | Program',
+    requests: lines.join('\n') || 'No requests found for this reviewer.',
+  };
+}
+
+// ─── Existing composite tools (kept) ───
+
 /**
  * Find all reporting requirements due in a date range.
  * Single Dynamics query with _formatted annotations for org/request names.
- * Returns compact text to fit large result sets in the token budget.
  */
 async function findReportsDue({ date_from, date_to }) {
   const filter = `akoya_type eq true and akoya_requirementdue ge ${date_from} and akoya_requirementdue lt ${date_to}`;
@@ -648,7 +1162,6 @@ async function findReportsDue({ date_from, date_to }) {
 
 /**
  * Full-text search across all indexed Dynamics tables.
- * Calls the Dataverse Search API and returns compact results with highlights.
  */
 async function searchRecords({ search, entities, top }) {
   const result = await DynamicsService.searchRecords(search, {
@@ -727,16 +1240,13 @@ function checkRestriction(toolName, input, restrictions) {
 }
 
 function getThinkingMessage(toolName, input) {
-  const t = input.table_name;
   switch (toolName) {
-    case 'discover_tables': return `Searching tables for "${input.search_term}"...`;
-    case 'discover_fields': return `Getting fields for ${t}...`;
-    case 'query_records': return `Querying ${t}...`;
-    case 'get_record': return `Fetching record from ${t}...`;
-    case 'count_records': return `Counting ${t}...`;
-    case 'search_records': return `Searching for "${input.search}"...`;
-    case 'find_emails_for_account': return `Finding emails for "${input.account_name}"...`;
-    case 'find_emails_for_request': return `Finding emails for request ${input.request_number}...`;
+    case 'search': return `Searching for "${input.search}"...`;
+    case 'get_entity': return `Looking up ${input.type}: "${input.identifier}"...`;
+    case 'get_related': return `Finding ${input.target_type} for ${input.source_type} ${input.source_name || input.source_id || ''}...`;
+    case 'describe_table': return input.table_name ? `Describing ${input.table_name}...` : 'Listing available tables...';
+    case 'query_records': return `Querying ${input.table_name}...`;
+    case 'count_records': return `Counting ${input.table_name}...`;
     case 'find_reports_due': return `Finding reports due ${input.date_from ? 'from ' + input.date_from.substring(0, 10) : ''}...`;
     default: return `Running ${toolName}...`;
   }
