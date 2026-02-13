@@ -102,7 +102,6 @@ export const TOOL_DEFINITIONS = [
         filter: { type: 'string', description: 'OData $filter' },
         orderby: { type: 'string', description: 'OData $orderby' },
         top: { type: 'integer', description: '1-100, default 50' },
-        skip: { type: 'integer', description: 'Skip first N records (for pagination). Use with same filter/orderby to get next page.' },
         expand: { type: 'string', description: 'OData $expand' },
       },
       required: ['table_name'],

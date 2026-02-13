@@ -26,7 +26,7 @@ export const config = {
 };
 
 const MAX_TOOL_ROUNDS = 10;
-const MAX_RESULT_CHARS = 8000;
+const MAX_RESULT_CHARS = 16000;
 
 // System fields to exclude from discover_fields results
 const SYSTEM_FIELD_PREFIXES = [
@@ -342,7 +342,6 @@ async function executeTool(name, input) {
         filter: input.filter,
         orderby: input.orderby,
         top: input.top || 50,
-        skip: input.skip,
         expand: input.expand,
       });
       // Strip null/empty values to dramatically reduce token usage
@@ -445,7 +444,7 @@ function truncateResult(result, charLimit) {
         records: result.records.slice(0, maxRecords),
         count: maxRecords,
         totalCount,
-        note: `Showing ${maxRecords} of ${totalCount} total. Present the totalCount to the user. To get the next page, call query_records again with the same filter/orderby and skip=${maxRecords}.`,
+        note: `Showing ${maxRecords} of ${totalCount} total. Present the totalCount to the user. To see more, use a tighter $select (fewer fields) or narrower $filter, or present what you have and offer to query with different criteria.`,
       };
       return JSON.stringify(trimmed);
     }
