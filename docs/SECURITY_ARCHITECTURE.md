@@ -3,7 +3,7 @@
 **Prepared for:** IT Security Review
 **Application:** Document Processing Multi-App System
 **Date:** February 2026
-**Version:** 1.0
+**Version:** 2.0
 
 ---
 
@@ -175,6 +175,7 @@
 | **Data received** | ORCID IDs, public emails, affiliations, publication lists |
 | **Used by** | Reviewer Finder (contact enrichment) |
 | **Token caching** | ~20 minutes (refreshed 60s before expiry) |
+| **Scope** | `/read-public` only (minimal permissions) |
 
 ### 2.7 SerpAPI — Google/Scholar Web Search
 
@@ -279,8 +280,9 @@
 **Session details:**
 - Strategy: JWT (encrypted, not database-stored)
 - Max age: 30 days
-- Cookie: httpOnly (set by NextAuth automatically)
-- JWT contains: azureId, azureEmail, profileId, profileName, avatarColor
+- Cookie: httpOnly, Secure, SameSite=Lax (set by NextAuth automatically)
+- JWT contains: azureId, azureEmail, profileId, profileName, avatarColor, needsLinking
+- Signed/encrypted with: `NEXTAUTH_SECRET`
 
 ### 3.2 Document Processing Flow (Summarizers, Evaluators)
 
@@ -348,7 +350,7 @@
       │               5. Save to database ────────────────────────────┘
       │                        │                                (Vercel Postgres)
       │                        │
-      │               6. Contact enrichment (optional):
+      │               6. Contact enrichment (optional, 4 tiers):
       │                        │
       │              ┌─────────┼──────────┐
       │              ▼         ▼          ▼
@@ -362,6 +364,13 @@
       │     (candidates + contacts)
 ```
 
+**Contact enrichment tiers:**
+- Tier 0: Affiliation string parsing (local)
+- Tier 1: PubMed corresponding author lookup (free)
+- Tier 2: ORCID public email/affiliation (OAuth)
+- Tier 3: Claude web search (paid, ~$0.015/search)
+- Tier 4: SerpAPI Google search (paid, ~$0.005/search)
+
 **Data sent externally:** Research keywords and PI names are sent to literature APIs and SerpAPI. Researcher names and affiliations are sent to ORCID. No proposal full-text is sent to these services — only extracted keywords.
 
 ### 3.4 Dynamics Explorer Flow
@@ -373,7 +382,7 @@
 └─────┬────┘                       └──────────┬─────────────┘
       │                                       │
       │                              2. Check user role
-      │                                 + restrictions
+      │                                 + load restrictions
       │                                       │
       │                            ┌──────────▼─────────────┐
       │                            │  Vercel Postgres        │
@@ -381,8 +390,9 @@
       │                            │   dynamics_restrictions) │
       │                            └──────────┬─────────────┘
       │                                       │
-      │                              3. Send to Claude
-      │                                 with tool definitions
+      │                              3. Set restrictions on
+      │                                 DynamicsService +
+      │                                 send to Claude
       │                                       │
       │                            ┌──────────▼─────────────┐
       │                            │  Claude API (Haiku 4.5) │
@@ -414,7 +424,10 @@
       │     (tool results + final answer)
 ```
 
-**Key security boundary:** All CRM queries pass through an application-level restriction check before execution. The Dynamics service account authenticates via OAuth Client Credentials (server-to-server) — user credentials never touch Dynamics.
+**Key security boundaries:**
+- Restrictions enforced at two layers: chat handler (user-facing DENIED messages) and DynamicsService (defense-in-depth throws on direct service usage)
+- The Dynamics service account authenticates via OAuth Client Credentials (server-to-server) — user credentials never touch Dynamics
+- All CRM queries pass through `DynamicsService.checkRestriction()` before execution
 
 ### 3.5 Funding Analysis Flow
 
@@ -446,6 +459,41 @@
       ◄──────────────────────────────────-┘
 ```
 
+### 3.6 API Key Lifecycle
+
+```
+┌──────────┐  1. Enter key     ┌──────────────────────┐
+│  Browser  │ ───────────────► │  POST /api/user-     │
+│  (input)  │   (HTTPS POST)   │  preferences         │
+└──────────┘                   └──────────┬────────────┘
+                                          │
+                                 2. Detect encrypted key type
+                                    (api_key_claude, etc.)
+                                          │
+                               ┌──────────▼────────────┐
+                               │  lib/utils/encryption  │
+                               │  AES-256-GCM encrypt:  │
+                               │  - Random IV (16 bytes) │
+                               │  - Auth tag (16 bytes)  │
+                               │  - Base64(IV+tag+cipher)│
+                               └──────────┬────────────┘
+                                          │
+                               ┌──────────▼────────────┐
+                               │  user_preferences      │
+                               │  (is_encrypted=true)    │
+                               └──────────┬────────────┘
+                                          │
+              ┌───────────────────────────┼────────────────────────┐
+              ▼                           ▼                        ▼
+   ┌──────────────────┐      ┌──────────────────┐    ┌──────────────────┐
+   │  GET (display)    │      │  GET (use)        │    │  API route       │
+   │  → masked value   │      │  ?includeDecrypted│    │  receives key    │
+   │  "sk-a••••skey"   │      │  → decrypt AES    │    │  in request body │
+   └──────────────────┘      │  → plaintext key   │    │  → x-api-key hdr │
+                              └──────────────────┘    │  → Claude API     │
+                                                      └──────────────────┘
+```
+
 ---
 
 ## 4. Vercel & Neon Infrastructure
@@ -457,6 +505,7 @@
 | **Compute** | Serverless functions (Node.js); no persistent processes |
 | **CDN** | Vercel Edge Network serves static assets and SSR pages |
 | **TLS** | Automatic HTTPS with TLS 1.3; HTTP auto-redirected |
+| **HSTS** | `Strict-Transport-Security: max-age=31536000; includeSubDomains` via `next.config.js` and security middleware |
 | **Domains** | Custom domain configured in Vercel dashboard |
 | **Environment secrets** | Stored encrypted in Vercel dashboard; injected at build/runtime |
 | **Build** | `next build` triggered on git push to main |
@@ -482,7 +531,7 @@
 |----------|--------|-------------|---------|
 | User identity | `user_profiles` | Medium — Azure IDs, emails | Per-user |
 | User settings | `user_preferences` | High — encrypted API keys | Per-user |
-| Researcher data | `researchers`, `publications` | Low — public academic data | Shared/global |
+| Researcher data | `researchers`, `publications`, `researcher_keywords` | Low — public academic data | Shared/global |
 | Search results | `proposal_searches` | Medium — proposal metadata, blob URLs | Per-user |
 | Reviewer candidates | `reviewer_suggestions` | Medium — reviewer-proposal matches | Per-user |
 | Grant cycles | `grant_cycles` | Low — organizational metadata | Shared/global |
@@ -502,8 +551,9 @@
 | **Allowed types** | PDF, TXT, Markdown, DOCX, PNG, JPG |
 | **Naming** | Random suffix appended (prevents URL guessing) |
 | **Retention** | No automatic deletion; files persist until manually removed |
-| **Access control** | Blob URLs are publicly accessible if known (no per-user auth) |
-| **Handler** | `pages/api/upload-handler.js` — requires authentication to initiate upload |
+| **Access control** | Blob URLs accessed via authenticated proxy (`/api/blob-proxy`) |
+| **Proxy validation** | URL hostname verified against pattern `[a-z0-9]+\.public\.blob\.vercel-storage\.com`, HTTPS enforced |
+| **Upload auth** | File uploads require authenticated session via `requireAuth()` |
 
 ### Environment Variable Management
 
@@ -536,8 +586,9 @@
 | **Strategy** | JWT (encrypted, not stored in database) |
 | **Max age** | 30 days |
 | **Signing secret** | `NEXTAUTH_SECRET` (32-byte random value) |
-| **Cookie** | httpOnly, secure, SameSite (set by NextAuth automatically) |
+| **Cookie flags** | httpOnly, Secure, SameSite=Lax (set by NextAuth automatically) |
 | **JWT payload** | azureId, azureEmail, profileId, profileName, avatarColor, needsLinking |
+| **Debug mode** | `debug: process.env.NODE_ENV === 'development'` — disabled in production |
 
 ### 5.3 Auth Middleware
 
@@ -545,11 +596,22 @@ Three levels of authentication enforcement:
 
 | Function | Behavior | Used by |
 |----------|----------|---------|
-| `requireAuth()` | Returns 401 if not authenticated | Most API routes |
+| `requireAuth()` | Returns 401 if not authenticated | All API routes |
 | `requireAuthWithProfile()` | Returns 401/403 if not authenticated or no linked profile | User-scoped routes |
 | `optionalAuth()` | Returns session or null, no error | Public-optional routes |
 
-**Auth kill switch:** Setting `AUTH_REQUIRED=false` in environment variables bypasses all authentication. This is intended for emergency access when Azure AD credentials are misconfigured. When bypassed, `requireAuthWithProfile()` falls back to a `userProfileId` parameter from the request body/query.
+**Auth kill switch:** Setting `AUTH_REQUIRED=false` disables authentication. This is intended for emergency access when Azure AD credentials are misconfigured.
+
+**Production safeguards:**
+- `isAuthRequired()` logs a console warning if auth is disabled in production
+- `requireAuthWithProfile()` returns 403 if auth bypass is attempted in production — refuses to accept `userProfileId` from request body/query, preventing profile impersonation
+- Development fallback to `userProfileId` parameter preserved for local dev only
+
+**Profile linking:**
+- New Azure AD users auto-create or link to existing `user_profiles` rows
+- `/api/auth/link-profile` endpoint validates Azure ID matches session before linking
+- Prevents cross-user profile linkage via `azureId !== session.user.azureId` check
+- `signIn` callback allows sign-in even if DB profile creation fails (user gets session but 403 on profile-scoped routes)
 
 ### 5.4 API Key Encryption
 
@@ -561,18 +623,32 @@ User-provided API keys (Claude, ORCID, NCBI, SerpAPI) are stored encrypted:
 | **IV** | 16 bytes, randomly generated per encryption |
 | **Auth tag** | 16 bytes (integrity verification) |
 | **Key source** | `USER_PREFS_ENCRYPTION_KEY` env var (64-char hex = 32 bytes) |
+| **Key derivation** | Direct hex decode if 64-char hex; otherwise SHA-256 hash to 32 bytes |
 | **Storage format** | Base64(IV &#124;&#124; AuthTag &#124;&#124; Ciphertext) in `user_preferences.preference_value` |
 | **Encrypted keys** | `api_key_claude`, `api_key_orcid_client_id`, `api_key_orcid_client_secret`, `api_key_ncbi`, `api_key_serp` |
 | **Flag** | `user_preferences.is_encrypted = true` marks encrypted rows |
 | **Masking** | Display uses `maskValue()` — shows first 3 and last 3 characters only |
+| **Production guard** | `getEncryptionKey()` throws if `USER_PREFS_ENCRYPTION_KEY` is unset in production |
+| **Dev fallback** | SHA-256 of `'dev-fallback-key-not-for-production'` with console warning |
+
+**Secondary encryption (apiKeyManager.js):**
+- `getSecretKey()` function throws if `API_SECRET_KEY` is unset in production
+- Used by `encryptForClient()` and `decryptFromClient()` methods (scrypt key derivation + AES-256-GCM)
+- These methods are not actively called — `selectApiKey()` is the actively-used method
+
+**Legacy localStorage migration:**
+- Older client-side storage used Base64 encoding (not encryption) with keys named `*_encrypted`
+- Migration prompt detects legacy keys and offers to move them to encrypted database storage
+- After migration, localStorage copies are removed
+- Users can skip migration (keys remain in Base64 localStorage until next prompt)
 
 ### 5.5 User Data Scoping
 
 | Table | Scoping | Mechanism |
 |-------|---------|-----------|
-| `user_preferences` | Per-user | `WHERE user_profile_id = ?` |
-| `proposal_searches` | Per-user | `WHERE user_profile_id = ?` |
-| `reviewer_suggestions` | Per-user | `WHERE user_profile_id = ?` |
+| `user_preferences` | Per-user | `WHERE user_profile_id = ?` with CASCADE DELETE |
+| `proposal_searches` | Per-user | `WHERE user_profile_id = ?` (SET NULL on profile delete) |
+| `reviewer_suggestions` | Per-user | `WHERE user_profile_id = ?` (SET NULL on profile delete) |
 | `integrity_screenings` | Per-user | `WHERE user_profile_id = ?` |
 | `dynamics_query_log` | Per-user | `WHERE user_profile_id = ?` |
 | `researchers` | Shared | All users see same pool |
@@ -612,7 +688,14 @@ User-provided API keys (Claude, ORCID, NCBI, SerpAPI) are stored encrypted:
 
 **Timeout:** 30 seconds per request.
 
-**Operations:** Read-only. Write operations (`createRecord`, `updateRecord`, `deleteRecord`) are stubbed and return errors. No CRM data modification is possible through this application.
+**Operations:** Read-only. Write operations (`createRecord`, `updateRecord`) are stubbed and throw errors. No CRM data modification is possible through this application.
+
+**Query safety limits:**
+- `$top` capped at 100 records per query
+- Queries without `$filter` limited to 25 records (prevents table scans)
+- Dataverse Search capped at 100 results
+- `_formatted` fields auto-stripped from `$select` (sanitizeSelect function)
+- `$skip` is never used (unsupported by Dynamics CRM)
 
 **CRM tables accessed:** `akoya_requests`, `akoya_requestpayments`, `contacts`, `accounts`, `emails`, `annotations`, `wmkf_potentialreviewers`, `akoya_programs`, `akoya_phases`, `akoya_concepts`, and various lookup tables.
 
@@ -622,17 +705,31 @@ User-provided API keys (Claude, ORCID, NCBI, SerpAPI) are stored encrypted:
 |------|-------------|
 | **`superuser`** | Full CRM query access; can manage roles and restrictions for other users |
 | **`read_only`** (default) | Query access subject to global restrictions; cannot modify access rules |
+| **`read_write`** | Reserved for future write operations (currently no distinction from `read_only`) |
 
 Roles stored in `dynamics_user_roles` table. Default role (no row) = `read_only`.
 
-**Table/field restrictions:**
+**Table/field restrictions (dual-layer enforcement):**
 
 - Stored in `dynamics_restrictions` table
 - Can block entire tables or specific fields
-- Checked before every tool execution — denied queries return error message
+- **Layer 1 (chat handler):** Checks restrictions before each tool execution; returns user-friendly `DENIED` message to Claude
+- **Layer 2 (DynamicsService):** `checkRestriction()` called inside `queryRecords`, `getRecord`, `countRecords`, `searchRecords`, and `getEntityAttributes`; throws `Error` on violation
+- Field matching uses exact split-and-match on comma-separated `$select` fields (not substring matching)
 - Managed by superusers via `/api/dynamics-explorer/roles` and `/api/dynamics-explorer/restrictions`
 
-### 6.4 Audit Logging
+### 6.4 Agentic Tool Loop
+
+| Parameter | Value |
+|-----------|-------|
+| **Max rounds** | 15 tool-use rounds per request |
+| **Tools** | 7: `search`, `get_entity`, `get_related`, `describe_table`, `query_records`, `count_records`, `find_reports_due` |
+| **Result char limits** | 16KB default; 12KB for composite tools (search, get_related, find_reports_due, describe_table) |
+| **Conversation trimming** | Last 4 messages kept; older rounds compacted to one-line summaries |
+| **Claude model** | Haiku 4.5 (cost-optimized for agentic loops), with fallback model on overload |
+| **Rate limit handling** | 429 → wait up to 60s + retry; 529 → fall back to alternate model |
+
+### 6.5 Audit Logging
 
 Every Dynamics tool execution is logged to `dynamics_query_log`:
 
@@ -647,7 +744,9 @@ Every Dynamics tool execution is logged to `dynamics_query_log`:
 | `execution_time_ms` | Query duration |
 | `created_at` | Timestamp |
 
-### 6.5 Data Residency
+**Logging is non-fatal:** failures are caught and logged to console but do not block the query.
+
+### 6.6 Data Residency
 
 - **No CRM data is stored locally.** Records are fetched on-demand, returned to the Claude model as tool results, then streamed to the user via SSE and discarded.
 - Only metadata is persisted: user roles, restrictions, and audit log entries.
@@ -662,6 +761,7 @@ Every Dynamics tool execution is logged to `dynamics_query_log`:
 | Control | Implementation |
 |---------|---------------|
 | **HTTPS enforcement** | Vercel platform auto-redirects HTTP → HTTPS, TLS 1.3 |
+| **HSTS** | `Strict-Transport-Security: max-age=31536000; includeSubDomains` via security middleware (production) and `next.config.js` (all routes) |
 | **Database TLS** | Neon enforces TLS for all Postgres connections |
 | **Dynamics TLS** | All Dynamics API calls over HTTPS |
 | **External API calls** | All server-side, all HTTPS (except ArXiv which uses HTTP for public metadata) |
@@ -673,8 +773,9 @@ Every Dynamics tool execution is logged to `dynamics_query_log`:
 | **User authentication** | Azure AD SSO via NextAuth.js (OAuth 2.0 Authorization Code) |
 | **API route protection** | `requireAuth()` middleware on all API routes |
 | **CRM authentication** | OAuth 2.0 Client Credentials, server-side only |
-| **ORCID authentication** | OAuth 2.0 Client Credentials, server-side only |
+| **ORCID authentication** | OAuth 2.0 Client Credentials (`/read-public` scope), server-side only |
 | **Kill switch** | `AUTH_REQUIRED=false` disables user auth (emergency use only) |
+| **Production guard** | Auth bypass returns 403 in production for profile-scoped routes |
 
 ### 7.3 Encryption
 
@@ -684,31 +785,62 @@ Every Dynamics tool execution is logged to `dynamics_query_log`:
 | **Database encryption at rest** | Neon AES-256 (platform-managed) |
 | **API key encryption** | AES-256-GCM with per-value random IV and auth tag |
 | **Session encryption** | NextAuth JWT encrypted with NEXTAUTH_SECRET |
+| **Production key guard** | `getEncryptionKey()` throws in production if `USER_PREFS_ENCRYPTION_KEY` unset |
 
 ### 7.4 Security Headers
 
-Set by `shared/api/middleware/security.js`:
+Set by `shared/api/middleware/security.js` and `next.config.js`:
 
-| Header | Value |
-|--------|-------|
-| `X-Content-Type-Options` | `nosniff` |
-| `X-Frame-Options` | `DENY` |
-| `X-XSS-Protection` | `1; mode=block` |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` |
-| `Permissions-Policy` | `geolocation=(), microphone=(), camera=()` |
-| `Content-Security-Policy` | `default-src 'self'; connect-src 'self' https://api.anthropic.com https://blob.vercel-storage.com; img-src 'self' data: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'` |
+| Header | Value | Scope |
+|--------|-------|-------|
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | Production only (middleware); all environments (next.config.js) |
+| `X-Content-Type-Options` | `nosniff` | All environments |
+| `X-Frame-Options` | `DENY` | All environments |
+| `X-XSS-Protection` | `1; mode=block` | All environments |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | All environments |
+| `Permissions-Policy` | `geolocation=(), microphone=(), camera=()` | All environments |
+| `Content-Security-Policy` | See below | Via helmet middleware |
+
+**CSP directives (via helmet):**
+
+| Directive | Value |
+|-----------|-------|
+| `default-src` | `'self'` |
+| `style-src` | `'self'`, `'unsafe-inline'` |
+| `script-src` | `'self'`, `'unsafe-inline'`, `'unsafe-eval'` |
+| `img-src` | `'self'`, `data:`, `https:` |
+| `connect-src` | `'self'`, `https://api.anthropic.com` |
+
+Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js in development. Migrating to nonce-based CSP is recommended when feasible.
 
 ### 7.5 Input Validation
 
 | Control | Implementation |
 |---------|---------------|
-| **Script tag removal** | Regex strips `<script>` tags from all request inputs |
-| **SQL keyword blocking** | Strips SELECT, INSERT, UPDATE, DELETE, DROP, UNION, ALTER, CREATE from inputs |
-| **HTML entity removal** | Strips `<` and `>` characters |
+| **Script tag removal** | Regex strips `<script>` tags from request inputs |
+| **SQL keyword blocking** | Strips SELECT, INSERT, UPDATE, DELETE, DROP, UNION, ALTER, CREATE keywords |
+| **HTML bracket removal** | Strips `<` and `>` characters |
 | **Scope** | Applied to `req.body`, `req.query`, and `req.params` |
-| **Request size limit** | Configurable max (default 100MB for body) |
+| **Request size limit** | Configurable max (100MB body default) |
+| **File upload validation** | Whitelist of allowed types (PDF, TXT, MD, DOCX, PNG, JPG); 50MB limit |
+| **Blob proxy validation** | URL hostname pattern matching prevents SSRF |
+| **SQL injection prevention** | All database queries use parameterized `sql` template literals |
+
+Note: The regex-based input sanitization is defense-in-depth. Primary protection against SQL injection comes from parameterized queries; primary XSS protection comes from React's default escaping and CSP headers.
 
 ### 7.6 Rate Limiting
+
+**Application-level (middleware):**
+
+| Tier | Window | Max Requests | Usage |
+|------|--------|--------------|-------|
+| `standard` | 60s | 60 | General API calls |
+| `strict` | 60s | 10 | Expensive operations |
+| `hourly` | 3600s | 1000 | Hourly limit |
+| `upload` | 60s | 30 | File uploads |
+| `aiProcessing` | 60s | 20 | AI API calls |
+
+**External service rate limiting:**
 
 | Service | Rate Control |
 |---------|-------------|
@@ -720,17 +852,20 @@ Set by `shared/api/middleware/security.js`:
 | **NIH RePORTER** | 650ms delay (100 req/min) |
 | **NSF** | 200ms delay |
 | **Dynamics** | 30-second timeout per request |
-| **Application** | Configurable: 60 req/min, 1000 req/hr, 5 concurrent (in config; middleware enforcement) |
+
+**Implementation note:** Rate limiter uses in-memory `Map()` storage, which resets on deployment and does not distribute across serverless function instances.
 
 ### 7.7 Access Control
 
 | Control | Implementation |
 |---------|---------------|
 | **User data scoping** | All user-specific queries filter by `user_profile_id` |
-| **Dynamics RBAC** | `superuser` / `read_only` roles with table/field restrictions |
+| **Dynamics RBAC** | `superuser` / `read_only` / `read_write` roles with table/field restrictions |
+| **Dynamics restriction enforcement** | Dual-layer: chat handler (user-facing) + DynamicsService (defense-in-depth) |
 | **Dynamics audit trail** | Every CRM query logged with user, session, parameters, timing |
 | **Dynamics read-only** | Write operations disabled (stubbed with error) |
 | **Upload auth** | File uploads require authenticated session |
+| **Blob proxy auth** | Blob downloads require authenticated session + URL validation |
 
 ---
 
@@ -748,7 +883,7 @@ Set by `shared/api/middleware/security.js`:
 
 **Recommendation:** Remove the localStorage fallback entirely, or use the Web Crypto API (`SubtleCrypto`) for client-side encryption. Prefer server-side-only key storage via the `user_preferences` encrypted path.
 
-**Status: REMEDIATED.** localStorage fallback removed from `ApiKeyManager.js`, `ApiSettingsPanel.js`, `expense-reporter.js`, and `reviewer-finder.js`. API keys now require a user profile for storage (encrypted in database). Migration flow cleans up any legacy localStorage entries.
+**Status: REMEDIATED.** localStorage fallback removed from `ApiKeyManager.js`, `ApiSettingsPanel.js`, `expense-reporter.js`, and `reviewer-finder.js`. API keys now require a user profile for storage (encrypted in database). Migration flow cleans up any legacy localStorage entries. Note: legacy Base64-encoded keys may still exist in users' browsers until they trigger the migration prompt.
 
 #### C2: Blob Storage URLs Are Publicly Accessible
 
@@ -760,7 +895,7 @@ Set by `shared/api/middleware/security.js`:
 
 **Recommendation:** Implement a server-side proxy endpoint that validates authentication before serving blob content, or use Vercel Blob's signed URL feature for time-limited access.
 
-**Status: REMEDIATED.** Added `/api/blob-proxy` endpoint that requires authentication, validates Vercel Blob URL format, and streams content. All API responses now return proxied URLs instead of raw blob URLs. Direct blob domain removed from CSP `connect-src`.
+**Status: REMEDIATED.** Added `/api/blob-proxy` endpoint that requires authentication, validates Vercel Blob URL format (hostname pattern matching + HTTPS enforcement), and streams content. All API responses now return proxied URLs instead of raw blob URLs. Direct blob domain removed from CSP `connect-src`.
 
 #### C3: Dynamics Service Account Should Be Scoped
 
@@ -778,41 +913,71 @@ Set by `shared/api/middleware/security.js`:
 
 **Finding:** If `USER_PREFS_ENCRYPTION_KEY` is not set, the encryption utility falls back to a hardcoded development key and logs a console warning. If this reaches production, all stored API keys would be encrypted with a publicly known key.
 
-**Location:** `lib/utils/encryption.js` line 35
+**Location:** `lib/utils/encryption.js`, `shared/utils/apiKeyManager.js`
 
 **Recommendation:** Fail hard (throw/exit) if the env var is missing in production (`NODE_ENV=production`).
 
-**Status:** REMEDIATED. `getEncryptionKey()` in `lib/utils/encryption.js` now throws in production if `USER_PREFS_ENCRYPTION_KEY` is unset. `shared/utils/apiKeyManager.js` crypto methods use `getSecretKey()` which throws if `API_SECRET_KEY` is missing in production. Dev fallbacks remain for local development.
+**Status: REMEDIATED.** `getEncryptionKey()` in `lib/utils/encryption.js` now throws in production if `USER_PREFS_ENCRYPTION_KEY` is unset. `shared/utils/apiKeyManager.js` crypto methods use `getSecretKey()` which throws if `API_SECRET_KEY` is missing in production. Dev fallbacks remain for local development.
 
 #### M2: Dynamics Restrictions Are Application-Layer Only
 
-**Finding:** CRM access restrictions (table/field blocks) are enforced in the chat API handler. The `DynamicsService` class itself has no restriction awareness — any code that imports the service directly can bypass restrictions.
+**Finding:** CRM access restrictions (table/field blocks) were enforced only in the chat API handler. The `DynamicsService` class itself had no restriction awareness — any code that imports the service directly could bypass restrictions.
 
-**Location:** `pages/api/dynamics-explorer/chat.js` (restriction check), `lib/services/dynamics-service.js` (no restriction awareness)
+**Location:** `pages/api/dynamics-explorer/chat.js` (restriction check), `lib/services/dynamics-service.js`
 
 **Recommendation:** Move restriction enforcement into the `DynamicsService` class so all code paths are protected.
 
-**Status:** REMEDIATED. `DynamicsService` now has `setRestrictions()`, `checkRestriction()`, and `resolveLogicalName()` static methods. Restriction checks are enforced in `queryRecords`, `getRecord`, `countRecords`, `searchRecords`, and `getEntityAttributes`. The chat handler sets restrictions on the service via `DynamicsService.setRestrictions(restrictions)` at request start. Field-level matching bug (substring `includes` → exact split-and-match) also fixed in `chat.js`.
+**Status: REMEDIATED.** `DynamicsService` now has `setRestrictions()`, `checkRestriction()`, and `resolveLogicalName()` static methods. Restriction checks are enforced in `queryRecords`, `getRecord`, `countRecords`, `searchRecords`, and `getEntityAttributes`. The chat handler sets restrictions on the service via `DynamicsService.setRestrictions(restrictions)` at request start. Field-level matching bug (substring `includes` → exact split-and-match) also fixed in `chat.js`.
 
 #### M3: Auth Bypass Allows Profile Switching
 
 **Finding:** When `AUTH_REQUIRED=false`, the `requireAuthWithProfile()` function accepts `userProfileId` from the request body or query parameters. Any user can access any other user's data by passing a different profile ID.
 
-**Location:** `lib/utils/auth.js` line 113
+**Location:** `lib/utils/auth.js`
 
 **Recommendation:** This is acceptable for development but must never be enabled in production. Add a startup check that fails if `AUTH_REQUIRED=false` in a production environment.
 
-**Status:** REMEDIATED. `isAuthRequired()` now logs a warning when auth is disabled in production. `requireAuthWithProfile()` returns 403 if `authBypassed` is true in production, preventing request-body profile ID impersonation.
+**Status: REMEDIATED.** `isAuthRequired()` now logs a warning when auth is disabled in production. `requireAuthWithProfile()` returns 403 if `authBypassed` is true in production, preventing request-body profile ID impersonation.
 
 #### M4: No HSTS Header
 
-**Finding:** The application relies on Vercel's platform-level HTTPS redirect but does not set the `Strict-Transport-Security` header.
+**Finding:** The application relied on Vercel's platform-level HTTPS redirect but did not set the `Strict-Transport-Security` header.
 
-**Location:** `shared/api/middleware/security.js`
+**Location:** `shared/api/middleware/security.js`, `next.config.js`
 
 **Recommendation:** Add `Strict-Transport-Security: max-age=31536000; includeSubDomains` to `setSecurityHeaders()`.
 
-**Status:** REMEDIATED. HSTS header added to `setSecurityHeaders()` in security middleware (production only) and to `next.config.js` `headers()` for framework-level coverage on all routes. Both use `max-age=31536000; includeSubDomains`.
+**Status: REMEDIATED.** HSTS header added to `setSecurityHeaders()` in security middleware (production only) and to `next.config.js` `headers()` for framework-level coverage on all routes. Both use `max-age=31536000; includeSubDomains`.
+
+#### M5: Security Middleware Not Applied Globally
+
+**Finding:** The `applySecurityMiddleware()` function (which sets security headers, validates CORS, sanitizes input, and checks request size) is only called by 2 of 34 API routes (`/api/qa` and `/api/refine`). Most routes rely solely on `requireAuth()` and do not call the middleware.
+
+**Location:** `shared/api/middleware/security.js`, various API routes
+
+**Risk:** Most API routes do not receive security headers, input sanitization, or request size validation from this middleware. The `next.config.js` headers and CSP via helmet partially compensate, but input sanitization coverage is inconsistent.
+
+**Recommendation:** Apply security middleware globally via a Next.js middleware wrapper or by adding it to all API route handlers.
+
+#### M6: CORS Wildcard on Several API Routes
+
+**Finding:** Five API routes explicitly set `Access-Control-Allow-Origin: *` in their response headers, and the `next.config.js` also sets `Access-Control-Allow-Origin: *` for all `/api/:path*` routes. Additionally, `BASE_CONFIG.SECURITY.ALLOWED_ORIGINS` defaults to `['*']` if the `ALLOWED_ORIGINS` env var is not set.
+
+**Location:** `pages/api/upload-handler.js`, `pages/api/process-expenses.js`, `pages/api/integrity-screener/screen.js`, `pages/api/reviewer-finder/analyze.js`, `pages/api/reviewer-finder/discover.js`, `next.config.js`
+
+**Risk:** Overly permissive CORS allows any origin to make credentialed requests to the API. While authentication still provides access control, a browser-based attack from a malicious site could make API calls on behalf of authenticated users.
+
+**Recommendation:** Set explicit allowed origins in the `ALLOWED_ORIGINS` environment variable for production. Remove hardcoded `*` headers from individual API routes. Update `next.config.js` to use environment-based origins.
+
+#### M7: Rate Limiting Not Applied to AI Processing Routes
+
+**Finding:** Five expensive AI-processing routes lack rate limiting: `/api/evaluate-concepts`, `/api/evaluate-multi-perspective`, `/api/reviewer-finder/analyze`, `/api/reviewer-finder/discover`, and `/api/integrity-screener/screen`.
+
+**Location:** Various API routes in `pages/api/`
+
+**Risk:** These routes make multiple external API calls (Claude, literature APIs). Without rate limiting, a single user could exhaust API quotas or drive up costs rapidly.
+
+**Recommendation:** Add rate limiting to all AI-processing routes, especially those that make multiple external API calls per request.
 
 ### Low
 
@@ -838,7 +1003,7 @@ Set by `shared/api/middleware/security.js`:
 
 **Finding:** NextAuth debug mode is enabled in development (`debug: process.env.NODE_ENV === 'development'`). Error handler returns stack traces in development mode.
 
-**Location:** `pages/api/auth/[...nextauth].js` line 184, `shared/api/middleware/security.js` line 214
+**Location:** `pages/api/auth/[...nextauth].js`, `shared/api/middleware/security.js`
 
 **Recommendation:** Verify these are disabled in production builds (they are, via environment check).
 
@@ -846,9 +1011,45 @@ Set by `shared/api/middleware/security.js`:
 
 **Finding:** The Content Security Policy includes `'unsafe-inline'` for styles and scripts, and `'unsafe-eval'` for scripts. This weakens XSS protection.
 
-**Location:** `shared/api/middleware/security.js` lines 39-40
+**Location:** `shared/api/middleware/security.js`
 
 **Recommendation:** Migrate to nonce-based CSP when feasible. Note: Next.js requires `unsafe-eval` in development mode; consider a stricter policy for production only.
+
+#### L6: Rate Limiter Uses In-Memory Storage
+
+**Finding:** Rate limiting state is stored in an in-memory `Map()` which resets on each serverless function cold start and does not distribute across function instances. This makes rate limiting ineffective for persistent abuse patterns.
+
+**Location:** `shared/api/middleware/rateLimiter.js`
+
+**Recommendation:** Migrate to a shared store (Redis, database-backed) if abuse becomes a concern. Current approach is acceptable for low-traffic internal tool.
+
+#### L7: ArXiv API Uses HTTP
+
+**Finding:** The ArXiv API is contacted over HTTP (`http://export.arxiv.org/api/query`) rather than HTTPS. Data transmitted is public research metadata only (titles, authors, abstracts).
+
+**Location:** `lib/services/arxiv-service.js`
+
+**Risk:** Minimal — data is already public. However, responses could theoretically be tampered with in transit.
+
+**Recommendation:** Switch to `https://export.arxiv.org/api/query` if ArXiv supports HTTPS.
+
+#### L8: Dynamics Restriction Violations Not Logged to Database
+
+**Finding:** When a restriction blocks a CRM query, the denial is sent to the user via SSE and logged to console, but not persisted in the `dynamics_query_log` audit table.
+
+**Location:** `pages/api/dynamics-explorer/chat.js`
+
+**Recommendation:** Log restriction violations (table, field, user, timestamp) to the audit table or a dedicated violations table for compliance tracking.
+
+#### L9: Legacy NULL User Profile Data Visibility
+
+**Finding:** `reviewer_suggestions` and `proposal_searches` rows with `user_profile_id = NULL` (created before the user profile system) are visible to all users via queries like `WHERE user_profile_id IS NULL OR user_profile_id = ${profileId}`.
+
+**Location:** `pages/api/reviewer-finder/my-candidates.js`
+
+**Risk:** Low — legacy data is organizational, not individually sensitive. But violates least-privilege principle.
+
+**Recommendation:** Run a one-time migration to assign NULL records to a default profile, then remove the `IS NULL` fallback from queries.
 
 ---
 
@@ -869,6 +1070,7 @@ Set by `shared/api/middleware/security.js`:
 | `DYNAMICS_CLIENT_ID` | Medium | For CRM | Dynamics app registration ID | N/A |
 | `DYNAMICS_CLIENT_SECRET` | **High** | For CRM | Dynamics OAuth secret | Every 90 days |
 | `USER_PREFS_ENCRYPTION_KEY` | **High** | Yes (prod) | AES-256 key for API key storage (64-char hex) | With re-encryption |
+| `API_SECRET_KEY` | **High** | Optional | Secondary encryption key for apiKeyManager | With re-encryption |
 | `SERP_API_KEY` | Medium | Optional | SerpAPI Google search | Annually |
 | `NCBI_API_KEY` | Low | Optional | PubMed higher rate limits | Annually |
 | `ORCID_CLIENT_ID` | Medium | Optional | ORCID OAuth client | N/A |
@@ -894,10 +1096,11 @@ openssl rand -hex 32
 | `user_preferences` | **High** | Per-user | ~50s | Encrypted API keys, settings |
 | `researchers` | Low | Shared | ~1000s | Public academic profiles |
 | `publications` | Low | Shared | ~5000s | Public paper metadata |
+| `researcher_keywords` | Low | Shared | Variable | Expertise areas for researchers |
 | `grant_cycles` | Low | Shared | ~10s | Cycle names, dates, templates |
 | `proposal_searches` | Medium | Per-user | ~100s | Proposal metadata, blob URLs |
 | `reviewer_suggestions` | Medium | Per-user | ~1000s | Reviewer-proposal matches, outreach status |
-| `search_cache` | Low | Shared | Variable | Cached literature search results |
+| `search_cache` | Low | Shared | Variable | Cached literature search results (6-month expiry) |
 | `retractions` | Low | Shared | ~63,000 | Retraction Watch public data |
 | `integrity_screenings` | Medium | Per-user | ~100s | Screening results |
 | `screening_dismissals` | Low | Per-user | ~10s | False positive dismissals |
@@ -905,6 +1108,10 @@ openssl rand -hex 32
 | `dynamics_restrictions` | Medium | Global | ~10s | Table/field access blocks |
 | `dynamics_query_log` | Medium | Per-user | Growing | CRM query audit trail |
 
+**SQL injection prevention:** All database queries across the entire codebase use parameterized `sql` template literals via `@vercel/postgres`. No string interpolation in SQL was found during audit.
+
+**Foreign key integrity:** All per-user tables reference `user_profiles(id)` with appropriate cascade behavior (CASCADE DELETE for preferences, SET NULL for suggestions/searches).
+
 ---
 
-*Report generated from codebase analysis. All findings verified against source code as of February 2026.*
+*Report generated from comprehensive codebase audit. All findings verified against source code as of February 2026.*
