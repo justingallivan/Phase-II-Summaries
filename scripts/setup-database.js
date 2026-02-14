@@ -412,6 +412,26 @@ const v14Statements = [
   `CREATE INDEX IF NOT EXISTS idx_dynamics_query_log_created ON dynamics_query_log(created_at DESC)`,
 ];
 
+// V15: API usage logging for centralized key management
+const v15Statements = [
+  `CREATE TABLE IF NOT EXISTS api_usage_log (
+    id SERIAL PRIMARY KEY,
+    user_profile_id INTEGER REFERENCES user_profiles(id),
+    app_name VARCHAR(50) NOT NULL,
+    model VARCHAR(100),
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    estimated_cost_cents NUMERIC(10,4),
+    latency_ms INTEGER,
+    request_status VARCHAR(20) DEFAULT 'success',
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_api_usage_user ON api_usage_log(user_profile_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_api_usage_app ON api_usage_log(app_name)`,
+  `CREATE INDEX IF NOT EXISTS idx_api_usage_created ON api_usage_log(created_at DESC)`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -771,6 +791,25 @@ async function runMigration() {
       }
     }
 
+    // Run V15 table creation (API usage logging)
+    console.log(`\nApplying v15 schema updates - API usage logging (${v15Statements.length} statements)...`);
+    for (let i = 0; i < v15Statements.length; i++) {
+      const statement = v15Statements[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v15-${i + 1}/${v15Statements.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v15-${i + 1}/${v15Statements.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v15-${i + 1}/${v15Statements.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -835,7 +874,10 @@ async function runMigration() {
     console.log('  • dynamics_user_roles (user role assignments)');
     console.log('  • dynamics_restrictions (table/field access restrictions)');
     console.log('  • dynamics_query_log (audit trail)');
-    console.log('\nIndexes created: 40');
+    console.log('\nV15 new table (API usage logging):');
+    console.log('  • api_usage_log (user_profile_id, app_name, model, input_tokens,');
+    console.log('    output_tokens, estimated_cost_cents, latency_ms, request_status)');
+    console.log('\nIndexes created: 43');
 
   } catch (error) {
     console.error('\n✗ Migration failed:', error.message);
