@@ -4,6 +4,22 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## February 2026 — App-Level Access Control (Session 53)
+
+Implemented per-user app access control across all 13 apps. New users only get Dynamics Explorer by default with a welcome modal; superusers manage grants from the admin dashboard.
+
+- **V16 migration**: `user_app_access` table with `(user_profile_id, app_key)` unique constraint
+- **App registry**: `shared/config/appRegistry.js` — single source of truth for all app definitions (replaced duplicate arrays in Layout.js and index.js)
+- **Access flow**: `AppAccessContext` fetches grants → Layout/home page filter by `hasAccess()` → `RequireAppAccess` guard blocks direct URL access
+- **New user onboarding**: NextAuth auto-grants `dynamics-explorer`, `WelcomeModal` directs to email admin for more access
+- **Admin UI**: Checkbox grid (users x apps) with local edit tracking, amber highlights, save/discard
+- **Backfill**: All 7 existing users granted all 13 apps (91 grants)
+- **Deferred**: Automated email notifications for new users (requires Azure Mail.Send permission)
+
+**Files:** `shared/config/appRegistry.js`, `shared/context/AppAccessContext.js`, `shared/components/RequireAppAccess.js`, `shared/components/WelcomeModal.js`, `pages/api/app-access.js`, `pages/admin.js`, `pages/api/auth/[...nextauth].js`, all 13 app pages
+
+---
+
 ## February 2026 — Dynamics Explorer Architecture Redesign (Sessions 51-52)
 
 Redesigned the Dynamics Explorer from an OData-centric architecture (9 tools, ~3000 token system prompt) to a search-first architecture (7 tools, ~800 token prompt). Key changes:
