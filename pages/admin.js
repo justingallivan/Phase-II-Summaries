@@ -284,7 +284,213 @@ function SummaryCard({ label, value, alert = false }) {
   );
 }
 
-// --- Section C: Quick Links ---
+// --- Section C: Role Management ---
+const ROLE_OPTIONS = [
+  { value: 'superuser', label: 'Superuser' },
+  { value: 'read_write', label: 'Read/Write' },
+  { value: 'read_only', label: 'Read Only' },
+];
+
+function RoleManagementSection() {
+  const [roles, setRoles] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [callerRole, setCallerRole] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [selectedUser, setSelectedUser] = useState('');
+  const [selectedRole, setSelectedRole] = useState('read_only');
+  const [message, setMessage] = useState(null);
+
+  const fetchRoles = () => {
+    fetch('/api/dynamics-explorer/roles')
+      .then(r => {
+        if (r.status === 403 || r.status === 401) {
+          setCallerRole('denied');
+          return null;
+        }
+        return r.json();
+      })
+      .then(data => {
+        if (!data) return;
+        setCallerRole(data.callerRole);
+        setRoles(data.roles || []);
+      })
+      .catch(() => setCallerRole('denied'))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchRoles();
+    fetch('/api/user-profiles')
+      .then(r => r.json())
+      .then(data => setUsers(data.profiles || []))
+      .catch(() => {});
+  }, []);
+
+  if (loading) {
+    return (
+      <Card>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Role Management</h2>
+        <div className="text-gray-500 text-sm">Loading...</div>
+      </Card>
+    );
+  }
+
+  if (callerRole !== 'superuser') return null;
+
+  const assignRole = async () => {
+    if (!selectedUser) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/dynamics-explorer/roles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userProfileId: parseInt(selectedUser), role: selectedRole }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to assign role');
+      }
+      setMessage({ type: 'success', text: 'Role assigned' });
+      setSelectedUser('');
+      fetchRoles();
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeRole = async (userProfileId, userName) => {
+    if (!confirm(`Remove role from ${userName}? They will revert to read-only.`)) return;
+    setMessage(null);
+    try {
+      const res = await fetch('/api/dynamics-explorer/roles', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userProfileId }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to remove role');
+      }
+      setMessage({ type: 'success', text: `Role removed from ${userName}` });
+      fetchRoles();
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    }
+  };
+
+  // Users not yet in the roles table
+  const assignedIds = new Set((roles || []).map(r => r.user_profile_id));
+  const availableUsers = users.filter(u => !assignedIds.has(u.id) && u.is_active);
+
+  return (
+    <Card>
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">Role Management</h2>
+
+      {message && (
+        <div className={`mb-4 px-3 py-2 rounded-lg text-sm ${
+          message.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'
+        }`}>
+          {message.text}
+        </div>
+      )}
+
+      {/* Current roles */}
+      {roles && roles.length > 0 ? (
+        <div className="overflow-x-auto mb-6">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-2 px-2 font-medium text-gray-600">User</th>
+                <th className="text-left py-2 px-2 font-medium text-gray-600">Role</th>
+                <th className="text-left py-2 px-2 font-medium text-gray-600">Granted By</th>
+                <th className="text-right py-2 px-2 font-medium text-gray-600"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {roles.map(role => (
+                <tr key={role.id} className="border-b border-gray-100">
+                  <td className="py-2 px-2 text-gray-900">{role.user_name}</td>
+                  <td className="py-2 px-2">
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                      role.role === 'superuser' ? 'bg-purple-100 text-purple-800' :
+                      role.role === 'read_write' ? 'bg-blue-100 text-blue-800' :
+                      'bg-gray-100 text-gray-600'
+                    }`}>
+                      {role.role}
+                    </span>
+                  </td>
+                  <td className="py-2 px-2 text-gray-500">{role.granted_by_name || '-'}</td>
+                  <td className="py-2 px-2 text-right">
+                    <button
+                      onClick={() => removeRole(role.user_profile_id, role.user_name)}
+                      className="text-xs text-red-600 hover:text-red-800 transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="text-gray-500 text-sm mb-6">No roles assigned yet.</p>
+      )}
+
+      {/* Assign role form */}
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex-1 min-w-[180px]">
+          <label className="block text-xs font-medium text-gray-600 mb-1">User</label>
+          <select
+            value={selectedUser}
+            onChange={e => setSelectedUser(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-400 focus:border-gray-400"
+          >
+            <option value="">Select user...</option>
+            {availableUsers.map(u => (
+              <option key={u.id} value={u.id}>{u.name}{u.azure_email ? ` (${u.azure_email})` : ''}</option>
+            ))}
+            {/* Also allow re-assigning existing users to change their role */}
+            {roles && roles.length > 0 && (
+              <optgroup label="Change existing role">
+                {roles.map(r => (
+                  <option key={`existing-${r.user_profile_id}`} value={r.user_profile_id}>
+                    {r.user_name} (currently {r.role})
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+        </div>
+        <div className="min-w-[140px]">
+          <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
+          <select
+            value={selectedRole}
+            onChange={e => setSelectedRole(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-400 focus:border-gray-400"
+          >
+            {ROLE_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          onClick={assignRole}
+          disabled={!selectedUser || saving}
+          className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {saving ? 'Assigning...' : 'Assign'}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+// --- Section D: Quick Links ---
 function QuickLinksSection() {
   const links = [
     { name: 'Vercel Dashboard', url: 'https://vercel.com/dashboard', description: 'Deployments, logs, environment' },
@@ -325,6 +531,7 @@ export default function AdminDashboard() {
       <div className="py-8 space-y-6">
         <HealthSection />
         <UsageSection />
+        <RoleManagementSection />
         <QuickLinksSection />
       </div>
     </Layout>
