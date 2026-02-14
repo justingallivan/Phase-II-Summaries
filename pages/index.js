@@ -1,147 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import ProfileSelector from '../shared/components/ProfileSelector';
-
-const apps = [
-  {
-    id: 'concept-evaluator',
-    title: 'Concept Evaluator',
-    description: 'Screen research concepts with AI analysis and automated literature search to identify the strongest candidates',
-    icon: '🔬',
-    status: 'active',
-    categories: ['concepts'],
-    features: ['AI Analysis', 'Literature Search', 'Novelty Assessment', 'Batch Evaluation'],
-    path: '/concept-evaluator'
-  },
-  {
-    id: 'multi-perspective-evaluator',
-    title: 'Multi-Perspective Evaluator',
-    description: 'Evaluate concepts using three AI perspectives (Optimist, Skeptic, Neutral) with integrated synthesis and recommendations',
-    icon: '🎭',
-    status: 'active',
-    categories: ['concepts'],
-    features: ['3 AI Perspectives', 'Consensus Analysis', 'Disagreement Resolution', 'Framework Selection'],
-    path: '/multi-perspective-evaluator'
-  },
-  {
-    id: 'batch-phase-i-summaries',
-    title: 'Batch Phase I Summaries',
-    description: 'Process multiple Phase I proposals simultaneously with customizable summary length',
-    icon: '📑',
-    status: 'active',
-    categories: ['phase-i'],
-    features: ['Batch Processing', 'Phase I Specific', 'Custom Length', 'Bulk Export'],
-    path: '/batch-phase-i-summaries'
-  },
-  {
-    id: 'batch-proposal-summaries',
-    title: 'Batch Phase II Summaries',
-    description: 'Process multiple Phase II proposals simultaneously with customizable summary length',
-    icon: '📑',
-    status: 'active',
-    categories: ['phase-ii'],
-    features: ['Batch Processing', 'Custom Length', 'Multi-File Upload', 'Bulk Export'],
-    path: '/batch-proposal-summaries'
-  },
-  {
-    id: 'funding-gap-analyzer',
-    title: 'Funding Analysis',
-    description: 'Analyze federal funding landscapes for research proposals using NSF, NIH, and USAspending.gov data',
-    icon: '💵',
-    status: 'active',
-    categories: ['phase-i', 'phase-ii'],
-    features: ['NSF Awards API', 'NIH RePORTER', 'USAspending.gov', 'Funding Gap Analysis'],
-    path: '/funding-gap-analyzer'
-  },
-  {
-    id: 'phase-i-writeup',
-    title: 'Create Phase I Writeup Draft',
-    description: 'Generate Keck Foundation Phase I writeup drafts with standardized formatting',
-    icon: '✍️',
-    status: 'active',
-    categories: ['phase-i'],
-    features: ['PDF Analysis', '1-Page Format', 'Institution Detection', 'Export Options'],
-    path: '/phase-i-writeup'
-  },
-  {
-    id: 'proposal-summarizer',
-    title: 'Create Phase II Writeup Draft',
-    description: 'Generate Keck Foundation Phase II writeup drafts with standardized formatting',
-    icon: '✍️',
-    status: 'active',
-    categories: ['phase-ii'],
-    features: ['PDF Analysis', 'Claude AI Drafts', 'Q&A Chat', 'Export Options'],
-    path: '/proposal-summarizer'
-  },
-  {
-    id: 'reviewer-finder',
-    title: 'Reviewer Finder',
-    description: 'Find qualified peer reviewers using Claude AI analysis combined with real database verification (PubMed, ArXiv, BioRxiv, ChemRxiv)',
-    icon: '🎯',
-    status: 'active',
-    categories: ['phase-i', 'phase-ii'],
-    features: ['Claude AI Analysis', 'Database Verification', 'Publication Links', 'Reasoning Explanations'],
-    path: '/reviewer-finder'
-  },
-  {
-    id: 'peer-review-summarizer',
-    title: 'Summarize Peer Reviews',
-    description: 'Analyze peer review feedback and generate site visit questions',
-    icon: '📝',
-    status: 'active',
-    categories: ['phase-ii'],
-    features: ['Review Analysis', 'Common Themes', 'Action Items', 'Response Templates'],
-    path: '/peer-review-summarizer'
-  },
-  {
-    id: 'expense-reporter',
-    title: 'Expense Reporter',
-    description: 'Extract and organize expense data from receipts and invoices with automated categorization',
-    icon: '💰',
-    status: 'active',
-    categories: ['other'],
-    features: ['Receipt OCR', 'Image Processing', 'Auto-Categorization', 'Excel/CSV Export'],
-    path: '/expense-reporter'
-  },
-  {
-    id: 'literature-analyzer',
-    title: 'Literature Analyzer',
-    description: 'Comprehensive analysis and synthesis of research papers and academic literature',
-    icon: '📖',
-    status: 'active',
-    categories: ['other'],
-    features: ['Paper Synthesis', 'Theme Extraction', 'Cross-Paper Synthesis', 'Export Reports'],
-    path: '/literature-analyzer'
-  },
-  {
-    id: 'dynamics-explorer',
-    title: 'Dynamics Explorer',
-    description: 'Chat with your CRM data using natural language. Query, explore, and export Dynamics 365 records with AI-powered assistance',
-    icon: '💬',
-    status: 'active',
-    categories: ['other'],
-    features: ['Natural Language Queries', 'Schema Discovery', 'Data Export', 'Multi-Turn Chat'],
-    path: '/dynamics-explorer'
-  },
-  {
-    id: 'integrity-screener',
-    title: 'Applicant Integrity Screener',
-    description: 'Screen grant applicants for research integrity concerns using Retraction Watch, PubPeer, and news sources',
-    icon: '🔍',
-    status: 'active',
-    categories: ['phase-i', 'phase-ii'],
-    features: ['Retraction Watch DB', 'PubPeer Search', 'News Analysis', 'AI Summarization'],
-    path: '/integrity-screener'
-  }
-];
+import { APP_REGISTRY } from '../shared/config/appRegistry';
+import { useAppAccess } from '../shared/context/AppAccessContext';
 
 export default function LandingPage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [authEnabled, setAuthEnabled] = useState(false);
   const { data: session } = useSession();
+  const { hasAccess } = useAppAccess();
 
   // Check if auth is enabled
   useEffect(() => {
@@ -150,6 +20,23 @@ export default function LandingPage() {
       .then(data => setAuthEnabled(data.enabled))
       .catch(() => setAuthEnabled(false));
   }, []);
+
+  // Map registry entries to the format AppCard expects, filtered by access
+  const apps = useMemo(() =>
+    APP_REGISTRY
+      .filter(app => hasAccess(app.key))
+      .map(app => ({
+        id: app.key,
+        title: app.name,
+        description: app.description,
+        icon: app.icon,
+        status: 'active',
+        categories: app.categories,
+        features: app.features,
+        path: app.href,
+      })),
+    [hasAccess]
+  );
 
   const filteredApps = apps.filter(app => {
     if (selectedCategory === 'all') return true;

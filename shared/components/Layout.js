@@ -1,8 +1,10 @@
 import Head from 'next/head';
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useProfile } from '../context/ProfileContext';
+import { useAppAccess } from '../context/AppAccessContext';
+import { APP_REGISTRY } from '../config/appRegistry';
 import ProfileSelector from './ProfileSelector';
 
 export default function Layout({
@@ -17,6 +19,7 @@ export default function Layout({
   const [authEnabled, setAuthEnabled] = useState(false);
   const { data: session, status } = useSession();
   const { currentProfile } = useProfile();
+  const { hasAccess, isSuperuser } = useAppAccess();
 
   // Check if auth is enabled
   useEffect(() => {
@@ -26,22 +29,23 @@ export default function Layout({
       .catch(() => setAuthEnabled(false));
   }, []);
 
-  const navigationItems = [
-    { name: 'Home', href: '/', icon: '🏠' },
-    { name: 'Concept Evaluator', href: '/concept-evaluator', icon: '🔬' },
-    { name: 'Multi-Perspective', href: '/multi-perspective-evaluator', icon: '🎭' },
-    { name: 'Batch Phase I Summaries', href: '/batch-phase-i-summaries', icon: '📑' },
-    { name: 'Batch Phase II Summaries', href: '/batch-proposal-summaries', icon: '📑' },
-    { name: 'Funding Analysis', href: '/funding-gap-analyzer', icon: '💵' },
-    { name: 'Create Phase I Writeup Draft', href: '/phase-i-writeup', icon: '✍️' },
-    { name: 'Create Phase II Writeup Draft', href: '/proposal-summarizer', icon: '✍️' },
-    { name: 'Reviewer Finder', href: '/reviewer-finder', icon: '🎯' },
-    { name: 'Summarize Peer Reviews', href: '/peer-review-summarizer', icon: '📝' },
-    { name: 'Expense Reporter', href: '/expense-reporter', icon: '💰' },
-    { name: 'Literature Analyzer', href: '/literature-analyzer', icon: '📖' },
-    { name: 'Dynamics Explorer', href: '/dynamics-explorer', icon: '💬' },
-    { name: 'Admin', href: '/admin', icon: '⚙️' },
-  ];
+  const navigationItems = useMemo(() => {
+    const items = [{ name: 'Home', href: '/', icon: '🏠' }];
+
+    // Add app links filtered by access
+    APP_REGISTRY.forEach(app => {
+      if (hasAccess(app.key)) {
+        items.push({ name: app.name, href: app.href, icon: app.icon });
+      }
+    });
+
+    // Admin link only for superusers
+    if (isSuperuser) {
+      items.push({ name: 'Admin', href: '/admin', icon: '⚙️' });
+    }
+
+    return items;
+  }, [hasAccess, isSuperuser]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
