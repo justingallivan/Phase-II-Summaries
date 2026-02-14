@@ -493,15 +493,24 @@ function RoleManagementSection() {
 
 // --- Section D: App Access Management ---
 function AppAccessSection() {
-  const [grants, setGrants] = useState(null);
+  const [serverGrants, setServerGrants] = useState(null); // truth from API
+  const [localGrants, setLocalGrants] = useState({});      // editable working copy: { userId: Set(appKeys) }
   const [allApps, setAllApps] = useState([]);
-  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSuperuser, setIsSuperuser] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
-  const [selectedUser, setSelectedUser] = useState('');
-  const [selectedApps, setSelectedApps] = useState([]);
+
+  // Build the server-state map and local working copy
+  const applyServerData = (data) => {
+    setServerGrants(data.grants || []);
+    setAllApps(data.allApps || []);
+    const local = {};
+    (data.grants || []).forEach(g => {
+      local[g.user_profile_id] = new Set(g.apps || []);
+    });
+    setLocalGrants(local);
+  };
 
   const fetchGrants = () => {
     fetch('/api/app-access?all=true')
@@ -515,20 +524,13 @@ function AppAccessSection() {
       .then(data => {
         if (!data) return;
         setIsSuperuser(true);
-        setGrants(data.grants || []);
-        setAllApps(data.allApps || []);
+        applyServerData(data);
       })
       .catch(() => setIsSuperuser(false))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => {
-    fetchGrants();
-    fetch('/api/user-profiles')
-      .then(r => r.json())
-      .then(data => setUsers(data.profiles || []))
-      .catch(() => {});
-  }, []);
+  useEffect(() => { fetchGrants(); }, []);
 
   if (loading) {
     return (
@@ -541,27 +543,77 @@ function AppAccessSection() {
 
   if (!isSuperuser) return null;
 
-  const appLabels = {};
-  APP_REGISTRY.forEach(app => { appLabels[app.key] = app.name; });
+  // Toggle a single checkbox in local state
+  const toggle = (userId, appKey) => {
+    setLocalGrants(prev => {
+      const next = { ...prev };
+      const set = new Set(next[userId] || []);
+      if (set.has(appKey)) set.delete(appKey); else set.add(appKey);
+      next[userId] = set;
+      return next;
+    });
+  };
 
-  const grantApps = async () => {
-    if (!selectedUser || selectedApps.length === 0) return;
+  // Select / deselect all apps for a user
+  const toggleAll = (userId) => {
+    setLocalGrants(prev => {
+      const next = { ...prev };
+      const current = next[userId] || new Set();
+      next[userId] = current.size === allApps.length ? new Set() : new Set(allApps);
+      return next;
+    });
+  };
+
+  // Compute diff between server state and local edits
+  const computeDiff = () => {
+    const changes = []; // { userId, toGrant: [], toRevoke: [] }
+    if (!serverGrants) return changes;
+    for (const grant of serverGrants) {
+      const uid = grant.user_profile_id;
+      const serverSet = new Set(grant.apps || []);
+      const localSet = localGrants[uid] || new Set();
+      const toGrant = [...localSet].filter(k => !serverSet.has(k));
+      const toRevoke = [...serverSet].filter(k => !localSet.has(k));
+      if (toGrant.length > 0 || toRevoke.length > 0) {
+        changes.push({ userId: uid, toGrant, toRevoke });
+      }
+    }
+    return changes;
+  };
+
+  const diff = computeDiff();
+  const hasChanges = diff.length > 0;
+
+  // Save all pending changes
+  const saveAll = async () => {
     setSaving(true);
     setMessage(null);
     try {
-      const res = await fetch('/api/app-access', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userProfileId: parseInt(selectedUser), apps: selectedApps }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to grant access');
+      for (const { userId, toGrant, toRevoke } of diff) {
+        if (toGrant.length > 0) {
+          const res = await fetch('/api/app-access', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userProfileId: userId, apps: toGrant }),
+          });
+          if (!res.ok) throw new Error((await res.json()).error || 'Grant failed');
+        }
+        if (toRevoke.length > 0) {
+          const res = await fetch('/api/app-access', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userProfileId: userId, apps: toRevoke }),
+          });
+          if (!res.ok) throw new Error((await res.json()).error || 'Revoke failed');
+        }
       }
-      setMessage({ type: 'success', text: `Granted ${selectedApps.length} app(s)` });
-      setSelectedUser('');
-      setSelectedApps([]);
-      fetchGrants();
+      const totalGrants = diff.reduce((n, d) => n + d.toGrant.length, 0);
+      const totalRevokes = diff.reduce((n, d) => n + d.toRevoke.length, 0);
+      const parts = [];
+      if (totalGrants) parts.push(`${totalGrants} granted`);
+      if (totalRevokes) parts.push(`${totalRevokes} revoked`);
+      setMessage({ type: 'success', text: `Saved: ${parts.join(', ')}` });
+      fetchGrants(); // refresh from server
     } catch (err) {
       setMessage({ type: 'error', text: err.message });
     } finally {
@@ -569,62 +621,45 @@ function AppAccessSection() {
     }
   };
 
-  const revokeApp = async (userProfileId, appKey, userName) => {
-    if (!confirm(`Remove ${appLabels[appKey] || appKey} access from ${userName}?`)) return;
+  // Discard local edits
+  const discardChanges = () => {
+    const local = {};
+    (serverGrants || []).forEach(g => {
+      local[g.user_profile_id] = new Set(g.apps || []);
+    });
+    setLocalGrants(local);
     setMessage(null);
-    try {
-      const res = await fetch('/api/app-access', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userProfileId, apps: [appKey] }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to revoke access');
-      }
-      setMessage({ type: 'success', text: `Revoked ${appLabels[appKey] || appKey} from ${userName}` });
-      fetchGrants();
-    } catch (err) {
-      setMessage({ type: 'error', text: err.message });
-    }
   };
 
-  const grantAllApps = async (userProfileId, userName) => {
-    if (!confirm(`Grant all apps to ${userName}?`)) return;
-    setSaving(true);
-    setMessage(null);
-    try {
-      const res = await fetch('/api/app-access', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userProfileId, apps: allApps }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to grant access');
-      }
-      setMessage({ type: 'success', text: `Granted all apps to ${userName}` });
-      fetchGrants();
-    } catch (err) {
-      setMessage({ type: 'error', text: err.message });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Apps the selected user doesn't already have
-  const selectedUserGrants = grants?.find(g => g.user_profile_id === parseInt(selectedUser));
-  const availableApps = allApps.filter(k => !(selectedUserGrants?.apps || []).includes(k));
-
-  const toggleApp = (appKey) => {
-    setSelectedApps(prev =>
-      prev.includes(appKey) ? prev.filter(k => k !== appKey) : [...prev, appKey]
-    );
-  };
+  // Short labels for column headers
+  const appShortNames = {};
+  APP_REGISTRY.forEach(app => {
+    // Use first word or abbreviation to keep columns narrow
+    appShortNames[app.key] = app.name;
+  });
 
   return (
     <Card>
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">App Access Management</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-gray-900">App Access Management</h2>
+        <div className="flex items-center gap-2">
+          {hasChanges && (
+            <button
+              onClick={discardChanges}
+              className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Discard
+            </button>
+          )}
+          <button
+            onClick={saveAll}
+            disabled={!hasChanges || saving}
+            className="px-4 py-1.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {saving ? 'Saving...' : hasChanges ? `Save Changes` : 'No Changes'}
+          </button>
+        </div>
+      </div>
 
       {message && (
         <div className={`mb-4 px-3 py-2 rounded-lg text-sm ${
@@ -634,132 +669,74 @@ function AppAccessSection() {
         </div>
       )}
 
-      {/* User access table */}
-      {grants && grants.length > 0 ? (
-        <div className="overflow-x-auto mb-6">
-          <table className="w-full text-sm">
+      {serverGrants && serverGrants.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="text-left py-2 px-2 font-medium text-gray-600">User</th>
-                <th className="text-left py-2 px-2 font-medium text-gray-600">Apps</th>
-                <th className="text-right py-2 px-2 font-medium text-gray-600"></th>
+                <th className="text-left py-2 px-2 font-medium text-gray-600 sticky left-0 bg-white z-10 min-w-[140px]">User</th>
+                {allApps.map(appKey => (
+                  <th key={appKey} className="py-2 px-1 font-medium text-gray-500 text-center min-w-[40px]" title={appShortNames[appKey]}>
+                    <div className="writing-mode-vertical text-xs leading-tight" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', whiteSpace: 'nowrap', maxHeight: '120px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {appShortNames[appKey]}
+                    </div>
+                  </th>
+                ))}
+                <th className="py-2 px-2 text-center font-medium text-gray-500 text-xs min-w-[50px]">All</th>
               </tr>
             </thead>
             <tbody>
-              {grants.map(grant => (
-                <tr key={grant.user_profile_id} className="border-b border-gray-100">
-                  <td className="py-2 px-2 text-gray-900 whitespace-nowrap">
-                    <div>{grant.user_name}</div>
-                    {grant.azure_email && (
-                      <div className="text-xs text-gray-500">{grant.azure_email}</div>
-                    )}
-                  </td>
-                  <td className="py-2 px-2">
-                    <div className="flex flex-wrap gap-1">
-                      {grant.apps && grant.apps.length > 0 ? (
-                        grant.apps.map(appKey => (
-                          <span
-                            key={appKey}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200"
-                          >
-                            {appLabels[appKey] || appKey}
-                            <button
-                              onClick={() => revokeApp(grant.user_profile_id, appKey, grant.user_name)}
-                              className="text-blue-400 hover:text-red-600 transition-colors ml-0.5"
-                              title="Revoke"
-                            >
-                              x
-                            </button>
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-xs text-gray-400">No apps</span>
+              {serverGrants.map(grant => {
+                const uid = grant.user_profile_id;
+                const localSet = localGrants[uid] || new Set();
+                const serverSet = new Set(grant.apps || []);
+                const allChecked = localSet.size === allApps.length;
+                return (
+                  <tr key={uid} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="py-2 px-2 text-gray-900 whitespace-nowrap sticky left-0 bg-white z-10">
+                      <div className="text-sm font-medium">{grant.user_name}</div>
+                      {grant.azure_email && (
+                        <div className="text-xs text-gray-400">{grant.azure_email}</div>
                       )}
-                    </div>
-                  </td>
-                  <td className="py-2 px-2 text-right whitespace-nowrap">
-                    {(!grant.apps || grant.apps.length < allApps.length) && (
-                      <button
-                        onClick={() => grantAllApps(grant.user_profile_id, grant.user_name)}
-                        className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors"
-                      >
-                        Grant All
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    {allApps.map(appKey => {
+                      const checked = localSet.has(appKey);
+                      const changed = checked !== serverSet.has(appKey);
+                      return (
+                        <td key={appKey} className="py-2 px-1 text-center">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggle(uid, appKey)}
+                            className={`rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer ${changed ? 'ring-2 ring-amber-400' : ''}`}
+                          />
+                        </td>
+                      );
+                    })}
+                    <td className="py-2 px-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={allChecked}
+                        onChange={() => toggleAll(uid)}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        title={allChecked ? 'Deselect all' : 'Select all'}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       ) : (
-        <p className="text-gray-500 text-sm mb-6">No users found.</p>
+        <p className="text-gray-500 text-sm">No users found.</p>
       )}
 
-      {/* Grant access form */}
-      <div className="border-t border-gray-200 pt-4">
-        <h3 className="text-sm font-medium text-gray-700 mb-3">Grant App Access</h3>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex-1 min-w-[180px]">
-            <label className="block text-xs font-medium text-gray-600 mb-1">User</label>
-            <select
-              value={selectedUser}
-              onChange={e => {
-                setSelectedUser(e.target.value);
-                setSelectedApps([]);
-              }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-400 focus:border-gray-400"
-            >
-              <option value="">Select user...</option>
-              {users.filter(u => u.isActive).map(u => (
-                <option key={u.id} value={u.id}>
-                  {u.name}{u.azure_email ? ` (${u.azure_email})` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button
-            onClick={grantApps}
-            disabled={!selectedUser || selectedApps.length === 0 || saving}
-            className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {saving ? 'Granting...' : `Grant (${selectedApps.length})`}
-          </button>
-        </div>
-
-        {/* App checkboxes */}
-        {selectedUser && (
-          <div className="mt-3">
-            <label className="block text-xs font-medium text-gray-600 mb-2">
-              Select apps to grant ({availableApps.length} available)
-            </label>
-            {availableApps.length === 0 ? (
-              <p className="text-xs text-gray-400">This user already has all apps.</p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {availableApps.map(appKey => (
-                  <label
-                    key={appKey}
-                    className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
-                      selectedApps.includes(appKey)
-                        ? 'border-indigo-300 bg-indigo-50'
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedApps.includes(appKey)}
-                      onChange={() => toggleApp(appKey)}
-                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span className="text-sm text-gray-700">{appLabels[appKey] || appKey}</span>
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      {hasChanges && (
+        <p className="text-xs text-amber-600 mt-3">
+          Unsaved changes for {diff.length} user(s). Changed checkboxes are highlighted.
+        </p>
+      )}
     </Card>
   );
 }
