@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Layout, { PageHeader, Card } from '../shared/components/Layout';
+import { APP_REGISTRY } from '../shared/config/appRegistry';
 
 const PERIOD_OPTIONS = [
   { value: '7d', label: '7 days' },
@@ -490,7 +491,280 @@ function RoleManagementSection() {
   );
 }
 
-// --- Section D: Quick Links ---
+// --- Section D: App Access Management ---
+function AppAccessSection() {
+  const [grants, setGrants] = useState(null);
+  const [allApps, setAllApps] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isSuperuser, setIsSuperuser] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [selectedUser, setSelectedUser] = useState('');
+  const [selectedApps, setSelectedApps] = useState([]);
+
+  const fetchGrants = () => {
+    fetch('/api/app-access?all=true')
+      .then(r => {
+        if (r.status === 403 || r.status === 401) {
+          setIsSuperuser(false);
+          return null;
+        }
+        return r.json();
+      })
+      .then(data => {
+        if (!data) return;
+        setIsSuperuser(true);
+        setGrants(data.grants || []);
+        setAllApps(data.allApps || []);
+      })
+      .catch(() => setIsSuperuser(false))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchGrants();
+    fetch('/api/user-profiles')
+      .then(r => r.json())
+      .then(data => setUsers(data.profiles || []))
+      .catch(() => {});
+  }, []);
+
+  if (loading) {
+    return (
+      <Card>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">App Access Management</h2>
+        <div className="text-gray-500 text-sm">Loading...</div>
+      </Card>
+    );
+  }
+
+  if (!isSuperuser) return null;
+
+  const appLabels = {};
+  APP_REGISTRY.forEach(app => { appLabels[app.key] = app.name; });
+
+  const grantApps = async () => {
+    if (!selectedUser || selectedApps.length === 0) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/app-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userProfileId: parseInt(selectedUser), apps: selectedApps }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to grant access');
+      }
+      setMessage({ type: 'success', text: `Granted ${selectedApps.length} app(s)` });
+      setSelectedUser('');
+      setSelectedApps([]);
+      fetchGrants();
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const revokeApp = async (userProfileId, appKey, userName) => {
+    if (!confirm(`Remove ${appLabels[appKey] || appKey} access from ${userName}?`)) return;
+    setMessage(null);
+    try {
+      const res = await fetch('/api/app-access', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userProfileId, apps: [appKey] }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to revoke access');
+      }
+      setMessage({ type: 'success', text: `Revoked ${appLabels[appKey] || appKey} from ${userName}` });
+      fetchGrants();
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    }
+  };
+
+  const grantAllApps = async (userProfileId, userName) => {
+    if (!confirm(`Grant all apps to ${userName}?`)) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/app-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userProfileId, apps: allApps }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to grant access');
+      }
+      setMessage({ type: 'success', text: `Granted all apps to ${userName}` });
+      fetchGrants();
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Apps the selected user doesn't already have
+  const selectedUserGrants = grants?.find(g => g.user_profile_id === parseInt(selectedUser));
+  const availableApps = allApps.filter(k => !(selectedUserGrants?.apps || []).includes(k));
+
+  const toggleApp = (appKey) => {
+    setSelectedApps(prev =>
+      prev.includes(appKey) ? prev.filter(k => k !== appKey) : [...prev, appKey]
+    );
+  };
+
+  return (
+    <Card>
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">App Access Management</h2>
+
+      {message && (
+        <div className={`mb-4 px-3 py-2 rounded-lg text-sm ${
+          message.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'
+        }`}>
+          {message.text}
+        </div>
+      )}
+
+      {/* User access table */}
+      {grants && grants.length > 0 ? (
+        <div className="overflow-x-auto mb-6">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-2 px-2 font-medium text-gray-600">User</th>
+                <th className="text-left py-2 px-2 font-medium text-gray-600">Apps</th>
+                <th className="text-right py-2 px-2 font-medium text-gray-600"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {grants.map(grant => (
+                <tr key={grant.user_profile_id} className="border-b border-gray-100">
+                  <td className="py-2 px-2 text-gray-900 whitespace-nowrap">
+                    <div>{grant.user_name}</div>
+                    {grant.azure_email && (
+                      <div className="text-xs text-gray-500">{grant.azure_email}</div>
+                    )}
+                  </td>
+                  <td className="py-2 px-2">
+                    <div className="flex flex-wrap gap-1">
+                      {grant.apps && grant.apps.length > 0 ? (
+                        grant.apps.map(appKey => (
+                          <span
+                            key={appKey}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200"
+                          >
+                            {appLabels[appKey] || appKey}
+                            <button
+                              onClick={() => revokeApp(grant.user_profile_id, appKey, grant.user_name)}
+                              className="text-blue-400 hover:text-red-600 transition-colors ml-0.5"
+                              title="Revoke"
+                            >
+                              x
+                            </button>
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs text-gray-400">No apps</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-2 px-2 text-right whitespace-nowrap">
+                    {(!grant.apps || grant.apps.length < allApps.length) && (
+                      <button
+                        onClick={() => grantAllApps(grant.user_profile_id, grant.user_name)}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors"
+                      >
+                        Grant All
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="text-gray-500 text-sm mb-6">No users found.</p>
+      )}
+
+      {/* Grant access form */}
+      <div className="border-t border-gray-200 pt-4">
+        <h3 className="text-sm font-medium text-gray-700 mb-3">Grant App Access</h3>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex-1 min-w-[180px]">
+            <label className="block text-xs font-medium text-gray-600 mb-1">User</label>
+            <select
+              value={selectedUser}
+              onChange={e => {
+                setSelectedUser(e.target.value);
+                setSelectedApps([]);
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-400 focus:border-gray-400"
+            >
+              <option value="">Select user...</option>
+              {users.filter(u => u.isActive).map(u => (
+                <option key={u.id} value={u.id}>
+                  {u.name}{u.azure_email ? ` (${u.azure_email})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={grantApps}
+            disabled={!selectedUser || selectedApps.length === 0 || saving}
+            className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {saving ? 'Granting...' : `Grant (${selectedApps.length})`}
+          </button>
+        </div>
+
+        {/* App checkboxes */}
+        {selectedUser && (
+          <div className="mt-3">
+            <label className="block text-xs font-medium text-gray-600 mb-2">
+              Select apps to grant ({availableApps.length} available)
+            </label>
+            {availableApps.length === 0 ? (
+              <p className="text-xs text-gray-400">This user already has all apps.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {availableApps.map(appKey => (
+                  <label
+                    key={appKey}
+                    className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
+                      selectedApps.includes(appKey)
+                        ? 'border-indigo-300 bg-indigo-50'
+                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedApps.includes(appKey)}
+                      onChange={() => toggleApp(appKey)}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-sm text-gray-700">{appLabels[appKey] || appKey}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// --- Section E: Quick Links ---
 function QuickLinksSection() {
   const links = [
     { name: 'Vercel Dashboard', url: 'https://vercel.com/dashboard', description: 'Deployments, logs, environment' },
@@ -532,6 +806,7 @@ export default function AdminDashboard() {
         <HealthSection />
         <UsageSection />
         <RoleManagementSection />
+        <AppAccessSection />
         <QuickLinksSection />
       </div>
     </Layout>
