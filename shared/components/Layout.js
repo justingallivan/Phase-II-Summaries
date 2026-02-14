@@ -40,6 +40,7 @@ export default function Layout({
     { name: 'Expense Reporter', href: '/expense-reporter', icon: '💰' },
     { name: 'Literature Analyzer', href: '/literature-analyzer', icon: '📖' },
     { name: 'Dynamics Explorer', href: '/dynamics-explorer', icon: '💬' },
+    { name: 'Admin', href: '/admin', icon: '⚙️' },
   ];
 
   return (
