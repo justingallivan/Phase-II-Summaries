@@ -384,7 +384,7 @@ function RoleManagementSection() {
 
   // Users not yet in the roles table
   const assignedIds = new Set((roles || []).map(r => r.user_profile_id));
-  const availableUsers = users.filter(u => !assignedIds.has(u.id) && u.is_active);
+  const availableUsers = users.filter(u => !assignedIds.has(u.id) && u.isActive);
 
   return (
     <Card>
