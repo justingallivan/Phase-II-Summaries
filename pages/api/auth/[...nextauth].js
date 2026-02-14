@@ -15,6 +15,7 @@
 import NextAuth from 'next-auth';
 import AzureADProvider from 'next-auth/providers/azure-ad';
 import { sql } from '@vercel/postgres';
+import { DEFAULT_APP_GRANTS } from '../../../shared/config/appRegistry';
 
 export const authOptions = {
   providers: [
@@ -99,16 +100,28 @@ export const authOptions = {
               SET last_login_at = CURRENT_TIMESTAMP, last_used_at = CURRENT_TIMESTAMP
               RETURNING id
             `;
+
+            // Grant default apps to new user
+            if (tempResult.rows[0]?.id) {
+              await grantDefaultApps(tempResult.rows[0].id);
+            }
+
             return true;
           }
 
           // No existing profiles - create new one
-          await sql`
+          const newResult = await sql`
             INSERT INTO user_profiles (name, display_name, azure_id, azure_email, is_default, needs_linking)
             VALUES (${azureEmail}, ${displayName}, ${azureId}, ${azureEmail}, true, false)
             ON CONFLICT (azure_id) DO UPDATE
             SET last_login_at = CURRENT_TIMESTAMP, last_used_at = CURRENT_TIMESTAMP
+            RETURNING id
           `;
+
+          // Grant default apps to new user
+          if (newResult.rows[0]?.id) {
+            await grantDefaultApps(newResult.rows[0].id);
+          }
 
           return true;
         } catch (error) {
@@ -134,7 +147,7 @@ export const authOptions = {
       if (token.azureId) {
         try {
           const result = await sql`
-            SELECT id, name, display_name, avatar_color, needs_linking
+            SELECT id, name, display_name, avatar_color, needs_linking, last_login_at
             FROM user_profiles
             WHERE azure_id = ${token.azureId} AND is_active = true
             LIMIT 1
@@ -145,6 +158,7 @@ export const authOptions = {
             token.profileName = result.rows[0].display_name || result.rows[0].name;
             token.avatarColor = result.rows[0].avatar_color;
             token.needsLinking = result.rows[0].needs_linking;
+            token.isNewUser = !result.rows[0].last_login_at;
           }
         } catch (error) {
           console.error('Error looking up profile in jwt callback:', error);
@@ -165,6 +179,7 @@ export const authOptions = {
         session.user.profileName = token.profileName;
         session.user.avatarColor = token.avatarColor;
         session.user.needsLinking = token.needsLinking;
+        session.user.isNewUser = token.isNewUser;
       }
       return session;
     },
@@ -183,5 +198,23 @@ export const authOptions = {
   // Debug mode in development
   debug: process.env.NODE_ENV === 'development',
 };
+
+/**
+ * Grant default apps to a newly created user profile
+ */
+async function grantDefaultApps(profileId) {
+  try {
+    for (const appKey of DEFAULT_APP_GRANTS) {
+      await sql`
+        INSERT INTO user_app_access (user_profile_id, app_key)
+        VALUES (${profileId}, ${appKey})
+        ON CONFLICT (user_profile_id, app_key) DO NOTHING
+      `;
+    }
+  } catch (error) {
+    console.error('Error granting default apps:', error);
+    // Non-fatal — user can still sign in
+  }
+}
 
 export default NextAuth(authOptions);

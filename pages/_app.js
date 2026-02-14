@@ -3,6 +3,7 @@ import { SessionProvider } from 'next-auth/react'
 import { ProfileProvider } from '../shared/context/ProfileContext'
 import { AppAccessProvider } from '../shared/context/AppAccessContext'
 import RequireAuth from '../shared/components/RequireAuth'
+import WelcomeModal from '../shared/components/WelcomeModal'
 
 export default function App({ Component, pageProps: { session, ...pageProps } }) {
   return (
@@ -10,6 +11,7 @@ export default function App({ Component, pageProps: { session, ...pageProps } })
       <RequireAuth>
         <ProfileProvider>
           <AppAccessProvider>
+            <WelcomeModal />
             <Component {...pageProps} />
           </AppAccessProvider>
         </ProfileProvider>
