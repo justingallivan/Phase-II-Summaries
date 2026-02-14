@@ -72,8 +72,10 @@ export default async function handler(req, res) {
       return;
     }
 
-    const userRole = await getUserRole(userProfileId);
-    const restrictions = await getActiveRestrictions();
+    const [userRole, restrictions] = await Promise.all([
+      getUserRole(userProfileId),
+      getActiveRestrictions(),
+    ]);
     DynamicsService.setRestrictions(restrictions);
     const systemPrompt = buildSystemPrompt({ userRole, restrictions });
 
@@ -99,34 +101,46 @@ export default async function handler(req, res) {
         messages: currentMessages,
         tools: TOOL_DEFINITIONS,
         userProfileId,
+        onTextDelta: (text) => {
+          // Stream text chunks to client in real-time
+          sendEvent('text_delta', { text });
+        },
       });
 
       const textBlocks = claudeResponse.content.filter(b => b.type === 'text');
       const toolBlocks = claudeResponse.content.filter(b => b.type === 'tool_use');
 
       if (toolBlocks.length === 0) {
-        const finalText = textBlocks.map(b => b.text).join('\n');
-        sendEvent('response', { content: finalText });
+        if (!claudeResponse._textStreamed) {
+          // Text wasn't streamed (shouldn't happen, but fallback)
+          const finalText = textBlocks.map(b => b.text).join('\n');
+          sendEvent('response', { content: finalText });
+        }
         sendEvent('complete', { rounds: round });
         res.end();
-      return;
+        return;
       }
 
-      // Execute tool calls
+      // Execute tool calls — parallel when multiple tools in one round
       const toolResults = [];
-      for (const toolBlock of toolBlocks) {
-        const { id, name, input } = toolBlock;
 
+      // Send all thinking messages upfront
+      for (const toolBlock of toolBlocks) {
+        const restricted = checkRestriction(toolBlock.name, toolBlock.input, restrictions);
+        if (!restricted) {
+          sendEvent('thinking', { message: getThinkingMessage(toolBlock.name, toolBlock.input) });
+        }
+      }
+
+      const executeOne = async (toolBlock) => {
+        const { id, name, input } = toolBlock;
         console.log(`[DynExp] Round ${round} tool: ${name}`, JSON.stringify(input).substring(0, 200));
 
         const restricted = checkRestriction(name, input, restrictions);
         if (restricted) {
           sendEvent('thinking', { message: `Blocked: ${restricted}` });
-          toolResults.push({ type: 'tool_result', tool_use_id: id, content: `DENIED: ${restricted}` });
-          continue;
+          return { type: 'tool_result', tool_use_id: id, content: `DENIED: ${restricted}` };
         }
-
-        sendEvent('thinking', { message: getThinkingMessage(name, input) });
 
         const startTime = Date.now();
         let result;
@@ -144,9 +158,18 @@ export default async function handler(req, res) {
         logQuery({ userProfileId, sessionId, queryType: name, tableName: input.table_name || null, queryParams: input, recordCount, executionTime });
 
         const charLimit = TOOL_CHAR_LIMITS[name] || MAX_RESULT_CHARS;
-        let resultStr = truncateResult(result, charLimit);
+        const resultStr = truncateResult(result, charLimit);
 
-        toolResults.push({ type: 'tool_result', tool_use_id: id, content: resultStr });
+        return { type: 'tool_result', tool_use_id: id, content: resultStr };
+      };
+
+      const settled = await Promise.allSettled(toolBlocks.map(executeOne));
+      for (const s of settled) {
+        toolResults.push(s.status === 'fulfilled' ? s.value : {
+          type: 'tool_result',
+          tool_use_id: 'unknown',
+          content: JSON.stringify({ error: s.reason?.message || 'Tool execution failed' }),
+        });
       }
 
       // Append assistant + tool results, then compact old rounds
@@ -267,7 +290,16 @@ function summarizeToolResult(content) {
 
 // ─── Claude API call ───
 
-async function callClaude({ apiKey, model, fallbackModel, systemPrompt, messages, tools, userProfileId }) {
+/**
+ * Call Claude API with streaming. Returns a parsed response object.
+ * When onTextDelta is provided AND the response is text-only (no tool use),
+ * text chunks are forwarded in real-time via the callback.
+ *
+ * @param {Object} opts
+ * @param {Function} [opts.onTextDelta] - callback(text) for streaming text chunks
+ * @returns {Promise<{content, model, usage}>}
+ */
+async function callClaude({ apiKey, model, fallbackModel, systemPrompt, messages, tools, userProfileId, onTextDelta }) {
   const startTime = Date.now();
 
   const body = {
@@ -276,6 +308,7 @@ async function callClaude({ apiKey, model, fallbackModel, systemPrompt, messages
     system: systemPrompt,
     messages,
     tools,
+    stream: true,
   };
 
   const callHeaders = {
@@ -318,18 +351,119 @@ async function callClaude({ apiKey, model, fallbackModel, systemPrompt, messages
     throw new Error(`Claude API error (${resp.status}): ${errorBody}`);
   }
 
-  const data = await resp.json();
+  // Parse the SSE stream from Claude
+  return await parseClaudeStream(resp, { startTime, userProfileId, onTextDelta });
+}
+
+/**
+ * Parse Claude's SSE stream into a response object identical to the non-streaming format.
+ * Streams text_delta to onTextDelta callback when no tool_use blocks are detected.
+ */
+async function parseClaudeStream(resp, { startTime, userProfileId, onTextDelta }) {
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  // Accumulate content blocks as they stream in
+  const contentBlocks = []; // [{type, text/id/name/input}]
+  let currentBlockIndex = -1;
+  let hasToolUse = false;
+  let bufferedTextDeltas = []; // text deltas buffered before we know if tools follow
+  let responseModel = '';
+  let usage = {};
+  let textStreamingStarted = false;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop(); // keep incomplete line
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6);
+      if (data === '[DONE]') continue;
+
+      let event;
+      try { event = JSON.parse(data); } catch { continue; }
+
+      switch (event.type) {
+        case 'message_start':
+          responseModel = event.message?.model || '';
+          if (event.message?.usage) {
+            usage.input_tokens = event.message.usage.input_tokens;
+          }
+          break;
+
+        case 'content_block_start':
+          currentBlockIndex = event.index;
+          if (event.content_block.type === 'text') {
+            contentBlocks[currentBlockIndex] = { type: 'text', text: '' };
+          } else if (event.content_block.type === 'tool_use') {
+            hasToolUse = true;
+            contentBlocks[currentBlockIndex] = {
+              type: 'tool_use',
+              id: event.content_block.id,
+              name: event.content_block.name,
+              input: '',
+            };
+            // If we had been buffering text deltas, discard streaming —
+            // the full text will be in the response content blocks
+            bufferedTextDeltas = [];
+          }
+          break;
+
+        case 'content_block_delta':
+          if (event.delta?.type === 'text_delta' && contentBlocks[event.index]) {
+            const text = event.delta.text;
+            contentBlocks[event.index].text += text;
+            if (!hasToolUse && onTextDelta) {
+              // Stream text to client in real-time
+              onTextDelta(text);
+              textStreamingStarted = true;
+            }
+          } else if (event.delta?.type === 'input_json_delta' && contentBlocks[event.index]) {
+            contentBlocks[event.index].input += event.delta.partial_json;
+          }
+          break;
+
+        case 'content_block_stop':
+          // Parse tool input JSON when block ends
+          if (contentBlocks[event.index]?.type === 'tool_use') {
+            try {
+              contentBlocks[event.index].input = JSON.parse(contentBlocks[event.index].input || '{}');
+            } catch {
+              contentBlocks[event.index].input = {};
+            }
+          }
+          break;
+
+        case 'message_delta':
+          if (event.usage) {
+            usage.output_tokens = event.usage.output_tokens;
+          }
+          break;
+      }
+    }
+  }
 
   logUsage({
     userProfileId,
     appName: 'dynamics-explorer',
-    model: data.model,
-    inputTokens: data.usage?.input_tokens,
-    outputTokens: data.usage?.output_tokens,
+    model: responseModel,
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
     latencyMs: Date.now() - startTime,
   });
 
-  return data;
+  return {
+    content: contentBlocks.filter(Boolean),
+    model: responseModel,
+    usage,
+    _textStreamed: textStreamingStarted, // flag so the caller knows text was already sent
+  };
 }
 
 // ─── Tool execution ───

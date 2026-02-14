@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import { useProfile } from '../shared/context/ProfileContext';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
@@ -126,6 +126,7 @@ function DynamicsExplorer() {
 
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
+  const messageIdRef = useRef(0);
 
   let profileContext = null;
   try {
@@ -162,7 +163,7 @@ function DynamicsExplorer() {
     const messageText = text || currentMessage.trim();
     if (!messageText || isProcessing) return;
 
-    const userMsg = { role: 'user', content: messageText, timestamp: Date.now() };
+    const userMsg = { id: ++messageIdRef.current, role: 'user', content: messageText, timestamp: Date.now() };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setCurrentMessage('');
@@ -194,6 +195,7 @@ function DynamicsExplorer() {
       const decoder = new TextDecoder();
       let buffer = '';
       let assistantContent = '';
+      let streamingMsgId = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -222,22 +224,56 @@ function DynamicsExplorer() {
               case 'thinking':
                 setThinkingStatus(parsed.message || 'Processing...');
                 break;
+              case 'text_delta':
+                // Stream text incrementally — create or update streaming message
+                if (!streamingMsgId) {
+                  streamingMsgId = ++messageIdRef.current;
+                  assistantContent = parsed.text || '';
+                  setThinkingStatus('');
+                  setMessages(prev => [...prev, {
+                    id: streamingMsgId,
+                    role: 'assistant',
+                    content: assistantContent,
+                    timestamp: Date.now(),
+                    isStreaming: true,
+                  }]);
+                } else {
+                  assistantContent += parsed.text || '';
+                  setMessages(prev => prev.map(m =>
+                    m.id === streamingMsgId
+                      ? { ...m, content: assistantContent }
+                      : m
+                  ));
+                }
+                break;
               case 'response':
+                // Non-streamed full response (fallback)
                 assistantContent = parsed.content || '';
                 break;
               case 'complete':
-                // Add assistant message
-                setMessages(prev => [...prev, {
-                  role: 'assistant',
-                  content: assistantContent,
-                  timestamp: Date.now(),
-                  rounds: parsed.rounds,
-                }]);
+                if (streamingMsgId) {
+                  // Finalize streaming message
+                  setMessages(prev => prev.map(m =>
+                    m.id === streamingMsgId
+                      ? { ...m, content: assistantContent, isStreaming: false, rounds: parsed.rounds }
+                      : m
+                  ));
+                } else {
+                  // Add complete assistant message (non-streamed)
+                  setMessages(prev => [...prev, {
+                    id: ++messageIdRef.current,
+                    role: 'assistant',
+                    content: assistantContent,
+                    timestamp: Date.now(),
+                    rounds: parsed.rounds,
+                  }]);
+                }
                 setIsProcessing(false);
                 setThinkingStatus('');
                 break;
               case 'error':
                 setMessages(prev => [...prev, {
+                  id: ++messageIdRef.current,
                   role: 'assistant',
                   content: `**Error:** ${parsed.message}`,
                   timestamp: Date.now(),
@@ -256,17 +292,27 @@ function DynamicsExplorer() {
       // If we fell through without a complete event, finalize
       if (isProcessing) {
         if (assistantContent) {
-          setMessages(prev => [...prev, {
-            role: 'assistant',
-            content: assistantContent,
-            timestamp: Date.now(),
-          }]);
+          if (streamingMsgId) {
+            setMessages(prev => prev.map(m =>
+              m.id === streamingMsgId
+                ? { ...m, content: assistantContent, isStreaming: false }
+                : m
+            ));
+          } else {
+            setMessages(prev => [...prev, {
+              id: ++messageIdRef.current,
+              role: 'assistant',
+              content: assistantContent,
+              timestamp: Date.now(),
+            }]);
+          }
         }
         setIsProcessing(false);
         setThinkingStatus('');
       }
     } catch (err) {
       setMessages(prev => [...prev, {
+        id: ++messageIdRef.current,
         role: 'assistant',
         content: `**Error:** ${err.message}`,
         timestamp: Date.now(),
@@ -284,9 +330,9 @@ function DynamicsExplorer() {
     }
   };
 
-  const copyMessage = (content) => {
+  const copyMessage = useCallback((content) => {
     navigator.clipboard.writeText(content);
-  };
+  }, []);
 
   const exportChat = () => {
     const md = messages.map(m => {
@@ -345,8 +391,8 @@ function DynamicsExplorer() {
               />
             )}
 
-            {messages.map((msg, i) => (
-              <MessageBubble key={i} message={msg} onCopy={copyMessage} />
+            {messages.map((msg) => (
+              <MessageBubble key={msg.id} message={msg} onCopy={copyMessage} />
             ))}
 
             {/* Thinking indicator */}
@@ -444,9 +490,12 @@ function WelcomeMessage({ onExampleClick }) {
 
 // ─── Message Bubble ───
 
-function MessageBubble({ message, onCopy }) {
+const MessageBubble = React.memo(function MessageBubble({ message, onCopy }) {
   const isUser = message.role === 'user';
-  const segments = isUser ? [{ type: 'text', content: message.content }] : parseMarkdownTables(message.content);
+  const segments = useMemo(
+    () => isUser ? [{ type: 'text', content: message.content }] : parseMarkdownTables(message.content),
+    [isUser, message.content]
+  );
 
   return (
     <div className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
@@ -491,7 +540,7 @@ function MessageBubble({ message, onCopy }) {
       </div>
     </div>
   );
-}
+});
 
 // ─── Data Table ───
 

@@ -296,8 +296,31 @@ export const TABLE_ANNOTATIONS = {
 };
 
 /**
- * Build the lean system prompt (~800-1000 tokens).
- * Detailed field semantics and rules live in TABLE_ANNOTATIONS,
+ * Tables whose schemas are inlined in the system prompt to save a
+ * describe_table round-trip. Covers ~80% of queries.
+ */
+const INLINE_SCHEMA_TABLES = ['akoya_request', 'account', 'contact', 'akoya_requestpayment'];
+
+/**
+ * Generate compact inline schema text for the top tables.
+ * Format: "table (entitySet) — description\n  field: type — desc\n  RULES: ..."
+ */
+function buildInlineSchemas() {
+  return INLINE_SCHEMA_TABLES.map(name => {
+    const t = TABLE_ANNOTATIONS[name];
+    const fields = Object.entries(t.fields)
+      .map(([f, desc]) => `  ${f}: ${desc}`)
+      .join('\n');
+    const rules = t.rules.length > 0
+      ? '\n  RULES:\n' + t.rules.map(r => `  - ${r}`).join('\n')
+      : '';
+    return `${name} (${t.entitySet}) — ${t.description}\n${fields}${rules}`;
+  }).join('\n\n');
+}
+
+/**
+ * Build the system prompt with inline schemas for top tables.
+ * Detailed field semantics for other tables live in TABLE_ANNOTATIONS,
  * returned on-demand via describe_table.
  */
 export function buildSystemPrompt({ userRole = 'read_only', restrictions = [] } = {}) {
@@ -307,21 +330,24 @@ export function buildSystemPrompt({ userRole = 'read_only', restrictions = [] } 
       ).join(', ')}`
     : '';
 
+  const inlineSchemas = buildInlineSchemas();
+
   return `CRM assistant for W. M. Keck Foundation Dynamics 365. Role: ${userRole}.${restrictionBlock}
 
 TOOLS — choose the right one:
 - search: keyword/topic discovery across all tables ("find grants about fungi")
 - get_entity: fetch one record by name, number, or GUID ("tell me about request 1001585", "look up Stanford")
 - get_related: follow relationships — use for ANY "show me X for Y" query ("requests from Stanford", "emails for Stanford", "payments for request 1001585", "reviewers for request 1001585")
-- describe_table: understand field names/types/meanings BEFORE building OData queries
-- query_records: structured OData queries (date ranges, exact filters, aggregation). Call describe_table first if unsure about field names.
+- describe_table: understand field names/types/meanings BEFORE building OData queries. Call ONLY for tables NOT listed in INLINE SCHEMAS below.
+- query_records: structured OData queries (date ranges, exact filters, aggregation). For tables in INLINE SCHEMAS, you already know the fields — query directly.
 - count_records: count records with optional filter
 - find_reports_due: all reporting requirements in a date range
 
 RULES:
 - Complete the task in as FEW tool calls as possible.
 - NEVER fabricate data. Only present what tools return.
-- ALWAYS call describe_table BEFORE your first query_records on any table. Do NOT guess field names — they are non-obvious (e.g. akoya_requestnum NOT akoya_requestnumber, akoya_program NOT akoya_name).
+- For tables in INLINE SCHEMAS below, you already have full field details — query directly without describe_table.
+- For OTHER tables, ALWAYS call describe_table BEFORE your first query_records. Do NOT guess field names — they are non-obvious (e.g. akoya_requestnum NOT akoya_requestnumber, akoya_program NOT akoya_name).
 - For org name lookups, review ALL results and pick the exact match.
 - Present results as markdown tables. Show totalCount if results are truncated.
 - OData syntax: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z
@@ -337,7 +363,10 @@ annotation (5000+) notes/attachments
 wmkf_potentialreviewers (3141) reviewers
 Lookup: wmkf_grantprogram(11), wmkf_type(8), wmkf_bbstatus(88), wmkf_donors(116), wmkf_supporttype(41), wmkf_programlevel2(29), akoya_program(24), akoya_phase(62), akoya_goapplystatustracking(3293), activitypointer(5000+)
 
-FIELD NAMING: "akoya_" = vendor fields. "wmkf_" = Keck Foundation custom fields.`;
+FIELD NAMING: "akoya_" = vendor fields. "wmkf_" = Keck Foundation custom fields.
+
+INLINE SCHEMAS (no describe_table needed for these):
+${inlineSchemas}`;
 }
 
 /**
