@@ -3,6 +3,7 @@ import { BASE_CONFIG, KECK_GUIDELINES, getModelForApp } from '../../shared/confi
 import { createPhaseISummarizationPrompt } from '../../shared/config/prompts/phase-i-summaries';
 import { createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer';
 import { requireAuth } from '../../lib/utils/auth';
+import { logUsage } from '../../lib/utils/usage-logger';
 
 
 export default async function handler(req, res) {
@@ -15,15 +16,18 @@ export default async function handler(req, res) {
   if (!session) return;
 
   try {
-    const { files, apiKey, summaryLength = 2, summaryLevel = 'technical-non-expert' } = req.body;
+    const { files, summaryLength = 2, summaryLevel = 'technical-non-expert' } = req.body;
+    const apiKey = process.env.CLAUDE_API_KEY;
     console.log('Received request body:', JSON.stringify(req.body, null, 2));
     console.log('Files array:', files);
     console.log('API key present:', !!apiKey);
     console.log('Summary length:', summaryLength, 'Summary level:', summaryLevel);
 
     if (!apiKey) {
-      return res.status(400).json({ error: 'API key required' });
+      return res.status(500).json({ error: 'Claude API key not configured on server' });
     }
+
+    const userProfileId = session?.user?.profileId || null;
 
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'No files provided' });
@@ -70,7 +74,7 @@ export default async function handler(req, res) {
 
         // Generate summary using Claude API with Phase I prompt
         console.log(`Sending to Claude API with text length: ${text.length}`);
-        const summary = await generatePhaseISummary(text, file.filename, apiKey, summaryLength, summaryLevel);
+        const summary = await generatePhaseISummary(text, file.filename, apiKey, summaryLength, summaryLevel, userProfileId);
         console.log(`Received summary:`, summary ? 'Success' : 'Failed');
         results[file.filename] = summary;
 
@@ -100,11 +104,12 @@ export default async function handler(req, res) {
   }
 }
 
-async function generatePhaseISummary(text, filename, apiKey, summaryLength, summaryLevel) {
+async function generatePhaseISummary(text, filename, apiKey, summaryLength, summaryLevel, userProfileId) {
   try {
     // Use Phase I specific prompt
     const prompt = createPhaseISummarizationPrompt(text, summaryLength, summaryLevel, KECK_GUIDELINES);
 
+    const startTime = Date.now();
     const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
       method: 'POST',
       headers: {
@@ -130,6 +135,14 @@ async function generatePhaseISummary(text, filename, apiKey, summaryLength, summ
     }
 
     const data = await response.json();
+    logUsage({
+      userProfileId,
+      appName: 'batch-phase-i',
+      model: data.model,
+      inputTokens: data.usage?.input_tokens,
+      outputTokens: data.usage?.output_tokens,
+      latencyMs: Date.now() - startTime,
+    });
     console.log('Claude API response:', JSON.stringify(data, null, 2));
     const summaryText = data.content[0].text;
     console.log(`Summary text length: ${summaryText ? summaryText.length : 0}`);
@@ -138,7 +151,7 @@ async function generatePhaseISummary(text, filename, apiKey, summaryLength, summ
     const formatted = enhancePhaseIFormatting(summaryText, filename);
 
     // Extract structured data
-    const structured = await extractStructuredData(text, filename, summaryText, apiKey);
+    const structured = await extractStructuredData(text, filename, summaryText, apiKey, userProfileId);
 
     return {
       formatted,
@@ -151,10 +164,11 @@ async function generatePhaseISummary(text, filename, apiKey, summaryLength, summ
   }
 }
 
-async function extractStructuredData(text, filename, summary, apiKey) {
+async function extractStructuredData(text, filename, summary, apiKey, userProfileId) {
   try {
     const extractionPrompt = createStructuredDataExtractionPrompt(text, filename);
 
+    const startTime = Date.now();
     const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
       method: 'POST',
       headers: {
@@ -175,6 +189,14 @@ async function extractStructuredData(text, filename, summary, apiKey) {
 
     if (response.ok) {
       const data = await response.json();
+      logUsage({
+        userProfileId,
+        appName: 'batch-phase-i',
+        model: data.model,
+        inputTokens: data.usage?.input_tokens,
+        outputTokens: data.usage?.output_tokens,
+        latencyMs: Date.now() - startTime,
+      });
       const jsonText = data.content[0].text;
 
       try {

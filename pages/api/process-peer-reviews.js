@@ -3,6 +3,7 @@ import mammoth from 'mammoth';
 import { BASE_CONFIG, getModelForApp } from '../../shared/config';
 import { createPeerReviewAnalysisPrompt, createPeerReviewQuestionsPrompt } from '../../shared/config/prompts/peer-reviewer';
 import { requireAuth } from '../../lib/utils/auth';
+import { logUsage } from '../../lib/utils/usage-logger';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -14,11 +15,14 @@ export default async function handler(req, res) {
   if (!session) return;
 
   try {
-    const { files, apiKey } = req.body;
+    const { files } = req.body;
+    const apiKey = process.env.CLAUDE_API_KEY;
 
     if (!apiKey) {
-      return res.status(400).json({ error: 'API key required' });
+      return res.status(500).json({ error: 'Claude API key not configured on server' });
     }
+
+    const userProfileId = session?.user?.profileId || null;
 
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'No files provided' });
@@ -127,7 +131,7 @@ export default async function handler(req, res) {
     })}\n\n`);
 
     // Generate comprehensive analysis
-    const analysisResult = await analyzePeerReviews(reviewTexts, apiKey);
+    const analysisResult = await analyzePeerReviews(reviewTexts, apiKey, userProfileId);
 
     // Log the results for debugging
     console.log('Analysis completed, summary length:', analysisResult?.summary?.length || 0);
@@ -164,7 +168,7 @@ export default async function handler(req, res) {
   }
 }
 
-async function analyzePeerReviews(reviewTexts, apiKey) {
+async function analyzePeerReviews(reviewTexts, apiKey, userProfileId) {
   try {
     console.log('Starting analysis with', reviewTexts.length, 'review texts');
     
@@ -188,6 +192,7 @@ async function analyzePeerReviews(reviewTexts, apiKey) {
     // Generate comprehensive analysis
     const analysisPrompt = createPeerReviewAnalysisPrompt(validTexts);
 
+    const startTime = Date.now();
     const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
       method: 'POST',
       headers: {
@@ -213,6 +218,14 @@ async function analyzePeerReviews(reviewTexts, apiKey) {
     }
 
     const data = await response.json();
+    logUsage({
+      userProfileId,
+      appName: 'peer-review-summarizer',
+      model: data.model,
+      inputTokens: data.usage?.input_tokens,
+      outputTokens: data.usage?.output_tokens,
+      latencyMs: Date.now() - startTime,
+    });
     const analysisText = data.content[0].text;
     console.log('Raw Claude response length:', analysisText.length);
     console.log('First 500 chars:', analysisText.substring(0, 500));
@@ -285,6 +298,7 @@ async function analyzePeerReviews(reviewTexts, apiKey) {
       try {
         const questionsPrompt = createPeerReviewQuestionsPrompt(validTexts);
 
+        const questionsStartTime = Date.now();
         const questionsResponse = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
           method: 'POST',
           headers: {
@@ -305,6 +319,14 @@ async function analyzePeerReviews(reviewTexts, apiKey) {
 
         if (questionsResponse.ok) {
           const questionsData = await questionsResponse.json();
+          logUsage({
+            userProfileId,
+            appName: 'peer-review-summarizer',
+            model: questionsData.model,
+            inputTokens: questionsData.usage?.input_tokens,
+            outputTokens: questionsData.usage?.output_tokens,
+            latencyMs: Date.now() - questionsStartTime,
+          });
           let questionsContent = questionsData.content[0].text.trim();
           
           // Clean up any partial headers that might be at the beginning

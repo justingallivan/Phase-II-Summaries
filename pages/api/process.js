@@ -2,6 +2,7 @@ import pdf from 'pdf-parse';
 import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
 import { createSummarizationPrompt, createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer';
 import { requireAuth } from '../../lib/utils/auth';
+import { logUsage } from '../../lib/utils/usage-logger';
 
 
 export default async function handler(req, res) {
@@ -14,15 +15,12 @@ export default async function handler(req, res) {
   if (!session) return;
 
   try {
-    const { files, apiKey, summaryLength = 2, summaryLevel = 'technical-non-expert' } = req.body;
-    console.log('Received request body:', JSON.stringify(req.body, null, 2));
-    console.log('Files array:', files);
-    console.log('API key present:', !!apiKey);
-    console.log('Summary length:', summaryLength, 'Summary level:', summaryLevel);
-
+    const { files, summaryLength = 2, summaryLevel = 'technical-non-expert' } = req.body;
+    const apiKey = process.env.CLAUDE_API_KEY;
     if (!apiKey) {
-      return res.status(400).json({ error: 'API key required' });
+      return res.status(500).json({ error: 'Claude API key not configured on server' });
     }
+    const userProfileId = session?.user?.profileId || null;
 
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'No files provided' });
@@ -69,7 +67,7 @@ export default async function handler(req, res) {
 
         // Generate summary using Claude API
         console.log(`Sending to Claude API with text length: ${text.length}`);
-        const summary = await generateSummary(text, file.filename, apiKey, summaryLength, summaryLevel);
+        const summary = await generateSummary(text, file.filename, apiKey, summaryLength, summaryLevel, userProfileId);
         console.log(`Received summary:`, summary ? 'Success' : 'Failed');
         results[file.filename] = summary;
 
@@ -99,10 +97,11 @@ export default async function handler(req, res) {
   }
 }
 
-async function generateSummary(text, filename, apiKey, summaryLength, summaryLevel) {
+async function generateSummary(text, filename, apiKey, summaryLength, summaryLevel, userProfileId) {
   try {
     const prompt = createSummarizationPrompt(text, summaryLength, summaryLevel);
-    
+    const startTime = Date.now();
+
     const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
       method: 'POST',
       headers: {
@@ -128,9 +127,15 @@ async function generateSummary(text, filename, apiKey, summaryLength, summaryLev
     }
 
     const data = await response.json();
-    console.log('Claude API response:', JSON.stringify(data, null, 2));
+    logUsage({
+      userProfileId,
+      appName: 'batch-phase-ii',
+      model: data.model,
+      inputTokens: data.usage?.input_tokens,
+      outputTokens: data.usage?.output_tokens,
+      latencyMs: Date.now() - startTime,
+    });
     const summaryText = data.content[0].text;
-    console.log(`Summary text length: ${summaryText ? summaryText.length : 0}`);
 
     // Create formatted markdown version
     const formatted = enhanceFormatting(summaryText, filename);

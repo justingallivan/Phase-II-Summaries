@@ -26,6 +26,7 @@ import {
   EVALUATION_FRAMEWORKS
 } from '../../shared/config/prompts/multi-perspective-evaluator';
 import { requireAuth } from '../../lib/utils/auth';
+import { logUsage } from '../../lib/utils/usage-logger';
 
 // Import search services
 const { PubMedService } = require('../../lib/services/pubmed-service');
@@ -53,12 +54,26 @@ export default async function handler(req, res) {
   const session = await requireAuth(req, res);
   if (!session) return;
 
-  try {
-    const { files, apiKey, framework = 'keck' } = req.body;
+  // Set headers for streaming response
+  res.setHeader('Content-Type', 'text/plain');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
 
+  const sendEvent = (event, data) => {
+    res.write(`data: ${JSON.stringify({ event, ...data })}\n\n`);
+  };
+
+  try {
+    const { files, framework = 'keck' } = req.body;
+
+    const apiKey = process.env.CLAUDE_API_KEY;
     if (!apiKey) {
-      return res.status(400).json({ error: 'API key required' });
+      sendEvent('error', { message: 'Claude API key not configured on server' });
+      return res.end();
     }
+
+    const userProfileId = session?.user?.profileId || null;
 
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'No files provided' });
@@ -73,12 +88,6 @@ export default async function handler(req, res) {
     if (files.length > 1) {
       return res.status(400).json({ error: 'Please upload one file at a time for multi-perspective evaluation.' });
     }
-
-    // Set headers for streaming response
-    res.setHeader('Content-Type', 'text/plain');
-    res.setHeader('Transfer-Encoding', 'chunked');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
 
     const allResults = [];
     let totalPages = 0;
@@ -114,7 +123,8 @@ export default async function handler(req, res) {
               framework,
               res,
               processedPages,
-              totalPages
+              totalPages,
+              userProfileId
             );
             processedPages++;
             return result;
@@ -195,14 +205,14 @@ async function processWithConcurrency(items, processorFn, limit) {
 /**
  * Evaluate a single concept using the multi-perspective approach
  */
-async function evaluateSingleConceptMultiPerspective(page, apiKey, framework, res, processedCount, totalCount) {
+async function evaluateSingleConceptMultiPerspective(page, apiKey, framework, res, processedCount, totalCount, userProfileId) {
   const { pageNumber, base64 } = page;
   const progressBase = 10 + Math.round((processedCount / totalCount) * 85);
 
   try {
     // Stage 1: Initial analysis via Vision API
     sendProgress(res, progressBase, `Analyzing concept ${pageNumber} of ${totalCount}...`, 'initial-analysis');
-    const initialAnalysis = await performInitialAnalysis(base64, apiKey);
+    const initialAnalysis = await performInitialAnalysis(base64, apiKey, userProfileId);
 
     if (!initialAnalysis || initialAnalysis.error) {
       throw new Error(initialAnalysis?.error || 'Initial analysis failed');
@@ -262,7 +272,7 @@ async function evaluateSingleConceptMultiPerspective(page, apiKey, framework, re
 
     // Stage 2.5: Generate proposal summary
     sendProgress(res, progressBase + 10, `Generating proposal summary for concept ${pageNumber}...`, 'proposal-summary');
-    const proposalSummary = await generateProposalSummary(initialAnalysis, literatureResults, apiKey);
+    const proposalSummary = await generateProposalSummary(initialAnalysis, literatureResults, apiKey, userProfileId);
 
     // Stage 3 (Fan-out): Three parallel perspectives
     sendProgress(res, progressBase + 18, `Running multi-perspective analysis (Optimist, Skeptic, Neutral)...`, 'perspectives');
@@ -271,7 +281,8 @@ async function evaluateSingleConceptMultiPerspective(page, apiKey, framework, re
       initialAnalysis,
       literatureResults,
       framework,
-      apiKey
+      apiKey,
+      userProfileId
     );
 
     // Check if we have enough perspectives to proceed
@@ -289,7 +300,8 @@ async function evaluateSingleConceptMultiPerspective(page, apiKey, framework, re
       perspectiveResults.skeptic,
       perspectiveResults.neutral,
       framework,
-      apiKey
+      apiKey,
+      userProfileId
     );
 
     return {
@@ -351,11 +363,11 @@ async function evaluateSingleConceptMultiPerspective(page, apiKey, framework, re
 /**
  * Run all three perspectives in parallel using Promise.allSettled
  */
-async function runPerspectivesInParallel(initialAnalysis, literatureResults, framework, apiKey) {
+async function runPerspectivesInParallel(initialAnalysis, literatureResults, framework, apiKey, userProfileId) {
   const perspectivePromises = [
-    callPerspective('optimist', createOptimistPrompt, initialAnalysis, literatureResults, framework, apiKey),
-    callPerspective('skeptic', createSkepticPrompt, initialAnalysis, literatureResults, framework, apiKey),
-    callPerspective('neutral', createNeutralPrompt, initialAnalysis, literatureResults, framework, apiKey)
+    callPerspective('optimist', createOptimistPrompt, initialAnalysis, literatureResults, framework, apiKey, userProfileId),
+    callPerspective('skeptic', createSkepticPrompt, initialAnalysis, literatureResults, framework, apiKey, userProfileId),
+    callPerspective('neutral', createNeutralPrompt, initialAnalysis, literatureResults, framework, apiKey, userProfileId)
   ];
 
   const results = await Promise.allSettled(perspectivePromises);
@@ -370,7 +382,7 @@ async function runPerspectivesInParallel(initialAnalysis, literatureResults, fra
 /**
  * Call a single perspective
  */
-async function callPerspective(name, createPromptFn, initialAnalysis, literatureResults, framework, apiKey) {
+async function callPerspective(name, createPromptFn, initialAnalysis, literatureResults, framework, apiKey, userProfileId) {
   const prompt = createPromptFn(initialAnalysis, literatureResults, framework);
 
   const requestBody = {
@@ -382,7 +394,7 @@ async function callPerspective(name, createPromptFn, initialAnalysis, literature
     }]
   };
 
-  const { data } = await callClaudeWithRetry(requestBody, apiKey, 'model');
+  const { data } = await callClaudeWithRetry(requestBody, apiKey, 'model', userProfileId);
   const responseText = data.content[0].text;
 
   // Parse JSON response
@@ -406,7 +418,7 @@ async function callPerspective(name, createPromptFn, initialAnalysis, literature
 /**
  * Perform the integration step
  */
-async function performIntegration(initialAnalysis, optimistResult, skepticResult, neutralResult, framework, apiKey) {
+async function performIntegration(initialAnalysis, optimistResult, skepticResult, neutralResult, framework, apiKey, userProfileId) {
   const prompt = createIntegratorPrompt(
     initialAnalysis,
     optimistResult,
@@ -424,7 +436,7 @@ async function performIntegration(initialAnalysis, optimistResult, skepticResult
     }]
   };
 
-  const { data } = await callClaudeWithRetry(requestBody, apiKey, 'model');
+  const { data } = await callClaudeWithRetry(requestBody, apiKey, 'model', userProfileId);
   const responseText = data.content[0].text;
 
   // Parse JSON response
@@ -450,7 +462,7 @@ async function performIntegration(initialAnalysis, optimistResult, skepticResult
 /**
  * Stage 2.5: Generate proposal summary
  */
-async function generateProposalSummary(initialAnalysis, literatureResults, apiKey) {
+async function generateProposalSummary(initialAnalysis, literatureResults, apiKey, userProfileId) {
   const prompt = createProposalSummaryPrompt(initialAnalysis, literatureResults);
 
   const requestBody = {
@@ -463,7 +475,7 @@ async function generateProposalSummary(initialAnalysis, literatureResults, apiKe
   };
 
   try {
-    const { data } = await callClaudeWithRetry(requestBody, apiKey, 'model');
+    const { data } = await callClaudeWithRetry(requestBody, apiKey, 'model', userProfileId);
     const responseText = data.content[0].text;
 
     // Parse JSON response
@@ -501,7 +513,8 @@ function isRetryableError(status, errorText) {
 /**
  * Make a Claude API request with retry logic and fallback model
  */
-async function callClaudeWithRetry(requestBody, apiKey, modelType = 'model') {
+async function callClaudeWithRetry(requestBody, apiKey, modelType = 'model', userProfileId = null) {
+  const startTime = Date.now();
   const primaryModel = getModelForApp('multi-perspective-evaluator', modelType);
   const fallbackModel = getFallbackModelForApp('multi-perspective-evaluator');
 
@@ -532,6 +545,14 @@ async function callClaudeWithRetry(requestBody, apiKey, modelType = 'model') {
 
       if (response.ok) {
         const data = await response.json();
+        logUsage({
+          userProfileId,
+          appName: 'multi-perspective-evaluator',
+          model: data.model,
+          inputTokens: data.usage?.input_tokens,
+          outputTokens: data.usage?.output_tokens,
+          latencyMs: Date.now() - startTime,
+        });
         return { data, usedFallback: false, model: primaryModel };
       }
 
@@ -574,6 +595,14 @@ async function callClaudeWithRetry(requestBody, apiKey, modelType = 'model') {
   }
 
   const data = await response.json();
+  logUsage({
+    userProfileId,
+    appName: 'multi-perspective-evaluator',
+    model: data.model,
+    inputTokens: data.usage?.input_tokens,
+    outputTokens: data.usage?.output_tokens,
+    latencyMs: Date.now() - startTime,
+  });
   console.log(`[MultiPerspective] Fallback model succeeded`);
   return { data, usedFallback: true, model: fallbackModel };
 }
@@ -581,7 +610,7 @@ async function callClaudeWithRetry(requestBody, apiKey, modelType = 'model') {
 /**
  * Stage 1: Initial analysis using Claude Vision API
  */
-async function performInitialAnalysis(base64Pdf, apiKey) {
+async function performInitialAnalysis(base64Pdf, apiKey, userProfileId) {
   const prompt = createInitialAnalysisPrompt();
 
   const requestBody = {
@@ -605,7 +634,7 @@ async function performInitialAnalysis(base64Pdf, apiKey) {
     }]
   };
 
-  const { data, usedFallback, model } = await callClaudeWithRetry(requestBody, apiKey, 'visionModel');
+  const { data, usedFallback, model } = await callClaudeWithRetry(requestBody, apiKey, 'visionModel', userProfileId);
 
   if (usedFallback) {
     console.log(`[MultiPerspective] Initial analysis used fallback model: ${model}`);

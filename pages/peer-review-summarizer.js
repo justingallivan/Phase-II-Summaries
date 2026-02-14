@@ -1,21 +1,14 @@
 import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
-import ApiKeyManager from '../shared/components/ApiKeyManager';
 
 export default function PeerReviewSummarizer() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
-  const [apiKey, setApiKey] = useState('');
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
   const [error, setError] = useState(null);
-
-  const handleApiKeySet = useCallback((key) => {
-    setApiKey(key);
-    setError(null);
-  }, []);
 
   const handleFilesUploaded = useCallback((uploadedFiles) => {
     setSelectedFiles(uploadedFiles);
@@ -26,11 +19,6 @@ export default function PeerReviewSummarizer() {
 
 
   const processFiles = async () => {
-    if (!apiKey) {
-      setError('Please provide an API key');
-      return;
-    }
-
     if (selectedFiles.length === 0) {
       setError('Please select files first');
       return;
@@ -45,12 +33,10 @@ export default function PeerReviewSummarizer() {
       const response = await fetch('/api/process-peer-reviews', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': apiKey
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          files: selectedFiles,
-          apiKey
+          files: selectedFiles
         }),
       });
 
@@ -165,16 +151,6 @@ export default function PeerReviewSummarizer() {
         subtitle="Upload peer review documents to generate comprehensive analysis and synthesis"
         icon="📝"
       />
-
-      <Card className="mb-8">
-        <div className="text-center">
-          <ApiKeyManager
-            onApiKeySet={handleApiKeySet}
-            required={true}
-            appKey="peer-review-summarizer"
-          />
-        </div>
-      </Card>
 
       {error && (
         <Card className="mb-6 border-red-200 bg-red-50">

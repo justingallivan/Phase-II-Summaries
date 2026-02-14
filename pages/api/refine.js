@@ -1,6 +1,5 @@
 import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
 import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
-import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
 import { applySecurityMiddleware } from '../../shared/api/middleware/security';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { requireAuth } from '../../lib/utils/auth';
@@ -49,33 +48,30 @@ export default async function handler(req, res) {
       return;
     }
 
-    const { currentSummary, feedback, apiKey: clientApiKey } = req.body;
+    const { currentSummary, feedback } = req.body;
 
     if (!currentSummary || !feedback) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Current summary and feedback required',
         timestamp: new Date().toISOString()
       });
     }
 
-    // Get API key (prefer server-side, fall back to client)
-    const apiKeyManager = getApiKeyManager();
-    let apiKey;
-    
-    try {
-      apiKey = apiKeyManager.selectApiKey(clientApiKey || req.apiKey);
-    } catch (error) {
-      return res.status(401).json({ 
-        error: BASE_CONFIG.ERROR_MESSAGES.NO_API_KEY,
-        timestamp: new Date().toISOString()
-      });
+    // Use server-side API key
+    const apiKey = process.env.CLAUDE_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'Claude API key not configured on server' });
     }
+
+    const userProfileId = session?.user?.profileId || null;
 
     // Initialize Claude client
     const claudeClient = createClaudeClient(apiKey, {
       model: getModelForApp('refine'),
       defaultMaxTokens: 3000,
       defaultTemperature: 0.3,
+      appName: 'refine',
+      userProfileId,
     });
 
     // Generate refined summary

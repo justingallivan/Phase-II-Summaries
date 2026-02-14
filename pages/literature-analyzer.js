@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
-import ApiKeyManager from '../shared/components/ApiKeyManager';
 
 /**
  * Single paper result card
@@ -355,17 +354,11 @@ export default function LiteratureAnalyzer() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
-  const [apiKey, setApiKey] = useState('');
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
   const [error, setError] = useState(null);
   const [focusTopic, setFocusTopic] = useState('');
   const [activeTab, setActiveTab] = useState('papers');
-
-  const handleApiKeySet = useCallback((key) => {
-    setApiKey(key);
-    setError(null);
-  }, []);
 
   const handleFilesUploaded = useCallback((uploadedFiles) => {
     setSelectedFiles(uploadedFiles);
@@ -374,11 +367,6 @@ export default function LiteratureAnalyzer() {
   }, []);
 
   const analyzePapers = async () => {
-    if (!apiKey) {
-      setError('Please provide an API key');
-      return;
-    }
-
     if (selectedFiles.length === 0) {
       setError('Please upload at least one PDF file');
       return;
@@ -393,12 +381,10 @@ export default function LiteratureAnalyzer() {
       const response = await fetch('/api/analyze-literature', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': apiKey
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           files: selectedFiles,
-          apiKey,
           options: {
             focusTopic: focusTopic.trim() || null
           }
@@ -601,16 +587,6 @@ export default function LiteratureAnalyzer() {
         subtitle="Upload research papers for AI-powered analysis and cross-paper synthesis"
         icon="📖"
       />
-
-      <Card className="mb-8">
-        <div className="text-center">
-          <ApiKeyManager
-            onApiKeySet={handleApiKeySet}
-            required={true}
-            appKey="literature-analyzer"
-          />
-        </div>
-      </Card>
 
       {error && (
         <Card className="mb-6 border-red-200 bg-red-50">

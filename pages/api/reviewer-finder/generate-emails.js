@@ -28,6 +28,7 @@ import {
 
 import { createPersonalizationPrompt } from '../../../shared/config/prompts/email-reviewer';
 import { requireAuth } from '../../../lib/utils/auth';
+import { logUsage } from '../../../lib/utils/usage-logger';
 
 /**
  * Look up proposal info for candidates from the database
@@ -125,6 +126,8 @@ export default async function handler(req, res) {
   const session = await requireAuth(req, res);
   if (!session) return;
 
+  const userProfileId = session?.user?.profileId || null;
+
   // Set up SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -162,7 +165,8 @@ export default async function handler(req, res) {
       return res.end();
     }
 
-    const { useClaudePersonalization, claudeApiKey, markAsSent } = options;
+    const { useClaudePersonalization, markAsSent } = options;
+    const claudeApiKey = process.env.CLAUDE_API_KEY || null;
 
     // Filter candidates with email addresses
     const validCandidates = candidates.filter(c => c.email);
@@ -307,7 +311,8 @@ export default async function handler(req, res) {
               candidate,
               candidateProposalInfo,
               body,
-              claudeApiKey
+              claudeApiKey,
+              userProfileId
             );
             if (personalizedBody) {
               body = personalizedBody;
@@ -450,9 +455,10 @@ export default async function handler(req, res) {
 /**
  * Use Claude to personalize an email body
  */
-async function personalizeWithClaude(candidate, proposalInfo, baseBody, apiKey) {
+async function personalizeWithClaude(candidate, proposalInfo, baseBody, apiKey, userProfileId) {
   const prompt = createPersonalizationPrompt(candidate, proposalInfo, baseBody);
 
+  const startTime = Date.now();
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -479,6 +485,16 @@ async function personalizeWithClaude(candidate, proposalInfo, baseBody, apiKey) 
   }
 
   const data = await response.json();
+
+  logUsage({
+    userProfileId,
+    appName: 'reviewer-finder-emails',
+    model: data.model,
+    inputTokens: data.usage?.input_tokens,
+    outputTokens: data.usage?.output_tokens,
+    latencyMs: Date.now() - startTime,
+  });
+
   const textContent = data.content?.find(c => c.type === 'text');
 
   if (textContent && textContent.text) {

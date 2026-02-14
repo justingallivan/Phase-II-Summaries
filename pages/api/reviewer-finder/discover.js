@@ -47,15 +47,17 @@ export default async function handler(req, res) {
 
   try {
     const {
-      apiKey,
       analysisResult,
       options = {}
     } = req.body;
 
+    const apiKey = process.env.CLAUDE_API_KEY;
     if (!apiKey) {
-      sendEvent('error', { message: 'API key is required' });
+      sendEvent('error', { message: 'Claude API key not configured on server' });
       return res.end();
     }
+
+    const userProfileId = session?.user?.profileId || null;
 
     if (!analysisResult) {
       sendEvent('error', { message: 'Analysis result from Stage 1 is required' });
@@ -228,7 +230,8 @@ export default async function handler(req, res) {
         apiKey,
         (progress) => {
           sendEvent('progress', progress);
-        }
+        },
+        userProfileId
       );
 
       // Filter out irrelevant candidates (those marked as not relevant by Claude)

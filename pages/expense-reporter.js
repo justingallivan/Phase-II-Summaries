@@ -1,12 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
-import ApiKeyManager from '../shared/components/ApiKeyManager';
 import { FiDollarSign, FiDownload, FiEdit, FiCheck, FiX } from 'react-icons/fi';
 
 export default function ExpenseReporter() {
-  const [apiKey, setApiKey] = useState('');
-  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
@@ -55,12 +52,6 @@ export default function ExpenseReporter() {
       return;
     }
 
-    if (!apiKey) {
-      setShowApiKeyModal(true);
-      setError('Please enter your Claude API key');
-      return;
-    }
-
     setIsProcessing(true);
     setError(null);
     setResults(null);
@@ -71,8 +62,7 @@ export default function ExpenseReporter() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          files: uploadedFiles,
-          apiKey
+          files: uploadedFiles
         }),
       });
 
@@ -317,25 +307,10 @@ export default function ExpenseReporter() {
           icon="💰"
         />
 
-        {showApiKeyModal && (
-          <ApiKeyManager
-            apiKey={apiKey}
-            setApiKey={setApiKey}
-            onClose={() => setShowApiKeyModal(false)}
-            appKey="expense-reporter"
-          />
-        )}
-
         <Card>
           <div className="space-y-4">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">Upload Receipts</h3>
-              <button
-                onClick={() => setShowApiKeyModal(true)}
-                className="text-sm text-blue-600 hover:text-blue-700"
-              >
-                {apiKey ? 'Update API Key' : 'Set API Key'}
-              </button>
             </div>
 
             <FileUploaderSimple

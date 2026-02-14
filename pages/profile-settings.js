@@ -11,7 +11,6 @@
 import { useState, useEffect } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import { useProfile } from '../shared/context/ProfileContext';
-import ApiKeyManager from '../shared/components/ApiKeyManager';
 import ApiSettingsPanel from '../shared/components/ApiSettingsPanel';
 
 // Preset colors for avatar selection
@@ -46,7 +45,6 @@ export default function ProfileSettings() {
   const [newProfileColor, setNewProfileColor] = useState(AVATAR_COLORS[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const [apiKey, setApiKey] = useState('');
 
   // Reset form when closing
   const resetForm = () => {
@@ -194,19 +192,7 @@ export default function ProfileSettings() {
         {/* API Keys Section */}
         <Card>
           <h2 className="text-lg font-semibold text-gray-900 mb-4">API Configuration</h2>
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Claude API Key</h3>
-              <ApiKeyManager
-                onApiKeySet={setApiKey}
-                required={false}
-              />
-            </div>
-            <div className="mt-4">
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Additional API Keys</h3>
-              <ApiSettingsPanel onSettingsChange={() => {}} />
-            </div>
-          </div>
+          <ApiSettingsPanel onSettingsChange={() => {}} />
         </Card>
 
         {/* All Profiles Section */}

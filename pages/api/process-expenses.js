@@ -1,6 +1,5 @@
 import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
 import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
-import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { getModelForApp } from '../../shared/config/baseConfig';
 import { requireAuth } from '../../lib/utils/auth';
@@ -118,7 +117,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { files, apiKey } = req.body;
+    const { files } = req.body;
 
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'No files provided' });
@@ -126,14 +125,13 @@ export default async function handler(req, res) {
 
     console.log(`Processing ${files.length} files`);
 
-    // Validate API key
-    const apiKeyManager = getApiKeyManager();
-    let validatedKey;
-    try {
-      validatedKey = apiKeyManager.selectApiKey(apiKey);
-    } catch (error) {
-      return res.status(401).json({ error: 'Invalid or missing API key' });
+    // Use server-side API key
+    const apiKey = process.env.CLAUDE_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'Server API key not configured' });
     }
+
+    const userProfileId = session?.user?.profileId || null;
 
     // Set up streaming response
     res.writeHead(200, {
@@ -165,8 +163,10 @@ export default async function handler(req, res) {
     };
 
     // Initialize Claude client with Haiku for expense processing (simple task)
-    const claudeClient = createClaudeClient(validatedKey, {
-      model: getModelForApp('expense-reporter')
+    const claudeClient = createClaudeClient(apiKey, {
+      model: getModelForApp('expense-reporter'),
+      appName: 'expense-reporter',
+      userProfileId,
     });
     const fileProcessor = createFileProcessor();
 

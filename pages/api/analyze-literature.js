@@ -14,6 +14,7 @@ import {
   createComparisonPrompt
 } from '../../shared/config/prompts/literature-analyzer';
 import { requireAuth } from '../../lib/utils/auth';
+import { logUsage } from '../../lib/utils/usage-logger';
 
 // Concurrency limit for processing papers
 const CONCURRENCY_LIMIT = 2;
@@ -28,12 +29,15 @@ export default async function handler(req, res) {
   if (!session) return;
 
   try {
-    const { files, apiKey, options = {} } = req.body;
+    const { files, options = {} } = req.body;
     const { focusTopic, generateComparison, comparisonType } = options;
 
+    const apiKey = process.env.CLAUDE_API_KEY;
     if (!apiKey) {
-      return res.status(400).json({ error: 'API key required' });
+      return res.status(500).json({ error: 'Claude API key not configured on server' });
     }
+
+    const userProfileId = session?.user?.profileId || null;
 
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'No files provided' });
@@ -69,7 +73,7 @@ export default async function handler(req, res) {
         const base64 = Buffer.from(fileBuffer).toString('base64');
 
         // Extract paper information using Vision API
-        const extractedData = await extractPaperInfo(base64, apiKey);
+        const extractedData = await extractPaperInfo(base64, apiKey, userProfileId);
 
         if (extractedData && !extractedData.error) {
           extractedPapers.push({
@@ -124,7 +128,7 @@ export default async function handler(req, res) {
       sendProgress(res, 75, 'Generating synthesis across papers...');
 
       try {
-        synthesis = await generateSynthesis(successfulPapers, focusTopic, apiKey);
+        synthesis = await generateSynthesis(successfulPapers, focusTopic, apiKey, userProfileId);
         sendEvent(res, 'synthesis_complete', { success: true });
       } catch (synthError) {
         console.error('Synthesis error:', synthError);
@@ -135,7 +139,7 @@ export default async function handler(req, res) {
       if (generateComparison && successfulPapers.length >= 2) {
         sendProgress(res, 90, 'Generating comparison...');
         try {
-          comparison = await generateComparisonData(successfulPapers, comparisonType || 'findings', apiKey);
+          comparison = await generateComparisonData(successfulPapers, comparisonType || 'findings', apiKey, userProfileId);
         } catch (compError) {
           console.error('Comparison error:', compError);
           comparison = { error: compError.message };
@@ -194,9 +198,10 @@ function sendEvent(res, event, data) {
 /**
  * Extract information from a single paper using Vision API
  */
-async function extractPaperInfo(base64Pdf, apiKey) {
+async function extractPaperInfo(base64Pdf, apiKey, userProfileId) {
   const prompt = createPaperExtractionPrompt();
 
+  const startTime = Date.now();
   const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
     method: 'POST',
     headers: {
@@ -234,6 +239,14 @@ async function extractPaperInfo(base64Pdf, apiKey) {
   }
 
   const data = await response.json();
+  logUsage({
+    userProfileId,
+    appName: 'literature-analyzer',
+    model: data.model,
+    inputTokens: data.usage?.input_tokens,
+    outputTokens: data.usage?.output_tokens,
+    latencyMs: Date.now() - startTime,
+  });
   const responseText = data.content[0].text;
 
   // Parse JSON response
@@ -258,9 +271,10 @@ async function extractPaperInfo(base64Pdf, apiKey) {
 /**
  * Generate synthesis across multiple papers
  */
-async function generateSynthesis(papers, focusTopic, apiKey) {
+async function generateSynthesis(papers, focusTopic, apiKey, userProfileId) {
   const prompt = createSynthesisPrompt(papers, focusTopic);
 
+  const startTime = Date.now();
   const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
     method: 'POST',
     headers: {
@@ -286,6 +300,14 @@ async function generateSynthesis(papers, focusTopic, apiKey) {
   }
 
   const data = await response.json();
+  logUsage({
+    userProfileId,
+    appName: 'literature-analyzer',
+    model: data.model,
+    inputTokens: data.usage?.input_tokens,
+    outputTokens: data.usage?.output_tokens,
+    latencyMs: Date.now() - startTime,
+  });
   const responseText = data.content[0].text;
 
   // Parse JSON response
@@ -308,9 +330,10 @@ async function generateSynthesis(papers, focusTopic, apiKey) {
 /**
  * Generate comparison across papers
  */
-async function generateComparisonData(papers, comparisonType, apiKey) {
+async function generateComparisonData(papers, comparisonType, apiKey, userProfileId) {
   const prompt = createComparisonPrompt(papers, comparisonType);
 
+  const startTime = Date.now();
   const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
     method: 'POST',
     headers: {
@@ -336,6 +359,14 @@ async function generateComparisonData(papers, comparisonType, apiKey) {
   }
 
   const data = await response.json();
+  logUsage({
+    userProfileId,
+    appName: 'literature-analyzer',
+    model: data.model,
+    inputTokens: data.usage?.input_tokens,
+    outputTokens: data.usage?.output_tokens,
+    latencyMs: Date.now() - startTime,
+  });
   const responseText = data.content[0].text;
 
   // Parse JSON response

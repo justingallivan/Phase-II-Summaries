@@ -1,24 +1,17 @@
 import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
-import ApiKeyManager from '../shared/components/ApiKeyManager';
 
 export default function FundingGapAnalyzer() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
-  const [apiKey, setApiKey] = useState('');
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
   const [searchYears, setSearchYears] = useState(5);
   const [includeCoPIs, setIncludeCoPIs] = useState(true);
   const [includeUSASpending, setIncludeUSASpending] = useState(false);
   const [error, setError] = useState(null);
-
-  const handleApiKeySet = useCallback((key) => {
-    setApiKey(key);
-    setError(null);
-  }, []);
 
   const handleFilesUploaded = useCallback((uploadedFiles) => {
     setSelectedFiles(uploadedFiles);
@@ -27,11 +20,6 @@ export default function FundingGapAnalyzer() {
   }, []);
 
   const analyzeProposals = async () => {
-    if (!apiKey) {
-      setError('Please provide an API key');
-      return;
-    }
-
     if (selectedFiles.length === 0) {
       setError('Please select at least one PDF file');
       return;
@@ -50,7 +38,6 @@ export default function FundingGapAnalyzer() {
         },
         body: JSON.stringify({
           files: selectedFiles,
-          apiKey,
           searchYears,
           includeCoPIs,
           includeUSASpending
@@ -221,16 +208,6 @@ export default function FundingGapAnalyzer() {
         subtitle="Analyze NSF awards and federal funding opportunities for research proposals"
         icon="💵"
       />
-
-      <Card className="mb-8">
-        <div className="text-center">
-          <ApiKeyManager
-            onApiKeySet={handleApiKeySet}
-            required={true}
-            appKey="funding-analysis"
-          />
-        </div>
-      </Card>
 
       {error && (
         <Card className="mb-6 border-red-200 bg-red-50">

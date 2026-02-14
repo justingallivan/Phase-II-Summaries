@@ -1,6 +1,5 @@
 import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
 import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
-import { getApiKeyManager } from '../../shared/utils/apiKeyManager';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { createFundingExtractionPrompt, createFundingAnalysisPrompt } from '../../shared/config/prompts/funding-gap-analyzer';
 import { queryNSFforPI, queryNSFforKeywords, queryNIHforPI, queryNIHforKeywords, queryUSASpending, formatCurrency, formatDate } from '../../lib/fundingApis';
@@ -40,22 +39,20 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { files, apiKey, searchYears = 5, includeCoPIs = false, includeUSASpending = false } = req.body;
+    const { files, searchYears = 5, includeCoPIs = false, includeUSASpending = false } = req.body;
 
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'No files provided' });
     }
 
-    // Validate and select API key
-    const apiKeyManager = getApiKeyManager();
-    let validatedKey;
-    try {
-      validatedKey = apiKeyManager.selectApiKey(apiKey);
-      console.log('API key validated');
-    } catch (error) {
-      console.log('Error: Invalid or missing API key');
-      return res.status(401).json({ error: 'Invalid or missing API key. Please check your Claude API key.' });
+    // Use server-side API key
+    const apiKey = process.env.CLAUDE_API_KEY;
+    if (!apiKey) {
+      console.error('CLAUDE_API_KEY environment variable is not set');
+      return res.status(500).json({ error: 'Server configuration error: Claude API key not available.' });
     }
+
+    const userProfileId = session?.user?.profileId || null;
 
     // Set headers for streaming response
     res.setHeader('Content-Type', 'text/event-stream');
@@ -72,8 +69,10 @@ export default async function handler(req, res) {
     };
 
     // Initialize Claude client and file processor
-    const claudeClient = createClaudeClient(validatedKey, {
-      model: getModelForApp('funding-analysis')
+    const claudeClient = createClaudeClient(apiKey, {
+      model: getModelForApp('funding-analysis'),
+      appName: 'funding-analysis',
+      userProfileId,
     });
     const fileProcessor = createFileProcessor();
 

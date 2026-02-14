@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
-import ApiKeyManager from '../shared/components/ApiKeyManager';
 import ApiSettingsPanel from '../shared/components/ApiSettingsPanel';
 import { useProfile } from '../shared/context/ProfileContext';
 
@@ -346,7 +345,6 @@ export default function IntegrityScreenerPage() {
   const [error, setError] = useState(null);
 
   // API keys
-  const [claudeApiKey, setClaudeApiKey] = useState('');
   const [apiSettings, setApiSettings] = useState({});
 
   // Applicant management
@@ -375,11 +373,6 @@ export default function IntegrityScreenerPage() {
       return;
     }
 
-    if (!claudeApiKey) {
-      setError('Claude API key is required');
-      return;
-    }
-
     setIsProcessing(true);
     setError(null);
     setResults(null);
@@ -391,7 +384,6 @@ export default function IntegrityScreenerPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           applicants: validApplicants,
-          claudeApiKey,
           serpApiKey: apiSettings?.serpApiKey || null,
           userProfileId: currentProfile?.id || null,
         }),
@@ -437,7 +429,7 @@ export default function IntegrityScreenerPage() {
       setIsProcessing(false);
       setProgressMessage('');
     }
-  }, [applicants, claudeApiKey, apiSettings, currentProfile]);
+  }, [applicants, apiSettings, currentProfile]);
 
   // Handle dismissal (placeholder - would need screening ID for persistence)
   const handleDismiss = useCallback((match, source) => {
@@ -583,19 +575,12 @@ export default function IntegrityScreenerPage() {
       />
 
       <div className="max-w-5xl mx-auto space-y-6">
-        {/* API Key Configuration */}
+        {/* API Configuration */}
         <Card>
-          <ApiKeyManager
-            onApiKeySet={setClaudeApiKey}
-            required={true}
-            appKey="integrity-screener"
-          />
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <ApiSettingsPanel onSettingsChange={setApiSettings} />
-            <p className="mt-2 text-xs text-gray-500">
-              SERP API enables PubPeer and news searches. Without it, only the Retraction Watch database will be searched.
-            </p>
-          </div>
+          <ApiSettingsPanel onSettingsChange={setApiSettings} />
+          <p className="mt-2 text-xs text-gray-500">
+            SERP API enables PubPeer and news searches. Without it, only the Retraction Watch database will be searched.
+          </p>
         </Card>
 
         {/* Input Form */}
@@ -627,7 +612,7 @@ export default function IntegrityScreenerPage() {
               </p>
               <Button
                 onClick={runScreening}
-                disabled={isProcessing || !claudeApiKey}
+                disabled={isProcessing}
               >
                 {isProcessing ? 'Screening...' : 'Screen Applicants'}
               </Button>

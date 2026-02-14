@@ -378,7 +378,7 @@ function CandidateCard({ candidate, selected, onSelect }) {
 }
 
 // New Search Tab content
-function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, setSearchState, userProfileId }) {
+function NewSearchTab({ apiSettings, onCandidatesSaved, searchState, setSearchState, userProfileId }) {
   // Use lifted state from parent (persists across tab switches)
   const { uploadedFiles, analysisResult, discoveryResult, selectedCandidates } = searchState;
 
@@ -597,11 +597,6 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
       return;
     }
 
-    if (!apiKey) {
-      setError('Please enter your Claude API key');
-      return;
-    }
-
     setIsProcessing(true);
     setCurrentStage('analysis');
     setProgressMessages([]);
@@ -631,7 +626,6 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          apiKey,
           blobUrl: uploadedFiles[0].url,
           additionalNotes,
           excludedNames: excludedNames.split(',').map(n => n.trim()).filter(Boolean),
@@ -694,7 +688,6 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          apiKey,
           analysisResult: analysisData,
           options: {
             searchPubmed: searchSources.pubmed,
@@ -906,7 +899,6 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
           credentials: {
             orcidClientId: apiSettings?.orcidClientId,
             orcidClientSecret: apiSettings?.orcidClientSecret,
-            claudeApiKey: enrichmentOptions.useClaudeSearch ? apiKey : null,
             serpApiKey: enrichmentOptions.useSerpSearch ? apiSettings?.serpApiKey : null,
           },
           options: enrichmentOptions,
@@ -1259,7 +1251,7 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
         <div className="mt-6">
           <Button
             onClick={runAnalysis}
-            disabled={isProcessing || uploadedFiles.length === 0 || !apiKey}
+            disabled={isProcessing || uploadedFiles.length === 0}
             loading={isProcessing}
             className="w-full"
           >
@@ -1515,27 +1507,19 @@ function NewSearchTab({ apiKey, apiSettings, onCandidatesSaved, searchState, set
                       </div>
                     </label>
 
-                    <label className={`flex items-start gap-3 p-3 rounded-lg ${
-                      apiKey
-                        ? 'bg-amber-50 border border-amber-200 cursor-pointer'
-                        : 'bg-gray-50 border border-gray-200 cursor-not-allowed opacity-60'
-                    }`}>
+                    <label className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-200 cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={enrichmentOptions.useClaudeSearch && !!apiKey}
+                        checked={enrichmentOptions.useClaudeSearch}
                         onChange={(e) => setEnrichmentOptions(prev => ({ ...prev, useClaudeSearch: e.target.checked }))}
                         className="mt-0.5"
-                        disabled={!apiKey}
                       />
                       <div>
-                        <div className={`font-medium ${apiKey ? 'text-amber-800' : 'text-gray-500'}`}>
+                        <div className="font-medium text-amber-800">
                           Tier 3: Claude Web Search
                         </div>
-                        <div className={`text-xs ${apiKey ? 'text-amber-600' : 'text-gray-500'}`}>
+                        <div className="text-xs text-amber-600">
                           Search faculty pages and directories with AI. <strong>~$0.015 per candidate</strong>
-                          {!apiKey && (
-                            <span className="ml-1 text-red-600">(Requires Claude API key)</span>
-                          )}
                         </div>
                       </div>
                     </label>
@@ -3588,7 +3572,7 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
 const CURRENT_CYCLE_KEY = 'reviewer_finder_current_cycle';
 
 // My Candidates Tab
-function MyCandidatesTab({ refreshTrigger, claudeApiKey, userProfileId, navigateToProposal, onNavigationComplete }) {
+function MyCandidatesTab({ refreshTrigger, userProfileId, navigateToProposal, onNavigationComplete }) {
   const [proposals, setProposals] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -4632,7 +4616,6 @@ function MyCandidatesTab({ refreshTrigger, claudeApiKey, userProfileId, navigate
           onClose={() => setShowEmailModal(false)}
           candidates={emailModalData.candidates}
           proposalInfo={emailModalData.proposalInfo}
-          claudeApiKey={claudeApiKey}
           onEmailsGenerated={fetchCandidates}
           isFollowUp={emailModalData.isFollowUp}
         />
@@ -5657,7 +5640,6 @@ function ResearcherRow({ researcher, onClick, isSelected, onToggleSelect }) {
 // Main Page Component
 export default function ReviewerFinderPage() {
   const [activeTab, setActiveTab] = useState('search');
-  const [apiKey, setApiKey] = useState('');
   const [myCandidatesRefresh, setMyCandidatesRefresh] = useState(0);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [apiSettings, setApiSettings] = useState({
@@ -5692,13 +5674,6 @@ export default function ReviewerFinderPage() {
     setActiveTab('candidates');
   };
 
-  // Clean up legacy plain-text localStorage key if present
-  useEffect(() => {
-    if (localStorage.getItem('claudeApiKey')) {
-      localStorage.removeItem('claudeApiKey');
-    }
-  }, []);
-
   // Handle API settings change from ApiSettingsPanel
   const handleApiSettingsChange = (settings) => {
     setApiSettings(settings);
@@ -5707,11 +5682,6 @@ export default function ReviewerFinderPage() {
   // Callback to trigger refresh of My Candidates tab
   const handleCandidatesSaved = () => {
     setMyCandidatesRefresh(prev => prev + 1);
-  };
-
-  const handleApiKeyChange = (e) => {
-    const key = e.target.value;
-    setApiKey(key);
   };
 
   const tabs = [
@@ -5732,26 +5702,10 @@ export default function ReviewerFinderPage() {
       />
 
       <div className="py-8 space-y-6">
-        {/* API Key Input */}
+        {/* API Settings */}
         <Card>
-          <div className="flex items-center gap-4 mb-4">
-            <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
-              Claude API Key:
-            </label>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={handleApiKeyChange}
-              placeholder="sk-ant-..."
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-            />
-            {apiKey && (
-              <span className="text-green-500 text-sm">✓ Saved</span>
-            )}
-          </div>
-
           {/* Model Indicator */}
-          <div className="flex items-center gap-2 mb-4 pt-3 border-t border-gray-200">
+          <div className="flex items-center gap-2 mb-4">
             <span className="text-lg">🤖</span>
             <span className="text-sm text-gray-600">
               Model: <strong className="text-gray-800">{getModelDisplayName(BASE_CONFIG.APP_MODELS?.['reviewer-finder']?.model || BASE_CONFIG.CLAUDE.DEFAULT_MODEL)}</strong>
@@ -5792,8 +5746,8 @@ export default function ReviewerFinderPage() {
 
         {/* Tab Content */}
         <div className="min-h-[400px]">
-          {activeTab === 'search' && <NewSearchTab apiKey={apiKey} apiSettings={apiSettings} onCandidatesSaved={handleCandidatesSaved} searchState={searchState} setSearchState={setSearchState} userProfileId={userProfileId} />}
-          {activeTab === 'candidates' && <MyCandidatesTab refreshTrigger={myCandidatesRefresh} claudeApiKey={apiKey} userProfileId={userProfileId} navigateToProposal={navigateToProposal} onNavigationComplete={() => setNavigateToProposal(null)} />}
+          {activeTab === 'search' && <NewSearchTab apiSettings={apiSettings} onCandidatesSaved={handleCandidatesSaved} searchState={searchState} setSearchState={setSearchState} userProfileId={userProfileId} />}
+          {activeTab === 'candidates' && <MyCandidatesTab refreshTrigger={myCandidatesRefresh} userProfileId={userProfileId} navigateToProposal={navigateToProposal} onNavigationComplete={() => setNavigateToProposal(null)} />}
           {activeTab === 'database' && <DatabaseTab onNavigateToProposal={handleNavigateToProposal} />}
         </div>
       </div>

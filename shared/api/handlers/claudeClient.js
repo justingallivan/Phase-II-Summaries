@@ -1,19 +1,25 @@
 /**
  * Shared Claude API client for all document processing apps
  * Provides standardized Claude API interactions with error handling
+ *
+ * Uses server-side CLAUDE_API_KEY by default. Accepts optional appName
+ * and userProfileId for per-request usage logging.
  */
 
 import { BASE_CONFIG } from '../../config/baseConfig';
+import { logUsage } from '../../../lib/utils/usage-logger';
 
 export class ClaudeClient {
   constructor(apiKey, config = {}) {
-    this.apiKey = apiKey;
+    this.apiKey = apiKey || process.env.CLAUDE_API_KEY;
     this.config = {
       apiUrl: config.apiUrl || BASE_CONFIG.CLAUDE.API_URL,
       anthropicVersion: config.anthropicVersion || BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION,
       model: config.model || BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
       defaultMaxTokens: config.defaultMaxTokens || 2000,
       defaultTemperature: config.defaultTemperature || 0.3,
+      appName: config.appName || null,
+      userProfileId: config.userProfileId || null,
       ...config
     };
   }
@@ -29,6 +35,7 @@ export class ClaudeClient {
     const temperature = options.temperature || this.config.defaultTemperature;
     const maxRetries = options.maxRetries || 3;
     const initialDelay = options.retryDelay || 2000; // Start with 2 seconds
+    const startTime = Date.now();
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -66,11 +73,33 @@ export class ClaudeClient {
         }
 
         const data = await response.json();
+
+        if (this.config.appName) {
+          logUsage({
+            userProfileId: this.config.userProfileId,
+            appName: this.config.appName,
+            model: data.model,
+            inputTokens: data.usage?.input_tokens,
+            outputTokens: data.usage?.output_tokens,
+            latencyMs: Date.now() - startTime,
+          });
+        }
+
         return data.content[0].text;
 
       } catch (error) {
         // If it's the last attempt or not a network error, throw
         if (attempt === maxRetries || !error.message.includes('fetch')) {
+          if (this.config.appName) {
+            logUsage({
+              userProfileId: this.config.userProfileId,
+              appName: this.config.appName,
+              model: this.config.model,
+              latencyMs: Date.now() - startTime,
+              status: 'error',
+              errorMessage: error.message?.substring(0, 500),
+            });
+          }
           console.error('Claude API request failed:', error);
           throw new Error(`Failed to communicate with Claude: ${error.message}`);
         }
@@ -119,6 +148,7 @@ export class ClaudeClient {
     const temperature = options.temperature || this.config.defaultTemperature;
     const maxRetries = options.maxRetries || 3;
     const initialDelay = options.retryDelay || 2000;
+    const startTime = Date.now();
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -153,10 +183,32 @@ export class ClaudeClient {
         }
 
         const data = await response.json();
+
+        if (this.config.appName) {
+          logUsage({
+            userProfileId: this.config.userProfileId,
+            appName: this.config.appName,
+            model: data.model,
+            inputTokens: data.usage?.input_tokens,
+            outputTokens: data.usage?.output_tokens,
+            latencyMs: Date.now() - startTime,
+          });
+        }
+
         return data.content[0].text;
 
       } catch (error) {
         if (attempt === maxRetries || !error.message.includes('fetch')) {
+          if (this.config.appName) {
+            logUsage({
+              userProfileId: this.config.userProfileId,
+              appName: this.config.appName,
+              model: this.config.model,
+              latencyMs: Date.now() - startTime,
+              status: 'error',
+              errorMessage: error.message?.substring(0, 500),
+            });
+          }
           console.error('Claude Vision API request failed:', error);
           throw new Error(`Failed to communicate with Claude Vision: ${error.message}`);
         }
@@ -194,10 +246,10 @@ export class ClaudeClient {
 
 /**
  * Factory function to create a Claude client
- * @param {string} apiKey - Claude API key
- * @param {Object} config - Configuration options
+ * @param {string} apiKey - Claude API key (defaults to process.env.CLAUDE_API_KEY)
+ * @param {Object} config - Configuration options (appName, userProfileId, etc.)
  * @returns {ClaudeClient} - Claude client instance
  */
 export function createClaudeClient(apiKey, config = {}) {
-  return new ClaudeClient(apiKey, config);
+  return new ClaudeClient(apiKey || process.env.CLAUDE_API_KEY, config);
 }

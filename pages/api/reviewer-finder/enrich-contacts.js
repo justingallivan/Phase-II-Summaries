@@ -11,7 +11,7 @@
  * Request body:
  * {
  *   candidates: [{ name, affiliation, publications }],
- *   credentials: { orcidClientId, orcidClientSecret, claudeApiKey },
+ *   credentials: { orcidClientId, orcidClientSecret },
  *   options: { usePubmed, useOrcid, useClaudeSearch }
  * }
  *
@@ -69,6 +69,7 @@ export default async function handler(req, res) {
     const results = await ContactEnrichmentService.enrichCandidates(candidates, {
       credentials: {
         ...credentials,
+        claudeApiKey: process.env.CLAUDE_API_KEY,
         serpApiKey: credentials.serpApiKey || process.env.SERP_API_KEY,
       },
       usePubmed: options.usePubmed !== false,

@@ -1,14 +1,12 @@
 import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
-import ApiKeyManager from '../shared/components/ApiKeyManager';
 import ResultsDisplay from '../shared/components/ResultsDisplay';
 
 export default function ProposalSummarizer() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
-  const [apiKey, setApiKey] = useState('');
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
   const [error, setError] = useState(null);
@@ -22,11 +20,6 @@ export default function ProposalSummarizer() {
   const [selectedFileForQA, setSelectedFileForQA] = useState('');
   const [selectedFileForRefine, setSelectedFileForRefine] = useState('');
 
-  const handleApiKeySet = useCallback((key) => {
-    setApiKey(key);
-    setError(null);
-  }, []);
-
   const handleFilesUploaded = useCallback((uploadedFiles) => {
     setSelectedFiles(uploadedFiles);
     setError(null);
@@ -34,11 +27,6 @@ export default function ProposalSummarizer() {
   }, []);
 
   const processProposals = async () => {
-    if (!apiKey) {
-      setError('Please provide an API key');
-      return;
-    }
-
     if (selectedFiles.length === 0) {
       setError('Please select PDF files first');
       return;
@@ -53,12 +41,10 @@ export default function ProposalSummarizer() {
       const response = await fetch('/api/process', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': apiKey
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          files: selectedFiles,
-          apiKey
+          files: selectedFiles
         })
       });
 
@@ -155,13 +141,11 @@ export default function ProposalSummarizer() {
       const response = await fetch('/api/refine', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': apiKey
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           currentSummary: results[selectedFileForRefine].formatted,
-          feedback: feedbackText,
-          apiKey
+          feedback: feedbackText
         })
       });
 
@@ -214,14 +198,12 @@ export default function ProposalSummarizer() {
       const response = await fetch('/api/qa', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': apiKey
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           question,
           context: results[selectedFileForQA].formatted,
-          filename: selectedFileForQA,
-          apiKey
+          filename: selectedFileForQA
         })
       });
 
@@ -255,16 +237,6 @@ export default function ProposalSummarizer() {
         subtitle="Generate standardized writeup drafts from PDF research proposals using Claude AI"
         icon="✍️"
       />
-
-      <Card className="mb-8">
-        <div className="text-center">
-          <ApiKeyManager
-            onApiKeySet={handleApiKeySet}
-            required={true}
-            appKey="phase-ii-writeup"
-          />
-        </div>
-      </Card>
 
       {error && (
         <Card className="mb-6 border-red-200 bg-red-50">

@@ -16,6 +16,7 @@ import { DynamicsService } from '../../../lib/services/dynamics-service';
 import { buildSystemPrompt, TOOL_DEFINITIONS, TABLE_ANNOTATIONS } from '../../../shared/config/prompts/dynamics-explorer';
 import { getModelForApp, getFallbackModelForApp } from '../../../shared/config/baseConfig';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
+import { logUsage } from '../../../lib/utils/usage-logger';
 
 export const config = {
   api: {
@@ -56,12 +57,13 @@ export default async function handler(req, res) {
   };
 
   try {
-    const { messages, claudeApiKey, userProfileId, sessionId } = req.body;
+    const { messages, sessionId } = req.body;
+    const claudeApiKey = process.env.CLAUDE_API_KEY;
+    const userProfileId = session?.user?.profileId || null;
 
     if (!claudeApiKey) {
-      sendEvent('error', { message: 'Claude API key is required' });
-      res.end();
-      return;
+      sendEvent('error', { message: 'Claude API key not configured on server' });
+      return res.end();
     }
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -96,6 +98,7 @@ export default async function handler(req, res) {
         systemPrompt,
         messages: currentMessages,
         tools: TOOL_DEFINITIONS,
+        userProfileId,
       });
 
       const textBlocks = claudeResponse.content.filter(b => b.type === 'text');
@@ -264,7 +267,9 @@ function summarizeToolResult(content) {
 
 // ─── Claude API call ───
 
-async function callClaude({ apiKey, model, fallbackModel, systemPrompt, messages, tools }) {
+async function callClaude({ apiKey, model, fallbackModel, systemPrompt, messages, tools, userProfileId }) {
+  const startTime = Date.now();
+
   const body = {
     model,
     max_tokens: 2048,
@@ -313,7 +318,18 @@ async function callClaude({ apiKey, model, fallbackModel, systemPrompt, messages
     throw new Error(`Claude API error (${resp.status}): ${errorBody}`);
   }
 
-  return resp.json();
+  const data = await resp.json();
+
+  logUsage({
+    userProfileId,
+    appName: 'dynamics-explorer',
+    model: data.model,
+    inputTokens: data.usage?.input_tokens,
+    outputTokens: data.usage?.output_tokens,
+    latencyMs: Date.now() - startTime,
+  });
+
+  return data;
 }
 
 // ─── Tool execution ───

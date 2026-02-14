@@ -3,6 +3,7 @@ import { BASE_CONFIG, getModelForApp } from '../../shared/config';
 import { createPhaseIWriteupPrompt } from '../../shared/config/prompts/phase-i-writeup';
 import { createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer';
 import { requireAuth } from '../../lib/utils/auth';
+import { logUsage } from '../../lib/utils/usage-logger';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -14,14 +15,17 @@ export default async function handler(req, res) {
   if (!session) return;
 
   try {
-    const { files, apiKey } = req.body;
+    const { files } = req.body;
+    const apiKey = process.env.CLAUDE_API_KEY;
     console.log('Received request body:', JSON.stringify(req.body, null, 2));
     console.log('Files array:', files);
     console.log('API key present:', !!apiKey);
 
     if (!apiKey) {
-      return res.status(400).json({ error: 'API key required' });
+      return res.status(500).json({ error: 'Claude API key not configured on server' });
     }
+
+    const userProfileId = session?.user?.profileId || null;
 
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'No files provided' });
@@ -71,7 +75,7 @@ export default async function handler(req, res) {
 
         // Generate Phase I writeup using Claude API
         console.log(`Sending to Claude API with text length: ${text.length}`);
-        const writeup = await generatePhaseIWriteup(text, file.filename, institution, apiKey);
+        const writeup = await generatePhaseIWriteup(text, file.filename, institution, apiKey, userProfileId);
         console.log(`Received writeup:`, writeup ? 'Success' : 'Failed');
         results[file.filename] = writeup;
 
@@ -101,13 +105,14 @@ export default async function handler(req, res) {
   }
 }
 
-async function generatePhaseIWriteup(text, filename, institution, apiKey) {
+async function generatePhaseIWriteup(text, filename, institution, apiKey, userProfileId) {
   try {
     console.log(`[Generate Writeup] Filename: ${filename}`);
     console.log(`[Generate Writeup] Institution parameter: "${institution}"`);
     console.log(`[Generate Writeup] Institution is ${institution ? 'provided' : 'NOT provided (will extract from PDF)'}`);
     const prompt = createPhaseIWriteupPrompt(text, institution);
 
+    const startTime = Date.now();
     const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
       method: 'POST',
       headers: {
@@ -133,6 +138,14 @@ async function generatePhaseIWriteup(text, filename, institution, apiKey) {
     }
 
     const data = await response.json();
+    logUsage({
+      userProfileId,
+      appName: 'phase-i-writeup',
+      model: data.model,
+      inputTokens: data.usage?.input_tokens,
+      outputTokens: data.usage?.output_tokens,
+      latencyMs: Date.now() - startTime,
+    });
     console.log('Claude API response:', JSON.stringify(data, null, 2));
     const writeupText = data.content[0].text;
     console.log(`Writeup text length: ${writeupText ? writeupText.length : 0}`);
@@ -141,7 +154,7 @@ async function generatePhaseIWriteup(text, filename, institution, apiKey) {
     const formatted = enhanceFormatting(writeupText, filename);
 
     // Extract structured data (basic info only)
-    const structured = await extractStructuredData(text, filename, writeupText, apiKey);
+    const structured = await extractStructuredData(text, filename, writeupText, apiKey, userProfileId);
 
     return {
       formatted,
@@ -154,10 +167,11 @@ async function generatePhaseIWriteup(text, filename, institution, apiKey) {
   }
 }
 
-async function extractStructuredData(text, filename, writeup, apiKey) {
+async function extractStructuredData(text, filename, writeup, apiKey, userProfileId) {
   try {
     const extractionPrompt = createStructuredDataExtractionPrompt(text, filename);
 
+    const startTime = Date.now();
     const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
       method: 'POST',
       headers: {
@@ -182,6 +196,14 @@ async function extractStructuredData(text, filename, writeup, apiKey) {
     }
 
     const data = await response.json();
+    logUsage({
+      userProfileId,
+      appName: 'phase-i-writeup',
+      model: data.model,
+      inputTokens: data.usage?.input_tokens,
+      outputTokens: data.usage?.output_tokens,
+      latencyMs: Date.now() - startTime,
+    });
     const jsonText = data.content[0].text;
 
     // Try to parse JSON

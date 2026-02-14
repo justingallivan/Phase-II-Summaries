@@ -44,10 +44,11 @@ export default async function handler(req, res) {
   try {
     const {
       applicants,
-      claudeApiKey,
       serpApiKey,
       userProfileId,
     } = req.body;
+
+    const claudeApiKey = process.env.CLAUDE_API_KEY;
 
     // Validate required fields
     if (!applicants || !Array.isArray(applicants) || applicants.length === 0) {
@@ -56,7 +57,7 @@ export default async function handler(req, res) {
     }
 
     if (!claudeApiKey) {
-      sendEvent('error', { message: 'Claude API key is required' });
+      sendEvent('error', { message: 'Claude API key not configured on server' });
       return res.end();
     }
 

@@ -49,12 +49,15 @@ export default async function handler(req, res) {
   let summaryFilename = null;
 
   try {
-    const { apiKey, proposalText, blobUrl, additionalNotes, excludedNames, temperature, reviewerCount, summaryPages } = req.body;
+    const { proposalText, blobUrl, additionalNotes, excludedNames, temperature, reviewerCount, summaryPages } = req.body;
 
+    const apiKey = process.env.CLAUDE_API_KEY;
     if (!apiKey) {
-      sendEvent('error', { message: 'API key is required' });
+      sendEvent('error', { message: 'Claude API key not configured on server' });
       return res.end();
     }
+
+    const userProfileId = session?.user?.profileId || null;
 
     // Get proposal text
     let text = proposalText;
@@ -135,6 +138,7 @@ export default async function handler(req, res) {
       excludedNames: excludedNames || [],
       temperature: temperature !== undefined ? temperature : 0.3,
       reviewerCount: reviewerCount || 12,
+      userProfileId,
       onProgress: (progress) => {
         sendEvent('progress', progress);
       }

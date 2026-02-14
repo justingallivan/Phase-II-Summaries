@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
-import ApiKeyManager from '../shared/components/ApiKeyManager';
 import { useProfile } from '../shared/context/ProfileContext';
 
 // ─── Markdown table parser ───
@@ -120,7 +119,6 @@ export default function DynamicsExplorer() {
   const [currentMessage, setCurrentMessage] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [thinkingStatus, setThinkingStatus] = useState('');
-  const [apiKey, setApiKey] = useState('');
   const [userRole, setUserRole] = useState('read_only');
   const [sessionId] = useState(() => `de-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   const [showAdmin, setShowAdmin] = useState(false);
@@ -162,7 +160,6 @@ export default function DynamicsExplorer() {
   const sendMessage = useCallback(async (text) => {
     const messageText = text || currentMessage.trim();
     if (!messageText || isProcessing) return;
-    if (!apiKey) return;
 
     const userMsg = { role: 'user', content: messageText, timestamp: Date.now() };
     const newMessages = [...messages, userMsg];
@@ -182,7 +179,6 @@ export default function DynamicsExplorer() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: newMessages.map(m => ({ role: m.role, content: m.content })),
-          claudeApiKey: apiKey,
           userProfileId: currentProfile?.id,
           sessionId,
         }),
@@ -278,7 +274,7 @@ export default function DynamicsExplorer() {
       setIsProcessing(false);
       setThinkingStatus('');
     }
-  }, [currentMessage, isProcessing, apiKey, messages, currentProfile?.id, sessionId]);
+  }, [currentMessage, isProcessing, messages, currentProfile?.id, sessionId]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -321,25 +317,20 @@ export default function DynamicsExplorer() {
       />
 
       <div className="space-y-6 pb-8">
-        {/* API Key + Role */}
+        {/* Role + Export */}
         <Card hover={false}>
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex-1 min-w-[300px]">
-              <ApiKeyManager onApiKeySet={setApiKey} appKey="dynamics-explorer" />
-            </div>
-            <div className="flex items-center gap-3">
-              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${badge.color}`}>
-                {badge.label}
-              </span>
-              {messages.length > 0 && (
-                <button
-                  onClick={exportChat}
-                  className="text-xs text-gray-500 hover:text-gray-700 underline"
-                >
-                  Export chat
-                </button>
-              )}
-            </div>
+          <div className="flex items-center justify-between">
+            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${badge.color}`}>
+              {badge.label}
+            </span>
+            {messages.length > 0 && (
+              <button
+                onClick={exportChat}
+                className="text-xs text-gray-500 hover:text-gray-700 underline"
+              >
+                Export chat
+              </button>
+            )}
           </div>
         </Card>
 
@@ -350,7 +341,6 @@ export default function DynamicsExplorer() {
             {messages.length === 0 && !isProcessing && (
               <WelcomeMessage
                 onExampleClick={(q) => { setCurrentMessage(q); sendMessage(q); }}
-                hasApiKey={!!apiKey}
               />
             )}
 
@@ -384,15 +374,15 @@ export default function DynamicsExplorer() {
                 value={currentMessage}
                 onChange={(e) => { setCurrentMessage(e.target.value); adjustTextarea(); }}
                 onKeyDown={handleKeyDown}
-                placeholder={apiKey ? 'Ask a question about your CRM data...' : 'Enter your API key above to start'}
-                disabled={!apiKey || isProcessing}
+                placeholder="Ask a question about your CRM data..."
+                disabled={isProcessing}
                 rows={1}
                 className="flex-1 resize-none border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-400"
                 style={{ maxHeight: '200px' }}
               />
               <Button
                 onClick={() => sendMessage()}
-                disabled={!apiKey || !currentMessage.trim() || isProcessing}
+                disabled={!currentMessage.trim() || isProcessing}
                 loading={isProcessing}
                 size="md"
                 className="flex-shrink-0"
@@ -428,7 +418,7 @@ export default function DynamicsExplorer() {
 
 // ─── Welcome Message ───
 
-function WelcomeMessage({ onExampleClick, hasApiKey }) {
+function WelcomeMessage({ onExampleClick }) {
   return (
     <div className="text-center py-12">
       <div className="text-6xl mb-4">💬</div>
@@ -436,19 +426,17 @@ function WelcomeMessage({ onExampleClick, hasApiKey }) {
       <p className="text-gray-600 mb-6 max-w-md mx-auto">
         Ask questions about your CRM data in natural language. I'll query the Dynamics 365 system and present the results.
       </p>
-      {hasApiKey && (
-        <div className="flex flex-wrap justify-center gap-2 max-w-lg mx-auto">
-          {EXAMPLE_QUERIES.map((q, i) => (
-            <button
-              key={i}
-              onClick={() => onExampleClick(q)}
-              className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full transition-colors"
-            >
-              {q}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-wrap justify-center gap-2 max-w-lg mx-auto">
+        {EXAMPLE_QUERIES.map((q, i) => (
+          <button
+            key={i}
+            onClick={() => onExampleClick(q)}
+            className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full transition-colors"
+          >
+            {q}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

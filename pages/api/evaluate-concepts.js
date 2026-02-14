@@ -15,6 +15,7 @@ import {
   selectDatabasesForResearchArea
 } from '../../shared/config/prompts/concept-evaluator';
 import { requireAuth } from '../../lib/utils/auth';
+import { logUsage } from '../../lib/utils/usage-logger';
 
 // Import search services
 const { PubMedService } = require('../../lib/services/pubmed-service');
@@ -43,11 +44,14 @@ export default async function handler(req, res) {
   if (!session) return;
 
   try {
-    const { files, apiKey } = req.body;
+    const { files } = req.body;
 
+    const apiKey = process.env.CLAUDE_API_KEY;
     if (!apiKey) {
-      return res.status(400).json({ error: 'API key required' });
+      return res.status(500).json({ error: 'Claude API key not configured on server' });
     }
+
+    const userProfileId = session?.user?.profileId || null;
 
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'No files provided' });
@@ -92,7 +96,7 @@ export default async function handler(req, res) {
         const fileResults = await processWithConcurrency(
           pages,
           async (page) => {
-            const result = await evaluateSingleConcept(page, apiKey, res, processedPages, totalPages);
+            const result = await evaluateSingleConcept(page, apiKey, res, processedPages, totalPages, userProfileId);
             processedPages++;
             return result;
           },
@@ -162,14 +166,14 @@ async function processWithConcurrency(items, processorFn, limit) {
 /**
  * Evaluate a single concept (one page)
  */
-async function evaluateSingleConcept(page, apiKey, res, processedCount, totalCount) {
+async function evaluateSingleConcept(page, apiKey, res, processedCount, totalCount, userProfileId) {
   const { pageNumber, base64 } = page;
   const progressBase = 10 + Math.round((processedCount / totalCount) * 80);
 
   try {
     // Stage 1: Initial analysis via Vision API
     sendProgress(res, progressBase, `Analyzing concept ${pageNumber} of ${totalCount}...`);
-    const initialAnalysis = await performInitialAnalysis(base64, apiKey);
+    const initialAnalysis = await performInitialAnalysis(base64, apiKey, userProfileId);
 
     if (!initialAnalysis || initialAnalysis.error) {
       throw new Error(initialAnalysis?.error || 'Initial analysis failed');
@@ -181,7 +185,7 @@ async function evaluateSingleConcept(page, apiKey, res, processedCount, totalCou
 
     // Stage 3: Final evaluation with literature context
     sendProgress(res, progressBase + 6, `Evaluating concept ${pageNumber}...`);
-    const finalEvaluation = await performFinalEvaluation(initialAnalysis, literatureResults, apiKey);
+    const finalEvaluation = await performFinalEvaluation(initialAnalysis, literatureResults, apiKey, userProfileId);
 
     return {
       pageNumber,
@@ -245,7 +249,8 @@ function isRetryableError(status, errorText) {
 /**
  * Make a Claude API request with retry logic and fallback model
  */
-async function callClaudeWithRetry(requestBody, apiKey, modelType = 'model') {
+async function callClaudeWithRetry(requestBody, apiKey, modelType = 'model', userProfileId = null) {
+  const startTime = Date.now();
   const primaryModel = getModelForApp('concept-evaluator', modelType);
   const fallbackModel = getFallbackModelForApp('concept-evaluator');
 
@@ -276,6 +281,14 @@ async function callClaudeWithRetry(requestBody, apiKey, modelType = 'model') {
 
       if (response.ok) {
         const data = await response.json();
+        logUsage({
+          userProfileId,
+          appName: 'concept-evaluator',
+          model: data.model,
+          inputTokens: data.usage?.input_tokens,
+          outputTokens: data.usage?.output_tokens,
+          latencyMs: Date.now() - startTime,
+        });
         return { data, usedFallback: false, model: primaryModel };
       }
 
@@ -319,6 +332,14 @@ async function callClaudeWithRetry(requestBody, apiKey, modelType = 'model') {
   }
 
   const data = await response.json();
+  logUsage({
+    userProfileId,
+    appName: 'concept-evaluator',
+    model: data.model,
+    inputTokens: data.usage?.input_tokens,
+    outputTokens: data.usage?.output_tokens,
+    latencyMs: Date.now() - startTime,
+  });
   console.log(`[ConceptEvaluator] Fallback model succeeded`);
   return { data, usedFallback: true, model: fallbackModel };
 }
@@ -326,7 +347,7 @@ async function callClaudeWithRetry(requestBody, apiKey, modelType = 'model') {
 /**
  * Stage 1: Initial analysis using Claude Vision API
  */
-async function performInitialAnalysis(base64Pdf, apiKey) {
+async function performInitialAnalysis(base64Pdf, apiKey, userProfileId) {
   const prompt = createInitialAnalysisPrompt();
 
   const requestBody = {
@@ -350,7 +371,7 @@ async function performInitialAnalysis(base64Pdf, apiKey) {
     }]
   };
 
-  const { data, usedFallback, model } = await callClaudeWithRetry(requestBody, apiKey, 'visionModel');
+  const { data, usedFallback, model } = await callClaudeWithRetry(requestBody, apiKey, 'visionModel', userProfileId);
 
   if (usedFallback) {
     console.log(`[ConceptEvaluator] Initial analysis used fallback model: ${model}`);
@@ -487,7 +508,7 @@ async function searchLiterature(initialAnalysis) {
 /**
  * Stage 3: Final evaluation with literature context
  */
-async function performFinalEvaluation(initialAnalysis, literatureResults, apiKey) {
+async function performFinalEvaluation(initialAnalysis, literatureResults, apiKey, userProfileId) {
   const prompt = createFinalEvaluationPrompt(initialAnalysis, literatureResults);
 
   const requestBody = {
@@ -499,7 +520,7 @@ async function performFinalEvaluation(initialAnalysis, literatureResults, apiKey
     }]
   };
 
-  const { data, usedFallback, model } = await callClaudeWithRetry(requestBody, apiKey, 'model');
+  const { data, usedFallback, model } = await callClaudeWithRetry(requestBody, apiKey, 'model', userProfileId);
 
   if (usedFallback) {
     console.log(`[ConceptEvaluator] Final evaluation used fallback model: ${model}`);

@@ -1,23 +1,16 @@
 import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
-import ApiKeyManager from '../shared/components/ApiKeyManager';
 
 export default function BatchProposalSummaries() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
-  const [apiKey, setApiKey] = useState('');
   const [progress, setProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
   const [summaryLength, setSummaryLength] = useState(2);
   const [summaryLevel, setSummaryLevel] = useState('technical-non-expert');
   const [error, setError] = useState(null);
-
-  const handleApiKeySet = useCallback((key) => {
-    setApiKey(key);
-    setError(null);
-  }, []);
 
   const handleFilesUploaded = useCallback((uploadedFiles) => {
     setSelectedFiles(uploadedFiles);
@@ -26,11 +19,6 @@ export default function BatchProposalSummaries() {
   }, []);
 
   const processBatch = async () => {
-    if (!apiKey) {
-      setError('Please provide an API key');
-      return;
-    }
-
     if (selectedFiles.length === 0) {
       setError('Please select PDF files first');
       return;
@@ -45,14 +33,12 @@ export default function BatchProposalSummaries() {
       const response = await fetch('/api/process', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': apiKey
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           files: selectedFiles,
           summaryLength,
-          summaryLevel,
-          apiKey
+          summaryLevel
         })
       });
 
@@ -182,16 +168,6 @@ export default function BatchProposalSummaries() {
         subtitle="Process multiple research proposals simultaneously with customizable summary length and technical level"
         icon="📑"
       />
-
-      <Card className="mb-8">
-        <div className="text-center">
-          <ApiKeyManager
-            onApiKeySet={handleApiKeySet}
-            required={true}
-            appKey="batch-phase-ii"
-          />
-        </div>
-      </Card>
 
       {error && (
         <Card className="mb-6 border-red-200 bg-red-50">
