@@ -537,20 +537,17 @@ function DataTable({ headers, rows }) {
 
 function AdminPanel({ userProfileId }) {
   const [restrictions, setRestrictions] = useState([]);
-  const [roles, setRoles] = useState([]);
   const [newRestriction, setNewRestriction] = useState({ table_name: '', field_name: '', reason: '' });
-  const [newRole, setNewRole] = useState({ userProfileId: '', role: 'read_only' });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      fetch(`/api/dynamics-explorer/restrictions?userProfileId=${userProfileId}`).then(r => r.json()),
-      fetch(`/api/dynamics-explorer/roles?userProfileId=${userProfileId}`).then(r => r.json()),
-    ]).then(([rData, roData]) => {
-      setRestrictions(rData.restrictions || []);
-      setRoles(roData.roles || []);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    fetch(`/api/dynamics-explorer/restrictions?userProfileId=${userProfileId}`)
+      .then(r => r.json())
+      .then(data => {
+        setRestrictions(data.restrictions || []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, [userProfileId]);
 
   const addRestriction = async () => {
@@ -576,111 +573,48 @@ function AdminPanel({ userProfileId }) {
     setRestrictions(prev => prev.filter(r => r.id !== id));
   };
 
-  const assignRole = async () => {
-    if (!newRole.userProfileId) return;
-    const resp = await fetch('/api/dynamics-explorer/roles', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...newRole, userProfileId }),
-    });
-    const data = await resp.json();
-    if (data.role) {
-      setRoles(prev => {
-        const existing = prev.findIndex(r => r.user_profile_id === data.role.user_profile_id);
-        if (existing >= 0) {
-          const updated = [...prev];
-          updated[existing] = data.role;
-          return updated;
-        }
-        return [...prev, data.role];
-      });
-      setNewRole({ userProfileId: '', role: 'read_only' });
-    }
-  };
-
   if (loading) return <p className="text-sm text-gray-500 mt-4">Loading admin data...</p>;
 
   return (
-    <div className="mt-4 space-y-6">
-      {/* Restrictions */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-800 mb-2">Data Restrictions</h3>
-        {restrictions.length > 0 ? (
-          <div className="space-y-1 mb-3">
-            {restrictions.map(r => (
-              <div key={r.id} className="flex items-center justify-between text-sm bg-gray-50 px-3 py-2 rounded">
-                <span>
-                  <span className="font-mono text-xs">{r.table_name}</span>
-                  {r.field_name && <span className="font-mono text-xs">.{r.field_name}</span>}
-                  <span className="text-gray-500 ml-2">({r.restriction_type})</span>
-                  {r.reason && <span className="text-gray-500 ml-1">- {r.reason}</span>}
-                </span>
-                <button onClick={() => removeRestriction(r.id)} className="text-red-500 hover:text-red-700 text-xs">Remove</button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-500 mb-3">No restrictions configured.</p>
-        )}
-        <div className="flex flex-wrap gap-2 items-end">
-          <input
-            placeholder="Table name"
-            value={newRestriction.table_name}
-            onChange={e => setNewRestriction(prev => ({ ...prev, table_name: e.target.value }))}
-            className="border border-gray-300 rounded px-2 py-1 text-sm w-40"
-          />
-          <input
-            placeholder="Field (optional)"
-            value={newRestriction.field_name}
-            onChange={e => setNewRestriction(prev => ({ ...prev, field_name: e.target.value }))}
-            className="border border-gray-300 rounded px-2 py-1 text-sm w-36"
-          />
-          <input
-            placeholder="Reason"
-            value={newRestriction.reason}
-            onChange={e => setNewRestriction(prev => ({ ...prev, reason: e.target.value }))}
-            className="border border-gray-300 rounded px-2 py-1 text-sm w-48"
-          />
-          <button onClick={addRestriction} className="px-3 py-1 bg-gray-900 text-white text-sm rounded hover:bg-gray-800">Add</button>
+    <div className="mt-4">
+      <h3 className="text-sm font-semibold text-gray-800 mb-2">Data Restrictions</h3>
+      {restrictions.length > 0 ? (
+        <div className="space-y-1 mb-3">
+          {restrictions.map(r => (
+            <div key={r.id} className="flex items-center justify-between text-sm bg-gray-50 px-3 py-2 rounded">
+              <span>
+                <span className="font-mono text-xs">{r.table_name}</span>
+                {r.field_name && <span className="font-mono text-xs">.{r.field_name}</span>}
+                <span className="text-gray-500 ml-2">({r.restriction_type})</span>
+                {r.reason && <span className="text-gray-500 ml-1">- {r.reason}</span>}
+              </span>
+              <button onClick={() => removeRestriction(r.id)} className="text-red-500 hover:text-red-700 text-xs">Remove</button>
+            </div>
+          ))}
         </div>
-      </div>
-
-      {/* Roles */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-800 mb-2">User Roles</h3>
-        {roles.length > 0 ? (
-          <div className="space-y-1 mb-3">
-            {roles.map(r => (
-              <div key={r.id} className="flex items-center justify-between text-sm bg-gray-50 px-3 py-2 rounded">
-                <span>
-                  <span className="font-medium">{r.user_name || `Profile #${r.user_profile_id}`}</span>
-                  <span className="text-gray-500 ml-2">{r.role}</span>
-                  {r.granted_by_name && <span className="text-gray-400 text-xs ml-2">(by {r.granted_by_name})</span>}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-500 mb-3">No roles assigned (all users default to read_only).</p>
-        )}
-        <div className="flex flex-wrap gap-2 items-end">
-          <input
-            placeholder="User Profile ID"
-            value={newRole.userProfileId}
-            onChange={e => setNewRole(prev => ({ ...prev, userProfileId: e.target.value }))}
-            className="border border-gray-300 rounded px-2 py-1 text-sm w-36"
-          />
-          <select
-            value={newRole.role}
-            onChange={e => setNewRole(prev => ({ ...prev, role: e.target.value }))}
-            className="border border-gray-300 rounded px-2 py-1 text-sm"
-          >
-            <option value="read_only">read_only</option>
-            <option value="read_write">read_write</option>
-            <option value="superuser">superuser</option>
-          </select>
-          <button onClick={assignRole} className="px-3 py-1 bg-gray-900 text-white text-sm rounded hover:bg-gray-800">Assign</button>
-        </div>
+      ) : (
+        <p className="text-xs text-gray-500 mb-3">No restrictions configured.</p>
+      )}
+      <div className="flex flex-wrap gap-2 items-end">
+        <input
+          placeholder="Table name"
+          value={newRestriction.table_name}
+          onChange={e => setNewRestriction(prev => ({ ...prev, table_name: e.target.value }))}
+          className="border border-gray-300 rounded px-2 py-1 text-sm w-40"
+        />
+        <input
+          placeholder="Field (optional)"
+          value={newRestriction.field_name}
+          onChange={e => setNewRestriction(prev => ({ ...prev, field_name: e.target.value }))}
+          className="border border-gray-300 rounded px-2 py-1 text-sm w-36"
+        />
+        <input
+          placeholder="Reason"
+          value={newRestriction.reason}
+          onChange={e => setNewRestriction(prev => ({ ...prev, reason: e.target.value }))}
+          className="border border-gray-300 rounded px-2 py-1 text-sm w-48"
+        />
+        <button onClick={addRestriction} className="px-3 py-1 bg-gray-900 text-white text-sm rounded hover:bg-gray-800">Add</button>
       </div>
     </div>
   );
