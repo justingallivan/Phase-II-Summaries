@@ -4,6 +4,20 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## February 2026 — Dynamics Explorer Performance Optimization (Session 54)
+
+Optimized the Dynamics Explorer chat interface for speed and diagnosed a query accuracy bug.
+
+- **Inline schemas**: Top 4 table schemas (akoya_request, account, contact, akoya_requestpayment) embedded in system prompt, eliminating 1 Claude API round-trip for ~80% of queries
+- **Parallel execution**: DB queries via `Promise.all()`, multiple tool_use blocks via `Promise.allSettled()`
+- **Streaming**: Claude API uses `stream: true`; final text responses forwarded as `text_delta` SSE events for near-zero perceived latency
+- **Frontend memoization**: `React.memo` on MessageBubble, `useMemo`/`useCallback` for expensive operations, stable message keys
+- **Bug diagnosed**: Model confuses two program lookup fields (`wmkf_grantprogram` with 11 values vs `akoya_program` with 24 values), causing wrong query results. Needs CRM expert input to clarify field semantics before annotation fix.
+
+**Files:** `shared/config/prompts/dynamics-explorer.js`, `pages/api/dynamics-explorer/chat.js`, `pages/dynamics-explorer.js`
+
+---
+
 ## February 2026 — App-Level Access Control (Session 53)
 
 Implemented per-user app access control across all 13 apps. New users only get Dynamics Explorer by default with a welcome modal; superusers manage grants from the admin dashboard.

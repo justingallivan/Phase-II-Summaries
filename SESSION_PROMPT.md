@@ -1,40 +1,35 @@
-# Session 54 Prompt: Dynamics Explorer Performance + Search Heuristics
+# Session 55 Prompt: Dynamics Explorer Program Field Disambiguation + Search Heuristics
 
-## Session 53 Summary
+## Session 54 Summary
 
-Implemented **app-level access control and new user onboarding** — a full feature allowing superusers to control which of the 13 apps each user can see. New users only get Dynamics Explorer by default with a welcome modal directing them to request additional access.
+Implemented **Dynamics Explorer performance optimizations** — streaming, parallel execution, inline schemas, and frontend memoization. Also diagnosed a query accuracy bug caused by program lookup field confusion.
 
 ### What Was Completed
 
-1. **Database migration (V16)** — `user_app_access` table with `(user_profile_id, app_key)` unique constraint
-2. **App registry** — `shared/config/appRegistry.js` as single source of truth for all 13 app definitions (replaces duplicate arrays in Layout.js and index.js)
-3. **App access API** — `pages/api/app-access.js` with GET/POST/DELETE; superuser-only mutations, auth-disabled mode returns all apps
-4. **Client-side context** — `AppAccessContext.js` fetches allowed apps on mount, exposes `hasAccess(appKey)` and `isSuperuser`
-5. **Nav + home page filtering** — Layout.js and index.js now only show accessible apps; Admin link restricted to superusers
-6. **Page-level access guard** — `RequireAppAccess.js` wraps all 13 app pages; blocks direct URL access with "Access Not Available" message
-7. **New user auto-provisioning** — NextAuth signIn callback grants `dynamics-explorer` by default; `WelcomeModal.js` shown on first login
-8. **Admin dashboard UI** — Checkbox grid (users x apps) with local edit tracking, amber highlights for changes, Save/Discard buttons
-9. **Backfill** — Script and execution: all 7 existing users granted all 13 apps (91 grants)
-10. **Documentation** — Updated CLAUDE.md and MEMORY.md; created `docs/TODO_EMAIL_NOTIFICATIONS.md` for deferred email feature
+1. **Inline top 4 table schemas** — Embedded full field schemas for `akoya_request`, `account`, `contact`, `akoya_requestpayment` directly in the system prompt. Eliminates 1 Claude API round-trip (~1-3s) for ~80% of queries.
+2. **Parallel DB queries** — `getUserRole()` and `getActiveRestrictions()` now run via `Promise.all()` (~10-50ms saved)
+3. **Parallel tool execution** — Multiple `tool_use` blocks in one round execute via `Promise.allSettled()` instead of sequential loop (100-400ms saved on multi-tool rounds)
+4. **Streaming final response** — Claude API calls use `stream: true`; text-only final responses forward `text_delta` SSE events to the client in real-time for near-zero perceived latency on final text rendering. Tool-use rounds are still buffered.
+5. **Frontend memoization** — `React.memo` on `MessageBubble`, `useMemo` for `parseMarkdownTables`, `useCallback` for `copyMessage`, stable message keys via counter ref
+6. **Diagnosed program field confusion** — Discovered the model confuses `_wmkf_grantprogram_value` (11 high-level areas like "Southern California") with `_akoya_programid_value` (24 GoApply types like "Precollegiate Education"), causing wrong query results
+7. **Added `.env.local` keys** — `CLAUDE_API_KEY` and `AUTH_REQUIRED=false` for local dev
 
 ### Commits
-- `c0da0a8` - Add V16 migration for user_app_access table and app registry
-- `f7e26b7` - Add app access API endpoint for managing per-user app grants
-- `0b80823` - Add AppAccessContext and filter nav/home page by app access
-- `d1bb554` - Add page-level access guard and wrap all 13 app pages
-- `55a5ced` - Auto-provision default apps for new users and add welcome modal
-- `dfdfed6` - Add app access management section to admin dashboard
-- `094913b` - Add backfill script for existing users and email notification TODO doc
-- `71c80b4` - Redesign app access management as checkbox grid with save button
-- `6ff617f` - Update CLAUDE.md with app access control schema, components, and API docs
+- `6fa1ebf` - Optimize Dynamics Explorer performance with streaming, parallel execution, and inline schemas
 
-## Primary Next Step: Dynamics Explorer Performance
+## Primary Next Step: Disambiguate Program Lookup Fields
 
-The Dynamics Explorer app needs performance investigation and optimization. Profile the app to identify bottlenecks (initial load time, query latency, SSE streaming overhead, token usage). Consider:
-- Is the initial page load slow due to component size or API calls?
-- Are agentic tool rounds taking too long?
-- Is conversation compaction working effectively?
-- Could caching help (schema metadata, common queries)?
+**ACTION REQUIRED: Talk to someone who knows the CRM database** to clarify the semantic difference between these two program fields on `akoya_request`:
+
+**`_wmkf_grantprogram_value` → `wmkf_grantprogram` (11 values):**
+Discretionary (DISC), Emeritus (EMER), Honorarium (HON), Law (LAW), Memorial (MEM), Other (MISC), Research (RES), Southern California (SOCAL), Strategic Fund (STRAT), Undergraduate Education (UE), Young Scholars (YS)
+
+**`_akoya_programid_value` → `akoya_program` (24 values):**
+Arts & Culture (AC), Bridge Funding (BR), Chair's Grants (CGP), Civic & Community (CC), Directors' Directed (DDGP), Directors' Matching (DMGP), Disaster Relief (DR), Early Childhood (EC), Emeritus (EGP), Employee Matching (EMGP), Health Care (HC), Law and Legal Administration (LW) x2, Medical Research (MR), Memorial (MGP), Miscellaneous (MS), Precollegiate Education (EP), Research Reviewer (RR), Science and Engineering Research (SE), Senior Staff Directed (SSDGP), Staff Directed (SDGP), Strategic Fund (SF), Undergraduate Education - Liberal Arts (LA), Undergraduate Education - Science & Engineering (UG)
+
+**Example failure:** Request 1001159 (Two Bit Circus Foundation) has `_wmkf_grantprogram_value` = "Southern California" and `_akoya_programid_value` = "Precollegiate Education". The model searched `akoya_program` for "Southern California", found nothing, and reported 0 active requests.
+
+**After clarification:** Update the inline schema annotations in `shared/config/prompts/dynamics-explorer.js` to list all values for both tables and explain when to use each field. This may also require updating the system prompt rules.
 
 ## Other Potential Next Steps
 
@@ -43,7 +38,6 @@ The Dynamics Explorer app needs performance investigation and optimization. Prof
 - Common field name aliases (server-side mapping of wrong → correct names)
 - Smart describe_table injection on query failure
 - Lookup table auto-resolution (GUID fields)
-- See SESSION 53's detailed ideas list
 
 ### 2. Deferred Email Notifications
 - Automated admin notification when new users sign up
@@ -62,28 +56,22 @@ The Dynamics Explorer app needs performance investigation and optimization. Prof
 
 | File | Purpose |
 |------|---------|
-| `shared/config/appRegistry.js` | Single source of truth for all 13 app definitions |
-| `shared/context/AppAccessContext.js` | React context for client-side access checking |
-| `shared/components/RequireAppAccess.js` | Page-level access guard |
-| `shared/components/WelcomeModal.js` | First-login welcome modal |
-| `pages/api/app-access.js` | CRUD API for app grants |
-| `pages/admin.js` | Admin dashboard (health, usage, roles, app access) |
-| `pages/api/auth/[...nextauth].js` | NextAuth with auto-provisioning |
-| `scripts/backfill-app-access.js` | One-time backfill for existing users |
-| `pages/api/dynamics-explorer/chat.js` | Dynamics Explorer agentic chat API |
-| `shared/config/prompts/dynamics-explorer.js` | Dynamics Explorer system prompt + tools |
+| `shared/config/prompts/dynamics-explorer.js` | System prompt + tools + TABLE_ANNOTATIONS (inline schemas here) |
+| `pages/api/dynamics-explorer/chat.js` | Agentic chat API (streaming, parallel execution) |
+| `pages/dynamics-explorer.js` | Chat frontend (memoized, text_delta streaming) |
 | `lib/services/dynamics-service.js` | Dynamics CRM API service |
+| `shared/config/appRegistry.js` | Single source of truth for all 13 app definitions |
 
 ## Testing
 
 ```bash
 npm run dev                              # Run development server
 npm run build                            # Verify build succeeds
-node scripts/setup-database.js           # Run all migrations (idempotent)
-node scripts/backfill-app-access.js      # Grant all apps to existing users
 ```
 
-Verification steps:
-- As superuser: all apps visible, admin dashboard shows checkbox grid, can grant/revoke
-- As new user: only Dynamics Explorer in nav/home, welcome modal appears, other URLs show "Access Not Available"
-- Dev mode (`AUTH_REQUIRED=false`): all apps accessible, no access control enforced
+Test Dynamics Explorer with:
+- "How many proposals are there?" — should NOT call describe_table (inlined)
+- "Show me 10 most recent proposals" — should query directly
+- "Show me emails for Stanford" — multi-tool round, parallel execution
+- Verify streaming text appears incrementally for the final response
+- Verify tool-use rounds still work correctly (buffered, not streamed)
