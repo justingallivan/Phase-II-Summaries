@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import { useProfile } from '../shared/context/ProfileContext';
+import RequireAppAccess from '../shared/components/RequireAppAccess';
 
 // ─── Markdown table parser ───
 
@@ -114,7 +115,7 @@ const EXAMPLE_QUERIES = [
 
 // ─── Main Page ───
 
-export default function DynamicsExplorer() {
+function DynamicsExplorer() {
   const [messages, setMessages] = useState([]);
   const [currentMessage, setCurrentMessage] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -618,4 +619,8 @@ function AdminPanel({ userProfileId }) {
       </div>
     </div>
   );
+}
+
+export default function DynamicsExplorerPage() {
+  return <RequireAppAccess appKey="dynamics-explorer"><DynamicsExplorer /></RequireAppAccess>;
 }

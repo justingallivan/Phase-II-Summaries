@@ -21,6 +21,7 @@ import SettingsModal from '../shared/components/SettingsModal';
 import { getModelDisplayName } from '../shared/utils/modelNames';
 import { BASE_CONFIG } from '../shared/config/baseConfig';
 import { useProfile } from '../shared/context/ProfileContext';
+import RequireAppAccess from '../shared/components/RequireAppAccess';
 
 // Helper to extract email from affiliation string (fallback when email field is null)
 function extractEmailFromAffiliation(affiliation) {
@@ -5638,7 +5639,7 @@ function ResearcherRow({ researcher, onClick, isSelected, onToggleSelect }) {
 }
 
 // Main Page Component
-export default function ReviewerFinderPage() {
+function ReviewerFinderPage() {
   const [activeTab, setActiveTab] = useState('search');
   const [myCandidatesRefresh, setMyCandidatesRefresh] = useState(0);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -5759,4 +5760,8 @@ export default function ReviewerFinderPage() {
       />
     </Layout>
   );
+}
+
+export default function ReviewerFinderGuard() {
+  return <RequireAppAccess appKey="reviewer-finder"><ReviewerFinderPage /></RequireAppAccess>;
 }

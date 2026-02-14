@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
+import RequireAppAccess from '../shared/components/RequireAppAccess';
 
 /**
  * Rating badge component
@@ -229,7 +230,7 @@ function ConceptCard({ concept, index }) {
   );
 }
 
-export default function ConceptEvaluator() {
+function ConceptEvaluator() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
@@ -617,4 +618,8 @@ export default function ConceptEvaluator() {
       </div>
     </Layout>
   );
+}
+
+export default function ConceptEvaluatorPage() {
+  return <RequireAppAccess appKey="concept-evaluator"><ConceptEvaluator /></RequireAppAccess>;
 }

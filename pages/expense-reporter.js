@@ -2,8 +2,9 @@ import { useState } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import { FiDollarSign, FiDownload, FiEdit, FiCheck, FiX } from 'react-icons/fi';
+import RequireAppAccess from '../shared/components/RequireAppAccess';
 
-export default function ExpenseReporter() {
+function ExpenseReporter() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
@@ -562,4 +563,8 @@ export default function ExpenseReporter() {
       </div>
     </Layout>
   );
+}
+
+export default function ExpenseReporterPage() {
+  return <RequireAppAccess appKey="expense-reporter"><ExpenseReporter /></RequireAppAccess>;
 }

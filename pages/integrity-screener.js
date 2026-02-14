@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import ApiSettingsPanel from '../shared/components/ApiSettingsPanel';
 import { useProfile } from '../shared/context/ProfileContext';
+import RequireAppAccess from '../shared/components/RequireAppAccess';
 
 /**
  * Confidence badge component
@@ -332,7 +333,7 @@ function ApplicantInputRow({ applicant, index, onUpdate, onRemove, canRemove }) 
 /**
  * Main page component
  */
-export default function IntegrityScreenerPage() {
+function IntegrityScreenerPage() {
   const { currentProfile } = useProfile();
 
   // State
@@ -700,4 +701,8 @@ export default function IntegrityScreenerPage() {
       </div>
     </Layout>
   );
+}
+
+export default function IntegrityScreenerGuard() {
+  return <RequireAppAccess appKey="integrity-screener"><IntegrityScreenerPage /></RequireAppAccess>;
 }

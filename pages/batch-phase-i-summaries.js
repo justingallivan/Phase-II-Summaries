@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
+import RequireAppAccess from '../shared/components/RequireAppAccess';
 
-export default function BatchPhaseISummaries() {
+function BatchPhaseISummaries() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
@@ -364,4 +365,8 @@ export default function BatchPhaseISummaries() {
 
     </Layout>
   );
+}
+
+export default function BatchPhaseISummariesPage() {
+  return <RequireAppAccess appKey="batch-phase-i-summaries"><BatchPhaseISummaries /></RequireAppAccess>;
 }

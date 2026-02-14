@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
+import RequireAppAccess from '../shared/components/RequireAppAccess';
 import {
   PDFReportBuilder,
   downloadPdf,
@@ -627,7 +628,7 @@ function ConceptResult({ concept, index }) {
   );
 }
 
-export default function MultiPerspectiveEvaluator() {
+function MultiPerspectiveEvaluator() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
@@ -1210,4 +1211,8 @@ export default function MultiPerspectiveEvaluator() {
       </div>
     </Layout>
   );
+}
+
+export default function MultiPerspectiveEvaluatorPage() {
+  return <RequireAppAccess appKey="multi-perspective-evaluator"><MultiPerspectiveEvaluator /></RequireAppAccess>;
 }

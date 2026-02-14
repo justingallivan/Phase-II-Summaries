@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
+import RequireAppAccess from '../shared/components/RequireAppAccess';
 
-export default function FundingGapAnalyzer() {
+function FundingGapAnalyzer() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
@@ -504,4 +505,8 @@ export default function FundingGapAnalyzer() {
       </div>
     </Layout>
   );
+}
+
+export default function FundingGapAnalyzerPage() {
+  return <RequireAppAccess appKey="funding-gap-analyzer"><FundingGapAnalyzer /></RequireAppAccess>;
 }

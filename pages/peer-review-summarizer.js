@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
+import RequireAppAccess from '../shared/components/RequireAppAccess';
 
-export default function PeerReviewSummarizer() {
+function PeerReviewSummarizer() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
@@ -270,4 +271,8 @@ export default function PeerReviewSummarizer() {
       )}
     </Layout>
   );
+}
+
+export default function PeerReviewSummarizerPage() {
+  return <RequireAppAccess appKey="peer-review-summarizer"><PeerReviewSummarizer /></RequireAppAccess>;
 }

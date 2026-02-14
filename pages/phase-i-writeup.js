@@ -2,8 +2,9 @@ import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import ResultsDisplay from '../shared/components/ResultsDisplay';
+import RequireAppAccess from '../shared/components/RequireAppAccess';
 
-export default function PhaseIWriteup() {
+function PhaseIWriteup() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
@@ -212,4 +213,8 @@ export default function PhaseIWriteup() {
       )}
     </Layout>
   );
+}
+
+export default function PhaseIWriteupPage() {
+  return <RequireAppAccess appKey="phase-i-writeup"><PhaseIWriteup /></RequireAppAccess>;
 }

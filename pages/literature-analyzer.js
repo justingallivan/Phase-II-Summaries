@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
+import RequireAppAccess from '../shared/components/RequireAppAccess';
 
 /**
  * Single paper result card
@@ -350,7 +351,7 @@ function SynthesisSection({ synthesis }) {
   );
 }
 
-export default function LiteratureAnalyzer() {
+function LiteratureAnalyzer() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
@@ -798,4 +799,8 @@ export default function LiteratureAnalyzer() {
       </div>
     </Layout>
   );
+}
+
+export default function LiteratureAnalyzerPage() {
+  return <RequireAppAccess appKey="literature-analyzer"><LiteratureAnalyzer /></RequireAppAccess>;
 }
