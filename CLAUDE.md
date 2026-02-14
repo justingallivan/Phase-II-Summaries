@@ -137,10 +137,18 @@ All APIs return consistent structures:
 ### Shared Components
 
 Located in `shared/components/`:
-- `Layout.js` - Main layout with navigation
+- `Layout.js` - Main layout with navigation (filtered by app access)
 - `FileUploaderSimple.js` - File upload component
 - `ApiKeyManager.js` - API key management
 - `ResultsDisplay.js` - Results visualization
+- `RequireAppAccess.js` - Page-level access guard (wraps all 13 app pages)
+- `WelcomeModal.js` - First-login welcome modal for new users
+
+### Shared Config
+
+Located in `shared/config/`:
+- `appRegistry.js` - Single source of truth for all 13 app definitions (keys, names, routes, icons, categories)
+- `baseConfig.js` - Per-app model configuration
 
 ### Service Classes
 
@@ -201,6 +209,16 @@ Located in `lib/services/`:
 - `proposal_searches` - Proposal analysis results
 - `reviewer_suggestions` - Saved candidates per proposal
 
+### App Access Control
+
+**`user_app_access`** - Per-user app grants
+| Column | Type | Description |
+|--------|------|-------------|
+| user_profile_id | INTEGER | FK to user_profiles |
+| app_key | VARCHAR(100) | App identifier (matches appRegistry.js keys) |
+| granted_by | INTEGER | FK to user_profiles (who granted) |
+| UNIQUE | | (user_profile_id, app_key) |
+
 ### Integrity Screener Tables
 
 - `retractions` - Retraction Watch data (~63,000+ entries)
@@ -241,6 +259,11 @@ Located in `lib/services/`:
 - `GET/POST/DELETE /api/dynamics-explorer/roles` - User role management (superuser only)
 - `GET/POST/DELETE /api/dynamics-explorer/restrictions` - Table/field restrictions (superuser only)
 
+### App Access Control
+- `GET /api/app-access` - Get caller's allowed apps (`?all=true` for superuser admin view)
+- `POST /api/app-access` - Grant apps to a user (superuser only)
+- `DELETE /api/app-access` - Revoke apps from a user (superuser only)
+
 ### User Management
 - `GET/POST/PATCH/DELETE /api/user-profiles` - Profile CRUD
 - `GET/POST/DELETE /api/user-preferences` - Preference management
@@ -273,6 +296,7 @@ Located in `lib/services/`:
 | `docs/CREDENTIALS_RUNBOOK.md` | Environment variables, secret rotation, diagnostics |
 | `docs/SYSTEM_OVERVIEW.md` | One-page system overview for administrators |
 | `docs/SECURITY_ARCHITECTURE.md` | Security architecture and threat model |
+| `docs/TODO_EMAIL_NOTIFICATIONS.md` | Deferred new-user email notification setup |
 
 ---
 
