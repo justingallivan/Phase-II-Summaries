@@ -432,6 +432,19 @@ const v15Statements = [
   `CREATE INDEX IF NOT EXISTS idx_api_usage_created ON api_usage_log(created_at DESC)`,
 ];
 
+// V16: App-level access control
+const v16Statements = [
+  `CREATE TABLE IF NOT EXISTS user_app_access (
+    id SERIAL PRIMARY KEY,
+    user_profile_id INTEGER NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+    app_key VARCHAR(100) NOT NULL,
+    granted_by INTEGER REFERENCES user_profiles(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_profile_id, app_key)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_user_app_access_user ON user_app_access(user_profile_id)`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -810,6 +823,25 @@ async function runMigration() {
       }
     }
 
+    // Run V16 table creation (App-level access control)
+    console.log(`\nApplying v16 schema updates - App access control (${v16Statements.length} statements)...`);
+    for (let i = 0; i < v16Statements.length; i++) {
+      const statement = v16Statements[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v16-${i + 1}/${v16Statements.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v16-${i + 1}/${v16Statements.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v16-${i + 1}/${v16Statements.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -877,7 +909,9 @@ async function runMigration() {
     console.log('\nV15 new table (API usage logging):');
     console.log('  • api_usage_log (user_profile_id, app_name, model, input_tokens,');
     console.log('    output_tokens, estimated_cost_cents, latency_ms, request_status)');
-    console.log('\nIndexes created: 43');
+    console.log('\nV16 new table (App access control):');
+    console.log('  • user_app_access (user_profile_id, app_key, granted_by)');
+    console.log('\nIndexes created: 44');
 
   } catch (error) {
     console.error('\n✗ Migration failed:', error.message);
