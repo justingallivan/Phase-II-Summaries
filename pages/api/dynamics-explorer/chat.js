@@ -12,6 +12,7 @@
 
 import { requireAuth } from '../../../lib/utils/auth';
 import { sql } from '@vercel/postgres';
+import * as XLSX from 'xlsx';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
 import { buildSystemPrompt, TOOL_DEFINITIONS, TABLE_ANNOTATIONS } from '../../../shared/config/prompts/dynamics-explorer';
 import { getModelForApp, getFallbackModelForApp } from '../../../shared/config/baseConfig';
@@ -34,6 +35,7 @@ const TOOL_CHAR_LIMITS = {
   get_related: 12000,
   find_reports_due: 12000,
   describe_table: 12000,
+  export_csv: 2000,
 };
 
 export default async function handler(req, res) {
@@ -145,7 +147,7 @@ export default async function handler(req, res) {
         const startTime = Date.now();
         let result;
         try {
-          result = await executeTool(name, input);
+          result = await executeTool(name, input, sendEvent);
         } catch (err) {
           console.log(`[DynExp] Round ${round} ${name} ERROR:`, err.message.substring(0, 200));
           result = { error: err.message };
@@ -282,6 +284,7 @@ function summarizeToolResult(content) {
     if (data.emailCount !== undefined) return `Found ${data.emailCount} emails`;
     if (data.reportCount !== undefined) return `Found ${data.reportCount} reports`;
     if (data.fields) return `Table schema returned`;
+    if (data.exportedCount !== undefined) return `Exported ${data.exportedCount} records`;
     return content.substring(0, 100) + '...';
   } catch {
     return content.substring(0, 100) + '...';
@@ -479,7 +482,7 @@ function sanitizeSelect(select) {
   return fields.length > 0 ? fields.join(',') : undefined;
 }
 
-async function executeTool(name, input) {
+async function executeTool(name, input, sendEvent) {
   switch (name) {
     case 'search':
       return await searchRecords(input);
@@ -514,6 +517,9 @@ async function executeTool(name, input) {
 
     case 'find_reports_due':
       return await findReportsDue(input);
+
+    case 'export_csv':
+      return await exportCsv(input, sendEvent);
 
     default:
       throw new Error(`Unknown tool: ${name}`);
@@ -1335,6 +1341,121 @@ async function handleReviewerRequests(reviewerId, buildDateFilter) {
   };
 }
 
+// ─── Export to Excel ───
+
+const MAX_XLSX_BYTES = 3 * 1024 * 1024; // 3MB buffer limit (~4MB base64)
+
+/**
+ * Export query results as a downloadable Excel file.
+ * Fetches all matching records, generates .xlsx, sends via SSE.
+ */
+async function exportCsv({ table_name, select, filter, orderby, filename }, sendEvent) {
+  const cleanSelect = sanitizeSelect(select);
+  const entitySet = await DynamicsService.resolveEntitySetName(table_name);
+  const result = await DynamicsService.queryAllRecords(entitySet, {
+    select: cleanSelect,
+    filter,
+    orderby,
+  });
+
+  if (!result.records.length) {
+    return { exportedCount: 0, message: 'No records matched the filter. No file generated.' };
+  }
+
+  const records = result.records.map(stripEmpty);
+
+  // Generate xlsx buffer
+  let xlsxBuf = recordsToExcel(records, cleanSelect, table_name);
+
+  // Safety: if xlsx exceeds size limit, trim records
+  let capped = result.capped;
+  if (xlsxBuf.length > MAX_XLSX_BYTES) {
+    const ratio = MAX_XLSX_BYTES / xlsxBuf.length;
+    const trimCount = Math.floor(records.length * ratio * 0.9); // 10% margin
+    records.length = trimCount;
+    xlsxBuf = recordsToExcel(records, cleanSelect, table_name);
+    capped = true;
+  }
+
+  const base64 = Buffer.from(xlsxBuf).toString('base64');
+  const columns = cleanSelect ? cleanSelect.split(',').map(f => f.trim()) : Object.keys(records[0] || {});
+  const exportFilename = (filename || `${table_name}-export`).replace(/[^a-zA-Z0-9_-]/g, '_') + '.xlsx';
+
+  sendEvent('file_ready', {
+    base64,
+    filename: exportFilename,
+    recordCount: records.length,
+    totalCount: result.totalCount,
+    capped,
+    columns,
+  });
+
+  return {
+    exportedCount: records.length,
+    totalCount: result.totalCount,
+    capped,
+    columnCount: columns.length,
+    filename: exportFilename,
+    message: `Excel file exported: ${records.length} records, ${columns.length} columns.${capped ? ` Capped at limit (${result.totalCount} total matched).` : ''}`,
+  };
+}
+
+/**
+ * Convert records to an xlsx buffer using SheetJS.
+ * Prefers _formatted values for human-readable output.
+ */
+function recordsToExcel(records, selectStr, sheetName) {
+  // Determine columns from $select
+  const selectFields = selectStr
+    ? selectStr.split(',').map(f => f.trim())
+    : Object.keys(records[0] || {});
+
+  // Build rows, preferring _formatted values
+  const rows = records.map(r => {
+    const row = {};
+    for (const field of selectFields) {
+      const formatted = r[`${field}_formatted`];
+      const header = cleanColumnName(field);
+      row[header] = formatted !== undefined ? formatted : (r[field] ?? '');
+    }
+    return row;
+  });
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+
+  // Auto-size columns based on content
+  const headers = Object.keys(rows[0] || {});
+  ws['!cols'] = headers.map(h => {
+    let maxLen = h.length;
+    for (const row of rows.slice(0, 100)) {
+      const val = String(row[h] || '');
+      if (val.length > maxLen) maxLen = val.length;
+    }
+    return { wch: Math.min(maxLen + 2, 50) };
+  });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'Export').substring(0, 31));
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+}
+
+/**
+ * Clean column names: strip akoya_/wmkf_ prefixes, _value suffix,
+ * and convert to Title Case.
+ */
+function cleanColumnName(field) {
+  let name = field
+    .replace(/^_/, '')
+    .replace(/_value$/, '')
+    .replace(/^akoya_/, '')
+    .replace(/^wmkf_/, '');
+  // Convert snake_case to Title Case
+  return name
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
 // ─── Existing composite tools (kept) ───
 
 /**
@@ -1477,6 +1598,7 @@ function getThinkingMessage(toolName, input) {
     case 'query_records': return `Querying ${input.table_name}...`;
     case 'count_records': return `Counting ${input.table_name}...`;
     case 'find_reports_due': return `Finding reports due ${input.date_from ? 'from ' + input.date_from.substring(0, 10) : ''}...`;
+    case 'export_csv': return `Exporting ${input.table_name || 'data'} as Excel...`;
     default: return `Running ${toolName}...`;
   }
 }

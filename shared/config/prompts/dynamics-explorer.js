@@ -342,6 +342,7 @@ TOOLS — choose the right one:
 - query_records: structured OData queries (date ranges, exact filters, aggregation). For tables in INLINE SCHEMAS, you already know the fields — query directly.
 - count_records: count records with optional filter
 - find_reports_due: all reporting requirements in a date range
+- export_csv: generate a downloadable Excel file for large result sets. Requires $filter. Use when user asks to export, download, or wants the full dataset.
 
 RULES:
 - Complete the task in as FEW tool calls as possible.
@@ -350,6 +351,7 @@ RULES:
 - For OTHER tables, ALWAYS call describe_table BEFORE your first query_records. Do NOT guess field names — they are non-obvious (e.g. akoya_requestnum NOT akoya_requestnumber, akoya_program NOT akoya_name).
 - For org name lookups, review ALL results and pick the exact match.
 - Present results as markdown tables. Show totalCount if results are truncated.
+- When the user asks to "export", "download", "spreadsheet", or wants the full dataset, use export_csv. It fetches ALL matching records (up to 5000) and generates a downloadable Excel file.
 - OData syntax: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z
 - Lookup tables (like akoya_program, wmkf_grantprogram): to filter requests by program name, first query the lookup table to get the GUID, then filter requests by the _value lookup field. Example: "Bridge Funding" → query akoya_programs for GUID → filter akoya_requests by _akoya_programid_value eq {guid}.
 
@@ -479,6 +481,21 @@ export const TOOL_DEFINITIONS = [
         date_to: { type: 'string', description: 'End date exclusive (ISO format, e.g. 2026-03-01T00:00:00Z)' },
       },
       required: ['date_from', 'date_to'],
+    },
+  },
+  {
+    name: 'export_csv',
+    description: 'Export query results as a downloadable Excel file. Use when user asks to export, download, or save data, or when a large dataset is needed. Fetches ALL matching records (up to 5000) and generates an .xlsx file. Requires $filter.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        table_name: { type: 'string', description: 'Table to export from (e.g. "akoya_request")' },
+        select: { type: 'string', description: 'Comma-separated fields to include as columns' },
+        filter: { type: 'string', description: 'OData $filter (required — no unfiltered dumps)' },
+        orderby: { type: 'string', description: 'OData $orderby' },
+        filename: { type: 'string', description: 'Download filename (without extension, e.g. "proposals-2025"). Auto-generated if omitted.' },
+      },
+      required: ['table_name', 'select', 'filter'],
     },
   },
 ];

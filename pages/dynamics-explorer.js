@@ -127,6 +127,7 @@ function DynamicsExplorer() {
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const messageIdRef = useRef(0);
+  const pendingFileExportsRef = useRef([]);
 
   let profileContext = null;
   try {
@@ -224,6 +225,9 @@ function DynamicsExplorer() {
               case 'thinking':
                 setThinkingStatus(parsed.message || 'Processing...');
                 break;
+              case 'file_ready':
+                pendingFileExportsRef.current.push(parsed);
+                break;
               case 'text_delta':
                 // Stream text incrementally — create or update streaming message
                 if (!streamingMsgId) {
@@ -250,12 +254,17 @@ function DynamicsExplorer() {
                 // Non-streamed full response (fallback)
                 assistantContent = parsed.content || '';
                 break;
-              case 'complete':
+              case 'complete': {
+                const fileExports = pendingFileExportsRef.current.length > 0
+                  ? [...pendingFileExportsRef.current]
+                  : undefined;
+                pendingFileExportsRef.current = [];
+
                 if (streamingMsgId) {
                   // Finalize streaming message
                   setMessages(prev => prev.map(m =>
                     m.id === streamingMsgId
-                      ? { ...m, content: assistantContent, isStreaming: false, rounds: parsed.rounds }
+                      ? { ...m, content: assistantContent, isStreaming: false, rounds: parsed.rounds, fileExports }
                       : m
                   ));
                 } else {
@@ -266,11 +275,13 @@ function DynamicsExplorer() {
                     content: assistantContent,
                     timestamp: Date.now(),
                     rounds: parsed.rounds,
+                    fileExports,
                   }]);
                 }
                 setIsProcessing(false);
                 setThinkingStatus('');
                 break;
+              }
               case 'error':
                 setMessages(prev => [...prev, {
                   id: ++messageIdRef.current,
@@ -526,6 +537,11 @@ const MessageBubble = React.memo(function MessageBubble({ message, onCopy }) {
           ))}
         </div>
 
+        {/* File download buttons */}
+        {message.fileExports?.map((fe, i) => (
+          <FileDownloadButton key={i} fileExport={fe} />
+        ))}
+
         {/* Actions */}
         {!isUser && (
           <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
@@ -541,6 +557,44 @@ const MessageBubble = React.memo(function MessageBubble({ message, onCopy }) {
     </div>
   );
 });
+
+// ─── File Download Button ───
+
+function FileDownloadButton({ fileExport }) {
+  const handleDownload = useCallback(() => {
+    const bytes = Uint8Array.from(atob(fileExport.base64), c => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileExport.filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [fileExport]);
+
+  return (
+    <div className="my-3 flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-4 py-3 shadow-sm">
+      <div className="text-2xl flex-shrink-0">📊</div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium text-gray-900 truncate">{fileExport.filename}</div>
+        <div className="text-xs text-gray-500">
+          {fileExport.recordCount.toLocaleString()} rows, {fileExport.columns.length} columns
+          {fileExport.capped && (
+            <span className="text-amber-600 ml-1">
+              (capped — {fileExport.totalCount.toLocaleString()} total matched)
+            </span>
+          )}
+        </div>
+      </div>
+      <button
+        onClick={handleDownload}
+        className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors flex-shrink-0"
+      >
+        Download
+      </button>
+    </div>
+  );
+}
 
 // ─── Data Table ───
 
