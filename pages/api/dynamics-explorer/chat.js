@@ -17,7 +17,7 @@ import { DynamicsService } from '../../../lib/services/dynamics-service';
 import { buildSystemPrompt, TOOL_DEFINITIONS, TABLE_ANNOTATIONS } from '../../../shared/config/prompts/dynamics-explorer';
 import { getModelForApp, getFallbackModelForApp } from '../../../shared/config/baseConfig';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
-import { logUsage } from '../../../lib/utils/usage-logger';
+import { logUsage, estimateCostCents } from '../../../lib/utils/usage-logger';
 
 export const config = {
   api: {
@@ -35,7 +35,7 @@ const TOOL_CHAR_LIMITS = {
   get_related: 12000,
   find_reports_due: 12000,
   describe_table: 12000,
-  export_csv: 2000,
+  export_csv: 4000,
 };
 
 export default async function handler(req, res) {
@@ -147,7 +147,7 @@ export default async function handler(req, res) {
         const startTime = Date.now();
         let result;
         try {
-          result = await executeTool(name, input, sendEvent);
+          result = await executeTool(name, input, sendEvent, userProfileId);
         } catch (err) {
           console.log(`[DynExp] Round ${round} ${name} ERROR:`, err.message.substring(0, 200));
           result = { error: err.message };
@@ -285,6 +285,7 @@ function summarizeToolResult(content) {
     if (data.reportCount !== undefined) return `Found ${data.reportCount} reports`;
     if (data.fields) return `Table schema returned`;
     if (data.exportedCount !== undefined) return `Exported ${data.exportedCount} records`;
+    if (data.estimatedCount !== undefined) return `Estimate: ${data.estimatedCount} records, ~$${(data.estimatedCostCents / 100).toFixed(2)}`;
     return content.substring(0, 100) + '...';
   } catch {
     return content.substring(0, 100) + '...';
@@ -482,7 +483,7 @@ function sanitizeSelect(select) {
   return fields.length > 0 ? fields.join(',') : undefined;
 }
 
-async function executeTool(name, input, sendEvent) {
+async function executeTool(name, input, sendEvent, userProfileId) {
   switch (name) {
     case 'search':
       return await searchRecords(input);
@@ -519,7 +520,7 @@ async function executeTool(name, input, sendEvent) {
       return await findReportsDue(input);
 
     case 'export_csv':
-      return await exportCsv(input, sendEvent);
+      return await exportCsv(input, sendEvent, userProfileId);
 
     default:
       throw new Error(`Unknown tool: ${name}`);
@@ -1347,11 +1348,81 @@ const MAX_XLSX_BYTES = 3 * 1024 * 1024; // 3MB buffer limit (~4MB base64)
 
 /**
  * Export query results as a downloadable Excel file.
- * Fetches all matching records, generates .xlsx, sends via SSE.
+ * Three-way branch:
+ * 1. No process_instruction → existing behavior (straight export)
+ * 2. process_instruction without confirmed → estimate mode
+ * 3. process_instruction with confirmed: true → full AI batch processing + export
  */
-async function exportCsv({ table_name, select, filter, orderby, filename }, sendEvent) {
+async function exportCsv({ table_name, select, filter, orderby, filename, process_instruction, confirmed }, sendEvent, userProfileId) {
   const cleanSelect = sanitizeSelect(select);
   const entitySet = await DynamicsService.resolveEntitySetName(table_name);
+
+  // ─── Branch 1: No AI processing — straight export (unchanged) ───
+  if (!process_instruction) {
+    const result = await DynamicsService.queryAllRecords(entitySet, {
+      select: cleanSelect,
+      filter,
+      orderby,
+    });
+
+    if (!result.records.length) {
+      return { exportedCount: 0, message: 'No records matched the filter. No file generated.' };
+    }
+
+    const records = result.records.map(stripEmpty);
+    return generateExcelExport(records, cleanSelect, table_name, filename, result.totalCount, result.capped, sendEvent);
+  }
+
+  // ─── Branch 2: Estimate mode — count records, sample AI processing ───
+  if (!confirmed) {
+    // Count total records
+    const count = await DynamicsService.countRecords(entitySet, filter);
+
+    if (count === 0) {
+      return { estimatedCount: 0, message: 'No records matched the filter.' };
+    }
+
+    // Fetch 3 sample records for AI preview
+    const sampleResult = await DynamicsService.queryRecords(entitySet, {
+      select: cleanSelect,
+      filter,
+      top: 3,
+    });
+
+    if (!sampleResult.records.length) {
+      return { estimatedCount: 0, message: 'No records matched the filter.' };
+    }
+
+    // Run AI on first sample to determine columns and preview output
+    const sampleRecord = stripEmpty(sampleResult.records[0]);
+    const { sampleOutput, usage } = await runSampleProcessing(sampleRecord, process_instruction, userProfileId);
+
+    // Extrapolate cost: (tokens per record) × total records ÷ batch size
+    const recordsPerBatch = 15;
+    const totalBatches = Math.ceil(Math.min(count, 5000) / recordsPerBatch);
+    // Estimate per-batch tokens as sample tokens × batch size (with some overhead)
+    const estInputPerBatch = (usage.input_tokens || 500) * recordsPerBatch * 0.8; // records share system prompt
+    const estOutputPerBatch = (usage.output_tokens || 100) * recordsPerBatch;
+    const totalInputTokens = estInputPerBatch * totalBatches;
+    const totalOutputTokens = estOutputPerBatch * totalBatches;
+
+    const model = getModelForApp('dynamics-explorer');
+    const costCents = estimateCostCents(model, totalInputTokens, totalOutputTokens) || 0;
+    const estimatedTimeSeconds = Math.ceil(totalBatches / 3) * 2; // 3 concurrent, ~2s each
+
+    return {
+      estimatedCount: Math.min(count, 5000),
+      totalMatched: count,
+      capped: count > 5000,
+      sampleOutput,
+      aiColumns: Object.keys(sampleOutput),
+      estimatedCostCents: Math.round(costCents * 100) / 100,
+      estimatedTimeSeconds,
+      message: `Found ${count} records${count > 5000 ? ' (will export first 5000)' : ''}. Sample AI output shown. Estimated cost: ~$${(costCents / 100).toFixed(2)}, time: ~${estimatedTimeSeconds}s. Ask the user to confirm before proceeding.`,
+    };
+  }
+
+  // ─── Branch 3: Confirmed — full AI batch processing + export ───
   const result = await DynamicsService.queryAllRecords(entitySet, {
     select: cleanSelect,
     filter,
@@ -1362,42 +1433,259 @@ async function exportCsv({ table_name, select, filter, orderby, filename }, send
     return { exportedCount: 0, message: 'No records matched the filter. No file generated.' };
   }
 
-  const records = result.records.map(stripEmpty);
+  let records = result.records.map(stripEmpty);
 
-  // Generate xlsx buffer
-  let xlsxBuf = recordsToExcel(records, cleanSelect, table_name);
+  // Run AI batch processing
+  const { processedRecords, failedCount } = await processRecordsBatch(
+    records, process_instruction, sendEvent, userProfileId
+  );
+
+  // Build combined select string including AI columns
+  const aiColumns = Object.keys(processedRecords[0] || {}).filter(k => k.startsWith('ai_'));
+  const combinedSelect = cleanSelect
+    ? cleanSelect + ',' + aiColumns.join(',')
+    : null;
+
+  return generateExcelExport(
+    processedRecords, combinedSelect, table_name, filename,
+    result.totalCount, result.capped, sendEvent, failedCount
+  );
+}
+
+/**
+ * Generate Excel file and send via SSE. Shared by plain and AI-processed exports.
+ */
+function generateExcelExport(records, selectStr, tableName, filename, totalCount, capped, sendEvent, failedCount) {
+  let xlsxBuf = recordsToExcel(records, selectStr, tableName);
 
   // Safety: if xlsx exceeds size limit, trim records
-  let capped = result.capped;
   if (xlsxBuf.length > MAX_XLSX_BYTES) {
     const ratio = MAX_XLSX_BYTES / xlsxBuf.length;
-    const trimCount = Math.floor(records.length * ratio * 0.9); // 10% margin
+    const trimCount = Math.floor(records.length * ratio * 0.9);
     records.length = trimCount;
-    xlsxBuf = recordsToExcel(records, cleanSelect, table_name);
+    xlsxBuf = recordsToExcel(records, selectStr, tableName);
     capped = true;
   }
 
   const base64 = Buffer.from(xlsxBuf).toString('base64');
-  const columns = cleanSelect ? cleanSelect.split(',').map(f => f.trim()) : Object.keys(records[0] || {});
-  const exportFilename = (filename || `${table_name}-export`).replace(/[^a-zA-Z0-9_-]/g, '_') + '.xlsx';
+  const columns = selectStr ? selectStr.split(',').map(f => f.trim()) : Object.keys(records[0] || {});
+  const exportFilename = (filename || `${tableName}-export`).replace(/[^a-zA-Z0-9_-]/g, '_') + '.xlsx';
 
   sendEvent('file_ready', {
     base64,
     filename: exportFilename,
     recordCount: records.length,
-    totalCount: result.totalCount,
+    totalCount,
     capped,
     columns,
   });
 
-  return {
+  const result = {
     exportedCount: records.length,
-    totalCount: result.totalCount,
+    totalCount,
     capped,
     columnCount: columns.length,
     filename: exportFilename,
-    message: `Excel file exported: ${records.length} records, ${columns.length} columns.${capped ? ` Capped at limit (${result.totalCount} total matched).` : ''}`,
+    message: `Excel file exported: ${records.length} records, ${columns.length} columns.${capped ? ` Capped at limit (${totalCount} total matched).` : ''}`,
   };
+
+  if (failedCount > 0) {
+    result.failedCount = failedCount;
+    result.message += ` ${failedCount} records failed AI processing (columns left blank).`;
+  }
+
+  return result;
+}
+
+// ─── AI Batch Processing ───
+
+/**
+ * Non-streaming Claude API call for batch processing.
+ * No tools, no text streaming — just returns raw text and usage.
+ */
+async function callClaudeBatch({ systemPrompt, userMessage, userProfileId }) {
+  const apiKey = process.env.CLAUDE_API_KEY;
+  const model = getModelForApp('dynamics-explorer');
+
+  const body = {
+    model,
+    max_tokens: 4096,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userMessage }],
+  };
+
+  const callHeaders = {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION,
+  };
+
+  const startTime = Date.now();
+
+  let resp = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
+    method: 'POST',
+    headers: callHeaders,
+    body: JSON.stringify(body),
+  });
+
+  // Rate limit: wait and retry once
+  if (resp.status === 429) {
+    const retryAfter = parseInt(resp.headers.get('retry-after') || '30', 10);
+    const waitMs = Math.min(retryAfter, 60) * 1000;
+    console.log(`[DynExp Export] Rate limited, waiting ${waitMs / 1000}s...`);
+    await new Promise(resolve => setTimeout(resolve, waitMs));
+    resp = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
+      method: 'POST',
+      headers: callHeaders,
+      body: JSON.stringify(body),
+    });
+  }
+
+  if (!resp.ok) {
+    const errorBody = await resp.text();
+    throw new Error(`Claude API error (${resp.status}): ${errorBody.substring(0, 200)}`);
+  }
+
+  const data = await resp.json();
+  const text = data.content?.find(b => b.type === 'text')?.text || '';
+  const usage = data.usage || {};
+
+  logUsage({
+    userProfileId,
+    appName: 'dynamics-explorer-export',
+    model: data.model || model,
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
+    latencyMs: Date.now() - startTime,
+  });
+
+  return { text, usage };
+}
+
+/**
+ * Run AI instruction on 1 sample record to determine output column names and preview.
+ * Returns { sampleOutput: { col1: val1, ... }, usage }.
+ */
+async function runSampleProcessing(record, processInstruction, userProfileId) {
+  const systemPrompt = `You are a data processing assistant. The user will give you a record from a CRM database and an instruction for what to extract or analyze.
+
+Return ONLY a JSON object with your results. Choose descriptive snake_case column names based on the instruction (e.g., "keywords", "research_area", "summary"). Keep values concise — suitable for spreadsheet cells.
+
+Example output: {"keywords": "fungi, enzyme catalysis, bioremediation", "research_area": "Environmental Biology"}`;
+
+  const userMessage = `Instruction: ${processInstruction}
+
+Record:
+${JSON.stringify(record, null, 2)}`;
+
+  const { text, usage } = await callClaudeBatch({ systemPrompt, userMessage, userProfileId });
+
+  // Parse the JSON response
+  let sampleOutput;
+  try {
+    // Extract JSON from the response (handle markdown code blocks)
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    sampleOutput = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+  } catch {
+    sampleOutput = { result: text.substring(0, 200) };
+  }
+
+  return { sampleOutput, usage };
+}
+
+/**
+ * Process all records through Claude in batches.
+ * Batches records (15 per call, 3 concurrent), sends progress via SSE.
+ * Returns { processedRecords, failedCount }.
+ */
+async function processRecordsBatch(records, processInstruction, sendEvent, userProfileId) {
+  const BATCH_SIZE = 15;
+  const CONCURRENCY = 3;
+
+  // First, run sample to get column schema
+  const { sampleOutput } = await runSampleProcessing(records[0], processInstruction, userProfileId);
+  const columnNames = Object.keys(sampleOutput);
+
+  const systemPrompt = `You are a data processing assistant. Process each record according to the instruction and return a JSON array of objects.
+
+Each object in the array must have exactly these columns: ${JSON.stringify(columnNames)}
+Return one object per input record, in the same order. Keep values concise — suitable for spreadsheet cells.
+If a record lacks the needed data, use empty strings for the values.
+
+Return ONLY the JSON array, no other text.`;
+
+  // Split records into batches
+  const batches = [];
+  for (let i = 0; i < records.length; i += BATCH_SIZE) {
+    batches.push({ records: records.slice(i, i + BATCH_SIZE), startIndex: i });
+  }
+
+  let processed = 0;
+  let failedCount = 0;
+
+  // Initialize AI columns on all records with empty strings
+  for (const record of records) {
+    for (const col of columnNames) {
+      record[`ai_${col}`] = '';
+    }
+  }
+
+  // Process batches with concurrency limit
+  for (let i = 0; i < batches.length; i += CONCURRENCY) {
+    const chunk = batches.slice(i, i + CONCURRENCY);
+
+    const results = await Promise.allSettled(
+      chunk.map(async (batch) => {
+        const batchRecords = batch.records.map((r, idx) => ({ index: idx + 1, ...r }));
+        const userMessage = `Instruction: ${processInstruction}
+
+Records (${batchRecords.length}):
+${JSON.stringify(batchRecords, null, 1)}`;
+
+        let result;
+        try {
+          result = await callClaudeBatch({ systemPrompt, userMessage, userProfileId });
+        } catch (err) {
+          // Retry once
+          console.log(`[DynExp Export] Batch retry after error: ${err.message.substring(0, 100)}`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          result = await callClaudeBatch({ systemPrompt, userMessage, userProfileId });
+        }
+
+        // Parse the JSON array response
+        const jsonMatch = result.text.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) throw new Error('No JSON array in response');
+        const parsed = JSON.parse(jsonMatch[0]);
+
+        // Merge AI results back into records
+        for (let j = 0; j < batch.records.length && j < parsed.length; j++) {
+          const aiResult = parsed[j];
+          for (const col of columnNames) {
+            records[batch.startIndex + j][`ai_${col}`] = aiResult[col] ?? '';
+          }
+        }
+
+        return batch.records.length;
+      })
+    );
+
+    // Count successes and failures
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        processed += r.value;
+      } else {
+        const chunkIdx = results.indexOf(r);
+        const failedBatch = chunk[chunkIdx];
+        failedCount += failedBatch?.records.length || 0;
+        processed += failedBatch?.records.length || 0;
+        console.log(`[DynExp Export] Batch failed: ${r.reason?.message?.substring(0, 100)}`);
+      }
+    }
+
+    sendEvent('export_progress', { processed, total: records.length, failed: failedCount });
+  }
+
+  return { processedRecords: records, failedCount };
 }
 
 /**
@@ -1441,9 +1729,18 @@ function recordsToExcel(records, selectStr, sheetName) {
 
 /**
  * Clean column names: strip akoya_/wmkf_ prefixes, _value suffix,
- * and convert to Title Case.
+ * and convert to Title Case. AI columns (ai_*) get "AI: " prefix.
  */
 function cleanColumnName(field) {
+  // AI-generated columns get "AI: " prefix
+  if (field.startsWith('ai_')) {
+    const aiName = field.slice(3)
+      .split('_')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    return `AI: ${aiName}`;
+  }
+
   let name = field
     .replace(/^_/, '')
     .replace(/_value$/, '')
@@ -1598,7 +1895,10 @@ function getThinkingMessage(toolName, input) {
     case 'query_records': return `Querying ${input.table_name}...`;
     case 'count_records': return `Counting ${input.table_name}...`;
     case 'find_reports_due': return `Finding reports due ${input.date_from ? 'from ' + input.date_from.substring(0, 10) : ''}...`;
-    case 'export_csv': return `Exporting ${input.table_name || 'data'} as Excel...`;
+    case 'export_csv':
+      if (input.process_instruction && input.confirmed) return `Processing and exporting ${input.table_name || 'data'} with AI analysis...`;
+      if (input.process_instruction) return `Estimating AI processing for ${input.table_name || 'data'} export...`;
+      return `Exporting ${input.table_name || 'data'} as Excel...`;
     default: return `Running ${toolName}...`;
   }
 }

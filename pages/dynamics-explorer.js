@@ -228,6 +228,9 @@ function DynamicsExplorer() {
               case 'file_ready':
                 pendingFileExportsRef.current.push(parsed);
                 break;
+              case 'export_progress':
+                setThinkingStatus(`Processing records ${parsed.processed} of ${parsed.total}...${parsed.failed ? ` (${parsed.failed} failed)` : ''}`);
+                break;
               case 'text_delta':
                 // Stream text incrementally — create or update streaming message
                 if (!streamingMsgId) {
