@@ -1375,14 +1375,8 @@ async function exportCsv({ table_name, select, filter, orderby, filename, proces
 
   // ─── Branch 2: Estimate mode — count records, sample AI processing ───
   if (!confirmed) {
-    // Count total records
-    const count = await DynamicsService.countRecords(entitySet, filter);
-
-    if (count === 0) {
-      return { estimatedCount: 0, message: 'No records matched the filter.' };
-    }
-
-    // Fetch 3 sample records for AI preview
+    // Fetch 3 sample records — also gives us totalCount without the /$count endpoint
+    // (/$count fails with Edm.Int32 error on complex filters)
     const sampleResult = await DynamicsService.queryRecords(entitySet, {
       select: cleanSelect,
       filter,
@@ -1392,6 +1386,8 @@ async function exportCsv({ table_name, select, filter, orderby, filename, proces
     if (!sampleResult.records.length) {
       return { estimatedCount: 0, message: 'No records matched the filter.' };
     }
+
+    const count = sampleResult.totalCount || sampleResult.records.length;
 
     // Run AI on first sample to determine columns and preview output
     const sampleRecord = stripEmpty(sampleResult.records[0]);
