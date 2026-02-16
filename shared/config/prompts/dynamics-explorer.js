@@ -332,7 +332,7 @@ export const TABLE_ANNOTATIONS = {
  * Tables whose schemas are inlined in the system prompt to save a
  * describe_table round-trip. Covers ~80% of queries.
  */
-const INLINE_SCHEMA_TABLES = ['akoya_request', 'account', 'contact', 'akoya_requestpayment'];
+const INLINE_SCHEMA_TABLES = ['akoya_request', 'account', 'contact', 'akoya_requestpayment', 'wmkf_grantprogram'];
 
 /**
  * Generate compact inline schema text for the top tables.
@@ -387,6 +387,7 @@ RULES:
 - When the user asks to "export", "download", "spreadsheet", or wants the full dataset, use export_csv. It fetches ALL matching records (up to 5000) and generates a downloadable Excel file.
 - AI-processed exports: when the user wants AI analysis on exported data (e.g., "export with keywords extracted"), use export_csv with process_instruction. The tool returns a cost/time estimate and sample output. Present the estimate to the user (count, sample, cost, time) and ask for confirmation. Only after the user confirms, call export_csv again with the SAME parameters plus confirmed: true.
 - OData syntax: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z
+- VOCABULARY FIRST: When the user's query matches a term in the VOCABULARY section (especially program names with hardcoded GUIDs), use those mappings directly — do NOT query lookup tables to re-derive GUIDs you already have. Only fall back to querying the lookup table if the hardcoded GUID returns no results or the user asks about a program not listed in VOCABULARY.
 - Lookup tables (like akoya_program, wmkf_grantprogram): to filter requests by program name, first query the lookup table to get the GUID, then filter requests by the _value lookup field. Example: "Bridge Funding" → query akoya_programs for GUID → filter akoya_requests by _akoya_programid_value eq {guid}.
 
 VOCABULARY — staff terms → correct fields:
@@ -396,10 +397,12 @@ Status:
 - "Phase II status/outcome" → wmkf_phaseiistatus (Approved, Phase II Declined, Phase II Pending Committee Review, Phase II Withdrawn)
 Programs:
 - "program" usually means S&E, MR, or SoCal
-- "S&E"/"SE"/"science and engineering" → _akoya_programid_value = "Science and Engineering Research"
-- "MR"/"medical research" → _akoya_programid_value = "Medical Research"
-- "SoCal"/"Southern California" → _wmkf_grantprogram_value = "Southern California" (broad category, NOT akoya_program)
+- "S&E"/"SE"/"science and engineering" → _akoya_programid_value eq '8dcab30b-958f-ee11-8179-000d3a341e8f'
+- "MR"/"medical research" → _akoya_programid_value eq '94cab30b-958f-ee11-8179-000d3a341e8f'
+- "SoCal"/"Southern California" → _wmkf_grantprogram_value eq '8cf9c61d-a7cb-ee11-9079-000d3a341fd9' (broad category, NOT akoya_program)
+- "Research" (broad) → _wmkf_grantprogram_value eq 'c247b11a-a7cb-ee11-9078-000d3a341e8f'
 - Hierarchy: wmkf_grantprogram (broad: Research, Southern California) → akoya_program (specific: S&E, MR, Civic & Community, Health Care, etc.)
+- For other programs, query the lookup table first to get the GUID.
 People (external — at institution):
 - "PI"/"researcher"/"principal investigator" → _wmkf_projectleader_value
 - "liaison"/"primary contact" → _akoya_primarycontactid_value
