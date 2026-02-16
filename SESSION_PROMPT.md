@@ -1,66 +1,58 @@
-# Session 55 Prompt: Dynamics Explorer Program Field Disambiguation + Search Heuristics
+# Session 56 Prompt: Dynamics Explorer Refinements
 
-## Session 54 Summary
+## Session 55 Summary
 
-Implemented **Dynamics Explorer performance optimizations** — streaming, parallel execution, inline schemas, and frontend memoization. Also diagnosed a query accuracy bug caused by program lookup field confusion.
+Implemented **Excel export with AI-powered data processing** for Dynamics Explorer and fixed **program director lookup accuracy** by adding systemuser entity support.
 
 ### What Was Completed
 
-1. **Inline top 4 table schemas** — Embedded full field schemas for `akoya_request`, `account`, `contact`, `akoya_requestpayment` directly in the system prompt. Eliminates 1 Claude API round-trip (~1-3s) for ~80% of queries.
-2. **Parallel DB queries** — `getUserRole()` and `getActiveRestrictions()` now run via `Promise.all()` (~10-50ms saved)
-3. **Parallel tool execution** — Multiple `tool_use` blocks in one round execute via `Promise.allSettled()` instead of sequential loop (100-400ms saved on multi-tool rounds)
-4. **Streaming final response** — Claude API calls use `stream: true`; text-only final responses forward `text_delta` SSE events to the client in real-time for near-zero perceived latency on final text rendering. Tool-use rounds are still buffered.
-5. **Frontend memoization** — `React.memo` on `MessageBubble`, `useMemo` for `parseMarkdownTables`, `useCallback` for `copyMessage`, stable message keys via counter ref
-6. **Diagnosed program field confusion** — Discovered the model confuses `_wmkf_grantprogram_value` (11 high-level areas like "Southern California") with `_akoya_programid_value` (24 GoApply types like "Precollegiate Education"), causing wrong query results
-7. **Added `.env.local` keys** — `CLAUDE_API_KEY` and `AUTH_REQUIRED=false` for local dev
+1. **Excel export feature** (`1e0faf1`) — `export_csv` tool generates downloadable .xlsx files from CRM queries. Claude calls the tool with entity set, columns, and filter; server fetches records, builds Excel workbook with auto-width columns, and sends a `file_ready` SSE event with the download URL.
+
+2. **AI-powered data processing in exports** (`a6d8274`) — Two-phase confirmation flow for AI analysis on exported records:
+   - **Estimate mode**: `export_csv` with `process_instruction` (no `confirmed`) → counts records, runs AI on 1 sample, extracts output column names, calculates cost via `estimateCostCents` → returns estimate for user approval
+   - **Execute mode**: `export_csv` with `process_instruction` + `confirmed: true` → fetches all records, batches through Claude Haiku (15 records/call, 3 concurrent), sends `export_progress` SSE events, merges AI results as `ai_*` columns → generates xlsx
+   - New functions: `callClaudeBatch()`, `runSampleProcessing()`, `processRecordsBatch()`, `generateExcelExport()`
+   - AI columns displayed as "AI: ColumnName" in Excel headers
+
+3. **Fix: countRecords → queryRecords** (`251633d`) — The `/$count` endpoint fails with complex OData filters (Edm.Int32 error, known Dynamics CRM limitation). Replaced `DynamicsService.countRecords()` with `DynamicsService.queryRecords()` using `$count=true` parameter + `top: 3` for the estimate branch.
+
+4. **systemuser entity support** (`55b9a2a`) — Added `systemuser` to `TABLE_ANNOTATIONS` (fullname, systemuserid, isdisabled, etc.) and `staff` type to `ENTITY_TYPE_CONFIGS`. Added PROGRAM DIRECTOR rule to akoya_request annotations. This fixed incorrect program director lookups where the model guessed at GUIDs instead of querying the systemusers table first.
 
 ### Commits
-- `6fa1ebf` - Optimize Dynamics Explorer performance with streaming, parallel execution, and inline schemas
+- `1e0faf1` - Add Excel export feature to Dynamics Explorer
+- `a6d8274` - Add AI-powered data processing to Dynamics Explorer exports
+- `251633d` - Fix AI export estimate: use queryRecords instead of countRecords
+- `55b9a2a` - Add systemuser entity support for staff/program director lookups
 
-## Primary Next Step: Disambiguate Program Lookup Fields
+## Potential Next Steps
 
-**ACTION REQUIRED: Talk to someone who knows the CRM database** to clarify the semantic difference between these two program fields on `akoya_request`:
+### 1. Disambiguate Program Lookup Fields (from Session 54)
+**ACTION REQUIRED: Talk to someone who knows the CRM database** to clarify the semantic difference between `_wmkf_grantprogram_value` (11 values like "Southern California") and `_akoya_programid_value` (24 values like "Precollegiate Education"). Once clarified, annotate both fields in TABLE_ANNOTATIONS.
 
-**`_wmkf_grantprogram_value` → `wmkf_grantprogram` (11 values):**
-Discretionary (DISC), Emeritus (EMER), Honorarium (HON), Law (LAW), Memorial (MEM), Other (MISC), Research (RES), Southern California (SOCAL), Strategic Fund (STRAT), Undergraduate Education (UE), Young Scholars (YS)
-
-**`_akoya_programid_value` → `akoya_program` (24 values):**
-Arts & Culture (AC), Bridge Funding (BR), Chair's Grants (CGP), Civic & Community (CC), Directors' Directed (DDGP), Directors' Matching (DMGP), Disaster Relief (DR), Early Childhood (EC), Emeritus (EGP), Employee Matching (EMGP), Health Care (HC), Law and Legal Administration (LW) x2, Medical Research (MR), Memorial (MGP), Miscellaneous (MS), Precollegiate Education (EP), Research Reviewer (RR), Science and Engineering Research (SE), Senior Staff Directed (SSDGP), Staff Directed (SDGP), Strategic Fund (SF), Undergraduate Education - Liberal Arts (LA), Undergraduate Education - Science & Engineering (UG)
-
-**Example failure:** Request 1001159 (Two Bit Circus Foundation) has `_wmkf_grantprogram_value` = "Southern California" and `_akoya_programid_value` = "Precollegiate Education". The model searched `akoya_program` for "Southern California", found nothing, and reported 0 active requests.
-
-**After clarification:** Update the inline schema annotations in `shared/config/prompts/dynamics-explorer.js` to list all values for both tables and explain when to use each field. This may also require updating the system prompt rules.
-
-## Other Potential Next Steps
-
-### 1. Search Heuristics & Query Optimization (from Session 52)
+### 2. Search Heuristics & Query Optimization (from Session 52)
 - Pre-query classification to route to the right tool
-- Common field name aliases (server-side mapping of wrong → correct names)
+- Common field name aliases (server-side mapping of wrong to correct names)
 - Smart describe_table injection on query failure
 - Lookup table auto-resolution (GUID fields)
 
-### 2. Deferred Email Notifications
+### 3. AI Export Enhancements
+- Test with larger datasets (1000+ records) to verify batch processing stability
+- Consider adding a "cancel" button for long-running AI exports
+- Explore caching AI results for re-exports of the same data
+
+### 4. Deferred Email Notifications
 - Automated admin notification when new users sign up
 - Requires Azure AD Mail.Send permission — see `docs/TODO_EMAIL_NOTIFICATIONS.md`
-
-### 3. Multi-Perspective Evaluator Refinements
-- Test eligibility screening more thoroughly
-- PDF export for Batch Summaries apps
-
-### 4. Integrity Screener Enhancements
-- Complete dismissal functionality
-- Add History tab
-- PDF export for formal reports
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `shared/config/prompts/dynamics-explorer.js` | System prompt + tools + TABLE_ANNOTATIONS (inline schemas here) |
-| `pages/api/dynamics-explorer/chat.js` | Agentic chat API (streaming, parallel execution) |
-| `pages/dynamics-explorer.js` | Chat frontend (memoized, text_delta streaming) |
+| `shared/config/prompts/dynamics-explorer.js` | System prompt + tools + TABLE_ANNOTATIONS (inline schemas, systemuser entity) |
+| `pages/api/dynamics-explorer/chat.js` | Agentic chat API (streaming, AI export, batch processing) |
+| `pages/dynamics-explorer.js` | Chat frontend (memoized, text_delta streaming, export_progress handler) |
 | `lib/services/dynamics-service.js` | Dynamics CRM API service |
-| `shared/config/appRegistry.js` | Single source of truth for all 13 app definitions |
+| `lib/utils/usage-logger.js` | Usage logging + exported `estimateCostCents` |
 
 ## Testing
 
@@ -70,8 +62,9 @@ npm run build                            # Verify build succeeds
 ```
 
 Test Dynamics Explorer with:
-- "How many proposals are there?" — should NOT call describe_table (inlined)
-- "Show me 10 most recent proposals" — should query directly
-- "Show me emails for Stanford" — multi-tool round, parallel execution
-- Verify streaming text appears incrementally for the final response
-- Verify tool-use rounds still work correctly (buffered, not streamed)
+- "Show me 3 most recent proposals" — basic query
+- "Export proposals from 2025" — plain Excel export (no AI)
+- "Export proposals from 2025 with keywords extracted from the abstracts" — AI export (estimate → confirm → download)
+- "How many proposals were assigned to program director Justin Gallivan in 2026?" — uses systemuser lookup
+- Verify export_progress events show during AI batch processing
+- Open .xlsx: AI columns labeled "AI: Keywords", values populated

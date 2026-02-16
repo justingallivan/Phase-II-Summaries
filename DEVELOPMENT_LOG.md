@@ -4,6 +4,19 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## February 2026 — AI-Powered Exports & Staff Lookups (Session 55)
+
+Added Excel export with AI-powered data processing and fixed program director lookup accuracy in Dynamics Explorer.
+
+- **Excel export**: `export_csv` tool generates .xlsx files from CRM queries with auto-width columns, delivered via `file_ready` SSE event
+- **AI data processing**: Two-phase flow — estimate mode (count + sample + cost) → user confirmation → batch execution (15 records/call, 3 concurrent). AI results added as `ai_*` columns (displayed as "AI: ColumnName" in Excel)
+- **countRecords fix**: `/$count` endpoint fails with complex OData filters (Edm.Int32 error). Replaced with `queryRecords` using `$count=true` parameter
+- **systemuser entity**: Added to TABLE_ANNOTATIONS with staff lookup support. Model now correctly queries `systemusers` for GUIDs before filtering `akoya_requests` by `_wmkf_programdirector_value`, fixing incorrect program director exports
+
+**Files:** `pages/api/dynamics-explorer/chat.js`, `shared/config/prompts/dynamics-explorer.js`, `pages/dynamics-explorer.js`, `lib/utils/usage-logger.js`
+
+---
+
 ## February 2026 — Dynamics Explorer Performance Optimization (Session 54)
 
 Optimized the Dynamics Explorer chat interface for speed and diagnosed a query accuracy bug.
@@ -1814,4 +1827,4 @@ Deleted 23 obsolete planning/migration markdown files:
 
 ---
 
-Last Updated: January 30, 2026
+Last Updated: February 15, 2026
