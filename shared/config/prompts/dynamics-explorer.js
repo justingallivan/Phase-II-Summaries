@@ -52,6 +52,7 @@ export const TABLE_ANNOTATIONS = {
       'FISCAL YEAR: akoya_fiscalyear stores labels like "June 2025". When filtering by year, use OR: (contains(akoya_fiscalyear,\'2025\') or (akoya_submitdate ge 2025-01-01T00:00:00Z and akoya_submitdate lt 2026-01-01T00:00:00Z))',
       'Lookup _value fields return GUIDs; _formatted versions auto-return display names. Only $select the _value field — never $select _formatted (causes API error).',
       'Null fields are stripped from results. Only $select fields you will display.',
+      'PROGRAM DIRECTOR: _wmkf_programdirector_value is a lookup to systemuser. To filter by director name, first query systemusers to get the GUID, then filter requests by _wmkf_programdirector_value eq {guid}.',
     ],
   },
   akoya_requestpayment: {
@@ -280,6 +281,21 @@ export const TABLE_ANNOTATIONS = {
     },
     rules: [],
   },
+  systemuser: {
+    description: 'Keck Foundation staff / Dynamics users (212). Linked to requests via _wmkf_programdirector_value and _wmkf_programcoordinator_value.',
+    entitySet: 'systemusers',
+    fields: {
+      fullname: 'string — full name (e.g. "Justin Gallivan")',
+      firstname: 'string — first name',
+      lastname: 'string — last name',
+      internalemailaddress: 'string — email address',
+      systemuserid: 'guid — primary key. Use this GUID to filter requests: _wmkf_programdirector_value eq {guid}',
+      isdisabled: 'boolean — true if account disabled',
+    },
+    rules: [
+      'To find requests by program director name: 1) query systemusers with contains(fullname,\'name\') to get the GUID, 2) filter akoya_requests by _wmkf_programdirector_value eq {guid}.',
+    ],
+  },
   activitypointer: {
     description: 'All activity types — emails, tasks, appointments, etc. (5000+).',
     entitySet: 'activitypointers',
@@ -364,6 +380,7 @@ account (4500+) organizations
 email (5000+) email activities
 annotation (5000+) notes/attachments
 wmkf_potentialreviewers (3141) reviewers
+systemuser (212) Keck staff — linked to requests via program director/coordinator
 Lookup: wmkf_grantprogram(11), wmkf_type(8), wmkf_bbstatus(88), wmkf_donors(116), wmkf_supporttype(41), wmkf_programlevel2(29), akoya_program(24), akoya_phase(62), akoya_goapplystatustracking(3293), activitypointer(5000+)
 
 FIELD NAMING: "akoya_" = vendor fields. "wmkf_" = Keck Foundation custom fields.
@@ -401,8 +418,8 @@ export const TOOL_DEFINITIONS = [
       properties: {
         type: {
           type: 'string',
-          enum: ['account', 'request', 'contact', 'reviewer', 'email', 'payment'],
-          description: 'Entity type to look up',
+          enum: ['account', 'request', 'contact', 'reviewer', 'email', 'payment', 'staff'],
+          description: 'Entity type to look up. Use "staff" for Keck Foundation staff / system users (program directors, coordinators).',
         },
         identifier: { type: 'string', description: 'Name, number, or GUID' },
       },

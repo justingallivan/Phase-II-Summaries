@@ -671,6 +671,14 @@ const ENTITY_TYPE_CONFIGS = {
     filterExact: true,
     nameField: 'akoya_paymentnum',
   },
+  staff: {
+    entitySet: 'systemusers',
+    idField: 'systemuserid',
+    select: 'fullname,firstname,lastname,internalemailaddress,systemuserid,isdisabled',
+    filterField: 'fullname',
+    filterExact: false,
+    nameField: 'fullname',
+  },
 };
 
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
