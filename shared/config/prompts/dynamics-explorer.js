@@ -16,7 +16,7 @@ export const TABLE_ANNOTATIONS = {
     entitySet: 'akoya_requests',
     fields: {
       akoya_requestnum: 'string — unique request number (e.g. "1001585")',
-      akoya_requeststatus: 'string — current status',
+      akoya_requeststatus: 'string — overall request status ("Concept Pending", "Phase I Declined", "Phase II Pending", "Active", "Closed", etc.). Determines lifecycle stage.',
       akoya_requesttype: 'string — rarely used legacy field',
       akoya_submitdate: 'datetime — submission date',
       akoya_fiscalyear: 'string — grant cycle label like "June 2025" (NOT calendar year)',
@@ -27,11 +27,11 @@ export const TABLE_ANNOTATIONS = {
       createdon: 'datetime — record creation date',
       modifiedon: 'datetime — last modified date',
       _akoya_applicantid_value: 'lookup → account — applicant organization',
-      _akoya_primarycontactid_value: 'lookup → contact — primary contact person',
+      _akoya_primarycontactid_value: 'lookup → contact — liaison / primary contact at institution',
       _wmkf_programdirector_value: 'lookup → systemuser — Keck staff program director',
       _wmkf_programcoordinator_value: 'lookup → systemuser — Keck staff coordinator',
-      _wmkf_grantprogram_value: 'lookup → wmkf_grantprogram — grant program (11 values: Research, Undergraduate Education, etc.)',
-      _akoya_programid_value: 'lookup → akoya_program — GoApply program (24 values including "Bridge Funding"). To find requests by program name, first look up the program GUID in akoya_programs, then filter requests by _akoya_programid_value.',
+      _wmkf_grantprogram_value: 'lookup → wmkf_grantprogram — broad grant program category (11 values: Research, Southern California, Undergraduate Education, etc.). "SoCal" = "Southern California" here.',
+      _akoya_programid_value: 'lookup → akoya_program — specific GoApply program (24 values: "Science and Engineering Research" = S&E, "Medical Research" = MR, etc.). To find requests by program name, first look up the program GUID in akoya_programs, then filter requests by _akoya_programid_value.',
       _wmkf_type_value: 'lookup → wmkf_type — organizational type code (8 values)',
       wmkf_request_type: 'string — category: concept, phone call, site visit, or grant application',
       wmkf_meetingdate: 'datetime — board meeting date',
@@ -44,6 +44,23 @@ export const TABLE_ANNOTATIONS = {
       wmkf_conceptcalldate: 'datetime — scheduled concept discussion call',
       wmkf_vendorverified: 'boolean — applicant payment info verified',
       wmkf_phaseiicheckincomplete: 'boolean — Phase II check-in complete',
+      wmkf_phaseistatus: 'string — Phase I outcome (Invited, Not Invited, Ineligible, Request Withdrawn)',
+      wmkf_phaseiistatus: 'string — Phase II outcome (Approved, Phase II Declined, Phase II Pending Committee Review, Phase II Withdrawn)',
+      akoya_request: 'currency — "the ask" / amount requested from Keck',
+      akoya_expenses: 'currency — total project cost / total budget (including cost share)',
+      akoya_grant: 'currency — award / grant amount (how much Keck gave)',
+      akoya_balance: 'currency — remaining balance on grant',
+      akoya_originalgrantamount: 'currency — original approved grant amount',
+      akoya_decisiondate: 'datetime — board decision date',
+      akoya_begindate: 'datetime — grant start / begin date',
+      akoya_enddate: 'datetime — grant end date',
+      _wmkf_projectleader_value: 'lookup → contact — PI / principal investigator / researcher',
+      _wmkf_researchleader_value: 'lookup → contact — VPR / VP for research / top research official at institution',
+      _wmkf_ceo_value: 'lookup → contact — CEO / president / chancellor of institution',
+      _wmkf_authorizedofficial_value: 'lookup → contact — authorized official / signing authority',
+      _wmkf_paymentcontact_value: 'lookup → contact — payment contact',
+      '_wmkf_copi1_value..5': 'lookup → contact — co-PIs (5 slots)',
+      _wmkf_programdirector2_value: 'lookup → systemuser — secondary program director',
       wmkf_abstract: 'string — full proposal abstract text (use search tool for keyword discovery)',
       '_wmkf_potentialreviewer1_value..5': 'lookup → wmkf_potentialreviewers — assigned reviewers (5 slots)',
       wmkf_excludedreviewers: 'string — excluded reviewer names and reasons',
@@ -371,6 +388,47 @@ RULES:
 - AI-processed exports: when the user wants AI analysis on exported data (e.g., "export with keywords extracted"), use export_csv with process_instruction. The tool returns a cost/time estimate and sample output. Present the estimate to the user (count, sample, cost, time) and ask for confirmation. Only after the user confirms, call export_csv again with the SAME parameters plus confirmed: true.
 - OData syntax: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z
 - Lookup tables (like akoya_program, wmkf_grantprogram): to filter requests by program name, first query the lookup table to get the GUID, then filter requests by the _value lookup field. Example: "Bridge Funding" → query akoya_programs for GUID → filter akoya_requests by _akoya_programid_value eq {guid}.
+
+VOCABULARY — staff terms → correct fields:
+Status:
+- "status" → akoya_requeststatus (overall: "Phase II Pending", "Active", "Closed", etc.)
+- "Phase I status/outcome" → wmkf_phaseistatus (Invited, Not Invited, Ineligible, Request Withdrawn)
+- "Phase II status/outcome" → wmkf_phaseiistatus (Approved, Phase II Declined, Phase II Pending Committee Review, Phase II Withdrawn)
+Programs:
+- "program" usually means S&E, MR, or SoCal
+- "S&E"/"SE"/"science and engineering" → _akoya_programid_value = "Science and Engineering Research"
+- "MR"/"medical research" → _akoya_programid_value = "Medical Research"
+- "SoCal"/"Southern California" → _wmkf_grantprogram_value = "Southern California" (broad category, NOT akoya_program)
+- Hierarchy: wmkf_grantprogram (broad: Research, Southern California) → akoya_program (specific: S&E, MR, Civic & Community, Health Care, etc.)
+People (external — at institution):
+- "PI"/"researcher"/"principal investigator" → _wmkf_projectleader_value
+- "liaison"/"primary contact" → _akoya_primarycontactid_value
+- "VPR"/"VP for research" → _wmkf_researchleader_value
+- "CEO"/"president"/"chancellor" → _wmkf_ceo_value
+- "authorized official" → _wmkf_authorizedofficial_value
+- "payment contact" → _wmkf_paymentcontact_value
+- "co-PI" → _wmkf_copi1_value.._wmkf_copi5_value
+People (internal — Keck staff):
+- "PD"/"program director" → _wmkf_programdirector_value (systemuser)
+- "PC"/"coordinator" → _wmkf_programcoordinator_value (systemuser)
+Money:
+- "the ask"/"amount requested" → akoya_request (currency field, what they want from Keck)
+- "total project cost"/"total budget" → akoya_expenses (full cost including cost share)
+- "award"/"grant amount"/"how much did we give" → akoya_grant
+- "paid"/"disbursed" → akoya_paid
+- "balance"/"remaining" → akoya_balance
+Dates:
+- "Phase I submitted"/"LOI date" → akoya_loireceived
+- "Phase II submitted"/"submitted" → akoya_submitdate
+- "concept call" → wmkf_conceptcalldate
+- "board meeting" → wmkf_meetingdate
+- "decision date" → akoya_decisiondate
+- "grant start"/"begin date" → akoya_begindate
+- "grant end"/"end date" → akoya_enddate
+Request lifecycle:
+- Three types: research concept → Phase I proposal → Phase II proposal
+- Type determined by akoya_requeststatus (e.g. "Concept Pending", "Phase I Declined", "Phase II Pending", "Active")
+- Concepts are standalone records — NOT linked to subsequent Phase I proposals. To find a concept for a proposal, search for requests from the same applicant with "Concept" status around the right timeframe.
 
 TABLES:
 akoya_request (5000+) proposals/grants — central hub
