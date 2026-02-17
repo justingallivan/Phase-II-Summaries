@@ -1,28 +1,41 @@
-# Session 56 Prompt: Dynamics Explorer Refinements
+# Session 57 Prompt: Dynamics Explorer Continued
 
-## Session 55 Summary
+## Session 56 Summary
 
-Implemented **Excel export with AI-powered data processing** for Dynamics Explorer and fixed **program director lookup accuracy** by adding systemuser entity support.
+Implemented **round-efficiency optimizations** for Dynamics Explorer (hardcoded GUIDs, expanded `get_entity` select, vocabulary glossary) and created a **round-efficiency test suite** to verify the optimizations work.
 
 ### What Was Completed
 
-1. **Excel export feature** (`1e0faf1`) — `export_csv` tool generates downloadable .xlsx files from CRM queries. Claude calls the tool with entity set, columns, and filter; server fetches records, builds Excel workbook with auto-width columns, and sends a `file_ready` SSE event with the download URL.
+1. **Vocabulary glossary in system prompt** (`dd2f9b8`) — Added a glossary mapping common user terms (PI, award, grant amount, Phase I status, etc.) to the correct CRM fields. Prevents the model from needing extra tool calls to discover field names.
 
-2. **AI-powered data processing in exports** (`a6d8274`) — Two-phase confirmation flow for AI analysis on exported records:
-   - **Estimate mode**: `export_csv` with `process_instruction` (no `confirmed`) → counts records, runs AI on 1 sample, extracts output column names, calculates cost via `estimateCostCents` → returns estimate for user approval
-   - **Execute mode**: `export_csv` with `process_instruction` + `confirmed: true` → fetches all records, batches through Claude Haiku (15 records/call, 3 concurrent), sends `export_progress` SSE events, merges AI results as `ai_*` columns → generates xlsx
-   - New functions: `callClaudeBatch()`, `runSampleProcessing()`, `processRecordsBatch()`, `generateExcelExport()`
-   - AI columns displayed as "AI: ColumnName" in Excel headers
+2. **Round-count optimizations** (`fe76a2a`) — Three changes to reduce tool-call rounds:
+   - **Hardcoded program GUIDs**: MR, S&E, SoCal, NorCal GUIDs embedded in system prompt so the model can filter by `_wmkf_grantprogram_value` directly without first querying `wmkf_grantprograms`
+   - **Expanded `get_entity` select for requests**: Added `_wmkf_projectleader_value`, `akoya_grant`, `wmkf_phaseistatus`, and many other fields so single-request lookups return all needed data in one call
+   - **Inline `wmkf_grantprogram` schema**: Added to TABLE_ANNOTATIONS so the model doesn't need `describe_table` to learn about program lookup tables
 
-3. **Fix: countRecords → queryRecords** (`251633d`) — The `/$count` endpoint fails with complex OData filters (Edm.Int32 error, known Dynamics CRM limitation). Replaced `DynamicsService.countRecords()` with `DynamicsService.queryRecords()` using `$count=true` parameter + `top: 3` for the estimate branch.
-
-4. **systemuser entity support** (`55b9a2a`) — Added `systemuser` to `TABLE_ANNOTATIONS` (fullname, systemuserid, isdisabled, etc.) and `staff` type to `ENTITY_TYPE_CONFIGS`. Added PROGRAM DIRECTOR rule to akoya_request annotations. This fixed incorrect program director lookups where the model guessed at GUIDs instead of querying the systemusers table first.
+3. **Round-efficiency test suite** (`719e452`, `98c7099`) — New `scripts/test-dynamics-rounds.js` CLI script:
+   - Sends 6 test queries to the chat endpoint via SSE
+   - Parses streaming response to count tool-call rounds
+   - Compares against per-query max-round thresholds
+   - All 6 tests passed (most queries resolved in 2 rounds, within 3-round budgets)
+   - Supports `--base-url`, `--query <n>`, `--verbose` flags
 
 ### Commits
-- `1e0faf1` - Add Excel export feature to Dynamics Explorer
-- `a6d8274` - Add AI-powered data processing to Dynamics Explorer exports
-- `251633d` - Fix AI export estimate: use queryRecords instead of countRecords
-- `55b9a2a` - Add systemuser entity support for staff/program director lookups
+- `dd2f9b8` - Add vocabulary glossary to Dynamics Explorer system prompt
+- `fe76a2a` - Optimize Dynamics Explorer for fewer tool-call rounds
+- `719e452` - Add round-efficiency test suite for Dynamics Explorer
+- `98c7099` - Relax health check in round-efficiency test to accept any response
+
+### Test Results (all passed)
+
+| # | Query | Rounds | Max | Time |
+|---|-------|--------|-----|------|
+| 1 | Who is the PI on request 1001481? | 2 | 2 | 4.1s |
+| 2 | How much did we award for request 1001481? | 2 | 2 | 3.1s |
+| 3 | What's the Phase I status of request 1002108? | 2 | 2 | 3.3s |
+| 4 | Show me all MR proposals from 2025 | 2 | 3 | 9.3s |
+| 5 | Show me active SoCal grants | 2 | 3 | 9.9s |
+| 6 | How many S&E proposals were submitted in 2024? | 3 | 3 | 7.5s |
 
 ## Potential Next Steps
 
@@ -35,12 +48,16 @@ Implemented **Excel export with AI-powered data processing** for Dynamics Explor
 - Smart describe_table injection on query failure
 - Lookup table auto-resolution (GUID fields)
 
-### 3. AI Export Enhancements
+### 3. Expand Test Suite
+- Add queries testing `get_related` (account→requests, request→payments)
+- Add queries testing Dataverse Search
+- Add queries testing edge cases (ambiguous accounts, multi-step lookups)
+
+### 4. AI Export Enhancements
 - Test with larger datasets (1000+ records) to verify batch processing stability
 - Consider adding a "cancel" button for long-running AI exports
-- Explore caching AI results for re-exports of the same data
 
-### 4. Deferred Email Notifications
+### 5. Deferred Email Notifications
 - Automated admin notification when new users sign up
 - Requires Azure AD Mail.Send permission — see `docs/TODO_EMAIL_NOTIFICATIONS.md`
 
@@ -48,23 +65,17 @@ Implemented **Excel export with AI-powered data processing** for Dynamics Explor
 
 | File | Purpose |
 |------|---------|
-| `shared/config/prompts/dynamics-explorer.js` | System prompt + tools + TABLE_ANNOTATIONS (inline schemas, systemuser entity) |
+| `shared/config/prompts/dynamics-explorer.js` | System prompt + tools + TABLE_ANNOTATIONS + vocabulary glossary + hardcoded GUIDs |
 | `pages/api/dynamics-explorer/chat.js` | Agentic chat API (streaming, AI export, batch processing) |
-| `pages/dynamics-explorer.js` | Chat frontend (memoized, text_delta streaming, export_progress handler) |
+| `pages/dynamics-explorer.js` | Chat frontend (memoized, text_delta streaming) |
+| `scripts/test-dynamics-rounds.js` | Round-efficiency integration test suite (6 queries) |
 | `lib/services/dynamics-service.js` | Dynamics CRM API service |
-| `lib/utils/usage-logger.js` | Usage logging + exported `estimateCostCents` |
 
 ## Testing
 
 ```bash
-npm run dev                              # Run development server
-npm run build                            # Verify build succeeds
+npm run dev                                          # Run development server
+node scripts/test-dynamics-rounds.js                 # Run round-efficiency tests (all 6)
+node scripts/test-dynamics-rounds.js --query 1 --verbose  # Single query with detail
+npm run build                                        # Verify build succeeds
 ```
-
-Test Dynamics Explorer with:
-- "Show me 3 most recent proposals" — basic query
-- "Export proposals from 2025" — plain Excel export (no AI)
-- "Export proposals from 2025 with keywords extracted from the abstracts" — AI export (estimate → confirm → download)
-- "How many proposals were assigned to program director Justin Gallivan in 2026?" — uses systemuser lookup
-- Verify export_progress events show during AI batch processing
-- Open .xlsx: AI columns labeled "AI: Keywords", values populated

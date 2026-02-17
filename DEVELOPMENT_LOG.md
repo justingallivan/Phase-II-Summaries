@@ -4,6 +4,20 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## February 2026 — Round-Efficiency Optimizations & Test Suite (Session 56)
+
+Optimized Dynamics Explorer to resolve common queries in fewer tool-call rounds and built an integration test suite to verify.
+
+- **Vocabulary glossary**: System prompt now maps common terms (PI, award amount, Phase I status) to correct CRM fields, reducing exploratory tool calls
+- **Hardcoded program GUIDs**: MR, S&E, SoCal, NorCal GUIDs embedded in system prompt — model filters directly without querying lookup tables
+- **Expanded get_entity select**: Request lookups now return `_wmkf_projectleader_value`, `akoya_grant`, `wmkf_phaseistatus`, and 20+ other fields in one call
+- **Inline wmkf_grantprogram schema**: Added to TABLE_ANNOTATIONS to eliminate `describe_table` calls for program lookups
+- **Round-efficiency test suite**: `scripts/test-dynamics-rounds.js` — 6 integration tests against live dev server, SSE stream parsing, pass/fail per query with round counts. All 6 passed (most in 2 rounds, max budget 3)
+
+**Files:** `shared/config/prompts/dynamics-explorer.js`, `scripts/test-dynamics-rounds.js`
+
+---
+
 ## February 2026 — AI-Powered Exports & Staff Lookups (Session 55)
 
 Added Excel export with AI-powered data processing and fixed program director lookup accuracy in Dynamics Explorer.
