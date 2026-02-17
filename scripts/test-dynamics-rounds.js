@@ -224,13 +224,9 @@ async function main() {
   console.log(`Queries: ${queries.length} of ${TEST_QUERIES.length}`);
   console.log('');
 
-  // Check server is reachable
+  // Check server is reachable (accept any response — 503 just means a backing service is down)
   try {
-    const health = await fetch(`${opts.baseUrl}/api/health`);
-    if (!health.ok) {
-      console.error(`Server health check failed (HTTP ${health.status}). Is the dev server running?`);
-      process.exit(1);
-    }
+    await fetch(`${opts.baseUrl}/api/health`);
   } catch (err) {
     console.error(`Cannot reach ${opts.baseUrl}: ${err.message}`);
     console.error('Start the dev server with: npm run dev');
