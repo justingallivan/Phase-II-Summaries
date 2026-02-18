@@ -3572,6 +3572,88 @@ function SavedCandidateCard({ candidate, onUpdate, onRemove, onEdit, isSelectedF
 // Storage key for current cycle
 const CURRENT_CYCLE_KEY = 'reviewer_finder_current_cycle';
 
+// Inline-editable PI name and institution for a proposal
+function ProposalMetadataRow({ proposal, onUpdate }) {
+  const [editing, setEditing] = useState(null); // 'pi' | 'institution' | null
+  const [piValue, setPiValue] = useState(proposal.proposalAuthors || '');
+  const [instValue, setInstValue] = useState(proposal.proposalInstitution || '');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    setPiValue(proposal.proposalAuthors || '');
+    setInstValue(proposal.proposalInstitution || '');
+  }, [proposal.proposalAuthors, proposal.proposalInstitution]);
+
+  useEffect(() => {
+    if (editing && inputRef.current) inputRef.current.focus();
+  }, [editing]);
+
+  const save = (field) => {
+    const value = field === 'pi' ? piValue.trim() : instValue.trim();
+    const key = field === 'pi' ? 'proposalAuthors' : 'proposalInstitution';
+    onUpdate(proposal.proposalId, { [key]: value });
+    setEditing(null);
+  };
+
+  const handleKeyDown = (e, field) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') save(field);
+    if (e.key === 'Escape') setEditing(null);
+  };
+
+  const hasPi = proposal.proposalAuthors;
+  const hasInst = proposal.proposalInstitution;
+
+  return (
+    <p className="text-sm text-gray-600 flex items-center flex-wrap gap-x-1" onClick={e => e.stopPropagation()}>
+      {editing === 'pi' ? (
+        <span className="inline-flex items-center gap-1">
+          <span className="text-gray-400">PI:</span>
+          <input
+            ref={inputRef}
+            value={piValue}
+            onChange={e => setPiValue(e.target.value)}
+            onKeyDown={e => handleKeyDown(e, 'pi')}
+            onBlur={() => save('pi')}
+            className="px-1 py-0 text-sm border border-blue-300 rounded w-40 focus:ring-1 focus:ring-blue-400 focus:outline-none"
+            placeholder="PI name"
+          />
+        </span>
+      ) : (
+        <span
+          onClick={() => setEditing('pi')}
+          className={`cursor-pointer hover:bg-blue-50 rounded px-0.5 ${hasPi ? '' : 'text-gray-400 italic'}`}
+          title="Click to edit PI name"
+        >
+          {hasPi ? `PI: ${proposal.proposalAuthors}` : '+ Add PI'}
+        </span>
+      )}
+      {(hasPi || hasInst || editing) && <span className="text-gray-300">·</span>}
+      {editing === 'institution' ? (
+        <span className="inline-flex items-center gap-1">
+          <input
+            ref={inputRef}
+            value={instValue}
+            onChange={e => setInstValue(e.target.value)}
+            onKeyDown={e => handleKeyDown(e, 'institution')}
+            onBlur={() => save('institution')}
+            className="px-1 py-0 text-sm border border-blue-300 rounded w-48 focus:ring-1 focus:ring-blue-400 focus:outline-none"
+            placeholder="Institution"
+          />
+        </span>
+      ) : (
+        <span
+          onClick={() => setEditing('institution')}
+          className={`cursor-pointer hover:bg-blue-50 rounded px-0.5 ${hasInst ? '' : 'text-gray-400 italic'}`}
+          title="Click to edit institution"
+        >
+          {hasInst ? proposal.proposalInstitution : '+ Add institution'}
+        </span>
+      )}
+    </p>
+  );
+}
+
 // My Candidates Tab
 function MyCandidatesTab({ refreshTrigger, userProfileId, navigateToProposal, onNavigationComplete }) {
   const [proposals, setProposals] = useState([]);
@@ -3841,6 +3923,19 @@ function MyCandidatesTab({ refreshTrigger, userProfileId, navigateToProposal, on
       fetchCandidates();
     } catch (err) {
       console.error('Update grant cycle failed:', err);
+    }
+  };
+
+  const handleUpdateProposalMetadata = async (proposalId, updates) => {
+    try {
+      await fetch('/api/reviewer-finder/my-candidates', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposalId, ...updates })
+      });
+      fetchCandidates();
+    } catch (err) {
+      console.error('Update proposal metadata failed:', err);
     }
   };
 
@@ -4477,13 +4572,10 @@ function MyCandidatesTab({ refreshTrigger, userProfileId, navigateToProposal, on
                   <h4 className="font-medium text-gray-900">
                     {proposal.proposalTitle}
                   </h4>
-                  {(proposal.proposalAuthors || proposal.proposalInstitution) && (
-                    <p className="text-sm text-gray-600">
-                      {proposal.proposalAuthors && <span>PI: {proposal.proposalAuthors}</span>}
-                      {proposal.proposalAuthors && proposal.proposalInstitution && <span> · </span>}
-                      {proposal.proposalInstitution && <span>{proposal.proposalInstitution}</span>}
-                    </p>
-                  )}
+                  <ProposalMetadataRow
+                    proposal={proposal}
+                    onUpdate={handleUpdateProposalMetadata}
+                  />
                   <p className="text-xs text-gray-400 flex items-center flex-wrap gap-1">
                     <span>{proposal.candidates.length} candidate(s)</span>
                     {(() => {

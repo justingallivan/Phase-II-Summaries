@@ -280,6 +280,8 @@ async function handlePatch(req, res) {
       proposalId,       // For bulk cycle/program assignment
       grantCycleId,     // Assign to cycle (null to unassign)
       programArea,      // Program area assignment
+      proposalAuthors,  // PI name (proposal-level)
+      proposalInstitution, // Institution (proposal-level)
       // Suggestion fields (existing)
       invited,
       accepted,
@@ -327,6 +329,26 @@ async function handlePatch(req, res) {
           WHERE proposal_id = ${proposalId} AND selected = true
         `;
         updates.programArea = programArea;
+      }
+
+      // Handle PI name update
+      if (proposalAuthors !== undefined) {
+        await sql`
+          UPDATE reviewer_suggestions
+          SET proposal_authors = ${proposalAuthors || null}
+          WHERE proposal_id = ${proposalId} AND selected = true
+        `;
+        updates.proposalAuthors = proposalAuthors;
+      }
+
+      // Handle institution update
+      if (proposalInstitution !== undefined) {
+        await sql`
+          UPDATE reviewer_suggestions
+          SET proposal_institution = ${proposalInstitution || null}
+          WHERE proposal_id = ${proposalId} AND selected = true
+        `;
+        updates.proposalInstitution = proposalInstitution;
       }
 
       if (Object.keys(updates).length > 0) {
