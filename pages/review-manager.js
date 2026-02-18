@@ -931,7 +931,6 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
           reviewDueDate: proposal.reviewDeadline,
         }}
         onEmailsSent={() => {
-          setEmailModalOpen(false);
           setSelectedReviewers(new Set());
           if (onRefresh) onRefresh();
         }}
