@@ -79,6 +79,15 @@ export const APP_REGISTRY = [
     features: ['Claude AI Analysis', 'Database Verification', 'Publication Links', 'Reasoning Explanations'],
   },
   {
+    key: 'review-manager',
+    name: 'Review Manager',
+    href: '/review-manager',
+    icon: '📋',
+    description: 'Manage the peer review lifecycle: send materials, track progress, send reminders, and collect completed reviews',
+    categories: ['phase-i', 'phase-ii'],
+    features: ['Review Tracking', 'Email Templates', 'Status Pipeline', 'Document Upload'],
+  },
+  {
     key: 'peer-review-summarizer',
     name: 'Summarize Peer Reviews',
     href: '/peer-review-summarizer',

@@ -55,6 +55,10 @@ export const BASE_CONFIG = {
       model: 'claude-sonnet-4-20250514',
       fallback: 'claude-3-5-haiku-20241022'
     },
+    'review-manager': {
+      model: 'claude-sonnet-4-20250514',
+      fallback: 'claude-3-5-haiku-20241022'
+    },
     'peer-review-summarizer': {
       model: 'claude-sonnet-4-20250514',
       fallback: 'claude-3-5-haiku-20241022'

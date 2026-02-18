@@ -458,6 +458,27 @@ const v17Statements = [
   `CREATE INDEX IF NOT EXISTS idx_system_settings_key ON system_settings(setting_key)`,
 ];
 
+// V18: Review Manager columns on reviewer_suggestions
+const v18Alterations = [
+  // Proposal URL — shared link to full proposal, stored per-suggestion but updated in batch per proposal
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS proposal_url VARCHAR(1000)`,
+  // Materials email tracking
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS materials_sent_at TIMESTAMP`,
+  // Reminder tracking
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP`,
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS reminder_count INTEGER DEFAULT 0`,
+  // Review receipt tracking
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS review_received_at TIMESTAMP`,
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS review_blob_url VARCHAR(500)`,
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS review_filename VARCHAR(255)`,
+  // Thank-you email tracking
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS thankyou_sent_at TIMESTAMP`,
+  // Review lifecycle status: accepted, materials_sent, under_review, review_received, complete
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS review_status VARCHAR(50)`,
+  // Index for review status filtering
+  `CREATE INDEX IF NOT EXISTS idx_suggestions_review_status ON reviewer_suggestions(review_status)`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -874,6 +895,25 @@ async function runMigration() {
       }
     }
 
+    // Run V18 alterations (Review Manager columns)
+    console.log(`\nApplying v18 schema updates - Review Manager (${v18Alterations.length} statements)...`);
+    for (let i = 0; i < v18Alterations.length; i++) {
+      const statement = v18Alterations[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v18-${i + 1}/${v18Alterations.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v18-${i + 1}/${v18Alterations.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v18-${i + 1}/${v18Alterations.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -945,7 +985,17 @@ async function runMigration() {
     console.log('  • user_app_access (user_profile_id, app_key, granted_by)');
     console.log('\nV17 new table (System settings):');
     console.log('  • system_settings (setting_key, setting_value, updated_by)');
-    console.log('\nIndexes created: 45');
+    console.log('\nV18 column additions (Review Manager):');
+    console.log('  • reviewer_suggestions.proposal_url');
+    console.log('  • reviewer_suggestions.materials_sent_at');
+    console.log('  • reviewer_suggestions.reminder_sent_at');
+    console.log('  • reviewer_suggestions.reminder_count');
+    console.log('  • reviewer_suggestions.review_received_at');
+    console.log('  • reviewer_suggestions.review_blob_url');
+    console.log('  • reviewer_suggestions.review_filename');
+    console.log('  • reviewer_suggestions.thankyou_sent_at');
+    console.log('  • reviewer_suggestions.review_status');
+    console.log('\nIndexes created: 46');
 
   } catch (error) {
     console.error('\n✗ Migration failed:', error.message);
