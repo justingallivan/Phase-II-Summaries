@@ -79,11 +79,15 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const profileId = await requireAuthWithProfile(req, res);
-  if (profileId === null) return;
+  let profileId;
 
-  // Superuser check (skip in dev when auth is bypassed)
-  if (isAuthRequired()) {
+  if (!isAuthRequired()) {
+    // Dev mode — skip auth, use fallback profile ID
+    profileId = 0;
+  } else {
+    profileId = await requireAuthWithProfile(req, res);
+    if (profileId === null) return;
+
     const role = await getRole(profileId);
     if (role !== 'superuser') {
       return res.status(403).json({ error: 'Admin access required' });
