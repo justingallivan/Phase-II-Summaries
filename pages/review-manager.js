@@ -865,13 +865,11 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      {/* Status advance button */}
-                      {r.reviewStatus !== 'complete' && (
-                        <StatusAdvanceButton
-                          currentStatus={r.reviewStatus}
-                          onAdvance={(newStatus) => updateStatus(r.suggestionId, newStatus)}
-                        />
-                      )}
+                      {/* Status dropdown */}
+                      <StatusDropdown
+                        currentStatus={r.reviewStatus}
+                        onChange={(newStatus) => updateStatus(r.suggestionId, newStatus)}
+                      />
                       {/* Upload review */}
                       {(r.reviewStatus === 'materials_sent' || r.reviewStatus === 'under_review') && (
                         <button
@@ -937,22 +935,17 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
 
 // ─── Status Advance Button ──────────────────────────────────────────────────
 
-function StatusAdvanceButton({ currentStatus, onAdvance }) {
-  const statusIndex = STATUS_PIPELINE.findIndex(s => s.key === currentStatus);
-  const nextStatus = STATUS_PIPELINE[statusIndex + 1];
-
-  if (!nextStatus) return null;
-
+function StatusDropdown({ currentStatus, onChange }) {
   return (
-    <button
-      onClick={() => onAdvance(nextStatus.key)}
-      className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
-      title={`Mark as ${nextStatus.label}`}
+    <select
+      value={currentStatus}
+      onChange={e => onChange(e.target.value)}
+      className="text-xs border border-gray-200 rounded px-1.5 py-1 text-gray-600 bg-white hover:border-gray-400 focus:ring-1 focus:ring-gray-400 focus:outline-none cursor-pointer"
     >
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-      </svg>
-    </button>
+      {STATUS_PIPELINE.map(s => (
+        <option key={s.key} value={s.key}>{s.label}</option>
+      ))}
+    </select>
   );
 }
 
