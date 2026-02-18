@@ -124,6 +124,8 @@ function StatusSummary({ statusSummary }) {
 
 // ─── Email Modal ────────────────────────────────────────────────────────────
 
+const EMAIL_FIELDS_STORAGE_KEY = 'review_manager_email_fields';
+
 function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEmailsSent }) {
   const [templateType, setTemplateType] = useState('materials');
   const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
@@ -131,8 +133,14 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
   const [progress, setProgress] = useState({ current: 0, total: 0, message: '' });
   const [generatedEmails, setGeneratedEmails] = useState([]);
   const [error, setError] = useState(null);
+  const [emailFields, setEmailFields] = useState({
+    reviewDueDate: '',
+    proposalSendDate: '',
+    commitDate: '',
+    honorarium: '',
+  });
 
-  // Load saved templates from localStorage
+  // Load saved templates and email fields from localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem(TEMPLATE_STORAGE_KEY);
@@ -141,13 +149,18 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
         setTemplates(prev => ({ ...prev, ...parsed }));
       }
     } catch (e) { /* ignore */ }
+    try {
+      const saved = localStorage.getItem(EMAIL_FIELDS_STORAGE_KEY);
+      if (saved) setEmailFields(prev => ({ ...prev, ...JSON.parse(saved) }));
+    } catch (e) { /* ignore */ }
   }, []);
 
   const saveTemplate = useCallback(() => {
     try {
       localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templates));
+      localStorage.setItem(EMAIL_FIELDS_STORAGE_KEY, JSON.stringify(emailFields));
     } catch (e) { /* ignore */ }
-  }, [templates]);
+  }, [templates, emailFields]);
 
   const currentTemplate = templates[templateType];
 
@@ -168,8 +181,14 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
           settings: {
             signature: settings.signature || '',
             proposalUrl: settings.proposalUrl || '',
-            reviewDueDate: settings.reviewDueDate || '',
+            proposalPassword: settings.proposalPassword || '',
+            reviewDueDate: emailFields.reviewDueDate || settings.reviewDueDate || '',
             fromEmail: settings.fromEmail || '',
+            customFields: {
+              proposalSendDate: emailFields.proposalSendDate || '',
+              commitDate: emailFields.commitDate || '',
+              honorarium: emailFields.honorarium || '',
+            },
           },
           markAsSent: true,
         }),
@@ -299,6 +318,50 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
                 </div>
               </div>
 
+              {/* Email Fields — dates and values for placeholders */}
+              <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                <p className="text-xs font-medium text-gray-600 mb-1">Email Fields (used in placeholders)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-0.5">Review Due Date</label>
+                    <input
+                      type="date"
+                      value={emailFields.reviewDueDate}
+                      onChange={e => setEmailFields(prev => ({ ...prev, reviewDueDate: e.target.value }))}
+                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-gray-400 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-0.5">Proposal Send Date</label>
+                    <input
+                      type="date"
+                      value={emailFields.proposalSendDate}
+                      onChange={e => setEmailFields(prev => ({ ...prev, proposalSendDate: e.target.value }))}
+                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-gray-400 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-0.5">Commit By Date</label>
+                    <input
+                      type="date"
+                      value={emailFields.commitDate}
+                      onChange={e => setEmailFields(prev => ({ ...prev, commitDate: e.target.value }))}
+                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-gray-400 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-0.5">Honorarium Amount</label>
+                    <input
+                      type="text"
+                      value={emailFields.honorarium}
+                      onChange={e => setEmailFields(prev => ({ ...prev, honorarium: e.target.value }))}
+                      placeholder="e.g. 500"
+                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-gray-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Subject */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
@@ -342,7 +405,9 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
                   {['greeting', 'recipientName', 'salutation', 'recipientLastName',
                     'proposalTitle', 'piName', 'piInstitution', 'proposalUrl',
                     'proposalPassword', 'reviewDueDate', 'programName', 'signature',
-                    'investigatorTeam', 'reviewerFormLink'].map(p => (
+                    'investigatorTeam', 'reviewerFormLink',
+                    'customField:proposalSendDate', 'customField:commitDate', 'customField:honorarium',
+                    'customField:proposalDueDate'].map(p => (
                     <code key={p} className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 text-gray-600">
                       {`{{${p}}}`}
                     </code>

@@ -171,7 +171,7 @@ export default async function handler(req, res) {
         grantCycle: {
           programName: row.program_name || '',
           reviewDeadline: row.review_deadline,
-          customFields: row.custom_fields || {},
+          customFields: { ...(row.custom_fields || {}), ...(settings.customFields || {}) },
         },
       };
 
