@@ -341,7 +341,7 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
                 <div className="flex flex-wrap gap-1">
                   {['greeting', 'recipientName', 'salutation', 'recipientLastName',
                     'proposalTitle', 'piName', 'piInstitution', 'proposalUrl',
-                    'reviewDueDate', 'programName', 'signature',
+                    'proposalPassword', 'reviewDueDate', 'programName', 'signature',
                     'investigatorTeam', 'reviewerFormLink'].map(p => (
                     <code key={p} className="text-xs bg-white px-1.5 py-0.5 rounded border border-gray-200 text-gray-600">
                       {`{{${p}}}`}
@@ -606,11 +606,13 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
   const [editingNotes, setEditingNotes] = useState(null); // { suggestionId, value }
   const [savingNotes, setSavingNotes] = useState(false);
   const [proposalUrl, setProposalUrl] = useState(proposal?.proposalUrl || '');
-  const [savingUrl, setSavingUrl] = useState(false);
+  const [proposalPassword, setProposalPassword] = useState(proposal?.proposalPassword || '');
+  const [savingProposal, setSavingProposal] = useState(false);
 
-  // Sync proposalUrl when proposal changes
+  // Sync proposal fields when proposal changes
   useEffect(() => {
     setProposalUrl(proposal?.proposalUrl || '');
+    setProposalPassword(proposal?.proposalPassword || '');
     setSelectedReviewers(new Set());
     setEditingNotes(null);
   }, [proposal?.proposalId]);
@@ -649,21 +651,23 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
     });
   };
 
-  const saveProposalUrl = async () => {
-    setSavingUrl(true);
+  const saveProposalFields = async () => {
+    setSavingProposal(true);
     try {
       await fetch('/api/review-manager/reviewers', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proposalId: proposal.proposalId, proposalUrl }),
+        body: JSON.stringify({ proposalId: proposal.proposalId, proposalUrl, proposalPassword }),
       });
       if (onSettingsChange) onSettingsChange('proposalUrl', proposalUrl);
     } catch (err) {
-      console.error('Failed to save proposal URL:', err);
+      console.error('Failed to save proposal fields:', err);
     } finally {
-      setSavingUrl(false);
+      setSavingProposal(false);
     }
   };
+
+  const proposalFieldsChanged = proposalUrl !== (proposal.proposalUrl || '') || proposalPassword !== (proposal.proposalPassword || '');
 
   const saveNotes = async (suggestionId, notes) => {
     setSavingNotes(true);
@@ -755,12 +759,22 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
               placeholder="https://..."
               className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-400 focus:border-transparent"
             />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Password</label>
+            <input
+              type="text"
+              value={proposalPassword}
+              onChange={e => setProposalPassword(e.target.value)}
+              placeholder="Document password (if required)"
+              className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+            />
             <button
-              onClick={saveProposalUrl}
-              disabled={savingUrl || proposalUrl === (proposal.proposalUrl || '')}
+              onClick={saveProposalFields}
+              disabled={savingProposal || !proposalFieldsChanged}
               className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {savingUrl ? 'Saving...' : 'Save'}
+              {savingProposal ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>

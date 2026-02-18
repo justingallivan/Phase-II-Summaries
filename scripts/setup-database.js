@@ -475,6 +475,8 @@ const v18Alterations = [
   `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS thankyou_sent_at TIMESTAMP`,
   // Review lifecycle status: accepted, materials_sent, under_review, review_received, complete
   `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS review_status VARCHAR(50)`,
+  // Password for accessing the proposal document (shared per proposal)
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS proposal_password VARCHAR(255)`,
   // Index for review status filtering
   `CREATE INDEX IF NOT EXISTS idx_suggestions_review_status ON reviewer_suggestions(review_status)`,
 ];

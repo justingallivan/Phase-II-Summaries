@@ -80,6 +80,7 @@ export default async function handler(req, res) {
         rs.proposal_authors,
         rs.proposal_institution,
         rs.proposal_url,
+        rs.proposal_password,
         rs.co_investigators,
         rs.co_investigator_count,
         rs.summary_blob_url,
@@ -164,6 +165,7 @@ export default async function handler(req, res) {
       const templateSettings = {
         signature: settings.signature || '',
         proposalUrl: row.proposal_url || settings.proposalUrl || '',
+        proposalPassword: row.proposal_password || settings.proposalPassword || '',
         reviewDueDate: settings.reviewDueDate || row.review_deadline,
         reviewerFormLink: settings.reviewerFormLink || '',
         grantCycle: {

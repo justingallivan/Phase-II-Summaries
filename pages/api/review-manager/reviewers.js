@@ -44,6 +44,7 @@ async function handleGet(req, res, session) {
           rs.user_profile_id,
           rs.notes,
           rs.proposal_url,
+          rs.proposal_password,
           rs.materials_sent_at,
           rs.reminder_sent_at,
           rs.reminder_count,
@@ -89,6 +90,7 @@ async function handleGet(req, res, session) {
           rs.user_profile_id,
           rs.notes,
           rs.proposal_url,
+          rs.proposal_password,
           rs.materials_sent_at,
           rs.reminder_sent_at,
           rs.reminder_count,
@@ -134,6 +136,7 @@ async function handleGet(req, res, session) {
           rs.user_profile_id,
           rs.notes,
           rs.proposal_url,
+          rs.proposal_password,
           rs.materials_sent_at,
           rs.reminder_sent_at,
           rs.reminder_count,
@@ -183,6 +186,7 @@ async function handleGet(req, res, session) {
           proposalInstitution: row.proposal_institution,
           programArea: row.program_area,
           proposalUrl: row.proposal_url,
+          proposalPassword: row.proposal_password,
           grantCycleId: row.grant_cycle_id,
           cycleName: row.cycle_name,
           cycleShortCode: row.cycle_short_code,
@@ -245,17 +249,31 @@ async function handlePatch(req, res, session) {
     reviewStatus,
     notes,
     proposalUrl,
+    proposalPassword,
   } = req.body;
 
   try {
-    // Batch: update proposal_url for all reviewers of a proposal
-    if (proposalId && proposalUrl !== undefined) {
-      await sql`
-        UPDATE reviewer_suggestions
-        SET proposal_url = ${proposalUrl || null}
-        WHERE proposal_id = ${proposalId} AND accepted = true
-      `;
-      return res.status(200).json({ success: true, message: 'Proposal URL updated for all reviewers' });
+    // Batch: update proposal-level fields for all reviewers of a proposal
+    if (proposalId && (proposalUrl !== undefined || proposalPassword !== undefined)) {
+      const updates = [];
+      if (proposalUrl !== undefined) updates.push('url');
+      if (proposalPassword !== undefined) updates.push('password');
+
+      if (proposalUrl !== undefined) {
+        await sql`
+          UPDATE reviewer_suggestions
+          SET proposal_url = ${proposalUrl || null}
+          WHERE proposal_id = ${proposalId} AND accepted = true
+        `;
+      }
+      if (proposalPassword !== undefined) {
+        await sql`
+          UPDATE reviewer_suggestions
+          SET proposal_password = ${proposalPassword || null}
+          WHERE proposal_id = ${proposalId} AND accepted = true
+        `;
+      }
+      return res.status(200).json({ success: true, message: `Proposal ${updates.join(' & ')} updated for all reviewers` });
     }
 
     // Batch update by suggestionIds array
