@@ -148,7 +148,7 @@ Located in `shared/components/`:
 
 Located in `shared/config/`:
 - `appRegistry.js` - Single source of truth for all 13 app definitions (keys, names, routes, icons, categories)
-- `baseConfig.js` - Per-app model configuration
+- `baseConfig.js` - Per-app model configuration, `loadModelOverrides()` cache, `getModelForApp()` with DB override support
 
 ### Service Classes
 
@@ -219,6 +219,15 @@ Located in `lib/services/`:
 | granted_by | INTEGER | FK to user_profiles (who granted) |
 | UNIQUE | | (user_profile_id, app_key) |
 
+### System Settings
+
+**`system_settings`** - Generic key-value store (model overrides, etc.)
+| Column | Type | Description |
+|--------|------|-------------|
+| setting_key | VARCHAR(255) | Unique key (e.g., `model_override:expense-reporter:model`) |
+| setting_value | TEXT | Value (e.g., model ID) |
+| updated_by | INTEGER | FK to user_profiles (nullable) |
+
 ### Integrity Screener Tables
 
 - `retractions` - Retraction Watch data (~63,000+ entries)
@@ -263,6 +272,11 @@ Located in `lib/services/`:
 - `GET /api/app-access` - Get caller's allowed apps (`?all=true` for superuser admin view)
 - `POST /api/app-access` - Grant apps to a user (superuser only)
 - `DELETE /api/app-access` - Revoke apps from a user (superuser only)
+
+### Admin
+- `GET /api/admin/stats` - Aggregated API usage statistics (superuser only)
+- `GET /api/admin/models` - Per-app model config + available models from Anthropic API (superuser only)
+- `PUT /api/admin/models` - Set/clear model override for an app (superuser only)
 
 ### User Management
 - `GET/POST/PATCH/DELETE /api/user-profiles` - Profile CRUD

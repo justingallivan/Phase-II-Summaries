@@ -1,41 +1,31 @@
-# Session 57 Prompt: Dynamics Explorer Continued
+# Session 59 Prompt: Continued Improvements
 
-## Session 56 Summary
+## Session 58 Summary
 
-Implemented **round-efficiency optimizations** for Dynamics Explorer (hardcoded GUIDs, expanded `get_entity` select, vocabulary glossary) and created a **round-efficiency test suite** to verify the optimizations work.
+Implemented **admin-configurable Claude model overrides** — superusers can now switch primary, vision, and fallback models per app from the admin dashboard, with available models fetched dynamically from the Anthropic API.
 
 ### What Was Completed
 
-1. **Vocabulary glossary in system prompt** (`dd2f9b8`) — Added a glossary mapping common user terms (PI, award, grant amount, Phase I status, etc.) to the correct CRM fields. Prevents the model from needing extra tool calls to discover field names.
+1. **V17 database migration** (`a1e2a97`) — New `system_settings` key-value table for storing model overrides (and future admin settings). Keys follow format: `model_override:{appKey}:{modelType}`.
 
-2. **Round-count optimizations** (`fe76a2a`) — Three changes to reduce tool-call rounds:
-   - **Hardcoded program GUIDs**: MR, S&E, SoCal, NorCal GUIDs embedded in system prompt so the model can filter by `_wmkf_grantprogram_value` directly without first querying `wmkf_grantprograms`
-   - **Expanded `get_entity` select for requests**: Added `_wmkf_projectleader_value`, `akoya_grant`, `wmkf_phaseistatus`, and many other fields so single-request lookups return all needed data in one call
-   - **Inline `wmkf_grantprogram` schema**: Added to TABLE_ANNOTATIONS so the model doesn't need `describe_table` to learn about program lookup tables
+2. **Model override cache in baseConfig.js** (`a1e2a97`) — `loadModelOverrides()` pre-loads DB overrides into a module-level Map with 5-min TTL. `getModelForApp()` stays synchronous, checking DB override → env var → hardcoded → default.
 
-3. **Round-efficiency test suite** (`719e452`, `98c7099`) — New `scripts/test-dynamics-rounds.js` CLI script:
-   - Sends 6 test queries to the chat endpoint via SSE
-   - Parses streaming response to count tool-call rounds
-   - Compares against per-query max-round thresholds
-   - All 6 tests passed (most queries resolved in 2 rounds, within 3-round budgets)
-   - Supports `--base-url`, `--query <n>`, `--verbose` flags
+3. **Admin models API** (`a1e2a97`) — New `pages/api/admin/models.js`:
+   - GET: Returns all 16 apps with effective model config per type (source: db/env/hardcoded), plus available models from Anthropic `GET /v1/models` (1-hour cache, 10 models returned)
+   - PUT: Set/clear overrides with validation on appKey and modelType
+
+4. **Admin UI ModelConfigSection** (`a1e2a97`) — Table of apps × model types (Primary, Vision, Fallback) with dropdowns populated from Anthropic API. Save/discard pattern with amber highlight on changed cells.
+
+5. **12 API routes wired** (`a1e2a97`) — Added `await loadModelOverrides()` after auth in all Claude-calling API handlers.
+
+6. **Dev mode auth fixes** (`c98b4d1`) — Fixed `/api/admin/models`, `/api/admin/stats`, and `/api/dynamics-explorer/roles` stalling in dev mode. Applied early-return pattern (skip auth when `AUTH_REQUIRED=false`) matching `app-access.js`.
+
+7. **FK constraint fix** (`5da7efe`) — `updated_by=0` (dev mode fallback) caused FK violation. Now passes `null` instead.
 
 ### Commits
-- `dd2f9b8` - Add vocabulary glossary to Dynamics Explorer system prompt
-- `fe76a2a` - Optimize Dynamics Explorer for fewer tool-call rounds
-- `719e452` - Add round-efficiency test suite for Dynamics Explorer
-- `98c7099` - Relax health check in round-efficiency test to accept any response
-
-### Test Results (all passed)
-
-| # | Query | Rounds | Max | Time |
-|---|-------|--------|-----|------|
-| 1 | Who is the PI on request 1001481? | 2 | 2 | 4.1s |
-| 2 | How much did we award for request 1001481? | 2 | 2 | 3.1s |
-| 3 | What's the Phase I status of request 1002108? | 2 | 2 | 3.3s |
-| 4 | Show me all MR proposals from 2025 | 2 | 3 | 9.3s |
-| 5 | Show me active SoCal grants | 2 | 3 | 9.9s |
-| 6 | How many S&E proposals were submitted in 2024? | 3 | 3 | 7.5s |
+- `a1e2a97` - Add admin-configurable Claude model overrides per app
+- `c98b4d1` - Fix admin API endpoints stalling in dev mode
+- `5da7efe` - Fix FK constraint violation when saving model overrides in dev mode
 
 ## Potential Next Steps
 
@@ -48,16 +38,12 @@ Implemented **round-efficiency optimizations** for Dynamics Explorer (hardcoded 
 - Smart describe_table injection on query failure
 - Lookup table auto-resolution (GUID fields)
 
-### 3. Expand Test Suite
+### 3. Expand Round-Efficiency Test Suite
 - Add queries testing `get_related` (account→requests, request→payments)
 - Add queries testing Dataverse Search
 - Add queries testing edge cases (ambiguous accounts, multi-step lookups)
 
-### 4. AI Export Enhancements
-- Test with larger datasets (1000+ records) to verify batch processing stability
-- Consider adding a "cancel" button for long-running AI exports
-
-### 5. Deferred Email Notifications
+### 4. Deferred Email Notifications
 - Automated admin notification when new users sign up
 - Requires Azure AD Mail.Send permission — see `docs/TODO_EMAIL_NOTIFICATIONS.md`
 
@@ -65,17 +51,21 @@ Implemented **round-efficiency optimizations** for Dynamics Explorer (hardcoded 
 
 | File | Purpose |
 |------|---------|
-| `shared/config/prompts/dynamics-explorer.js` | System prompt + tools + TABLE_ANNOTATIONS + vocabulary glossary + hardcoded GUIDs |
-| `pages/api/dynamics-explorer/chat.js` | Agentic chat API (streaming, AI export, batch processing) |
-| `pages/dynamics-explorer.js` | Chat frontend (memoized, text_delta streaming) |
-| `scripts/test-dynamics-rounds.js` | Round-efficiency integration test suite (6 queries) |
-| `lib/services/dynamics-service.js` | Dynamics CRM API service |
+| `scripts/setup-database.js` | V17 migration: `system_settings` table |
+| `shared/config/baseConfig.js` | `loadModelOverrides()`, `clearModelOverridesCache()`, updated `getModelForApp()` |
+| `shared/config/index.js` | Re-exports for new functions |
+| `pages/api/admin/models.js` | GET/PUT admin API for model overrides |
+| `pages/admin.js` | `ModelConfigSection` UI component |
+| `pages/api/admin/stats.js` | Fixed dev mode auth |
+| `pages/api/dynamics-explorer/roles.js` | Fixed dev mode auth |
 
 ## Testing
 
 ```bash
-npm run dev                                          # Run development server
-node scripts/test-dynamics-rounds.js                 # Run round-efficiency tests (all 6)
-node scripts/test-dynamics-rounds.js --query 1 --verbose  # Single query with detail
-npm run build                                        # Verify build succeeds
+npm run dev                              # Run development server
+node scripts/setup-database.js           # Run V17 migration
+npm run build                            # Verify build succeeds
+# Open /admin in browser — Model Configuration section should load with dropdowns
+# Test: change a model, Save, refresh — verify it persists
+# Test: reset to Default, Save — verify override is removed
 ```

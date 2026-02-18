@@ -1841,4 +1841,36 @@ Deleted 23 obsolete planning/migration markdown files:
 
 ---
 
-Last Updated: February 15, 2026
+## Session 58 - February 17, 2026
+
+### Admin-Configurable Claude Model Overrides
+
+Added a new admin dashboard section allowing superusers to change which Claude model each app uses — without code changes or redeployment. Available models are fetched dynamically from the Anthropic API.
+
+**Architecture:**
+- Model resolution priority: DB override → env var → hardcoded → default
+- `loadModelOverrides()` async function pre-loads DB overrides into a module-level Map (5-min TTL)
+- `getModelForApp()` stays synchronous — each API handler calls `loadModelOverrides()` once at the top
+
+**New Files:**
+- `pages/api/admin/models.js` — GET/PUT admin API for model overrides
+- V17 migration: `system_settings` key-value table in `scripts/setup-database.js`
+
+**Modified Files:**
+- `shared/config/baseConfig.js` — Added cache, `loadModelOverrides()`, `clearModelOverridesCache()`, updated `getModelForApp()`
+- `shared/config/index.js` — Re-exports
+- `pages/admin.js` — New `ModelConfigSection` component (table of apps × model types with dropdowns)
+- 12 API route files — Added `await loadModelOverrides()` after auth
+
+**Bug Fixes:**
+- Fixed 3 admin API endpoints (`/api/admin/models`, `/api/admin/stats`, `/api/dynamics-explorer/roles`) stalling in dev mode when `AUTH_REQUIRED=false` — applied early-return pattern from `app-access.js`
+- Fixed FK constraint violation on `system_settings.updated_by` in dev mode (profileId=0 → null)
+
+**Commits:**
+- `a1e2a97` - Add admin-configurable Claude model overrides per app
+- `c98b4d1` - Fix admin API endpoints stalling in dev mode
+- `5da7efe` - Fix FK constraint violation when saving model overrides in dev mode
+
+---
+
+Last Updated: February 17, 2026
