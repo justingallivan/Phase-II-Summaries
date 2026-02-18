@@ -1,5 +1,5 @@
 import pdf from 'pdf-parse';
-import { BASE_CONFIG, KECK_GUIDELINES, getModelForApp } from '../../shared/config';
+import { BASE_CONFIG, KECK_GUIDELINES, getModelForApp, loadModelOverrides } from '../../shared/config';
 import { createPhaseISummarizationPrompt } from '../../shared/config/prompts/phase-i-summaries';
 import { createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer';
 import { requireAuth } from '../../lib/utils/auth';
@@ -14,6 +14,7 @@ export default async function handler(req, res) {
   // Require authentication
   const session = await requireAuth(req, res);
   if (!session) return;
+  await loadModelOverrides();
 
   try {
     const { files, summaryLength = 2, summaryLevel = 'technical-non-expert' } = req.body;

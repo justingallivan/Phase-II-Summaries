@@ -1,5 +1,5 @@
 import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
-import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
 import { applySecurityMiddleware } from '../../shared/api/middleware/security';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { requireAuth } from '../../lib/utils/auth';
@@ -26,6 +26,7 @@ export default async function handler(req, res) {
   // Require authentication
   const session = await requireAuth(req, res);
   if (!session) return;
+  await loadModelOverrides();
 
   try {
     // Apply security middleware

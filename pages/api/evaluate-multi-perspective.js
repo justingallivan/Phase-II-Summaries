@@ -13,7 +13,7 @@
  * Stage 4 (Fan-in): Integrator synthesizes all perspectives
  */
 
-import { BASE_CONFIG, getModelForApp, getFallbackModelForApp } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp, getFallbackModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
 import { splitPdfToPages } from '../../lib/utils/pdf-page-splitter';
 import {
   createInitialAnalysisPrompt,
@@ -53,6 +53,7 @@ export default async function handler(req, res) {
   // Require authentication
   const session = await requireAuth(req, res);
   if (!session) return;
+  await loadModelOverrides();
 
   // Set headers for streaming response
   res.setHeader('Content-Type', 'text/plain');

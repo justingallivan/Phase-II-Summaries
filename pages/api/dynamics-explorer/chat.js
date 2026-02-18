@@ -15,7 +15,7 @@ import { sql } from '@vercel/postgres';
 import * as XLSX from 'xlsx';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
 import { buildSystemPrompt, TOOL_DEFINITIONS, TABLE_ANNOTATIONS } from '../../../shared/config/prompts/dynamics-explorer';
-import { getModelForApp, getFallbackModelForApp } from '../../../shared/config/baseConfig';
+import { getModelForApp, getFallbackModelForApp, loadModelOverrides } from '../../../shared/config/baseConfig';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 import { logUsage, estimateCostCents } from '../../../lib/utils/usage-logger';
 
@@ -46,6 +46,7 @@ export default async function handler(req, res) {
 
   const session = await requireAuth(req, res);
   if (!session) return;
+  await loadModelOverrides();
 
   // Set up SSE
   res.setHeader('Content-Type', 'text/event-stream');

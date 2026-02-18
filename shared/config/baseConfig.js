@@ -241,6 +241,48 @@ export function validateConfig(config) {
   }
 }
 
+// --- DB model override cache ---
+// Pre-loaded by loadModelOverrides() so getModelForApp() stays synchronous
+let _dbOverrides = new Map();
+let _dbOverridesLoadedAt = 0;
+const DB_OVERRIDES_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Pre-load model overrides from system_settings into memory.
+ * Call once near the top of each API handler (after auth, before getModelForApp).
+ * No-ops if cache is still fresh.
+ */
+export async function loadModelOverrides() {
+  if (Date.now() - _dbOverridesLoadedAt < DB_OVERRIDES_TTL_MS) return;
+  try {
+    const { sql } = await import('@vercel/postgres');
+    const result = await sql`
+      SELECT setting_key, setting_value FROM system_settings
+      WHERE setting_key LIKE 'model_override:%'
+    `;
+    const map = new Map();
+    for (const row of result.rows) {
+      // setting_key format: model_override:{appKey}:{modelType}
+      const suffix = row.setting_key.replace('model_override:', '');
+      map.set(suffix, row.setting_value); // e.g. "concept-evaluator:model" → "claude-sonnet-4-..."
+    }
+    _dbOverrides = map;
+    _dbOverridesLoadedAt = Date.now();
+  } catch (err) {
+    // On failure (e.g. table doesn't exist yet), leave cache as-is
+    console.error('loadModelOverrides: failed to load overrides:', err.message);
+  }
+}
+
+/**
+ * Clear the in-memory model overrides cache.
+ * Call after admin writes to system_settings so the next request re-fetches.
+ */
+export function clearModelOverridesCache() {
+  _dbOverrides = new Map();
+  _dbOverridesLoadedAt = 0;
+}
+
 /**
  * Get the appropriate Claude model for a specific app
  * @param {string} appKey - The app identifier (e.g., 'concept-evaluator', 'expense-reporter')
@@ -248,7 +290,13 @@ export function validateConfig(config) {
  * @returns {string} - The model identifier
  */
 export function getModelForApp(appKey, type = 'model') {
-  // Allow environment variable override for specific apps
+  // 1. Check DB override (loaded by loadModelOverrides)
+  const dbOverride = _dbOverrides.get(`${appKey}:${type}`);
+  if (dbOverride) {
+    return dbOverride;
+  }
+
+  // 2. Allow environment variable override for specific apps
   // e.g., CLAUDE_MODEL_CONCEPT_EVALUATOR=claude-sonnet-4-20250514
   const envKey = `CLAUDE_MODEL_${appKey.toUpperCase().replace(/-/g, '_')}`;
   const envOverride = process.env[envKey];
@@ -256,14 +304,14 @@ export function getModelForApp(appKey, type = 'model') {
     return envOverride;
   }
 
-  // Get from APP_MODELS configuration
+  // 3. Get from APP_MODELS configuration
   const appConfig = BASE_CONFIG.APP_MODELS[appKey];
   if (appConfig) {
     // Return requested type, falling back to model, then to default
     return appConfig[type] || appConfig.model || BASE_CONFIG.CLAUDE.DEFAULT_MODEL;
   }
 
-  // Fall back to global default
+  // 4. Fall back to global default
   return BASE_CONFIG.CLAUDE.DEFAULT_MODEL;
 }
 

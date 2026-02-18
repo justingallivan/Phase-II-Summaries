@@ -445,6 +445,19 @@ const v16Statements = [
   `CREATE INDEX IF NOT EXISTS idx_user_app_access_user ON user_app_access(user_profile_id)`,
 ];
 
+// V17: System settings key-value store (model overrides, etc.)
+const v17Statements = [
+  `CREATE TABLE IF NOT EXISTS system_settings (
+    id SERIAL PRIMARY KEY,
+    setting_key VARCHAR(255) NOT NULL UNIQUE,
+    setting_value TEXT NOT NULL,
+    updated_by INTEGER REFERENCES user_profiles(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_system_settings_key ON system_settings(setting_key)`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -842,6 +855,25 @@ async function runMigration() {
       }
     }
 
+    // Run V17 table creation (System settings)
+    console.log(`\nApplying v17 schema updates - System settings (${v17Statements.length} statements)...`);
+    for (let i = 0; i < v17Statements.length; i++) {
+      const statement = v17Statements[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v17-${i + 1}/${v17Statements.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v17-${i + 1}/${v17Statements.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v17-${i + 1}/${v17Statements.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -911,7 +943,9 @@ async function runMigration() {
     console.log('    output_tokens, estimated_cost_cents, latency_ms, request_status)');
     console.log('\nV16 new table (App access control):');
     console.log('  • user_app_access (user_profile_id, app_key, granted_by)');
-    console.log('\nIndexes created: 44');
+    console.log('\nV17 new table (System settings):');
+    console.log('  • system_settings (setting_key, setting_value, updated_by)');
+    console.log('\nIndexes created: 45');
 
   } catch (error) {
     console.error('\n✗ Migration failed:', error.message);

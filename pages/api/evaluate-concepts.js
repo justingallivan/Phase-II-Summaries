@@ -7,7 +7,7 @@
  * 2. Literature search + Claude for final evaluation with novelty assessment
  */
 
-import { BASE_CONFIG, getModelForApp, getFallbackModelForApp } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp, getFallbackModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
 import { splitPdfToPages } from '../../lib/utils/pdf-page-splitter';
 import {
   createInitialAnalysisPrompt,
@@ -42,6 +42,7 @@ export default async function handler(req, res) {
   // Require authentication
   const session = await requireAuth(req, res);
   if (!session) return;
+  await loadModelOverrides();
 
   try {
     const { files } = req.body;

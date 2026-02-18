@@ -1,5 +1,5 @@
 import pdf from 'pdf-parse';
-import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
 import { createSummarizationPrompt, createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer';
 import { requireAuth } from '../../lib/utils/auth';
 import { logUsage } from '../../lib/utils/usage-logger';
@@ -13,6 +13,7 @@ export default async function handler(req, res) {
   // Require authentication
   const session = await requireAuth(req, res);
   if (!session) return;
+  await loadModelOverrides();
 
   try {
     const { files, summaryLength = 2, summaryLevel = 'technical-non-expert' } = req.body;

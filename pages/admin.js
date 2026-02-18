@@ -285,6 +285,278 @@ function SummaryCard({ label, value, alert = false }) {
   );
 }
 
+// --- Section B2: Model Configuration ---
+const MODEL_TYPE_LABELS = {
+  model: 'Primary',
+  visionModel: 'Vision',
+  fallback: 'Fallback',
+};
+
+// Friendly names for APP_MODELS keys that don't match APP_REGISTRY
+const APP_MODEL_NAMES = {
+  'concept-evaluator': 'Concept Evaluator',
+  'multi-perspective-evaluator': 'Multi-Perspective Evaluator',
+  'literature-analyzer': 'Literature Analyzer',
+  'batch-phase-i': 'Batch Phase I',
+  'batch-phase-ii': 'Batch Phase II',
+  'phase-i-writeup': 'Phase I Writeup',
+  'phase-ii-writeup': 'Phase II Writeup',
+  'reviewer-finder': 'Reviewer Finder',
+  'peer-review-summarizer': 'Peer Review Summarizer',
+  'funding-analysis': 'Funding Analysis',
+  'qa': 'Q&A',
+  'refine': 'Refinement',
+  'expense-reporter': 'Expense Reporter',
+  'contact-enrichment': 'Contact Enrichment',
+  'email-personalization': 'Email Personalization',
+  'dynamics-explorer': 'Dynamics Explorer',
+};
+
+function ModelConfigSection() {
+  const [serverState, setServerState] = useState(null); // { apps, availableModels, defaultModel }
+  const [localOverrides, setLocalOverrides] = useState({}); // { "appKey:modelType": modelId|null }
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [error, setError] = useState(null);
+
+  const fetchConfig = () => {
+    setLoading(true);
+    setError(null);
+    fetch('/api/admin/models')
+      .then(r => {
+        if (r.status === 403) throw new Error('Admin access required');
+        if (!r.ok) throw new Error('Failed to fetch model config');
+        return r.json();
+      })
+      .then(data => {
+        setServerState(data);
+        // Initialize local overrides from server DB overrides
+        const overrides = {};
+        (data.apps || []).forEach(app => {
+          Object.entries(app.models).forEach(([type, info]) => {
+            if (info.dbOverride) {
+              overrides[`${app.appKey}:${type}`] = info.dbOverride;
+            }
+          });
+        });
+        setLocalOverrides(overrides);
+      })
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { fetchConfig(); }, []);
+
+  if (loading) {
+    return (
+      <Card>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Model Configuration</h2>
+        <div className="text-gray-500 text-sm">Loading model configuration...</div>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Model Configuration</h2>
+        <div className="text-red-600 text-sm">{error}</div>
+      </Card>
+    );
+  }
+
+  if (!serverState) return null;
+
+  const { apps, availableModels, defaultModel } = serverState;
+
+  // Build server-side DB override map for diff calculation
+  const serverDbOverrides = {};
+  apps.forEach(app => {
+    Object.entries(app.models).forEach(([type, info]) => {
+      if (info.dbOverride) {
+        serverDbOverrides[`${app.appKey}:${type}`] = info.dbOverride;
+      }
+    });
+  });
+
+  // Handle dropdown change
+  const handleChange = (appKey, modelType, value) => {
+    setLocalOverrides(prev => {
+      const next = { ...prev };
+      const key = `${appKey}:${modelType}`;
+      if (value === '') {
+        // "Default" selected — clear the override
+        delete next[key];
+      } else {
+        next[key] = value;
+      }
+      return next;
+    });
+  };
+
+  // Compute diff between server DB overrides and local state
+  const computeDiff = () => {
+    const changes = [];
+    const allKeys = new Set([...Object.keys(serverDbOverrides), ...Object.keys(localOverrides)]);
+    for (const key of allKeys) {
+      const serverVal = serverDbOverrides[key] || null;
+      const localVal = localOverrides[key] || null;
+      if (serverVal !== localVal) {
+        const [appKey, modelType] = [key.substring(0, key.lastIndexOf(':')), key.substring(key.lastIndexOf(':') + 1)];
+        changes.push({ appKey, modelType, modelId: localVal });
+      }
+    }
+    return changes;
+  };
+
+  const diff = computeDiff();
+  const hasChanges = diff.length > 0;
+
+  const saveAll = async () => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      for (const change of diff) {
+        const resp = await fetch('/api/admin/models', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(change),
+        });
+        if (!resp.ok) {
+          const err = await resp.json();
+          throw new Error(err.error || 'Failed to save');
+        }
+      }
+      setMessage({ type: 'success', text: `Saved ${diff.length} model override(s)` });
+      fetchConfig();
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const discardChanges = () => {
+    const overrides = {};
+    apps.forEach(app => {
+      Object.entries(app.models).forEach(([type, info]) => {
+        if (info.dbOverride) {
+          overrides[`${app.appKey}:${type}`] = info.dbOverride;
+        }
+      });
+    });
+    setLocalOverrides(overrides);
+    setMessage(null);
+  };
+
+  // Short model name for display (strip "claude-" prefix and date suffix)
+  const shortModelName = (id) => {
+    if (!id) return '—';
+    return id;
+  };
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Model Configuration</h2>
+          <p className="text-xs text-gray-500 mt-1">Changes take effect within 5 minutes for running instances.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {hasChanges && (
+            <button
+              onClick={discardChanges}
+              className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Discard
+            </button>
+          )}
+          <button
+            onClick={saveAll}
+            disabled={!hasChanges || saving}
+            className="px-4 py-1.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {saving ? 'Saving...' : hasChanges ? 'Save Changes' : 'No Changes'}
+          </button>
+        </div>
+      </div>
+
+      {message && (
+        <div className={`mb-4 px-3 py-2 rounded-lg text-sm ${
+          message.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'
+        }`}>
+          {message.text}
+        </div>
+      )}
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="border-b border-gray-200">
+              <th className="text-left py-2 px-2 font-medium text-gray-600 min-w-[160px]">App</th>
+              {Object.entries(MODEL_TYPE_LABELS).map(([type, label]) => (
+                <th key={type} className="text-left py-2 px-2 font-medium text-gray-600 min-w-[220px]">{label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {apps.map(app => (
+              <tr key={app.appKey} className="border-b border-gray-100 hover:bg-gray-50">
+                <td className="py-2 px-2 text-gray-900 font-medium whitespace-nowrap">
+                  {APP_MODEL_NAMES[app.appKey] || app.appKey}
+                </td>
+                {Object.keys(MODEL_TYPE_LABELS).map(modelType => {
+                  const info = app.models[modelType];
+                  const key = `${app.appKey}:${modelType}`;
+                  const localVal = localOverrides[key] || '';
+                  const serverVal = serverDbOverrides[key] || '';
+                  const changed = localVal !== serverVal;
+                  const hasHardcoded = !!info.hardcoded;
+
+                  return (
+                    <td key={modelType} className="py-2 px-2">
+                      {hasHardcoded ? (
+                        <div>
+                          <select
+                            value={localVal}
+                            onChange={e => handleChange(app.appKey, modelType, e.target.value)}
+                            className={`w-full px-2 py-1.5 border rounded-lg text-xs focus:ring-2 focus:ring-gray-400 focus:border-gray-400 ${
+                              changed ? 'border-amber-400 ring-2 ring-amber-200' : 'border-gray-300'
+                            }`}
+                          >
+                            <option value="">Default ({shortModelName(info.hardcoded)})</option>
+                            {availableModels.map(m => (
+                              <option key={m.id} value={m.id}>{m.display_name}</option>
+                            ))}
+                          </select>
+                          {info.envOverride && (
+                            <span className="inline-block mt-1 text-[10px] text-gray-400" title={`Environment variable override: ${info.envOverride}`}>
+                              env: {shortModelName(info.envOverride)}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-xs">—</span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {hasChanges && (
+        <p className="text-xs text-amber-600 mt-3">
+          {diff.length} unsaved change(s). Changed dropdowns are highlighted.
+        </p>
+      )}
+    </Card>
+  );
+}
+
 // --- Section C: Role Management ---
 const ROLE_OPTIONS = [
   { value: 'superuser', label: 'Superuser' },
@@ -782,6 +1054,7 @@ export default function AdminDashboard() {
       <div className="py-8 space-y-6">
         <HealthSection />
         <UsageSection />
+        <ModelConfigSection />
         <RoleManagementSection />
         <AppAccessSection />
         <QuickLinksSection />

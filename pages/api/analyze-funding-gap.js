@@ -3,7 +3,7 @@ import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { createFundingExtractionPrompt, createFundingAnalysisPrompt } from '../../shared/config/prompts/funding-gap-analyzer';
 import { queryNSFforPI, queryNSFforKeywords, queryNIHforPI, queryNIHforKeywords, queryUSASpending, formatCurrency, formatDate } from '../../lib/fundingApis';
-import { getModelForApp } from '../../shared/config/baseConfig';
+import { getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
 import { requireAuth } from '../../lib/utils/auth';
 
 export const config = {
@@ -30,6 +30,7 @@ export default async function handler(req, res) {
   // Require authentication
   const session = await requireAuth(req, res);
   if (!session) return;
+  await loadModelOverrides();
 
   // Apply rate limiting
   const rateLimitResult = await rateLimiter(req, res);

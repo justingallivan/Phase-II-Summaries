@@ -7,7 +7,7 @@
  * 2. Claude to synthesize findings across all papers
  */
 
-import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
 import {
   createPaperExtractionPrompt,
   createSynthesisPrompt,
@@ -27,6 +27,7 @@ export default async function handler(req, res) {
   // Require authentication
   const session = await requireAuth(req, res);
   if (!session) return;
+  await loadModelOverrides();
 
   try {
     const { files, options = {} } = req.body;
