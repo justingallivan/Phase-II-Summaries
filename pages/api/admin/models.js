@@ -181,6 +181,8 @@ async function handlePut(req, res, profileId) {
     }
 
     const settingKey = `model_override:${appKey}:${modelType}`;
+    // Use null for updated_by if profileId is 0 (dev mode) to avoid FK violation
+    const updatedBy = profileId === 0 ? null : profileId;
 
     if (modelId === null || modelId === undefined || modelId === '') {
       // Delete the override — revert to env/hardcoded default
@@ -189,9 +191,9 @@ async function handlePut(req, res, profileId) {
       // Upsert the override
       await sql`
         INSERT INTO system_settings (setting_key, setting_value, updated_by, updated_at)
-        VALUES (${settingKey}, ${modelId}, ${profileId}, NOW())
+        VALUES (${settingKey}, ${modelId}, ${updatedBy}, NOW())
         ON CONFLICT (setting_key)
-        DO UPDATE SET setting_value = ${modelId}, updated_by = ${profileId}, updated_at = NOW()
+        DO UPDATE SET setting_value = ${modelId}, updated_by = ${updatedBy}, updated_at = NOW()
       `;
     }
 
