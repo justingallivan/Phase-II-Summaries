@@ -1,71 +1,56 @@
-# Session 59 Prompt: Continued Improvements
+# Session 60 Prompt: SharePoint Document Access (Continued)
 
-## Session 58 Summary
+## Session 59 Summary
 
-Implemented **admin-configurable Claude model overrides** — superusers can now switch primary, vision, and fallback models per app from the admin dashboard, with available models fetched dynamically from the Anthropic API.
+Explored how to programmatically access documents linked to Dynamics CRM requests. Discovered that documents are stored in **SharePoint** (not Dynamics) and mapped out the full access path.
 
 ### What Was Completed
 
-1. **V17 database migration** (`a1e2a97`) — New `system_settings` key-value table for storing model overrides (and future admin settings). Keys follow format: `model_override:{appKey}:{modelType}`.
+1. **Identified the document storage architecture** — Dynamics `sharepointdocumentlocation` records link requests to SharePoint folders. The SharePoint site is `https://appriver3651007194.sharepoint.com/sites/akoyaGO`.
 
-2. **Model override cache in baseConfig.js** (`a1e2a97`) — `loadModelOverrides()` pre-loads DB overrides into a module-level Map with 5-min TTL. `getModelForApp()` stays synchronous, checking DB override → env var → hardcoded → default.
+2. **Created test script** (`scripts/test-document-locations.js`) — Successfully queries Dynamics for document locations by request number. Confirmed folder path pattern: `{RequestNumber}_{GUIDNoHyphens}`.
 
-3. **Admin models API** (`a1e2a97`) — New `pages/api/admin/models.js`:
-   - GET: Returns all 16 apps with effective model config per type (source: db/env/hardcoded), plus available models from Anthropic `GET /v1/models` (1-hour cache, 10 models returned)
-   - PUT: Set/clear overrides with validation on appKey and modelType
+3. **Added Microsoft Graph permissions to Azure AD** — `Files.Read.All` and `Sites.Read.All` added to the "JPG Auth Test" app registration, but admin consent is pending (user's account lacks Global Admin role).
 
-4. **Admin UI ModelConfigSection** (`a1e2a97`) — Table of apps × model types (Primary, Vision, Fallback) with dropdowns populated from Anthropic API. Save/discard pattern with amber highlight on changed cells.
+4. **Wrote implementation plan** — Full details in `docs/SHAREPOINT_DOCUMENT_ACCESS.md` covering Microsoft Graph service, document resolution, Dynamics Explorer integration, and PDF processing.
 
-5. **12 API routes wired** (`a1e2a97`) — Added `await loadModelOverrides()` after auth in all Claude-calling API handlers.
+### Blocker
 
-6. **Dev mode auth fixes** (`c98b4d1`) — Fixed `/api/admin/models`, `/api/admin/stats`, and `/api/dynamics-explorer/roles` stalling in dev mode. Applied early-return pattern (skip auth when `AUTH_REQUIRED=false`) matching `app-access.js`.
-
-7. **FK constraint fix** (`5da7efe`) — `updated_by=0` (dev mode fallback) caused FK violation. Now passes `null` instead.
-
-### Commits
-- `a1e2a97` - Add admin-configurable Claude model overrides per app
-- `c98b4d1` - Fix admin API endpoints stalling in dev mode
-- `5da7efe` - Fix FK constraint violation when saving model overrides in dev mode
+**Azure AD admin consent required.** The two Microsoft Graph permissions (`Files.Read.All`, `Sites.Read.All`) are added to the app registration but show "Not granted for WM Keck Foundation." A Global Administrator or Cloud Application Administrator must click "Grant admin consent" on the API permissions page.
 
 ## Potential Next Steps
 
-### 1. Disambiguate Program Lookup Fields (from Session 54)
-**ACTION REQUIRED: Talk to someone who knows the CRM database** to clarify the semantic difference between `_wmkf_grantprogram_value` (11 values like "Southern California") and `_akoya_programid_value` (24 values like "Precollegiate Education"). Once clarified, annotate both fields in TABLE_ANNOTATIONS.
+### 1. SharePoint Document Access (Blocked — Needs Admin Consent)
+Once permissions are granted:
+- Create `lib/services/microsoft-graph-service.js` (auth + file listing + download)
+- Add `get_request_documents` / `read_document` tools to Dynamics Explorer
+- Wire up PDF text extraction for Claude analysis
+- See `docs/SHAREPOINT_DOCUMENT_ACCESS.md` for full plan
 
-### 2. Search Heuristics & Query Optimization (from Session 52)
-- Pre-query classification to route to the right tool
-- Common field name aliases (server-side mapping of wrong to correct names)
-- Smart describe_table injection on query failure
-- Lookup table auto-resolution (GUID fields)
+### 2. Disambiguate Program Lookup Fields (from Session 54)
+**ACTION REQUIRED: Talk to someone who knows the CRM database** to clarify `_wmkf_grantprogram_value` vs `_akoya_programid_value`.
 
-### 3. Expand Round-Efficiency Test Suite
-- Add queries testing `get_related` (account→requests, request→payments)
-- Add queries testing Dataverse Search
-- Add queries testing edge cases (ambiguous accounts, multi-step lookups)
+### 3. Search Heuristics & Query Optimization (from Session 52)
+- Pre-query classification, field aliases, smart describe_table injection, GUID auto-resolution
 
-### 4. Deferred Email Notifications
-- Automated admin notification when new users sign up
-- Requires Azure AD Mail.Send permission — see `docs/TODO_EMAIL_NOTIFICATIONS.md`
+### 4. Expand Round-Efficiency Test Suite
+- `get_related`, Dataverse Search, edge case queries
+
+### 5. Deferred Email Notifications
+- See `docs/TODO_EMAIL_NOTIFICATIONS.md`
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `scripts/setup-database.js` | V17 migration: `system_settings` table |
-| `shared/config/baseConfig.js` | `loadModelOverrides()`, `clearModelOverridesCache()`, updated `getModelForApp()` |
-| `shared/config/index.js` | Re-exports for new functions |
-| `pages/api/admin/models.js` | GET/PUT admin API for model overrides |
-| `pages/admin.js` | `ModelConfigSection` UI component |
-| `pages/api/admin/stats.js` | Fixed dev mode auth |
-| `pages/api/dynamics-explorer/roles.js` | Fixed dev mode auth |
+| `docs/SHAREPOINT_DOCUMENT_ACCESS.md` | Full plan for SharePoint document access |
+| `scripts/test-document-locations.js` | Test script for querying document locations |
+| `lib/services/dynamics-service.js` | Existing Dynamics service (auth patterns to follow) |
 
 ## Testing
 
 ```bash
-npm run dev                              # Run development server
-node scripts/setup-database.js           # Run V17 migration
-npm run build                            # Verify build succeeds
-# Open /admin in browser — Model Configuration section should load with dropdowns
-# Test: change a model, Save, refresh — verify it persists
-# Test: reset to Default, Save — verify override is removed
+node scripts/test-document-locations.js 1001289   # Query document locations (works now)
+# After admin consent is granted:
+# Create and test microsoft-graph-service.js
 ```
