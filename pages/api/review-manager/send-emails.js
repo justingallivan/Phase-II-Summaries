@@ -119,7 +119,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // Also fetch the grant cycle review template if available
+    // Also fetch grant cycle attachments (review template + additional) if available
     const firstRow = reviewerData.rows[0];
     if (firstRow.review_template_blob_url && !attachmentCache.has(firstRow.review_template_blob_url)) {
       try {
@@ -127,6 +127,21 @@ export default async function handler(req, res) {
         if (templateAttachment) sharedAttachments.push(templateAttachment);
       } catch (err) {
         console.warn('Failed to fetch review template:', err.message);
+      }
+    }
+
+    // Fetch additional attachments from grant cycle
+    if (firstRow.additional_attachments && Array.isArray(firstRow.additional_attachments)) {
+      for (const att of firstRow.additional_attachments) {
+        const attUrl = att.blobUrl || att.url;
+        if (attUrl && !attachmentCache.has(attUrl)) {
+          try {
+            const additional = await fetchAttachment(attUrl, attachmentCache);
+            if (additional) sharedAttachments.push(additional);
+          } catch (err) {
+            console.warn('Failed to fetch additional attachment:', attUrl, err.message);
+          }
+        }
       }
     }
 

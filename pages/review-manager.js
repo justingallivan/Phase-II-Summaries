@@ -125,6 +125,7 @@ function StatusSummary({ statusSummary }) {
 // ─── Email Modal ────────────────────────────────────────────────────────────
 
 const EMAIL_FIELDS_STORAGE_KEY = 'review_manager_email_fields';
+const ATTACHMENTS_STORAGE_KEY = 'review_manager_attachments';
 
 function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEmailsSent }) {
   const [templateType, setTemplateType] = useState('materials');
@@ -139,8 +140,10 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
     commitDate: '',
     honorarium: '',
   });
+  const [attachments, setAttachments] = useState([]); // [{ url, filename, size }]
+  const [isUploading, setIsUploading] = useState(false);
 
-  // Load saved templates and email fields from localStorage
+  // Load saved templates, email fields, and attachments from localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem(TEMPLATE_STORAGE_KEY);
@@ -153,14 +156,60 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
       const saved = localStorage.getItem(EMAIL_FIELDS_STORAGE_KEY);
       if (saved) setEmailFields(prev => ({ ...prev, ...JSON.parse(saved) }));
     } catch (e) { /* ignore */ }
+    try {
+      const saved = localStorage.getItem(ATTACHMENTS_STORAGE_KEY);
+      if (saved) setAttachments(JSON.parse(saved));
+    } catch (e) { /* ignore */ }
   }, []);
 
   const saveTemplate = useCallback(() => {
     try {
       localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templates));
       localStorage.setItem(EMAIL_FIELDS_STORAGE_KEY, JSON.stringify(emailFields));
+      localStorage.setItem(ATTACHMENTS_STORAGE_KEY, JSON.stringify(attachments));
     } catch (e) { /* ignore */ }
-  }, [templates, emailFields]);
+  }, [templates, emailFields, attachments]);
+
+  const handleFileUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+    setIsUploading(true);
+    try {
+      const { upload } = await import('@vercel/blob/client');
+      for (const file of files) {
+        const blob = await upload(file.name, file, {
+          access: 'public',
+          handleUploadUrl: '/api/upload-handler',
+        });
+        const newAttachment = { url: blob.url, filename: file.name, size: file.size };
+        setAttachments(prev => {
+          const updated = [...prev, newAttachment];
+          try { localStorage.setItem(ATTACHMENTS_STORAGE_KEY, JSON.stringify(updated)); } catch (ex) { /* ignore */ }
+          return updated;
+        });
+      }
+    } catch (err) {
+      setError(`Failed to upload: ${err.message}`);
+    } finally {
+      setIsUploading(false);
+      e.target.value = ''; // reset input
+    }
+  };
+
+  const removeAttachment = (index) => {
+    setAttachments(prev => {
+      const updated = prev.filter((_, i) => i !== index);
+      try { localStorage.setItem(ATTACHMENTS_STORAGE_KEY, JSON.stringify(updated)); } catch (e) { /* ignore */ }
+      return updated;
+    });
+  };
+
+  const formatFileSize = (bytes) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   const currentTemplate = templates[templateType];
 
@@ -190,6 +239,7 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
               honorarium: emailFields.honorarium || '',
             },
           },
+          attachmentUrls: attachments.map(a => a.url),
           markAsSent: true,
         }),
       });
@@ -197,6 +247,7 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let currentEvent = null;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -206,7 +257,6 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
-        let currentEvent = null;
         for (const line of lines) {
           if (line.startsWith('event: ')) {
             currentEvent = line.slice(7).trim();
@@ -249,12 +299,17 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
     URL.revokeObjectURL(url);
   };
 
-  const downloadAll = async () => {
-    if (generatedEmails.length === 1) {
-      downloadEmail(generatedEmails[0]);
-      return;
-    }
+  const downloadAllAsZip = async () => {
     try {
+      if (generatedEmails.length === 0) return;
+
+      const missingContent = generatedEmails.filter(e => !e.content);
+      if (missingContent.length > 0) {
+        console.error('Emails missing content:', missingContent.map(e => e.filename));
+        alert(`${missingContent.length} email(s) are missing content.`);
+        return;
+      }
+
       const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
       for (const email of generatedEmails) {
@@ -264,16 +319,14 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
       const url = URL.createObjectURL(content);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${templateType}_emails.zip`;
+      a.download = `${templateType}-emails-${new Date().toISOString().split('T')[0]}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (err) {
-      // Fall back to individual downloads
-      for (const email of generatedEmails) {
-        downloadEmail(email);
-      }
+    } catch (error) {
+      console.error('Error creating ZIP:', error);
+      alert(`Failed to create ZIP file: ${error.message}`);
     }
   };
 
@@ -362,6 +415,52 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
                 </div>
               </div>
 
+              {/* Attachments */}
+              <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                <div className="flex justify-between items-center">
+                  <p className="text-xs font-medium text-gray-600">Attachments (included in .eml files)</p>
+                  <label className={`text-xs px-2 py-1 rounded cursor-pointer transition-colors ${
+                    isUploading ? 'bg-gray-300 text-gray-500' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}>
+                    {isUploading ? 'Uploading...' : '+ Add File'}
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.png,.jpg,.jpeg"
+                      multiple
+                      onChange={handleFileUpload}
+                      disabled={isUploading}
+                    />
+                  </label>
+                </div>
+                {attachments.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">No attachments. Upload reviewer instructions, templates, etc.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {attachments.map((att, i) => (
+                      <div key={i} className="flex items-center justify-between bg-white px-2 py-1.5 rounded border border-gray-200">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                          </svg>
+                          <span className="text-sm text-gray-700 truncate">{att.filename}</span>
+                          {att.size && <span className="text-xs text-gray-400 flex-shrink-0">{formatFileSize(att.size)}</span>}
+                        </div>
+                        <button
+                          onClick={() => removeAttachment(i)}
+                          className="text-gray-400 hover:text-red-500 ml-2 flex-shrink-0"
+                          title="Remove attachment"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Subject */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
@@ -378,15 +477,7 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
 
               {/* Body */}
               <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-sm font-medium text-gray-700">Body</label>
-                  <button
-                    onClick={saveTemplate}
-                    className="text-xs text-gray-500 hover:text-gray-700"
-                  >
-                    Save template
-                  </button>
-                </div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Body</label>
                 <textarea
                   value={currentTemplate.body}
                   onChange={e => setTemplates(prev => ({
@@ -488,13 +579,21 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
           </button>
           <div className="flex gap-2">
             {step === 'compose' && (
-              <Button onClick={handleGenerate}>
-                Generate {reviewers.filter(r => r.email).length} Email{reviewers.filter(r => r.email).length !== 1 ? 's' : ''}
-              </Button>
+              <>
+                <button
+                  onClick={saveTemplate}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-300 transition-colors"
+                >
+                  Save Template
+                </button>
+                <Button onClick={handleGenerate}>
+                  Generate {reviewers.filter(r => r.email).length} Email{reviewers.filter(r => r.email).length !== 1 ? 's' : ''}
+                </Button>
+              </>
             )}
             {step === 'download' && generatedEmails.length > 0 && (
-              <Button onClick={downloadAll}>
-                Download All
+              <Button onClick={downloadAllAsZip}>
+                Download All (.zip)
               </Button>
             )}
           </div>
