@@ -94,11 +94,8 @@ function HealthSection() {
             {svc.message && (
               <p className="text-xs text-gray-600 truncate" title={svc.message}>{svc.message}</p>
             )}
-            {svc.model && (
-              <p className="text-xs text-gray-500">Tested: {svc.model}</p>
-            )}
-            {svc.reason && (
-              <p className="text-xs text-gray-500">{svc.reason}</p>
+            {svc.detail && (
+              <p className="text-xs text-gray-500 truncate" title={svc.detail}>{svc.detail}</p>
             )}
           </div>
         ))}

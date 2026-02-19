@@ -28,7 +28,7 @@ export default async function handler(req, res) {
   // 1. Database
   try {
     const result = await sql`SELECT COUNT(*) as tables FROM information_schema.tables WHERE table_schema = 'public'`;
-    health.services.database = { status: 'ok', tables: parseInt(result.rows[0].tables) };
+    health.services.database = { status: 'ok', detail: `${parseInt(result.rows[0].tables)} tables in public schema` };
   } catch (error) {
     health.services.database = { status: 'error', message: error.message };
   }
@@ -50,7 +50,7 @@ export default async function handler(req, res) {
         }),
       });
       if (response.ok) {
-        health.services.claude = { status: 'ok', model: 'claude-haiku-4-5-20251001' };
+        health.services.claude = { status: 'ok', detail: 'Tested with claude-haiku-4-5-20251001' };
       } else {
         let message = `HTTP ${response.status}`;
         try {
@@ -85,6 +85,7 @@ export default async function handler(req, res) {
       const data = await response.json();
       health.services.azureAd = {
         status: data.access_token ? 'ok' : 'error',
+        ...(data.access_token && { detail: 'Client credentials token acquired' }),
         ...(data.error && { message: `${data.error}: ${data.error_description?.split('.')[0]}` }),
       };
     } catch (error) {
@@ -93,7 +94,7 @@ export default async function handler(req, res) {
   } else {
     health.services.azureAd = {
       status: 'skipped',
-      reason: process.env.AUTH_REQUIRED !== 'true' ? 'AUTH_REQUIRED not true' : 'Missing tenant config',
+      detail: process.env.AUTH_REQUIRED !== 'true' ? 'AUTH_REQUIRED is not true' : 'Missing tenant config',
     };
   }
 
@@ -116,23 +117,24 @@ export default async function handler(req, res) {
       const data = await response.json();
       health.services.dynamicsCrm = {
         status: data.access_token ? 'ok' : 'error',
+        ...(data.access_token && { detail: 'OAuth token acquired for CRM API' }),
         ...(data.error && { message: `${data.error}: ${data.error_description?.split('.')[0]}` }),
       };
     } catch (error) {
       health.services.dynamicsCrm = { status: 'error', message: error.message };
     }
   } else {
-    health.services.dynamicsCrm = { status: 'skipped', reason: 'Not configured' };
+    health.services.dynamicsCrm = { status: 'skipped', detail: 'DYNAMICS_CLIENT_ID or DYNAMICS_TENANT_ID not set' };
   }
 
   // 5. Encryption key
   health.services.encryption = process.env.USER_PREFS_ENCRYPTION_KEY
-    ? { status: 'ok' }
+    ? { status: 'ok', detail: 'AES-256-GCM key present' }
     : { status: 'error', message: 'USER_PREFS_ENCRYPTION_KEY not set — API key storage will fail' };
 
   // 6. NEXTAUTH_URL
   health.services.nextAuthUrl = process.env.NEXTAUTH_URL
-    ? { status: 'ok', url: process.env.NEXTAUTH_URL }
+    ? { status: 'ok', detail: process.env.NEXTAUTH_URL }
     : { status: 'warning', message: 'NEXTAUTH_URL not set — using VERCEL_URL fallback' };
 
   // Overall status
