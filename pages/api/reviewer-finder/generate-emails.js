@@ -29,6 +29,7 @@ import {
 import { createPersonalizationPrompt } from '../../../shared/config/prompts/email-reviewer';
 import { requireAuth } from '../../../lib/utils/auth';
 import { logUsage } from '../../../lib/utils/usage-logger';
+import { getModelForApp } from '../../../shared/config/baseConfig';
 
 /**
  * Look up proposal info for candidates from the database
@@ -467,7 +468,7 @@ async function personalizeWithClaude(candidate, proposalInfo, baseBody, apiKey, 
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-3-5-haiku-20241022',
+      model: getModelForApp('email-personalization'),
       max_tokens: 512,
       temperature: 0.3, // Low temperature for consistent, professional output
       messages: [

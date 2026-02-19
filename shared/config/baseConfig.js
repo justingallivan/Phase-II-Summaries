@@ -9,7 +9,7 @@ export const BASE_CONFIG = {
     API_URL: process.env.CLAUDE_API_URL || 'https://api.anthropic.com/v1/messages',
     ANTHROPIC_VERSION: '2023-06-01',
     DEFAULT_MODEL: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
-    FALLBACK_MODEL: 'claude-3-haiku-20240307'
+    FALLBACK_MODEL: 'claude-haiku-4-5-20251001'
   },
 
   // Per-App Model Configuration
@@ -26,73 +26,73 @@ export const BASE_CONFIG = {
     'multi-perspective-evaluator': {
       model: 'claude-sonnet-4-20250514',
       visionModel: 'claude-sonnet-4-20250514',
-      fallback: 'claude-3-5-haiku-20241022'
+      fallback: 'claude-haiku-4-5-20251001'
     },
     // High complexity - Literature analysis with Vision
     'literature-analyzer': {
       model: 'claude-sonnet-4-20250514',
       visionModel: 'claude-sonnet-4-20250514',
-      fallback: 'claude-3-5-haiku-20241022'
+      fallback: 'claude-haiku-4-5-20251001'
     },
     // High complexity - Sonnet for detailed summaries
     'batch-phase-i': {
       model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-3-5-haiku-20241022'
+      fallback: 'claude-haiku-4-5-20251001'
     },
     'batch-phase-ii': {
       model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-3-5-haiku-20241022'
+      fallback: 'claude-haiku-4-5-20251001'
     },
     'phase-i-writeup': {
       model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-3-5-haiku-20241022'
+      fallback: 'claude-haiku-4-5-20251001'
     },
     'phase-ii-writeup': {
       model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-3-5-haiku-20241022'
+      fallback: 'claude-haiku-4-5-20251001'
     },
     'reviewer-finder': {
       model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-3-5-haiku-20241022'
+      fallback: 'claude-haiku-4-5-20251001'
     },
     'review-manager': {
       model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-3-5-haiku-20241022'
+      fallback: 'claude-haiku-4-5-20251001'
     },
     'peer-review-summarizer': {
       model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-3-5-haiku-20241022'
+      fallback: 'claude-haiku-4-5-20251001'
     },
     'funding-analysis': {
       model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-3-5-haiku-20241022'
+      fallback: 'claude-haiku-4-5-20251001'
     },
     // Medium complexity - Q&A and refinement
     'qa': {
       model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-3-5-haiku-20241022'
+      fallback: 'claude-haiku-4-5-20251001'
     },
     'refine': {
       model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-3-5-haiku-20241022'
+      fallback: 'claude-haiku-4-5-20251001'
     },
     // Low complexity - Haiku is sufficient
     'expense-reporter': {
-      model: 'claude-3-5-haiku-20241022',
-      fallback: 'claude-3-haiku-20240307'
+      model: 'claude-haiku-4-5-20251001',
+      fallback: 'claude-haiku-4-5-20251001'
     },
     'contact-enrichment': {
-      model: 'claude-3-5-haiku-20241022',
-      fallback: 'claude-3-haiku-20240307'
+      model: 'claude-haiku-4-5-20251001',
+      fallback: 'claude-haiku-4-5-20251001'
     },
     'email-personalization': {
-      model: 'claude-3-5-haiku-20241022',
-      fallback: 'claude-3-haiku-20240307'
+      model: 'claude-haiku-4-5-20251001',
+      fallback: 'claude-haiku-4-5-20251001'
     },
     // Dynamics Explorer - Haiku 4.5 for fast tool-use with higher rate limits than Sonnet
     'dynamics-explorer': {
       model: 'claude-haiku-4-5-20251001',
-      fallback: 'claude-3-5-haiku-20241022'
+      fallback: 'claude-haiku-4-5-20251001'
     }
   },
 

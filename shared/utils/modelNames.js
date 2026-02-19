@@ -17,6 +17,7 @@ const MODEL_DISPLAY_NAMES = {
   'claude-3-sonnet-20240229': 'Sonnet 3',
 
   // Haiku models
+  'claude-haiku-4-5-20251001': 'Haiku 4.5',
   'claude-3-5-haiku-20241022': 'Haiku 3.5',
   'claude-3-haiku-20240307': 'Haiku 3',
 };
@@ -25,6 +26,7 @@ const MODEL_DISPLAY_NAMES = {
 const MODEL_TIERS = {
   'claude-opus-4-20250514': { tier: 'premium', cost: 3 },
   'claude-sonnet-4-20250514': { tier: 'standard', cost: 2 },
+  'claude-haiku-4-5-20251001': { tier: 'economy', cost: 1 },
   'claude-3-5-haiku-20241022': { tier: 'economy', cost: 1 },
   'claude-3-haiku-20240307': { tier: 'economy', cost: 1 },
 };
@@ -79,7 +81,8 @@ export function supportsVision(modelId) {
   // All other Claude 3+ models support vision
   return modelId.includes('claude-3') ||
          modelId.includes('claude-opus') ||
-         modelId.includes('claude-sonnet');
+         modelId.includes('claude-sonnet') ||
+         modelId.includes('claude-haiku');
 }
 
 export default {

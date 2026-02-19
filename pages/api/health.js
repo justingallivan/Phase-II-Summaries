@@ -44,15 +44,21 @@ export default async function handler(req, res) {
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'claude-3-5-haiku-20241022',
+          model: 'claude-haiku-4-5-20251001',
           max_tokens: 10,
           messages: [{ role: 'user', content: 'Reply with the word ok.' }],
         }),
       });
-      health.services.claude = {
-        status: response.ok ? 'ok' : 'error',
-        httpStatus: response.status,
-      };
+      if (response.ok) {
+        health.services.claude = { status: 'ok', model: 'claude-haiku-4-5-20251001' };
+      } else {
+        let message = `HTTP ${response.status}`;
+        try {
+          const data = await response.json();
+          if (data.error?.message) message = data.error.message;
+        } catch {}
+        health.services.claude = { status: 'error', message };
+      }
     } catch (error) {
       health.services.claude = { status: 'error', message: error.message };
     }
