@@ -4,6 +4,19 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## February 2026 — Documentation & User Guide (Session 61)
+
+Created comprehensive user-facing documentation and an in-app `/guide` page.
+
+- **6 standalone Markdown guides** in `docs/guides/`: Getting Started, Reviewer Finder, Review Manager, Integrity Screener, Dynamics Explorer, Admin Guide
+- **In-app guide page** (`pages/guide.js`): sidebar TOC on desktop, floating button on mobile, hash-based anchor navigation, access-filtered sections, admin-only section for superusers
+- **HelpButton component**: `?` icon added to 4 complex app page headers, links to `/guide#appKey`
+- **Navigation integration**: Guide link in nav ribbon, Layout footer, home page header/footer, WelcomeModal
+
+**Files:** `docs/guides/*.md`, `pages/guide.js`, `shared/config/guideContent.js`, `shared/components/HelpButton.js`, `shared/components/Layout.js`, `pages/index.js`, `shared/components/WelcomeModal.js`
+
+---
+
 ## February 2026 — Round-Efficiency Optimizations & Test Suite (Session 56)
 
 Optimized Dynamics Explorer to resolve common queries in fewer tool-call rounds and built an integration test suite to verify.

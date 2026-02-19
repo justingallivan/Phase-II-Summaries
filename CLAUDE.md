@@ -306,6 +306,12 @@ Located in `lib/services/`:
 
 | Document | Content |
 |----------|---------|
+| `docs/guides/GETTING_STARTED.md` | New user onboarding guide |
+| `docs/guides/REVIEWER_FINDER.md` | Reviewer Finder user guide |
+| `docs/guides/REVIEW_MANAGER.md` | Review Manager user guide |
+| `docs/guides/INTEGRITY_SCREENER.md` | Integrity Screener user guide |
+| `docs/guides/DYNAMICS_EXPLORER.md` | Dynamics Explorer user guide |
+| `docs/guides/ADMIN_GUIDE.md` | Administrator operations guide |
 | `docs/AUTHENTICATION_SETUP.md` | Azure AD configuration guide |
 | `docs/REVIEWER_FINDER.md` | Email workflow, templates, settings |
 | `docs/MULTI_MAC_SETUP.md` | Multi-Mac development setup |
