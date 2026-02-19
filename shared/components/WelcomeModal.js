@@ -51,7 +51,11 @@ export default function WelcomeModal() {
           </h2>
           <p className="text-gray-600 mb-6 leading-relaxed">
             You currently have access to the <strong>WMKF Akoya Chatbot</strong>.
-            To request access to additional applications, please email{' '}
+            Check out the{' '}
+            <a href="/guide" className="text-indigo-600 hover:text-indigo-800 underline">
+              User Guide
+            </a>{' '}
+            to learn how it works. To request access to additional applications, please email{' '}
             <a
               href="mailto:jgallivan@wmkeck.org"
               className="text-indigo-600 hover:text-indigo-800 underline"

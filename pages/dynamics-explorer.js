@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
+import HelpButton from '../shared/components/HelpButton';
 import { useProfile } from '../shared/context/ProfileContext';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
 
@@ -375,7 +376,9 @@ function DynamicsExplorer() {
         title="Dynamics Explorer"
         subtitle="Chat with your CRM data using natural language"
         icon="💬"
-      />
+      >
+        <HelpButton appKey="dynamics-explorer" className="mt-3" />
+      </PageHeader>
 
       <div className="space-y-6 pb-8">
         {/* Role + Export */}

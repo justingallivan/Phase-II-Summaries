@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
+import HelpButton from '../shared/components/HelpButton';
 import ApiSettingsPanel from '../shared/components/ApiSettingsPanel';
 import { useProfile } from '../shared/context/ProfileContext';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
@@ -572,8 +573,10 @@ function IntegrityScreenerPage() {
     <Layout>
       <PageHeader
         title="Applicant Integrity Screener"
-        description="Screen grant applicants for research integrity concerns"
-      />
+        subtitle="Screen grant applicants for research integrity concerns"
+      >
+        <HelpButton appKey="integrity-screener" className="mt-3" />
+      </PageHeader>
 
       <div className="max-w-5xl mx-auto space-y-6">
         {/* API Configuration */}

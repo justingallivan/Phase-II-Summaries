@@ -13,6 +13,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
+import HelpButton from '../shared/components/HelpButton';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import ApiSettingsPanel from '../shared/components/ApiSettingsPanel';
 import EmailSettingsPanel from '../shared/components/EmailSettingsPanel';
@@ -5792,7 +5793,9 @@ function ReviewerFinderPage() {
         title="Reviewer Finder"
         subtitle="Combine Claude's analytical reasoning with real database verification to find qualified reviewers"
         icon="🎯"
-      />
+      >
+        <HelpButton appKey="reviewer-finder" className="mt-3" />
+      </PageHeader>
 
       <div className="py-8 space-y-6">
         {/* API Settings */}

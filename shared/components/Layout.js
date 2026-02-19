@@ -261,6 +261,13 @@ export default function Layout({
               Written by <a href="mailto:justingallivan@me.com" className="hover:text-gray-800">Justin Gallivan</a> • Built with Claude AI • Powered by Next.js • Deployed on Vercel
             </p>
             <div className="flex justify-center items-center gap-4">
+              <Link
+                href="/guide"
+                className="text-gray-500 hover:text-gray-700 transition-colors duration-200"
+              >
+                Guide
+              </Link>
+              <span className="text-gray-300">•</span>
               <a
                 href="https://github.com/justingallivan/Phase-II-Summaries"
                 target="_blank"

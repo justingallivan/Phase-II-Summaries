@@ -1,0 +1,200 @@
+/**
+ * Guide Content - Structured content for the in-app /guide page.
+ *
+ * Each section has a key (used as the URL hash), display metadata,
+ * and markdown-ish content rendered as React elements in pages/guide.js.
+ */
+
+export const GUIDE_SECTIONS = [
+  {
+    key: 'getting-started',
+    title: 'Getting Started',
+    icon: '🚀',
+    appKey: null, // always visible
+    sections: [
+      {
+        heading: 'Signing In',
+        content: `The suite uses your organization's Microsoft account. Navigate to the application URL, click Sign In, and authenticate with your organizational credentials. You'll be redirected back to the home page.`,
+      },
+      {
+        heading: 'Home Page',
+        content: `After signing in, you'll see cards for each application you have access to. Apps are organized into categories: Concepts, Phase I, Phase II, and Other. Click any card to open that app.`,
+      },
+      {
+        heading: 'Default Access',
+        content: `New users are automatically granted access to Dynamics Explorer (the CRM chatbot). To request access to additional applications, email jgallivan@wmkeck.org.`,
+      },
+      {
+        heading: 'Navigation',
+        content: `The top navigation bar lists all apps you can access. On mobile, tap the hamburger menu to see the full list. Your user avatar in the top-right opens profile settings and sign-out.`,
+      },
+    ],
+  },
+  {
+    key: 'reviewer-finder',
+    title: 'Reviewer Finder',
+    icon: '🎯',
+    appKey: 'reviewer-finder',
+    sections: [
+      {
+        heading: 'Overview',
+        content: `The Reviewer Finder has three tabs: Find Reviewers (upload a proposal and discover candidates), My Candidates (manage saved reviewers and generate emails), and Database (browse all researchers across proposals).`,
+      },
+      {
+        heading: 'Finding Reviewers',
+        content: `Upload a proposal PDF, then click Find Reviewers. Claude AI analyzes the proposal and suggests candidates, each verified against academic databases (PubMed, ArXiv, BioRxiv, ChemRxiv). Results show publication counts, h-index, relevance scores, and conflict warnings.`,
+      },
+      {
+        heading: 'Saving & Managing Candidates',
+        content: `Check candidates you want to keep and click Save Selected. In the My Candidates tab, you can edit contact info, delete candidates, run contact enrichment (automated email/website lookup), and generate invitation emails.`,
+      },
+      {
+        heading: 'Generating Emails',
+        content: `Select candidates with email addresses, click Email Selected, optionally enable Claude AI personalization, then Generate. Download the .eml files and open them in your email client. To send: Forward the message (removing "Fwd:" from the subject) or copy the content into a new email.`,
+      },
+      {
+        heading: 'Settings',
+        content: `Click the gear icon to configure: Grant Cycle (program name, deadline, summary pages), Attachments (review template, additional files), Sender Info (name, email, signature), and Email Template (customizable with placeholders like {{greeting}}, {{proposalTitle}}, {{reviewDeadline}}).`,
+      },
+      {
+        heading: 'Tips',
+        items: [
+          'Adjust temperature (0.3 = focused, 1.0 = creative) for different candidate pools',
+          'Use Re-extract in My Candidates to change which summary pages are extracted',
+          'Settings are saved per user profile — switching profiles loads that profile\'s settings',
+        ],
+      },
+    ],
+  },
+  {
+    key: 'review-manager',
+    title: 'Review Manager',
+    icon: '📋',
+    appKey: 'review-manager',
+    sections: [
+      {
+        heading: 'Overview',
+        content: `The Review Manager picks up where the Reviewer Finder leaves off. It handles sending review materials, tracking reviewer status, sending reminders and thank-you emails, and uploading completed reviews.`,
+      },
+      {
+        heading: 'Status Pipeline',
+        content: `Each reviewer moves through statuses: Accepted → Materials Sent → Review Received → Thanked. A Reminded status tracks follow-up emails. Click any status badge to update it manually.`,
+      },
+      {
+        heading: 'Sending Materials',
+        content: `Select reviewers with Accepted status and click Send Materials. The system generates .eml files with the proposal summary, review template, and a cover message. Download and send from your email client.`,
+      },
+      {
+        heading: 'Reminders & Thank-You Emails',
+        content: `Select reviewers who haven't responded and click Send Reminder, or select reviewers with completed reviews and click Send Thanks. Each generates appropriate .eml files for download.`,
+      },
+      {
+        heading: 'Uploading Reviews',
+        content: `When a reviewer submits their review, click Upload Review on their card, select the document (PDF or Word), and the status updates to Review Received. A download link appears on the card.`,
+      },
+      {
+        heading: 'Notes & URLs',
+        content: `Each reviewer card has a Notes field (for tracking communications, special arrangements) and a URL field (for linking external resources). Changes save automatically.`,
+      },
+    ],
+  },
+  {
+    key: 'integrity-screener',
+    title: 'Integrity Screener',
+    icon: '🔍',
+    appKey: 'integrity-screener',
+    sections: [
+      {
+        heading: 'Overview',
+        content: `Screen grant applicants for research integrity concerns by searching Retraction Watch (63,000+ retracted papers), PubPeer (post-publication peer review), and Google News (media coverage of misconduct).`,
+      },
+      {
+        heading: 'Running a Screening',
+        content: `Enter applicant names (one per line), then click Screen Applicants. Results stream in as each source is checked. Each applicant gets a results card with match counts, confidence levels, and an AI summary.`,
+      },
+      {
+        heading: 'Understanding Confidence Levels',
+        content: `High = exact or near-exact name match with corroborating evidence. Medium = partial match or common name with some supporting context. Low = weak match that may be a different person.`,
+      },
+      {
+        heading: 'Dismissing False Positives',
+        content: `Click Dismiss on matches that are clearly not the same person. Provide a brief reason. Dismissed matches won't appear in future screenings for that applicant.`,
+      },
+      {
+        heading: 'History & Export',
+        content: `Previous screenings are saved in the History tab. Click Export to download results including all matches, confidence levels, AI summaries, and dismissal records.`,
+      },
+      {
+        heading: 'Important Caveats',
+        items: [
+          'Common names may produce false positives — always review matches carefully',
+          'A clean screening does not guarantee no issues exist',
+          'Retractions can happen for honest errors, not just misconduct — read the notice',
+          'Use results as a starting point for further investigation, not a final determination',
+        ],
+      },
+    ],
+  },
+  {
+    key: 'dynamics-explorer',
+    title: 'Dynamics Explorer',
+    icon: '💬',
+    appKey: 'dynamics-explorer',
+    sections: [
+      {
+        heading: 'Overview',
+        content: `Query your Dynamics 365 CRM using natural language. The AI translates your questions into CRM queries, executes them, and presents results in a readable format.`,
+      },
+      {
+        heading: 'What You Can Ask',
+        content: `Find records ("Find all requests from Stanford"), search by content ("Search for proposals about fungi"), count and summarize ("How many active requests?"), and explore relationships ("Who are the contacts for request 1001289?").`,
+      },
+      {
+        heading: 'Multi-Turn Conversations',
+        content: `The chat maintains context across messages. Ask "Show me requests from 2024", then follow up with "Which of those are from California?" — the AI remembers previous results and can refine them.`,
+      },
+      {
+        heading: 'Exporting Data',
+        content: `Click Export Chat to download the conversation with all query results. Tables in results can be copied to clipboard for pasting into spreadsheets.`,
+      },
+      {
+        heading: 'Tips',
+        items: [
+          'Be specific — "Find requests from Stanford" works better than "Show me some university requests"',
+          'Ask "What tables are available?" or "What fields does the request table have?" to explore the schema',
+          'Natural dates work — "Requests from last month", "Proposals submitted before January 2024"',
+          'If a search returns too many results, add qualifiers: time range, institution, status',
+        ],
+      },
+    ],
+  },
+  {
+    key: 'admin',
+    title: 'Administration',
+    icon: '⚙️',
+    appKey: null, // visibility controlled by isSuperuser check
+    adminOnly: true,
+    sections: [
+      {
+        heading: 'Dashboard Overview',
+        content: `The Admin dashboard at /admin provides system health monitoring, usage analytics, role management, app access control, and model configuration. Restricted to superusers.`,
+      },
+      {
+        heading: 'Managing User Access',
+        content: `Go to Admin → App Access to see a grid of users and apps. Check or uncheck boxes to grant or revoke access, then click Save. New users automatically get Dynamics Explorer only.`,
+      },
+      {
+        heading: 'Model Configuration',
+        content: `Each app uses a default AI model. Override it from Admin → Models by selecting a different model from the dropdown. Overrides take effect immediately and persist in the database.`,
+      },
+      {
+        heading: 'Health Monitoring',
+        content: `The health panel checks Database, Claude API, Azure AD, Dynamics CRM, and Encryption status. A red indicator means the service is unreachable — check environment variables and service status.`,
+      },
+      {
+        heading: 'Adding a New User',
+        content: `New users are auto-provisioned on first Azure AD sign-in. Ask them to sign in once (creates their profile), then go to Admin → App Access to grant the apps they need.`,
+      },
+    ],
+  },
+];

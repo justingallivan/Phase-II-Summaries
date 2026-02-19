@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
+import HelpButton from '../shared/components/HelpButton';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
 import { useProfile } from '../shared/context/ProfileContext';
 
@@ -1225,7 +1226,9 @@ function ReviewManagerPage() {
 
   return (
     <Layout title="Review Manager">
-      <PageHeader title="Review Manager" icon="📋" />
+      <PageHeader title="Review Manager" icon="📋">
+        <HelpButton appKey="review-manager" className="mt-3" />
+      </PageHeader>
 
       <div className="py-8 space-y-6">
         {/* Settings bar */}
