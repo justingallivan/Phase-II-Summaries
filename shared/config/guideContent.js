@@ -22,7 +22,7 @@ export const GUIDE_SECTIONS = [
       },
       {
         heading: 'Default Access',
-        content: `New users are automatically granted access to Dynamics Explorer (the CRM chatbot). To request access to additional applications, email jgallivan@wmkeck.org.`,
+        content: `New users start with limited access. An administrator will grant you access to the applications you need from the Admin dashboard. To request access, email jgallivan@wmkeck.org.`,
       },
       {
         heading: 'Navigation',
@@ -181,7 +181,7 @@ export const GUIDE_SECTIONS = [
       },
       {
         heading: 'Managing User Access',
-        content: `Go to Admin → App Access to see a grid of users and apps. Check or uncheck boxes to grant or revoke access, then click Save. New users automatically get Dynamics Explorer only.`,
+        content: `Go to Admin → App Access to see a grid of users and apps. Check or uncheck boxes to grant or revoke access, then click Save. New users start with limited access and need to be granted apps manually.`,
       },
       {
         heading: 'Model Configuration',

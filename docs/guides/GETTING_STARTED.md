@@ -23,9 +23,7 @@ Apps are organized into categories:
 
 ## Default Access
 
-New users are automatically granted access to **Dynamics Explorer** (the CRM chatbot). To request access to additional applications, email [jgallivan@wmkeck.org](mailto:jgallivan@wmkeck.org).
-
-Administrators can grant access to any combination of apps from the Admin dashboard.
+New users start with limited access. An administrator will grant you access to the applications you need from the Admin dashboard. To request access, email [jgallivan@wmkeck.org](mailto:jgallivan@wmkeck.org).
 
 ## Navigation
 

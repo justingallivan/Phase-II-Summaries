@@ -21,7 +21,7 @@ The Admin dashboard is accessible at `/admin` and is restricted to superusers. I
 3. Check or uncheck boxes to grant or revoke access
 4. Click **Save** to apply changes
 
-New users automatically receive access to **Dynamics Explorer** only. Grant additional apps as needed.
+New users start with limited access. Grant the apps they need after they've signed in for the first time.
 
 ### Role Management
 
