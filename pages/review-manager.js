@@ -143,6 +143,16 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
   const [attachments, setAttachments] = useState([]); // [{ url, filename, size }]
   const [isUploading, setIsUploading] = useState(false);
 
+  // Reset transient state when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setStep('compose');
+      setProgress({ current: 0, total: 0, message: '' });
+      setGeneratedEmails([]);
+      setError(null);
+    }
+  }, [isOpen]);
+
   // Load saved templates, email fields, and attachments from localStorage
   useEffect(() => {
     try {
