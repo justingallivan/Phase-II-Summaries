@@ -128,6 +128,10 @@ export default function LandingPage() {
               <p className="text-lg md:text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
                 AI-powered applications for research analysis, document processing, and workflow automation
               </p>
+              <Link href="/guide" className="inline-flex items-center gap-2 mt-4 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                <span>📖</span>
+                <span>User Guide</span>
+              </Link>
             </div>
           </div>
         </header>
@@ -215,6 +219,13 @@ export default function LandingPage() {
             <div className="text-center">
               <p className="text-gray-600 mb-4">Written by <a href="mailto:justingallivan@me.com" className="hover:text-gray-800">Justin Gallivan</a> • Built with Claude AI • Powered by Next.js • Deployed on Vercel</p>
               <div className="flex justify-center items-center gap-4">
+                <Link
+                  href="/guide"
+                  className="text-gray-500 hover:text-gray-700 transition-colors duration-200"
+                >
+                  Guide
+                </Link>
+                <span className="text-gray-300">•</span>
                 <a
                   href="https://github.com/justingallivan/Phase-II-Summaries"
                   target="_blank"

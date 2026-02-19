@@ -39,6 +39,9 @@ export default function Layout({
       }
     });
 
+    // Guide link — always accessible
+    items.push({ name: 'Guide', href: '/guide', icon: '📖' });
+
     // Admin link only for superusers
     if (isSuperuser) {
       items.push({ name: 'Admin', href: '/admin', icon: '⚙️' });
