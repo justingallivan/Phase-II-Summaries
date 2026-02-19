@@ -47,6 +47,7 @@ A multi-application document processing system using Claude AI for grant-related
 | Phase I Writeup | `phase-i-writeup.js` | `/api/process-phase-i` | Single Phase I writeup |
 | Phase II Writeup | `proposal-summarizer.js` | `/api/process` | Single Phase II writeup with Q&A |
 | Reviewer Finder | `reviewer-finder.js` | `/api/reviewer-finder/*` | AI + database search for expert reviewers |
+| Review Manager | `review-manager.js` | `/api/review-manager/*` | Post-acceptance review lifecycle management |
 | Peer Review Summarizer | `peer-review-summarizer.js` | `/api/summarize-reviews` | Analyze peer reviews |
 | Expense Reporter | `expense-reporter.js` | `/api/process-expenses` | Receipt/invoice processing |
 | Literature Analyzer | `literature-analyzer.js` | `/api/analyze-literature` | Research paper synthesis |
@@ -254,6 +255,11 @@ Located in `lib/services/`:
 - `POST /api/reviewer-finder/enrich-contacts` - Contact lookup (streaming)
 - `POST /api/reviewer-finder/generate-emails` - Generate .eml files (see `docs/REVIEWER_FINDER.md`)
 - `POST /api/reviewer-finder/extract-summary` - Extract summary pages
+
+### Review Manager
+- `GET/PATCH /api/review-manager/reviewers` - Accepted reviewers by cycle/proposal, status/notes/URL updates
+- `POST /api/review-manager/send-emails` - Generate .eml files with attachments (SSE streaming)
+- `POST /api/review-manager/upload-review` - Upload completed review documents (Vercel Blob)
 
 ### Concept Evaluator
 - `POST /api/evaluate-concepts` - Evaluate concepts with literature search (streaming)
