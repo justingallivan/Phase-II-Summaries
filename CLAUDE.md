@@ -18,6 +18,7 @@ A multi-application document processing system using Claude AI for grant-related
 
 ```
 /
+├── middleware.js               # Server-side auth gate (Edge Runtime, withAuth/jose)
 ├── pages/                     # Next.js pages and API routes
 │   ├── api/                   # API endpoints
 │   └── *.js                   # Frontend pages
@@ -58,7 +59,7 @@ A multi-application document processing system using Claude AI for grant-related
 
 - **Frontend**: Next.js 14, React 18, Tailwind CSS 3.4
 - **Backend**: Next.js API Routes
-- **Authentication**: NextAuth.js with Azure AD (see `docs/AUTHENTICATION_SETUP.md`)
+- **Authentication**: NextAuth.js with Azure AD + server-side middleware gate (see `docs/AUTHENTICATION_SETUP.md`)
 - **AI**: Claude API (Anthropic)
 - **Database**: Vercel Postgres
 - **File Storage**: Vercel Blob
@@ -123,6 +124,18 @@ node scripts/setup-database.js  # Run database migrations
 See `scripts/README.md` for database utility scripts.
 
 For multi-Mac development, see `docs/MULTI_MAC_SETUP.md`.
+
+---
+
+## Authentication Architecture
+
+Three-layer defense-in-depth:
+
+1. **Server-side middleware** (`middleware.js`) — Edge Runtime `withAuth`/`jose` validates JWT before any HTML/JS is served. Unauthenticated users never see the app. Respects `AUTH_REQUIRED` kill switch.
+2. **API route auth** (`lib/utils/auth.js`) — Every API endpoint calls `requireAuth()` or `requireAuthWithProfile()`. The latter derives `profileId` from the session — never trust user-supplied IDs for ownership-scoped data.
+3. **Client-side guards** (`RequireAuth`, `RequireAppAccess`) — Defense in depth for navigation/UI.
+
+**Important:** When adding new API endpoints, always use `requireAuthWithProfile()` for user-scoped data. Never accept `profileId` from query/body params — derive it from the session.
 
 ---
 

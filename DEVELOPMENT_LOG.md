@@ -4,6 +4,22 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## February 2026 — Auth Hardening & Security Audit (Session 62)
+
+Comprehensive security hardening in response to IT security review. Added server-side authentication gate, removed attack surface, and fixed critical authorization vulnerabilities.
+
+- **Next.js middleware auth gate** (`middleware.js`): Validates JWT via `withAuth`/`jose` (Edge Runtime compatible) before serving any page content or JS bundles. Unauthenticated users redirected to `/auth/signin` with no app structure exposed.
+- **CORS wildcard removal**: Removed `Access-Control-Allow-Origin: *` from `next.config.js` global headers and 10 inline SSE streaming endpoints. Prevents cross-site request forgery against authenticated sessions.
+- **Security headers**: Added `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` to all responses.
+- **AppAccessContext deny-by-default**: `hasAccess()` returns `false` while loading (was `true`); errors set `allowedApps` to `[]` instead of falling through to allow-all.
+- **Stripped debug info**: `/api/auth/status` now returns only `{ enabled }` — removed `debug: { authRequired, hasCredentials }`.
+- **Fixed horizontal privilege escalation** in 4 endpoints: `user-preferences`, `user-profiles`, `my-candidates`, `integrity-screener/history` — all now derive `profileId` from the authenticated session instead of trusting user-supplied parameters.
+- **Adversarial security audit**: Systematic review of middleware bypass vectors, SSRF, SQL injection, CORS, authorization, dependencies, cryptography. No critical issues remaining after fixes.
+
+**Files:** `middleware.js`, `next.config.js`, `pages/api/auth/status.js`, `shared/context/AppAccessContext.js`, `pages/api/user-preferences.js`, `pages/api/user-profiles.js`, `pages/api/reviewer-finder/my-candidates.js`, `pages/api/integrity-screener/history.js`, plus CORS removal in 10 SSE streaming endpoints.
+
+---
+
 ## February 2026 — Documentation & User Guide (Session 61)
 
 Created comprehensive user-facing documentation and an in-app `/guide` page.
