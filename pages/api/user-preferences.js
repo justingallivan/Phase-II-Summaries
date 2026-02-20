@@ -9,41 +9,35 @@
  */
 
 import { DatabaseService } from '../../lib/services/database-service';
-import { requireAuth } from '../../lib/utils/auth';
+import { requireAuthWithProfile } from '../../lib/utils/auth';
 
 export default async function handler(req, res) {
-  // Require authentication
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  // Require authentication and extract profile ID from session
+  const profileId = await requireAuthWithProfile(req, res);
+  if (profileId === null) return;
 
   switch (req.method) {
     case 'GET':
-      return handleGet(req, res);
+      return handleGet(req, res, profileId);
     case 'POST':
-      return handlePost(req, res);
+      return handlePost(req, res, profileId);
     case 'DELETE':
-      return handleDelete(req, res);
+      return handleDelete(req, res, profileId);
     default:
       return res.status(405).json({ error: 'Method not allowed' });
   }
 }
 
-async function handleGet(req, res) {
+async function handleGet(req, res, profileId) {
   try {
-    const { profileId, key, includeDecrypted } = req.query;
-
-    if (!profileId) {
-      return res.status(400).json({ error: 'profileId is required' });
-    }
-
-    const parsedProfileId = parseInt(profileId, 10);
+    const { key, includeDecrypted } = req.query;
 
     // If a specific key is requested, return just that value
     if (key) {
       // For API keys, use the special decryption method
       if (DatabaseService.ENCRYPTED_PREFERENCE_KEYS.includes(key)) {
         if (includeDecrypted === 'true') {
-          const value = await DatabaseService.getDecryptedApiKey(parsedProfileId, key);
+          const value = await DatabaseService.getDecryptedApiKey(profileId, key);
           return res.status(200).json({
             success: true,
             key,
@@ -52,7 +46,7 @@ async function handleGet(req, res) {
           });
         } else {
           // Return masked value
-          const preferences = await DatabaseService.getUserPreferences(parsedProfileId, false);
+          const preferences = await DatabaseService.getUserPreferences(profileId, false);
           return res.status(200).json({
             success: true,
             key,
@@ -62,7 +56,7 @@ async function handleGet(req, res) {
           });
         }
       } else {
-        const preferences = await DatabaseService.getUserPreferences(parsedProfileId, true);
+        const preferences = await DatabaseService.getUserPreferences(profileId, true);
         return res.status(200).json({
           success: true,
           key,
@@ -75,7 +69,7 @@ async function handleGet(req, res) {
     // Get all preferences
     // By default, sensitive values are masked unless includeDecrypted is true
     const preferences = await DatabaseService.getUserPreferences(
-      parsedProfileId,
+      profileId,
       includeDecrypted === 'true'
     );
 
@@ -84,38 +78,25 @@ async function handleGet(req, res) {
 
     return res.status(200).json({
       success: true,
-      profileId: parsedProfileId,
+      profileId,
       preferences,
       encryptedKeys
     });
   } catch (error) {
     console.error('Get user preferences error:', error);
     return res.status(500).json({
-      error: 'Failed to fetch preferences',
-      message: error.message
+      error: 'Failed to fetch preferences'
     });
   }
 }
 
-async function handlePost(req, res) {
+async function handlePost(req, res, profileId) {
   try {
-    const { profileId, preferences, key, value } = req.body;
-
-    if (!profileId) {
-      return res.status(400).json({ error: 'profileId is required' });
-    }
-
-    const parsedProfileId = parseInt(profileId, 10);
-
-    // Verify profile exists
-    const profile = await DatabaseService.getUserProfileById(parsedProfileId);
-    if (!profile) {
-      return res.status(404).json({ error: 'Profile not found' });
-    }
+    const { preferences, key, value } = req.body;
 
     // Handle single key-value pair
     if (key !== undefined) {
-      const success = await DatabaseService.setUserPreference(parsedProfileId, key, value);
+      const success = await DatabaseService.setUserPreference(profileId, key, value);
       if (!success) {
         return res.status(500).json({ error: 'Failed to save preference' });
       }
@@ -128,7 +109,7 @@ async function handlePost(req, res) {
 
     // Handle multiple preferences
     if (preferences && typeof preferences === 'object') {
-      const success = await DatabaseService.setUserPreferences(parsedProfileId, preferences);
+      const success = await DatabaseService.setUserPreferences(profileId, preferences);
       if (!success) {
         return res.status(500).json({ error: 'Failed to save preferences' });
       }
@@ -143,25 +124,18 @@ async function handlePost(req, res) {
   } catch (error) {
     console.error('Set user preferences error:', error);
     return res.status(500).json({
-      error: 'Failed to save preferences',
-      message: error.message
+      error: 'Failed to save preferences'
     });
   }
 }
 
-async function handleDelete(req, res) {
+async function handleDelete(req, res, profileId) {
   try {
-    const { profileId, key, keys } = req.body;
-
-    if (!profileId) {
-      return res.status(400).json({ error: 'profileId is required' });
-    }
-
-    const parsedProfileId = parseInt(profileId, 10);
+    const { key, keys } = req.body;
 
     // Handle single key deletion
     if (key) {
-      const success = await DatabaseService.deleteUserPreference(parsedProfileId, key);
+      const success = await DatabaseService.deleteUserPreference(profileId, key);
       return res.status(200).json({
         success,
         message: success ? 'Preference deleted' : 'Failed to delete preference',
@@ -173,7 +147,7 @@ async function handleDelete(req, res) {
     if (keys && Array.isArray(keys)) {
       let deletedCount = 0;
       for (const k of keys) {
-        const success = await DatabaseService.deleteUserPreference(parsedProfileId, k);
+        const success = await DatabaseService.deleteUserPreference(profileId, k);
         if (success) deletedCount++;
       }
       return res.status(200).json({
@@ -187,8 +161,7 @@ async function handleDelete(req, res) {
   } catch (error) {
     console.error('Delete user preferences error:', error);
     return res.status(500).json({
-      error: 'Failed to delete preferences',
-      message: error.message
+      error: 'Failed to delete preferences'
     });
   }
 }

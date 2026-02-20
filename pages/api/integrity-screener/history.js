@@ -2,30 +2,31 @@
  * API Route: /api/integrity-screener/history
  *
  * Get screening history and individual screening details.
+ * All operations are scoped to the authenticated user's profile.
  *
- * GET /api/integrity-screener/history?profileId=N - List history for user
- * GET /api/integrity-screener/history?id=N - Get single screening with full details
- * PATCH /api/integrity-screener/history - Update screening status
+ * GET /api/integrity-screener/history - List history for authenticated user
+ * GET /api/integrity-screener/history?id=N - Get single screening (must belong to user)
+ * PATCH /api/integrity-screener/history - Update screening status (must belong to user)
  */
 
-import { requireAuth } from '../../../lib/utils/auth';
+import { requireAuthWithProfile } from '../../../lib/utils/auth';
 
 export default async function handler(req, res) {
-  // Require authentication
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  // Require authentication and extract profile ID from session
+  const sessionProfileId = await requireAuthWithProfile(req, res);
+  if (sessionProfileId === null) return;
 
   try {
     const { IntegrityService } = await import('../../../lib/services/integrity-service');
 
     if (req.method === 'GET') {
-      const { id, profileId, limit = 50, offset = 0 } = req.query;
+      const { id, limit = 50, offset = 0 } = req.query;
 
-      // Get single screening with full details
+      // Get single screening with full details (scoped to authenticated user)
       if (id) {
         const screening = await IntegrityService.getScreening(
           parseInt(id),
-          profileId ? parseInt(profileId) : null
+          sessionProfileId
         );
 
         if (!screening) {
@@ -35,13 +36,9 @@ export default async function handler(req, res) {
         return res.json(screening);
       }
 
-      // Get history list
-      if (!profileId) {
-        return res.status(400).json({ error: 'profileId is required for history list' });
-      }
-
+      // Get history list for authenticated user
       const history = await IntegrityService.getScreeningHistory(
-        parseInt(profileId),
+        sessionProfileId,
         parseInt(limit),
         parseInt(offset)
       );
@@ -71,6 +68,15 @@ export default async function handler(req, res) {
         });
       }
 
+      // Verify the screening belongs to the authenticated user before updating
+      const screening = await IntegrityService.getScreening(
+        parseInt(id),
+        sessionProfileId
+      );
+      if (!screening) {
+        return res.status(403).json({ error: 'Not authorized to modify this screening' });
+      }
+
       await IntegrityService.updateScreeningStatus(
         parseInt(id),
         status,
@@ -86,7 +92,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('History API error:', error);
     return res.status(500).json({
-      error: error.message || 'An unexpected error occurred',
+      error: 'An unexpected error occurred',
     });
   }
 }

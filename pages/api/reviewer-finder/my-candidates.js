@@ -7,28 +7,28 @@
  */
 
 import { sql } from '@vercel/postgres';
-import { requireAuth } from '../../../lib/utils/auth';
+import { requireAuthWithProfile } from '../../../lib/utils/auth';
 import { proxifyBlobUrl } from '../../../lib/utils/blob-proxy';
 
 export default async function handler(req, res) {
-  // Require authentication
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  // Require authentication and extract profile ID from session
+  const sessionProfileId = await requireAuthWithProfile(req, res);
+  if (sessionProfileId === null) return;
 
   if (req.method === 'GET') {
-    return handleGet(req, res);
+    return handleGet(req, res, sessionProfileId);
   } else if (req.method === 'PATCH') {
-    return handlePatch(req, res);
+    return handlePatch(req, res, sessionProfileId);
   } else if (req.method === 'DELETE') {
-    return handleDelete(req, res);
+    return handleDelete(req, res, sessionProfileId);
   } else {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 }
 
-async function handleGet(req, res) {
+async function handleGet(req, res, sessionProfileId) {
   try {
-    const { cycleId, userProfileId, mode } = req.query;
+    const { cycleId, mode } = req.query;
 
     // Mode: return all proposals (for Add Researcher modal)
     // Proposals are stored inline in reviewer_suggestions, get unique proposals
@@ -82,8 +82,8 @@ async function handleGet(req, res) {
       });
     }
 
-    // Parse user profile ID for filtering
-    const profileId = userProfileId ? parseInt(userProfileId, 10) : null;
+    // Use authenticated user's profile ID for filtering
+    const profileId = sessionProfileId;
 
     // Build query based on cycleId and userProfileId filters
     // Legacy data (user_profile_id = NULL) is visible to all users until migrated
@@ -273,7 +273,7 @@ async function handleGet(req, res) {
   }
 }
 
-async function handlePatch(req, res) {
+async function handlePatch(req, res, sessionProfileId) {
   try {
     const {
       suggestionId,
@@ -310,6 +310,7 @@ async function handlePatch(req, res) {
           UPDATE reviewer_suggestions
           SET grant_cycle_id = ${cycleValue}
           WHERE proposal_id = ${proposalId} AND selected = true
+            AND (user_profile_id IS NULL OR user_profile_id = ${sessionProfileId})
         `;
         await sql`
           UPDATE proposal_searches
@@ -327,6 +328,7 @@ async function handlePatch(req, res) {
           UPDATE reviewer_suggestions
           SET program_area = ${programArea}
           WHERE proposal_id = ${proposalId} AND selected = true
+            AND (user_profile_id IS NULL OR user_profile_id = ${sessionProfileId})
         `;
         updates.programArea = programArea;
       }
@@ -337,6 +339,7 @@ async function handlePatch(req, res) {
           UPDATE reviewer_suggestions
           SET proposal_authors = ${proposalAuthors || null}
           WHERE proposal_id = ${proposalId} AND selected = true
+            AND (user_profile_id IS NULL OR user_profile_id = ${sessionProfileId})
         `;
         updates.proposalAuthors = proposalAuthors;
       }
@@ -347,6 +350,7 @@ async function handlePatch(req, res) {
           UPDATE reviewer_suggestions
           SET proposal_institution = ${proposalInstitution || null}
           WHERE proposal_id = ${proposalId} AND selected = true
+            AND (user_profile_id IS NULL OR user_profile_id = ${sessionProfileId})
         `;
         updates.proposalInstitution = proposalInstitution;
       }
@@ -362,6 +366,16 @@ async function handlePatch(req, res) {
 
     if (!suggestionId) {
       return res.status(400).json({ error: 'suggestionId is required' });
+    }
+
+    // Verify the suggestion belongs to the authenticated user
+    const ownerCheck = await sql`
+      SELECT id FROM reviewer_suggestions
+      WHERE id = ${suggestionId}
+        AND (user_profile_id IS NULL OR user_profile_id = ${sessionProfileId})
+    `;
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Not authorized to modify this candidate' });
     }
 
     // Check if we have any researcher fields to update
@@ -520,7 +534,7 @@ async function handlePatch(req, res) {
   }
 }
 
-async function handleDelete(req, res) {
+async function handleDelete(req, res, sessionProfileId) {
   try {
     const { suggestionId } = req.body;
 
@@ -528,12 +542,17 @@ async function handleDelete(req, res) {
       return res.status(400).json({ error: 'suggestionId is required' });
     }
 
-    // Mark as not selected (soft delete) rather than hard delete
-    await sql`
+    // Verify ownership and soft-delete (only if owned by this user or legacy unscoped data)
+    const result = await sql`
       UPDATE reviewer_suggestions
       SET selected = false
       WHERE id = ${suggestionId}
+        AND (user_profile_id IS NULL OR user_profile_id = ${sessionProfileId})
     `;
+
+    if (result.rowCount === 0) {
+      return res.status(403).json({ error: 'Not authorized to remove this candidate' });
+    }
 
     return res.status(200).json({
       success: true,

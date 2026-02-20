@@ -10,22 +10,25 @@
  */
 
 import { DatabaseService } from '../../lib/services/database-service';
-import { requireAuth } from '../../lib/utils/auth';
+import { requireAuth, requireAuthWithProfile } from '../../lib/utils/auth';
 
 export default async function handler(req, res) {
-  // Require authentication
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  // GET and POST use basic auth; PATCH and DELETE enforce ownership
+  if (req.method === 'GET' || req.method === 'POST') {
+    const session = await requireAuth(req, res);
+    if (!session) return;
+    return req.method === 'GET' ? handleGet(req, res) : handlePost(req, res);
+  }
+
+  // PATCH and DELETE require profile ID from session to enforce ownership
+  const sessionProfileId = await requireAuthWithProfile(req, res);
+  if (sessionProfileId === null) return;
 
   switch (req.method) {
-    case 'GET':
-      return handleGet(req, res);
-    case 'POST':
-      return handlePost(req, res);
     case 'PATCH':
-      return handlePatch(req, res);
+      return handlePatch(req, res, sessionProfileId);
     case 'DELETE':
-      return handleDelete(req, res);
+      return handleDelete(req, res, sessionProfileId);
     default:
       return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -102,12 +105,17 @@ async function handlePost(req, res) {
   }
 }
 
-async function handlePatch(req, res) {
+async function handlePatch(req, res, sessionProfileId) {
   try {
     const { id, name, displayName, avatarColor, isDefault, updateLastUsed } = req.body;
 
     if (!id) {
       return res.status(400).json({ error: 'Profile ID is required' });
+    }
+
+    // Users can only modify their own profile
+    if (parseInt(id, 10) !== sessionProfileId) {
+      return res.status(403).json({ error: 'Cannot modify another user\'s profile' });
     }
 
     // Validate avatar color if provided
@@ -148,12 +156,17 @@ async function handlePatch(req, res) {
   }
 }
 
-async function handleDelete(req, res) {
+async function handleDelete(req, res, sessionProfileId) {
   try {
     const { id } = req.body;
 
     if (!id) {
       return res.status(400).json({ error: 'Profile ID is required' });
+    }
+
+    // Users can only delete their own profile
+    if (parseInt(id, 10) !== sessionProfileId) {
+      return res.status(403).json({ error: 'Cannot delete another user\'s profile' });
     }
 
     const success = await DatabaseService.archiveUserProfile(parseInt(id, 10));
