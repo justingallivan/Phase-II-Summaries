@@ -26,12 +26,5 @@ export default function handler(req, res) {
 
   const enabled = authRequired && hasCredentials;
 
-  res.status(200).json({
-    enabled,
-    // Include details for debugging (only shows boolean flags, not secrets)
-    debug: {
-      authRequired,
-      hasCredentials,
-    },
-  });
+  res.status(200).json({ enabled });
 }

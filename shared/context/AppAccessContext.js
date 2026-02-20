@@ -3,7 +3,7 @@
  *
  * Fetches allowed apps from /api/app-access on mount.
  * Provides hasAccess(appKey) for nav filtering and page guards.
- * Returns true during loading for graceful fallback.
+ * Returns false during loading (deny by default).
  */
 
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
@@ -19,16 +19,16 @@ export function AppAccessProvider({ children }) {
     try {
       const res = await fetch('/api/app-access');
       if (!res.ok) {
-        // If the endpoint fails (e.g. no profile yet), allow all to avoid lockout
-        setAllowedApps(null);
+        // If the endpoint fails, deny access (middleware guarantees authentication)
+        setAllowedApps([]);
         return;
       }
       const data = await res.json();
       setAllowedApps(data.apps || []);
       setIsSuperuser(data.isSuperuser || false);
     } catch {
-      // On error, allow all (graceful degradation)
-      setAllowedApps(null);
+      // On error, deny access (middleware guarantees authentication)
+      setAllowedApps([]);
     } finally {
       setIsLoading(false);
     }
@@ -39,8 +39,8 @@ export function AppAccessProvider({ children }) {
   }, [fetchAccess]);
 
   const hasAccess = useCallback((appKey) => {
-    // While loading or on error, allow access (graceful fallback)
-    if (allowedApps === null) return true;
+    // While loading, deny access (show nothing until permissions are confirmed)
+    if (allowedApps === null) return false;
     return allowedApps.includes(appKey);
   }, [allowedApps]);
 
