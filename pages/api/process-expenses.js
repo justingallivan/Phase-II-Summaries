@@ -139,7 +139,6 @@ export default async function handler(req, res) {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
     });
 
     // Helper functions for streaming
