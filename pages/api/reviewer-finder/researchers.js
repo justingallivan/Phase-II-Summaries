@@ -52,6 +52,18 @@ import { sql } from '@vercel/postgres';
 import { requireAuth } from '../../../lib/utils/auth';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 
+async function checkSuperuser(profileId) {
+  try {
+    const result = await sql`
+      SELECT role FROM dynamics_user_roles
+      WHERE user_profile_id = ${profileId}
+    `;
+    return result.rows[0]?.role === 'superuser';
+  } catch {
+    return false;
+  }
+}
+
 export default async function handler(req, res) {
   // Require authentication
   const session = await requireAuth(req, res);
@@ -69,9 +81,15 @@ export default async function handler(req, res) {
     } else {
       return res.status(400).json({ error: 'Either primaryId (for merge) or name (for create) is required' });
     }
-  } else if (req.method === 'PATCH') {
-    return handlePatch(req, res);
-  } else if (req.method === 'DELETE') {
+  } else if (req.method === 'PATCH' || req.method === 'DELETE') {
+    // Restrict modifications to superusers (skip in dev mode)
+    if (!session.authBypassed) {
+      const profileId = session.user?.profileId;
+      if (!profileId || !(await checkSuperuser(profileId))) {
+        return res.status(403).json({ error: 'Superuser access required to modify researchers' });
+      }
+    }
+    if (req.method === 'PATCH') return handlePatch(req, res);
     return handleDelete(req, res);
   } else {
     return res.status(405).json({ error: 'Method not allowed' });
