@@ -8,6 +8,7 @@
 
 import { sql } from '@vercel/postgres';
 import { requireAuthWithProfile } from '../../../lib/utils/auth';
+import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 import { proxifyBlobUrl } from '../../../lib/utils/blob-proxy';
 
 export default async function handler(req, res) {
@@ -268,7 +269,8 @@ async function handleGet(req, res, sessionProfileId) {
     console.error('Get my candidates error:', error);
     return res.status(500).json({
       error: 'Failed to fetch candidates',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }
@@ -529,7 +531,8 @@ async function handlePatch(req, res, sessionProfileId) {
     console.error('Update candidate error:', error);
     return res.status(500).json({
       error: 'Failed to update candidate',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }
@@ -562,7 +565,8 @@ async function handleDelete(req, res, sessionProfileId) {
     console.error('Delete candidate error:', error);
     return res.status(500).json({
       error: 'Failed to remove candidate',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }

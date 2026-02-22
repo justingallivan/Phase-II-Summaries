@@ -1,7 +1,7 @@
 import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
 import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
-import { getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
 import { requireAuth } from '../../lib/utils/auth';
 
 export const config = {
@@ -371,9 +371,13 @@ export default async function handler(req, res) {
     console.error('Processing error:', error);
 
     if (!res.headersSent) {
-      return res.status(500).json({ error: error.message });
+      return res.status(500).json({
+        error: BASE_CONFIG.ERROR_MESSAGES.PROCESSING_FAILED,
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        timestamp: new Date().toISOString()
+      });
     } else {
-      sendError(error.message);
+      sendError(BASE_CONFIG.ERROR_MESSAGES.PROCESSING_FAILED);
       res.end();
     }
   }

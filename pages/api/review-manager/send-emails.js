@@ -16,6 +16,7 @@
  */
 
 import { sql } from '@vercel/postgres';
+import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 import {
   generateEmlContent,
   generateEmlContentWithAttachments,
@@ -296,7 +297,10 @@ export default async function handler(req, res) {
     res.end();
   } catch (error) {
     console.error('Review Manager send-emails error:', error);
-    sendEvent('error', { message: error.message });
+    sendEvent('error', {
+      message: BASE_CONFIG.ERROR_MESSAGES.EMAIL_GENERATION_FAILED,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
     res.end();
   }
 }

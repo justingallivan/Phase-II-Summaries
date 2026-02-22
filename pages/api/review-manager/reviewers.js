@@ -11,6 +11,7 @@
 
 import { sql } from '@vercel/postgres';
 import { requireAuth } from '../../../lib/utils/auth';
+import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 
 export default async function handler(req, res) {
   const session = await requireAuth(req, res);
@@ -237,7 +238,7 @@ async function handleGet(req, res, session) {
     });
   } catch (error) {
     console.error('Review Manager GET error:', error);
-    return res.status(500).json({ error: 'Failed to fetch reviewers', message: error.message });
+    return res.status(500).json({ error: 'Failed to fetch reviewers', details: process.env.NODE_ENV === 'development' ? error.message : undefined, timestamp: new Date().toISOString() });
   }
 }
 
@@ -322,6 +323,6 @@ async function handlePatch(req, res, session) {
     return res.status(200).json({ success: true, message: 'Reviewer updated' });
   } catch (error) {
     console.error('Review Manager PATCH error:', error);
-    return res.status(500).json({ error: 'Failed to update reviewer', message: error.message });
+    return res.status(500).json({ error: 'Failed to update reviewer', details: process.env.NODE_ENV === 'development' ? error.message : undefined, timestamp: new Date().toISOString() });
   }
 }

@@ -19,6 +19,7 @@
  */
 
 import { requireAuth } from '../../../lib/utils/auth';
+import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 
 const { ContactEnrichmentService } = require('../../../lib/services/contact-enrichment-service');
 
@@ -94,7 +95,8 @@ export default async function handler(req, res) {
     console.error('Contact enrichment error:', error);
     sendEvent({
       type: 'error',
-      message: error.message || 'Enrichment failed',
+      message: BASE_CONFIG.ERROR_MESSAGES.PROCESSING_FAILED,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   } finally {
     res.end();

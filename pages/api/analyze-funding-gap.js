@@ -3,7 +3,7 @@ import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { createFundingExtractionPrompt, createFundingAnalysisPrompt } from '../../shared/config/prompts/funding-gap-analyzer';
 import { queryNSFforPI, queryNSFforKeywords, queryNIHforPI, queryNIHforKeywords, queryUSASpending, formatCurrency, formatDate } from '../../lib/fundingApis';
-import { getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
 import { requireAuth } from '../../lib/utils/auth';
 
 export const config = {
@@ -454,7 +454,8 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Error in funding gap analyzer API:', error);
     res.write(`data: ${JSON.stringify({
-      error: error.message || 'Analysis failed. Please try again.',
+      error: BASE_CONFIG.ERROR_MESSAGES.PROCESSING_FAILED,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       complete: true
     })}\n\n`);
     res.end();

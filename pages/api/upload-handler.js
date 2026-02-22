@@ -1,5 +1,6 @@
 import { handleUpload } from '@vercel/blob/client';
 import { requireAuth } from '../../lib/utils/auth';
+import { BASE_CONFIG } from '../../shared/config/baseConfig';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -40,7 +41,11 @@ export default async function handler(req, res) {
     return res.status(200).json(jsonResponse);
   } catch (error) {
     console.error('Blob upload handler error:', error);
-    return res.status(400).json({ error: error.message });
+    return res.status(400).json({
+      error: BASE_CONFIG.ERROR_MESSAGES.UPLOAD_FAILED,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
+    });
   }
 }
 

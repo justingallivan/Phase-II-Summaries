@@ -155,16 +155,23 @@ export default async function handler(req, res) {
         progress: 100,
         message: 'An error occurred during processing',
         results: {
-          formatted: `### Processing Error\n\nAn error occurred: ${error.message}`,
+          formatted: `### Processing Error\n\n${BASE_CONFIG.ERROR_MESSAGES.PROCESSING_FAILED}`,
           structured: {
             questions: ''
           },
-          metadata: { error: true, errorMessage: error.message }
+          metadata: {
+            error: true,
+            errorMessage: process.env.NODE_ENV === 'development' ? error.message : BASE_CONFIG.ERROR_MESSAGES.PROCESSING_FAILED
+          }
         }
       })}\n\n`);
       res.end();
     } else {
-      res.status(500).json({ error: error.message });
+      res.status(500).json({
+        error: BASE_CONFIG.ERROR_MESSAGES.PROCESSING_FAILED,
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        timestamp: new Date().toISOString()
+      });
     }
   }
 }
@@ -394,7 +401,7 @@ async function analyzePeerReviews(reviewTexts, apiKey, userProfileId) {
     console.error('Peer review analysis error:', error);
     // Return a fallback result instead of throwing
     return {
-      formatted: `### Error During Analysis\n\nAn error occurred while analyzing the peer reviews: ${error.message}\n\n### Files Processed\n\n${reviewTexts.map(r => `- ${r.filename}`).join('\n')}\n\nPlease try again or contact support if the issue persists.`,
+      formatted: `### Error During Analysis\n\n${BASE_CONFIG.ERROR_MESSAGES.PROCESSING_FAILED}\n\n### Files Processed\n\n${reviewTexts.map(r => `- ${r.filename}`).join('\n')}\n\nPlease try again or contact support if the issue persists.`,
       structured: {
         questions: '### Unable to Extract Questions\n\nDue to the processing error, questions could not be extracted from the peer reviews.'
       },
@@ -403,7 +410,7 @@ async function analyzePeerReviews(reviewTexts, apiKey, userProfileId) {
         processedFiles: reviewTexts.map(r => r.filename),
         timestamp: new Date().toISOString(),
         error: true,
-        errorMessage: error.message
+        errorMessage: process.env.NODE_ENV === 'development' ? error.message : BASE_CONFIG.ERROR_MESSAGES.PROCESSING_FAILED
       }
     };
   }

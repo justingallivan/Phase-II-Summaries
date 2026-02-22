@@ -14,6 +14,7 @@ import { put } from '@vercel/blob';
 import { sql } from '@vercel/postgres';
 import { extractPages } from '../../../lib/utils/pdf-extractor';
 import { requireAuth } from '../../../lib/utils/auth';
+import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 
 export const config = {
   api: {
@@ -80,7 +81,8 @@ export default async function handler(req, res) {
     console.error('Extract summary error:', error);
     return res.status(500).json({
       error: 'Failed to extract summary',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }

@@ -194,8 +194,8 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Dynamics Explorer chat error:', error);
     sendEvent('error', {
-      message: error.message || 'An unexpected error occurred',
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+      message: BASE_CONFIG.ERROR_MESSAGES.QUERY_FAILED,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   } finally {
     res.end();

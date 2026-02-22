@@ -11,6 +11,7 @@
 
 import { DatabaseService } from '../../lib/services/database-service';
 import { requireAuth, requireAuthWithProfile } from '../../lib/utils/auth';
+import { BASE_CONFIG } from '../../shared/config/baseConfig';
 
 export default async function handler(req, res) {
   // GET and POST use basic auth; PATCH and DELETE enforce ownership
@@ -59,7 +60,8 @@ async function handleGet(req, res) {
     console.error('Get user profiles error:', error);
     return res.status(500).json({
       error: 'Failed to fetch profiles',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }
@@ -100,7 +102,8 @@ async function handlePost(req, res) {
 
     return res.status(500).json({
       error: 'Failed to create profile',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }
@@ -151,7 +154,8 @@ async function handlePatch(req, res, sessionProfileId) {
 
     return res.status(500).json({
       error: 'Failed to update profile',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }
@@ -183,7 +187,8 @@ async function handleDelete(req, res, sessionProfileId) {
     console.error('Delete user profile error:', error);
     return res.status(500).json({
       error: 'Failed to archive profile',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }

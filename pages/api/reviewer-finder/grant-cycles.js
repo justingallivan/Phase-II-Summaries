@@ -8,6 +8,7 @@
  */
 
 import { sql } from '@vercel/postgres';
+import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 import { requireAuth } from '../../../lib/utils/auth';
 import { proxifyBlobUrl } from '../../../lib/utils/blob-proxy';
 
@@ -134,7 +135,8 @@ async function handleGet(req, res) {
     console.error('Get grant cycles error:', error);
     return res.status(500).json({
       error: 'Failed to fetch grant cycles',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }
@@ -224,7 +226,8 @@ async function handlePost(req, res) {
     console.error('Create grant cycle error:', error);
     return res.status(500).json({
       error: 'Failed to create grant cycle',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }
@@ -343,7 +346,8 @@ async function handlePatch(req, res) {
     console.error('Update grant cycle error:', error);
     return res.status(500).json({
       error: 'Failed to update grant cycle',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }
@@ -371,7 +375,8 @@ async function handleDelete(req, res) {
     console.error('Archive grant cycle error:', error);
     return res.status(500).json({
       error: 'Failed to archive grant cycle',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }

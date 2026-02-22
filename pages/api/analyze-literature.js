@@ -178,7 +178,11 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('API error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      error: BASE_CONFIG.ERROR_MESSAGES.PROCESSING_FAILED,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
+    });
   }
 }
 

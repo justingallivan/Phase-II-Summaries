@@ -171,7 +171,13 @@ export const BASE_CONFIG = {
     PROCESSING_FAILED: 'Failed to process document',
     AI_SERVICE_ERROR: 'AI service temporarily unavailable',
     RATE_LIMIT_EXCEEDED: 'Rate limit exceeded, please try again later',
-    INVALID_REQUEST: 'Invalid request format'
+    INVALID_REQUEST: 'Invalid request format',
+    DATABASE_ERROR: 'A database error occurred',
+    UPLOAD_FAILED: 'Failed to upload file',
+    SCREENING_FAILED: 'Screening operation failed',
+    EMAIL_GENERATION_FAILED: 'Failed to generate email',
+    QUERY_FAILED: 'Query failed',
+    INTERNAL_ERROR: 'An internal error occurred'
   },
 
   // Success Messages

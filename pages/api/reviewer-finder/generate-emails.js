@@ -29,7 +29,7 @@ import {
 import { createPersonalizationPrompt } from '../../../shared/config/prompts/email-reviewer';
 import { requireAuth } from '../../../lib/utils/auth';
 import { logUsage } from '../../../lib/utils/usage-logger';
-import { getModelForApp } from '../../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp } from '../../../shared/config/baseConfig';
 
 /**
  * Look up proposal info for candidates from the database
@@ -444,8 +444,8 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Generate emails error:', error);
     sendEvent('error', {
-      message: error.message || 'An unexpected error occurred',
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      message: BASE_CONFIG.ERROR_MESSAGES.EMAIL_GENERATION_FAILED,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 

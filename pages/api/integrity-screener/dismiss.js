@@ -8,6 +8,7 @@
  */
 
 import { requireAuth } from '../../../lib/utils/auth';
+import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 
 export default async function handler(req, res) {
   // Require authentication
@@ -92,7 +93,9 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Dismiss API error:', error);
     return res.status(500).json({
-      error: error.message || 'An unexpected error occurred',
+      error: BASE_CONFIG.ERROR_MESSAGES.SCREENING_FAILED,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }

@@ -50,6 +50,7 @@
 
 import { sql } from '@vercel/postgres';
 import { requireAuth } from '../../../lib/utils/auth';
+import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 
 export default async function handler(req, res) {
   // Require authentication
@@ -475,7 +476,8 @@ async function handleGet(req, res) {
     console.error('Get researchers error:', error);
     return res.status(500).json({
       error: 'Failed to fetch researchers',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }
@@ -650,7 +652,8 @@ async function handlePatch(req, res) {
     console.error('Update researcher error:', error);
     return res.status(500).json({
       error: 'Failed to update researcher',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }
@@ -713,7 +716,8 @@ async function handleDelete(req, res) {
     console.error('Delete researcher error:', error);
     return res.status(500).json({
       error: 'Failed to delete researcher',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }
@@ -887,7 +891,8 @@ async function handleCreate(req, res) {
     console.error('Create researcher error:', error);
     return res.status(500).json({
       error: 'Failed to create researcher',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }
@@ -1043,7 +1048,8 @@ async function handleMerge(req, res) {
     console.error('Merge researchers error:', error);
     return res.status(500).json({
       error: 'Failed to merge researchers',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }

@@ -14,6 +14,7 @@
 
 import { put } from '@vercel/blob';
 import { requireAuth } from '../../../lib/utils/auth';
+import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 
 export const config = {
   api: {
@@ -176,8 +177,8 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Analyze API error:', error);
     sendEvent('error', {
-      message: error.message || 'An unexpected error occurred',
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      message: BASE_CONFIG.ERROR_MESSAGES.PROCESSING_FAILED,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 
