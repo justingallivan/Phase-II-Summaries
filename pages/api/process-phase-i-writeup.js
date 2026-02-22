@@ -164,7 +164,7 @@ async function generatePhaseIWriteup(text, filename, institution, apiKey, userPr
 
   } catch (error) {
     console.error('Writeup generation error:', error);
-    throw new Error(`Failed to generate writeup: ${error.message}`);
+    throw new Error('Failed to generate writeup');
   }
 }
 

@@ -158,7 +158,7 @@ async function generateSummary(text, filename, apiKey, summaryLength, summaryLev
 
   } catch (error) {
     console.error('Summary generation error:', error);
-    throw new Error(`Failed to generate summary: ${error.message}`);
+    throw new Error('Failed to generate summary');
   }
 }
 

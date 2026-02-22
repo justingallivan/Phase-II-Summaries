@@ -30,10 +30,11 @@ export default async function handler(req, res) {
     const result = await sql`SELECT COUNT(*) as tables FROM information_schema.tables WHERE table_schema = 'public'`;
     health.services.database = { status: 'ok', detail: `${parseInt(result.rows[0].tables)} tables in public schema` };
   } catch (error) {
-    health.services.database = { status: 'error', message: error.message };
+    health.services.database = { status: 'error', message: process.env.NODE_ENV === 'development' ? error.message : 'Service check failed' };
   }
 
   // 2. Claude API
+  const isDev = process.env.NODE_ENV === 'development';
   if (process.env.CLAUDE_API_KEY) {
     try {
       const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -55,12 +56,12 @@ export default async function handler(req, res) {
         let message = `HTTP ${response.status}`;
         try {
           const data = await response.json();
-          if (data.error?.message) message = data.error.message;
+          if (data.error?.message) message = isDev ? data.error.message : `HTTP ${response.status}`;
         } catch {}
         health.services.claude = { status: 'error', message };
       }
     } catch (error) {
-      health.services.claude = { status: 'error', message: error.message };
+      health.services.claude = { status: 'error', message: isDev ? error.message : 'Service check failed' };
     }
   } else {
     health.services.claude = { status: 'error', message: 'CLAUDE_API_KEY not set' };
@@ -86,10 +87,10 @@ export default async function handler(req, res) {
       health.services.azureAd = {
         status: data.access_token ? 'ok' : 'error',
         ...(data.access_token && { detail: 'Client credentials token acquired' }),
-        ...(data.error && { message: `${data.error}: ${data.error_description?.split('.')[0]}` }),
+        ...(data.error && { message: isDev ? `${data.error}: ${data.error_description?.split('.')[0]}` : 'Service check failed' }),
       };
     } catch (error) {
-      health.services.azureAd = { status: 'error', message: error.message };
+      health.services.azureAd = { status: 'error', message: isDev ? error.message : 'Service check failed' };
     }
   } else {
     health.services.azureAd = {
@@ -118,10 +119,10 @@ export default async function handler(req, res) {
       health.services.dynamicsCrm = {
         status: data.access_token ? 'ok' : 'error',
         ...(data.access_token && { detail: 'OAuth token acquired for CRM API' }),
-        ...(data.error && { message: `${data.error}: ${data.error_description?.split('.')[0]}` }),
+        ...(data.error && { message: isDev ? `${data.error}: ${data.error_description?.split('.')[0]}` : 'Service check failed' }),
       };
     } catch (error) {
-      health.services.dynamicsCrm = { status: 'error', message: error.message };
+      health.services.dynamicsCrm = { status: 'error', message: isDev ? error.message : 'Service check failed' };
     }
   } else {
     health.services.dynamicsCrm = { status: 'skipped', detail: 'DYNAMICS_CLIENT_ID or DYNAMICS_TENANT_ID not set' };

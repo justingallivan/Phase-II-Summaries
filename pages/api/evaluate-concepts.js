@@ -241,9 +241,9 @@ async function evaluateSingleConcept(page, apiKey, res, processedCount, totalCou
     console.error(`Error evaluating page ${pageNumber}:`, error);
     return {
       pageNumber,
-      error: error.message,
+      error: 'An error occurred during evaluation',
       title: `Concept ${pageNumber}`,
-      overallAssessment: `Failed to evaluate: ${error.message}`
+      overallAssessment: 'An error occurred during evaluation'
     };
   }
 }

@@ -159,7 +159,7 @@ export default async function handler(req, res) {
           result = await executeTool(name, input, sendEvent, userProfileId);
         } catch (err) {
           console.log(`[DynExp] Round ${round} ${name} ERROR:`, err.message.substring(0, 200));
-          result = { error: err.message };
+          result = { error: 'Tool execution failed' };
         }
         const executionTime = Date.now() - startTime;
 

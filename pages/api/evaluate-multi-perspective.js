@@ -363,10 +363,10 @@ async function evaluateSingleConceptMultiPerspective(page, apiKey, framework, re
     console.error(`Error evaluating page ${pageNumber}:`, error);
     return {
       pageNumber,
-      error: error.message,
+      error: 'An error occurred during evaluation',
       title: `Concept ${pageNumber}`,
       synthesis: {
-        overallNarrative: `Failed to evaluate: ${error.message}`
+        overallNarrative: 'An error occurred during evaluation'
       }
     };
   }
@@ -506,7 +506,7 @@ async function generateProposalSummary(initialAnalysis, literatureResults, apiKe
       },
       keyInnovation: 'Not available',
       fieldContext: 'Not available',
-      error: error.message
+      error: 'An error occurred generating proposal summary'
     };
   }
 }

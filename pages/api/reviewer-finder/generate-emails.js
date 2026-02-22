@@ -393,7 +393,7 @@ export default async function handler(req, res) {
         console.error(`Error generating email for ${candidate.name}:`, error.message);
         errors.push({
           candidateName: candidate.name,
-          error: error.message
+          error: BASE_CONFIG.ERROR_MESSAGES.EMAIL_GENERATION_FAILED
         });
       }
     }
