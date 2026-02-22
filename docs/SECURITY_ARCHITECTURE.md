@@ -3,7 +3,7 @@
 **Prepared for:** IT Security Review
 **Application:** Document Processing Multi-App System
 **Date:** February 2026
-**Version:** 2.1
+**Version:** 3.0
 
 ---
 
@@ -81,12 +81,13 @@
 | 5 | Phase I Writeup | Single Phase I writeup | Claude |
 | 6 | Phase II Writeup | Single Phase II writeup with Q&A | Claude |
 | 7 | Reviewer Finder | Expert reviewer discovery | Claude, PubMed, ArXiv, BioRxiv, ChemRxiv, ORCID, SerpAPI |
-| 8 | Peer Review Summarizer | Peer review analysis | Claude |
-| 9 | Funding Analysis | Federal funding gap analysis | Claude, NSF, NIH, USAspending |
-| 10 | Expense Reporter | Receipt/invoice processing | Claude |
-| 11 | Literature Analyzer | Research paper synthesis | Claude |
-| 12 | Integrity Screener | Research integrity screening | Claude, SerpAPI |
-| 13 | Dynamics Explorer | Natural language CRM queries | Claude, Dynamics 365 |
+| 8 | Review Manager | Post-acceptance review lifecycle | Claude |
+| 9 | Peer Review Summarizer | Peer review analysis | Claude |
+| 10 | Funding Analysis | Federal funding gap analysis | Claude, NSF, NIH, USAspending |
+| 11 | Expense Reporter | Receipt/invoice processing | Claude |
+| 12 | Literature Analyzer | Research paper synthesis | Claude |
+| 13 | Integrity Screener | Research integrity screening | Claude, SerpAPI |
+| 14 | Dynamics Explorer | Natural language CRM queries | Claude, Dynamics 365 |
 
 ### Deployment Topology
 
@@ -106,12 +107,12 @@
 |-----------|--------|
 | **Endpoint** | `https://api.anthropic.com/v1/messages` |
 | **Auth** | API key in `x-api-key` header |
-| **Env Var** | `CLAUDE_API_KEY` (system default); users may provide their own key |
+| **Env Var** | `CLAUDE_API_KEY` (centralized server-side; users do not provide their own) |
 | **Execution** | Server-side only (API routes) |
 | **Data sent** | Proposal text, document content, user prompts, researcher names, CRM query results |
 | **Data received** | AI-generated analysis, summaries, structured data, tool-use responses |
-| **Used by** | All 13 applications |
-| **Models** | Claude Opus 4 (concept evaluator), Claude Sonnet 4 (most apps), Claude Haiku 3.5/4.5 (expense reporter, Dynamics Explorer) |
+| **Used by** | All 14 applications |
+| **Models** | Claude Opus 4 (concept evaluator), Claude Sonnet 4 (most apps), Claude Haiku 4.5 (expense reporter, Dynamics Explorer, contact enrichment) |
 | **Rate handling** | Retry with exponential backoff (1s initial, 10s max, 2 retries), then fallback to cheaper model |
 
 ### 2.2 PubMed / NCBI E-utilities — Literature Search
@@ -505,7 +506,7 @@
 | **Compute** | Serverless functions (Node.js); no persistent processes |
 | **CDN** | Vercel Edge Network serves static assets and SSR pages |
 | **TLS** | Automatic HTTPS with TLS 1.3; HTTP auto-redirected |
-| **HSTS** | `Strict-Transport-Security: max-age=31536000; includeSubDomains` via `next.config.js` and security middleware |
+| **HSTS** | `Strict-Transport-Security: max-age=31536000; includeSubDomains` via `next.config.js` (all routes) |
 | **Domains** | Custom domain configured in Vercel dashboard |
 | **Environment secrets** | Stored encrypted in Vercel dashboard; injected at build/runtime |
 | **Build** | `next build` triggered on git push to main |
@@ -531,6 +532,9 @@
 |----------|--------|-------------|---------|
 | User identity | `user_profiles` | Medium — Azure IDs, emails | Per-user |
 | User settings | `user_preferences` | High — encrypted API keys | Per-user |
+| App access | `user_app_access` | Medium — per-user app grants | Per-user |
+| System config | `system_settings` | Medium — model overrides, settings | Global |
+| API usage | `api_usage_log` | Medium — model, tokens, cost per request | Per-user |
 | Researcher data | `researchers`, `publications`, `researcher_keywords` | Low — public academic data | Shared/global |
 | Search results | `proposal_searches` | Medium — proposal metadata, blob URLs | Per-user |
 | Reviewer candidates | `reviewer_suggestions` | Medium — reviewer-proposal matches | Per-user |
@@ -590,17 +594,40 @@
 | **JWT payload** | azureId, azureEmail, profileId, profileName, avatarColor, needsLinking |
 | **Debug mode** | `debug: process.env.NODE_ENV === 'development'` — disabled in production |
 
-### 5.3 Auth Middleware
+### 5.3 Three-Layer Auth Enforcement
 
-Three levels of authentication enforcement:
+Authentication is enforced at three levels — edge middleware, API route middleware, and client-side guards:
+
+**Layer 1: Edge Runtime Middleware (`middleware.js`)**
+
+| Attribute | Detail |
+|-----------|--------|
+| **Runtime** | Vercel Edge Runtime (not Node.js) |
+| **Library** | `next-auth/middleware` `withAuth` + `jose` for JWT validation |
+| **Scope** | All routes except `_next/static`, `_next/image`, `favicon.ico`, `/api/auth/*` |
+| **Behavior** | Validates JWT cookie; redirects unauthenticated users to `/auth/signin` |
+| **Kill switch** | `AUTH_REQUIRED=false` disables edge auth check entirely |
+| **Stateless** | No database access; crypto-only validation |
+
+**Layer 2: API Route Auth Functions (`lib/utils/auth.js`)**
 
 | Function | Behavior | Used by |
 |----------|----------|---------|
-| `requireAuth()` | Returns 401 if not authenticated | All API routes |
-| `requireAuthWithProfile()` | Returns 401/403 if not authenticated or no linked profile | User-scoped routes |
-| `optionalAuth()` | Returns session or null, no error | Public-optional routes |
+| `requireAppAccess(req, res, ...appKeys)` | Validates auth + profile + app grant (OR logic — any listed app suffices). Returns `{ profileId, session }` or sends 401/403. Uses in-memory cache with 2-minute TTL. Superusers bypass all app checks. | All 30+ app-specific API endpoints |
+| `requireAuthWithProfile(req, res)` | Validates auth + linked profile. Returns `profileId` or sends 401/403. Blocks request-body `profileId` injection in production. | User-scoped infrastructure (admin, preferences, app-access) |
+| `requireAuth(req, res)` | Validates auth only. Returns session or sends 401. | System endpoints (health, file upload, blob proxy) |
+| `optionalAuth(req, res)` | Returns session or null; no error response. | Public-optional routes |
+| `clearAppAccessCache([profileId])` | Invalidates cached app access; called on grant/revoke changes. | App access management endpoints |
 
-**Auth kill switch:** Setting `AUTH_REQUIRED=false` disables authentication. This is intended for emergency access when Azure AD credentials are misconfigured.
+**Layer 3: Client-Side Guards**
+
+| Component | Purpose |
+|-----------|---------|
+| `AppAccessContext` | React context; fetches `/api/app-access` on mount; exposes `hasAccess(appKey)`, `isSuperuser`. Deny-by-default during loading; fail-closed on fetch error. |
+| `RequireAppAccess` | Page-level wrapper on all 14 app pages; shows "Access Not Available" if denied. |
+| `Layout.js` | Filters navigation links by app access. |
+
+**Auth kill switch:** Setting `AUTH_REQUIRED=false` disables authentication at all layers. Intended for emergency access or local development.
 
 **Production safeguards:**
 - `isAuthRequired()` logs a console warning if auth is disabled in production
@@ -613,7 +640,19 @@ Three levels of authentication enforcement:
 - Prevents cross-user profile linkage via `azureId !== session.user.azureId` check
 - `signIn` callback allows sign-in even if DB profile creation fails (user gets session but 403 on profile-scoped routes)
 
-### 5.4 API Key Encryption
+### 5.4 App-Level Access Control
+
+| Attribute | Detail |
+|-----------|--------|
+| **Registry** | `shared/config/appRegistry.js` — single source of truth for all 14 app definitions (keys, names, routes, icons, categories) |
+| **Database** | `user_app_access` table — per-user app grants with `(user_profile_id, app_key)` unique constraint |
+| **Default grants** | New users receive only `dynamics-explorer`; all other apps require explicit superuser grant |
+| **Superuser bypass** | Users with `role = 'superuser'` in `dynamics_user_roles` bypass all app checks |
+| **Caching** | In-memory `Map` with 2-minute TTL; invalidated on grant/revoke via `clearAppAccessCache()` |
+| **Admin UI** | Checkbox grid on `/admin` — superusers manage per-user app grants |
+| **Always-accessible paths** | `/`, `/admin`, `/guide`, `/profile-settings`, `/auth/signin`, `/auth/error` |
+
+### 5.5 API Key Encryption
 
 User-provided API keys (Claude, ORCID, NCBI, SerpAPI) are stored encrypted:
 
@@ -631,30 +670,22 @@ User-provided API keys (Claude, ORCID, NCBI, SerpAPI) are stored encrypted:
 | **Production guard** | `getEncryptionKey()` throws if `USER_PREFS_ENCRYPTION_KEY` is unset in production |
 | **Dev fallback** | SHA-256 of `'dev-fallback-key-not-for-production'` with console warning |
 
-**Secondary encryption (apiKeyManager.js):**
-- `getSecretKey()` function throws if `API_SECRET_KEY` is unset in production
-- Used by `encryptForClient()` and `decryptFromClient()` methods (scrypt key derivation + AES-256-GCM)
-- These methods are not actively called — `selectApiKey()` is the actively-used method
-
-**Legacy localStorage migration:**
-- Older client-side storage used Base64 encoding (not encryption) with keys named `*_encrypted`
-- Migration prompt detects legacy keys and offers to move them to encrypted database storage
-- After migration, localStorage copies are removed
-- Users can skip migration (keys remain in Base64 localStorage until next prompt)
-
-### 5.5 User Data Scoping
+### 5.6 User Data Scoping
 
 | Table | Scoping | Mechanism |
 |-------|---------|-----------|
 | `user_preferences` | Per-user | `WHERE user_profile_id = ?` with CASCADE DELETE |
+| `user_app_access` | Per-user | `WHERE user_profile_id = ?` with CASCADE DELETE |
 | `proposal_searches` | Per-user | `WHERE user_profile_id = ?` (SET NULL on profile delete) |
 | `reviewer_suggestions` | Per-user | `WHERE user_profile_id = ?` (SET NULL on profile delete) |
 | `integrity_screenings` | Per-user | `WHERE user_profile_id = ?` |
 | `dynamics_query_log` | Per-user | `WHERE user_profile_id = ?` |
+| `api_usage_log` | Per-user | `WHERE user_profile_id = ?` |
 | `researchers` | Shared | All users see same pool |
 | `publications` | Shared | Linked to researchers |
 | `grant_cycles` | Shared | Organization-wide |
 | `retractions` | Shared | Read-only import |
+| `system_settings` | Global | Superuser-managed model overrides |
 
 ---
 
@@ -761,7 +792,7 @@ Every Dynamics tool execution is logged to `dynamics_query_log`:
 | Control | Implementation |
 |---------|---------------|
 | **HTTPS enforcement** | Vercel platform auto-redirects HTTP → HTTPS, TLS 1.3 |
-| **HSTS** | `Strict-Transport-Security: max-age=31536000; includeSubDomains` via security middleware (production) and `next.config.js` (all routes) |
+| **HSTS** | `Strict-Transport-Security: max-age=31536000; includeSubDomains` via `next.config.js` (all routes) |
 | **Database TLS** | Neon enforces TLS for all Postgres connections |
 | **Dynamics TLS** | All Dynamics API calls over HTTPS |
 | **External API calls** | All server-side, all HTTPS (except ArXiv which uses HTTP for public metadata) |
@@ -771,7 +802,10 @@ Every Dynamics tool execution is logged to `dynamics_query_log`:
 | Control | Implementation |
 |---------|---------------|
 | **User authentication** | Azure AD SSO via NextAuth.js (OAuth 2.0 Authorization Code) |
-| **API route protection** | `requireAuth()` middleware on all API routes |
+| **Edge middleware** | `withAuth`/`jose` JWT validation in Vercel Edge Runtime — unauthenticated users never see the app |
+| **API route protection** | `requireAppAccess()` on all 30+ app endpoints; `requireAuthWithProfile()` on infrastructure endpoints; `requireAuth()` on system endpoints |
+| **App-level access control** | Per-user app grants via `user_app_access` table; new users get only `dynamics-explorer` by default |
+| **Superuser bypass** | Users with `role = 'superuser'` in `dynamics_user_roles` bypass all app access checks |
 | **CRM authentication** | OAuth 2.0 Client Credentials, server-side only |
 | **ORCID authentication** | OAuth 2.0 Client Credentials (`/read-public` scope), server-side only |
 | **Kill switch** | `AUTH_REQUIRED=false` disables user auth (emergency use only) |
@@ -789,48 +823,43 @@ Every Dynamics tool execution is logged to `dynamics_query_log`:
 
 ### 7.4 Security Headers
 
-Set by `shared/api/middleware/security.js` and `next.config.js`:
+Set by `next.config.js` on all routes (`/:path*`):
 
-| Header | Value | Scope |
-|--------|-------|-------|
-| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | Production only (middleware); all environments (next.config.js) |
-| `X-Content-Type-Options` | `nosniff` | All environments |
-| `X-Frame-Options` | `DENY` | All environments |
-| `X-XSS-Protection` | `1; mode=block` | All environments |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` | All environments |
-| `Permissions-Policy` | `geolocation=(), microphone=(), camera=()` | All environments |
-| `Content-Security-Policy` | See below | Via helmet middleware |
+| Header | Value |
+|--------|-------|
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` |
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `DENY` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Content-Security-Policy` | See below |
 
-**CSP directives (via helmet):**
+**CSP directives (via `next.config.js`):**
 
 | Directive | Value |
 |-----------|-------|
 | `default-src` | `'self'` |
-| `style-src` | `'self'`, `'unsafe-inline'` |
 | `script-src` | `'self'`, `'unsafe-inline'`, `'unsafe-eval'` |
+| `style-src` | `'self'`, `'unsafe-inline'` |
 | `img-src` | `'self'`, `data:`, `https:` |
-| `connect-src` | `'self'`, `https://api.anthropic.com` |
+| `connect-src` | `'self'`, `https://*.public.blob.vercel-storage.com` |
+| `frame-ancestors` | `'none'` |
 
-Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js in development. Migrating to nonce-based CSP is recommended when feasible.
+Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js. Migrating to nonce-based CSP is recommended when feasible. The `connect-src` allowlist covers Vercel Blob for file downloads; all Claude API calls are server-side and not subject to CSP.
 
 ### 7.5 Input Validation
 
 | Control | Implementation |
 |---------|---------------|
-| **Script tag removal** | Regex strips `<script>` tags from request inputs |
-| **SQL keyword blocking** | Strips SELECT, INSERT, UPDATE, DELETE, DROP, UNION, ALTER, CREATE keywords |
-| **HTML bracket removal** | Strips `<` and `>` characters |
-| **Scope** | Applied to `req.body`, `req.query`, and `req.params` |
-| **Request size limit** | Configurable max (100MB body default) |
+| **SQL injection prevention** | All database queries use parameterized `sql` template literals via `@vercel/postgres` |
+| **React XSS prevention** | React's default JSX escaping prevents XSS in rendered output |
+| **CSP frame protection** | `frame-ancestors 'none'` blocks clickjacking |
 | **File upload validation** | Whitelist of allowed types (PDF, TXT, MD, DOCX, PNG, JPG); 50MB limit |
 | **Blob proxy validation** | URL hostname pattern matching prevents SSRF |
-| **SQL injection prevention** | All database queries use parameterized `sql` template literals |
-
-Note: The regex-based input sanitization is defense-in-depth. Primary protection against SQL injection comes from parameterized queries; primary XSS protection comes from React's default escaping and CSP headers.
+| **Request size limit** | Configurable max (100MB body default) |
 
 ### 7.6 Rate Limiting
 
-**Application-level (middleware):**
+**Application-level (`nextRateLimiter` middleware):**
 
 | Tier | Window | Max Requests | Usage |
 |------|--------|--------------|-------|
@@ -839,6 +868,8 @@ Note: The regex-based input sanitization is defense-in-depth. Primary protection
 | `hourly` | 3600s | 1000 | Hourly limit |
 | `upload` | 60s | 30 | File uploads |
 | `aiProcessing` | 60s | 20 | AI API calls |
+
+**Route-level enforcement:** Rate limiting is applied to all AI-processing routes and streaming endpoints via per-route `nextRateLimiter()` calls with custom limits (e.g., `max: 3` for expensive Opus routes, `max: 10` for standard routes).
 
 **External service rate limiting:**
 
@@ -859,13 +890,15 @@ Note: The regex-based input sanitization is defense-in-depth. Primary protection
 
 | Control | Implementation |
 |---------|---------------|
-| **User data scoping** | All user-specific queries filter by `user_profile_id` |
+| **App-level access** | `requireAppAccess()` with per-user grants via `user_app_access` table; OR logic for multi-app endpoints |
+| **User data scoping** | All user-specific queries filter by `user_profile_id` derived from session (never from request params in production) |
 | **Dynamics RBAC** | `superuser` / `read_only` / `read_write` roles with table/field restrictions |
 | **Dynamics restriction enforcement** | Dual-layer: chat handler (user-facing) + DynamicsService (defense-in-depth) |
 | **Dynamics audit trail** | Every CRM query logged with user, session, parameters, timing |
 | **Dynamics read-only** | Write operations disabled (stubbed with error) |
 | **Upload auth** | File uploads require authenticated session |
 | **Blob proxy auth** | Blob downloads require authenticated session + URL validation |
+| **Admin endpoints** | Superuser-only access enforced in-handler for admin stats, model management, role management, and app access management |
 
 ### 7.8 Error Handling & Information Disclosure
 
@@ -876,6 +909,17 @@ Note: The regex-based input sanitization is defense-in-depth. Primary protection
 | **Re-thrown errors** | Inner-to-outer throws use generic messages (e.g., `'Failed to generate summary'`); outer catch is NODE_ENV-guarded and logs the full error server-side |
 | **Health endpoint** | Service check errors guarded with `isDev` flag — production shows `'Service check failed'`, development shows full `error.message` |
 | **Server-side logging preserved** | All catch blocks `console.error()` the full error before returning the generic client message |
+| **Standardized error messages** | `BASE_CONFIG.ERROR_MESSAGES` provides generic constants (e.g., `PROCESSING_FAILED`, `DATABASE_ERROR`, `EMAIL_GENERATION_FAILED`) |
+
+### 7.9 API Usage Logging
+
+| Attribute | Detail |
+|-----------|--------|
+| **Table** | `api_usage_log` |
+| **Fields** | user_profile_id, app_name, model, input_tokens, output_tokens, estimated_cost_cents, latency_ms, request_status, error_message |
+| **Scope** | All Claude API calls across all 14 apps |
+| **Admin dashboard** | `/admin` — aggregated usage stats, per-app breakdowns, cost tracking (superuser only) |
+| **Non-blocking** | Logging failures do not affect API response |
 
 ---
 
@@ -923,11 +967,11 @@ Note: The regex-based input sanitization is defense-in-depth. Primary protection
 
 **Finding:** If `USER_PREFS_ENCRYPTION_KEY` is not set, the encryption utility falls back to a hardcoded development key and logs a console warning. If this reaches production, all stored API keys would be encrypted with a publicly known key.
 
-**Location:** `lib/utils/encryption.js`, `shared/utils/apiKeyManager.js`
+**Location:** `lib/utils/encryption.js`
 
 **Recommendation:** Fail hard (throw/exit) if the env var is missing in production (`NODE_ENV=production`).
 
-**Status: REMEDIATED.** `getEncryptionKey()` in `lib/utils/encryption.js` now throws in production if `USER_PREFS_ENCRYPTION_KEY` is unset. `shared/utils/apiKeyManager.js` crypto methods use `getSecretKey()` which throws if `API_SECRET_KEY` is missing in production. Dev fallbacks remain for local development.
+**Status: REMEDIATED.** `getEncryptionKey()` in `lib/utils/encryption.js` now throws in production if `USER_PREFS_ENCRYPTION_KEY` is unset. Dev fallbacks remain for local development.
 
 #### M2: Dynamics Restrictions Are Application-Layer Only
 
@@ -953,33 +997,23 @@ Note: The regex-based input sanitization is defense-in-depth. Primary protection
 
 **Finding:** The application relied on Vercel's platform-level HTTPS redirect but did not set the `Strict-Transport-Security` header.
 
-**Location:** `shared/api/middleware/security.js`, `next.config.js`
+**Location:** `next.config.js`
 
-**Recommendation:** Add `Strict-Transport-Security: max-age=31536000; includeSubDomains` to `setSecurityHeaders()`.
+**Recommendation:** Add `Strict-Transport-Security: max-age=31536000; includeSubDomains`.
 
-**Status: REMEDIATED.** HSTS header added to `setSecurityHeaders()` in security middleware (production only) and to `next.config.js` `headers()` for framework-level coverage on all routes. Both use `max-age=31536000; includeSubDomains`.
+**Status: REMEDIATED.** HSTS header added to `next.config.js` `headers()` function, applied to all routes (`/:path*`).
 
-#### M5: Security Middleware Not Applied Globally
+#### M5: CORS Wildcard on SSE Streaming Routes
 
-**Finding:** The `applySecurityMiddleware()` function (which sets security headers, validates CORS, sanitizes input, and checks request size) is only called by 2 of 34 API routes (`/api/qa` and `/api/refine`). Most routes rely solely on `requireAuth()` and do not call the middleware.
+**Finding:** Server-Sent Events (SSE) streaming responses set `Access-Control-Allow-Origin: *` in the response handler (`shared/api/handlers/responseStreamer.js`). The `BASE_CONFIG.SECURITY.ALLOWED_ORIGINS` also defaults to `['*']` if the `ALLOWED_ORIGINS` env var is not set.
 
-**Location:** `shared/api/middleware/security.js`, various API routes
+**Location:** `shared/api/handlers/responseStreamer.js`, `shared/config/baseConfig.js`
 
-**Risk:** Most API routes do not receive security headers, input sanitization, or request size validation from this middleware. The `next.config.js` headers and CSP via helmet partially compensate, but input sanitization coverage is inconsistent.
+**Risk:** Overly permissive CORS allows any origin to make requests to API endpoints. While authentication still provides access control, a browser-based attack from a malicious site could make API calls on behalf of authenticated users.
 
-**Recommendation:** Apply security middleware globally via a Next.js middleware wrapper or by adding it to all API route handlers.
+**Recommendation:** Set explicit allowed origins in the `ALLOWED_ORIGINS` environment variable for production.
 
-#### M6: CORS Wildcard on Several API Routes
-
-**Finding:** Five API routes explicitly set `Access-Control-Allow-Origin: *` in their response headers, and the `next.config.js` also sets `Access-Control-Allow-Origin: *` for all `/api/:path*` routes. Additionally, `BASE_CONFIG.SECURITY.ALLOWED_ORIGINS` defaults to `['*']` if the `ALLOWED_ORIGINS` env var is not set.
-
-**Location:** `pages/api/upload-handler.js`, `pages/api/process-expenses.js`, `pages/api/integrity-screener/screen.js`, `pages/api/reviewer-finder/analyze.js`, `pages/api/reviewer-finder/discover.js`, `next.config.js`
-
-**Risk:** Overly permissive CORS allows any origin to make credentialed requests to the API. While authentication still provides access control, a browser-based attack from a malicious site could make API calls on behalf of authenticated users.
-
-**Recommendation:** Set explicit allowed origins in the `ALLOWED_ORIGINS` environment variable for production. Remove hardcoded `*` headers from individual API routes. Update `next.config.js` to use environment-based origins.
-
-#### M8: Internal Error Messages Leaked to Clients
+#### M6: Internal Error Messages Leaked to Clients
 
 **Finding:** ~19 catch blocks across 8 API routes returned `error.message` directly to clients without guarding behind `NODE_ENV === 'development'`. This included inner helper functions in evaluators, tool execution errors in Dynamics Explorer, email generation errors, re-thrown errors in document processors, and all service checks in the health endpoint. Leaked messages could expose database connection details, API error bodies, or stack-level information.
 
@@ -990,16 +1024,6 @@ Note: The regex-based input sanitization is defense-in-depth. Primary protection
 **Recommendation:** Use generic error messages in production; show detailed errors only in development. Ensure full errors are still logged server-side for debugging.
 
 **Status: REMEDIATED.** Inner helper functions now return generic messages (e.g., `'An error occurred during evaluation'`, `'Tool execution failed'`). Re-thrown errors in document processors stripped of `error.message` interpolation (outer catch blocks were already NODE_ENV-guarded). Health endpoint service error messages guarded with `isDev` check — production returns `'Service check failed'`. All ~66 outer API catch blocks were already correctly guarded. Server-side `console.error()` logging preserved in all cases.
-
-#### M7: Rate Limiting Not Applied to AI Processing Routes
-
-**Finding:** Five expensive AI-processing routes lack rate limiting: `/api/evaluate-concepts`, `/api/evaluate-multi-perspective`, `/api/reviewer-finder/analyze`, `/api/reviewer-finder/discover`, and `/api/integrity-screener/screen`.
-
-**Location:** Various API routes in `pages/api/`
-
-**Risk:** These routes make multiple external API calls (Claude, literature APIs). Without rate limiting, a single user could exhaust API quotas or drive up costs rapidly.
-
-**Recommendation:** Add rate limiting to all AI-processing routes, especially those that make multiple external API calls per request.
 
 ### Low
 
@@ -1023,9 +1047,9 @@ Note: The regex-based input sanitization is defense-in-depth. Primary protection
 
 #### L4: Debug Information in Development
 
-**Finding:** NextAuth debug mode is enabled in development (`debug: process.env.NODE_ENV === 'development'`). Error handler returns stack traces in development mode.
+**Finding:** NextAuth debug mode is enabled in development (`debug: process.env.NODE_ENV === 'development'`). Error responses include detailed messages in development mode only.
 
-**Location:** `pages/api/auth/[...nextauth].js`, `shared/api/middleware/security.js`
+**Location:** `pages/api/auth/[...nextauth].js`
 
 **Recommendation:** Verify these are disabled in production builds (they are, via environment check).
 
@@ -1033,7 +1057,7 @@ Note: The regex-based input sanitization is defense-in-depth. Primary protection
 
 **Finding:** The Content Security Policy includes `'unsafe-inline'` for styles and scripts, and `'unsafe-eval'` for scripts. This weakens XSS protection.
 
-**Location:** `shared/api/middleware/security.js`
+**Location:** `next.config.js`
 
 **Recommendation:** Migrate to nonce-based CSP when feasible. Note: Next.js requires `unsafe-eval` in development mode; consider a stricter policy for production only.
 
@@ -1073,6 +1097,12 @@ Note: The regex-based input sanitization is defense-in-depth. Primary protection
 
 **Recommendation:** Run a one-time migration to assign NULL records to a default profile, then remove the `IS NULL` fallback from queries.
 
+#### L10: API Usage Log Unbounded Growth
+
+**Finding:** `api_usage_log` grows with every Claude API call across all 14 apps and has no archival or cleanup mechanism.
+
+**Recommendation:** Implement log rotation or partitioning (e.g., archive records older than 12 months).
+
 ---
 
 ## 9. Environment Variable Reference
@@ -1092,7 +1122,6 @@ Note: The regex-based input sanitization is defense-in-depth. Primary protection
 | `DYNAMICS_CLIENT_ID` | Medium | For CRM | Dynamics app registration ID | N/A |
 | `DYNAMICS_CLIENT_SECRET` | **High** | For CRM | Dynamics OAuth secret | Every 90 days |
 | `USER_PREFS_ENCRYPTION_KEY` | **High** | Yes (prod) | AES-256 key for API key storage (64-char hex) | With re-encryption |
-| `API_SECRET_KEY` | **High** | Optional | Secondary encryption key for apiKeyManager | With re-encryption |
 | `SERP_API_KEY` | Medium | Optional | SerpAPI Google search | Annually |
 | `NCBI_API_KEY` | Low | Optional | PubMed higher rate limits | Annually |
 | `ORCID_CLIENT_ID` | Medium | Optional | ORCID OAuth client | N/A |
@@ -1116,6 +1145,9 @@ openssl rand -hex 32
 |-------|-------------|---------|---------|---------|
 | `user_profiles` | Medium | Per-user | ~10s | Azure ID, email, display name |
 | `user_preferences` | **High** | Per-user | ~50s | Encrypted API keys, settings |
+| `user_app_access` | Medium | Per-user | ~100s | Per-user app grants (app_key + granted_by) |
+| `system_settings` | Medium | Global | ~10s | Model overrides, system configuration |
+| `api_usage_log` | Medium | Per-user | Growing | Model, tokens, cost, latency per API call |
 | `researchers` | Low | Shared | ~1000s | Public academic profiles |
 | `publications` | Low | Shared | ~5000s | Public paper metadata |
 | `researcher_keywords` | Low | Shared | Variable | Expertise areas for researchers |
@@ -1130,9 +1162,11 @@ openssl rand -hex 32
 | `dynamics_restrictions` | Medium | Global | ~10s | Table/field access blocks |
 | `dynamics_query_log` | Medium | Per-user | Growing | CRM query audit trail |
 
+**Total tables: 18**
+
 **SQL injection prevention:** All database queries across the entire codebase use parameterized `sql` template literals via `@vercel/postgres`. No string interpolation in SQL was found during audit.
 
-**Foreign key integrity:** All per-user tables reference `user_profiles(id)` with appropriate cascade behavior (CASCADE DELETE for preferences, SET NULL for suggestions/searches).
+**Foreign key integrity:** All per-user tables reference `user_profiles(id)` with appropriate cascade behavior (CASCADE DELETE for preferences and app access, SET NULL for suggestions/searches).
 
 ---
 
