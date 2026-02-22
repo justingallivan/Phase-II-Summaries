@@ -9,6 +9,7 @@
 import { sql } from '@vercel/postgres';
 import { DatabaseService } from '../../../lib/services/database-service';
 import { requireAuth } from '../../../lib/utils/auth';
+import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 
 /**
  * Find existing researcher using multi-field matching.
@@ -285,7 +286,8 @@ export default async function handler(req, res) {
     console.error('Save candidates error:', error);
     return res.status(500).json({
       error: 'Failed to save candidates',
-      message: error.message
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
     });
   }
 }

@@ -13,7 +13,7 @@
 import { requireAuth } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { sql } from '@vercel/postgres';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
 import { buildSystemPrompt, TOOL_DEFINITIONS, TABLE_ANNOTATIONS } from '../../../shared/config/prompts/dynamics-explorer';
 import { getModelForApp, getFallbackModelForApp, loadModelOverrides } from '../../../shared/config/baseConfig';
@@ -1385,7 +1385,7 @@ async function exportCsv({ table_name, select, filter, orderby, filename, proces
     }
 
     const records = result.records.map(stripEmpty);
-    return generateExcelExport(records, cleanSelect, table_name, filename, result.totalCount, result.capped, sendEvent);
+    return await generateExcelExport(records, cleanSelect, table_name, filename, result.totalCount, result.capped, sendEvent);
   }
 
   // ─── Branch 2: Estimate mode — count records, sample AI processing ───
@@ -1457,7 +1457,7 @@ async function exportCsv({ table_name, select, filter, orderby, filename, proces
     ? cleanSelect + ',' + aiColumns.join(',')
     : null;
 
-  return generateExcelExport(
+  return await generateExcelExport(
     processedRecords, combinedSelect, table_name, filename,
     result.totalCount, result.capped, sendEvent, failedCount
   );
@@ -1466,15 +1466,15 @@ async function exportCsv({ table_name, select, filter, orderby, filename, proces
 /**
  * Generate Excel file and send via SSE. Shared by plain and AI-processed exports.
  */
-function generateExcelExport(records, selectStr, tableName, filename, totalCount, capped, sendEvent, failedCount) {
-  let xlsxBuf = recordsToExcel(records, selectStr, tableName);
+async function generateExcelExport(records, selectStr, tableName, filename, totalCount, capped, sendEvent, failedCount) {
+  let xlsxBuf = await recordsToExcel(records, selectStr, tableName);
 
   // Safety: if xlsx exceeds size limit, trim records
   if (xlsxBuf.length > MAX_XLSX_BYTES) {
     const ratio = MAX_XLSX_BYTES / xlsxBuf.length;
     const trimCount = Math.floor(records.length * ratio * 0.9);
     records.length = trimCount;
-    xlsxBuf = recordsToExcel(records, selectStr, tableName);
+    xlsxBuf = await recordsToExcel(records, selectStr, tableName);
     capped = true;
   }
 
@@ -1700,42 +1700,48 @@ ${JSON.stringify(batchRecords, null, 1)}`;
 }
 
 /**
- * Convert records to an xlsx buffer using SheetJS.
+ * Convert records to an xlsx buffer using ExcelJS.
  * Prefers _formatted values for human-readable output.
  */
-function recordsToExcel(records, selectStr, sheetName) {
+async function recordsToExcel(records, selectStr, sheetName) {
   // Determine columns from $select
   const selectFields = selectStr
     ? selectStr.split(',').map(f => f.trim())
     : Object.keys(records[0] || {});
 
+  // Build headers
+  const headers = selectFields.map(f => cleanColumnName(f));
+
   // Build rows, preferring _formatted values
-  const rows = records.map(r => {
-    const row = {};
-    for (const field of selectFields) {
+  const dataRows = records.map(r => {
+    return selectFields.map(field => {
       const formatted = r[`${field}_formatted`];
-      const header = cleanColumnName(field);
-      row[header] = formatted !== undefined ? formatted : (r[field] ?? '');
-    }
-    return row;
+      return formatted !== undefined ? formatted : (r[field] ?? '');
+    });
   });
 
-  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet((sheetName || 'Export').substring(0, 31));
+
+  // Add header row
+  ws.addRow(headers);
+
+  // Add data rows
+  for (const row of dataRows) {
+    ws.addRow(row);
+  }
 
   // Auto-size columns based on content
-  const headers = Object.keys(rows[0] || {});
-  ws['!cols'] = headers.map(h => {
-    let maxLen = h.length;
-    for (const row of rows.slice(0, 100)) {
-      const val = String(row[h] || '');
+  ws.columns.forEach((col, i) => {
+    let maxLen = headers[i].length;
+    for (const row of dataRows.slice(0, 100)) {
+      const val = String(row[i] || '');
       if (val.length > maxLen) maxLen = val.length;
     }
-    return { wch: Math.min(maxLen + 2, 50) };
+    col.width = Math.min(maxLen + 2, 50);
   });
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'Export').substring(0, 31));
-  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
 /**
