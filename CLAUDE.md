@@ -132,10 +132,10 @@ For multi-Mac development, see `docs/MULTI_MAC_SETUP.md`.
 Three-layer defense-in-depth:
 
 1. **Server-side middleware** (`middleware.js`) — Edge Runtime `withAuth`/`jose` validates JWT before any HTML/JS is served. Unauthenticated users never see the app. Respects `AUTH_REQUIRED` kill switch.
-2. **API route auth** (`lib/utils/auth.js`) — Every API endpoint calls `requireAuth()` or `requireAuthWithProfile()`. The latter derives `profileId` from the session — never trust user-supplied IDs for ownership-scoped data.
+2. **API route auth** (`lib/utils/auth.js`) — App-specific endpoints use `requireAppAccess(req, res, ...appKeys)` which combines auth + app access check in one call. Returns `{ profileId, session }` on success; sends 401/403 on failure. Uses in-memory cache with 2-min TTL. Superusers bypass all app checks. Infrastructure endpoints (auth, admin, health) use `requireAuth()` or `requireAuthWithProfile()`.
 3. **Client-side guards** (`RequireAuth`, `RequireAppAccess`) — Defense in depth for navigation/UI.
 
-**Important:** When adding new API endpoints, always use `requireAuthWithProfile()` for user-scoped data. Never accept `profileId` from query/body params — derive it from the session.
+**Important:** When adding new app-specific API endpoints, use `requireAppAccess(req, res, 'app-key')` with the correct app key from `appRegistry.js`. For infrastructure endpoints, use `requireAuthWithProfile()` for user-scoped data. Never accept `profileId` from query/body params — derive it from `access.profileId` or the session.
 
 ---
 

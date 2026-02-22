@@ -1,54 +1,36 @@
-# Session 63 Prompt: Next Steps
+# Session 64 Prompt: Next Steps
 
-## Session 62 Summary
+## Session 63 Summary
 
-Comprehensive authentication hardening and security audit. Added server-side middleware gate, removed CORS wildcards, added security headers, and fixed critical horizontal privilege escalation vulnerabilities in 4 API endpoints.
+Implemented API-level app access enforcement across all ~30 app-specific API endpoints. Previously, access control was UI-only (page guards and nav filtering) — any authenticated user could call any API directly. Now every app endpoint checks the user's grants server-side before processing.
 
 ### What Was Completed
 
-1. **Next.js Middleware Auth Gate** (`middleware.js`) — Server-side authentication using `withAuth` from `next-auth/middleware` (Edge Runtime compatible via `jose`). Validates JWT cryptographically before serving any HTML/JS, preventing unauthenticated users from seeing the app structure. Respects `AUTH_REQUIRED` kill switch. Matcher excludes `_next/static`, `_next/image`, `favicon.ico`, `/api/auth/*`.
+1. **`requireAppAccess` function** (`lib/utils/auth.js`) — New exported function that combines authentication + app access check in a single call. Features:
+   - Variadic app keys with OR logic (`requireAppAccess(req, res, 'app-a', 'app-b')`)
+   - In-memory cache (`Map<profileId, { apps, isSuperuser, loadedAt }>`) with 2-min TTL
+   - Parallel DB queries for `user_app_access` + `dynamics_user_roles`
+   - Superuser bypass (passes all app checks)
+   - Auth-disabled dev mode bypass (returns `{ profileId: null, session: { user: {}, authBypassed: true } }`)
+   - Returns `{ profileId, session }` on success, sends 401/403 and returns `null` on failure
 
-2. **Stripped Debug Info** (`pages/api/auth/status.js`) — Removed `debug: { authRequired, hasCredentials }` from response. Now returns only `{ enabled: boolean }`.
+2. **Cache invalidation** (`pages/api/app-access.js`) — `clearAppAccessCache(profileId)` called after admin grant/revoke so changes take effect immediately.
 
-3. **AppAccessContext Deny-by-Default** (`shared/context/AppAccessContext.js`) — `hasAccess()` returns `false` while loading (was `true`). On fetch error, sets `allowedApps` to `[]` instead of `null` (which fell through to allow-all).
+3. **29 API endpoint updates** — All app-specific endpoints now use `requireAppAccess` with the correct app key(s):
+   - Single-key: 26 endpoints (dynamics-explorer, reviewer-finder, review-manager, integrity-screener, etc.)
+   - Multi-key: 3 endpoints (`process.js`, `qa.js`, `refine.js` accept either `proposal-summarizer` or `batch-proposal-summaries`)
+   - Infrastructure endpoints (auth, admin, health, upload, profiles, preferences) unchanged
 
-4. **Removed CORS Wildcards** — Removed `Access-Control-Allow-Origin: *` from `next.config.js` global headers AND from 10 inline SSE streaming endpoints (`process-peer-reviews`, `send-emails`, `process-expenses`, `screen`, `generate-emails`, `enrich-contacts`, `chat`, `discover`, `analyze`, `upload-handler`). These are same-origin requests that never needed CORS.
-
-5. **Security Headers** (`next.config.js`) — Added `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin` to all responses.
-
-6. **Fixed Horizontal Privilege Escalation** — 4 API endpoints trusted user-supplied `profileId` without verifying it matched the authenticated session:
-   - `user-preferences` — Now uses `requireAuthWithProfile()`. Blocks cross-user API key theft.
-   - `user-profiles` PATCH/DELETE — Verifies `id === session.user.profileId`. Blocks cross-user profile modification.
-   - `reviewer-finder/my-candidates` — GET uses session profileId; PATCH/DELETE verify suggestion ownership via SQL WHERE clause.
-   - `integrity-screener/history` — All operations scoped to session profileId.
-
-7. **Security Audit** — Thorough adversarial audit covering middleware bypass vectors, SSRF, injection, authorization, dependencies, cryptography. Documented findings in conversation.
+4. **Busboy dependency** — Committed the `package.json` addition that was missed in the prior session's busboy commit.
 
 ### Commits
-- `5237c60` Harden auth: server-side middleware gate, remove recon surface
-- `bdb5c76` Fix middleware Edge Runtime crash: use withAuth instead of getToken
-- `085c777` Remove inline CORS wildcards from 10 endpoints, add security headers
-- `94dff14` Fix horizontal privilege escalation: enforce session-based ownership
+- `32b5db0` Add requireAppAccess with in-memory caching to auth utils
+- `2f42546` Enforce app access on all app-specific API endpoints
+- `c25fab8` Add busboy to package.json dependencies
 
-## Security Audit Findings — Remaining Items
-
-### Already Fixed This Session
-- Server-side auth gate (middleware)
-- Debug info in `/api/auth/status`
-- CORS wildcards (global + 10 inline)
-- AppAccessContext allow-all defaults
-- Horizontal privilege escalation (4 endpoints)
-- Security headers (HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy)
-- `error.message` leakage in fixed endpoints
-
-### Not Yet Fixed (Documented for Future)
-- **`error.message` in ~40 remaining catch blocks** — Internal errors returned verbatim in many API routes. Should use generic messages.
-- **Rate limiting gaps** — Only 4 of 14+ Claude-calling endpoints have rate limiters. Missing on `evaluate-concepts` (Opus, most expensive), `process`, `analyze-literature`, `dynamics-explorer/chat`.
-- **`xlsx` prototype pollution** — npm audit reports 34 vulnerabilities (32 high). XLSX used in Dynamics Explorer export.
-- **30-day JWT session lifetime** — No session revocation mechanism. Consider reducing `maxAge` or adding revocation table.
-- **`/api/reviewer-finder/researchers` PATCH/DELETE** — Any authenticated user can modify/delete shared researcher records. May be intentional (shared pool) but lacks audit trail.
-- **Encryption fallback key** — `lib/utils/encryption.js` uses hardcoded dev key when `NODE_ENV !== 'production'`. Safe if Vercel always sets production, but fragile.
-- **No CSRF on custom POST/DELETE routes** — NextAuth handles its own routes but custom endpoints lack CSRF validation.
+### Deployment
+- Deployed to production via `npx vercel --prod`
+- Health endpoint verified (returns 307 auth redirect as expected when unauthenticated)
 
 ## Deferred Items (Carried Forward)
 
@@ -56,31 +38,29 @@ Comprehensive authentication hardening and security audit. Added server-side mid
 - Disambiguate CRM program lookup fields (needs domain expert)
 - Dynamics Explorer search heuristics & query optimization
 - Deferred email notifications (`docs/TODO_EMAIL_NOTIFICATIONS.md`)
-- Investigate why `DEFAULT_APP_GRANTS` may not work reliably for new users
+- `error.message` leakage in ~40 remaining catch blocks (use generic messages)
+- 30-day JWT session lifetime (no revocation mechanism)
+- No CSRF on custom POST/DELETE routes
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `middleware.js` | Server-side auth gate (Edge Runtime, withAuth/jose) |
-| `pages/api/auth/status.js` | Auth status endpoint (debug info removed) |
-| `shared/context/AppAccessContext.js` | Client-side access control (deny-by-default) |
-| `next.config.js` | Security headers (HSTS, nosniff, DENY, referrer) |
-| `pages/api/user-preferences.js` | User prefs (session-scoped via requireAuthWithProfile) |
-| `pages/api/user-profiles.js` | User profiles (PATCH/DELETE ownership enforced) |
-| `pages/api/reviewer-finder/my-candidates.js` | Candidates (session-scoped + ownership checks) |
-| `pages/api/integrity-screener/history.js` | Screening history (session-scoped) |
-| `lib/utils/auth.js` | Auth utilities (requireAuth, requireAuthWithProfile) |
+| `lib/utils/auth.js` | Auth utilities — `requireAuth`, `requireAuthWithProfile`, `requireAppAccess`, `clearAppAccessCache` |
+| `pages/api/app-access.js` | Admin grant/revoke endpoint (cache invalidation added) |
+| `shared/config/appRegistry.js` | App definitions — keys used by `requireAppAccess` |
+| `middleware.js` | Server-side auth gate (Edge Runtime) |
 
 ## Testing
 
 ```bash
-npm run dev              # Dev mode (AUTH_REQUIRED=false) — all pages accessible, no middleware redirect
-npm run build            # Verify middleware compiles for Edge Runtime
+npm run dev              # Dev mode (AUTH_REQUIRED=false) — all endpoints accessible
+npm run build            # Verify all endpoints compile
 
-# Production verification (after deploy):
-# 1. Incognito browser → app URL → should redirect to /auth/signin (no JS bundle served)
-# 2. Postman unauthenticated → GET /api/auth/status → { enabled: true } only (no debug)
-# 3. Authenticated user → all pages and apps work normally
-# 4. Check response headers include X-Frame-Options: DENY, X-Content-Type-Options: nosniff
+# Production verification:
+# 1. Authenticated user with app grant → endpoint works normally
+# 2. Authenticated user WITHOUT grant → 403 "You do not have access to this application"
+# 3. Superuser → all endpoints work regardless of grants
+# 4. Admin grants/revokes app → cache invalidated, change effective within seconds
+# 5. Unauthenticated request → 401 "Authentication required"
 ```

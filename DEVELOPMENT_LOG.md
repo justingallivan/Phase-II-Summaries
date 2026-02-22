@@ -4,6 +4,18 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## February 2026 — API-Level App Access Enforcement (Session 63)
+
+Added server-side enforcement of app access control to all ~30 app-specific API endpoints. Previously, access control was UI-only — `RequireAppAccess` blocked page navigation and `Layout.js` hid nav links, but API endpoints had no checks. Any authenticated user could call any API directly.
+
+- **`requireAppAccess(req, res, ...appKeys)`** in `lib/utils/auth.js`: Combines auth check + app access verification in one call. Variadic app keys with OR logic, in-memory cache (2-min TTL), parallel DB queries, superuser bypass, dev-mode bypass. Returns `{ profileId, session }` or sends 401/403.
+- **Cache invalidation**: `clearAppAccessCache(profileId)` called in `pages/api/app-access.js` after admin grant/revoke operations.
+- **29 endpoint updates**: All app-specific endpoints now call `requireAppAccess` with the correct app key(s). Multi-key endpoints (`process.js`, `qa.js`, `refine.js`) accept either `proposal-summarizer` or `batch-proposal-summaries`. Infrastructure endpoints (auth, admin, health, upload) unchanged.
+
+**Files:** `lib/utils/auth.js`, `pages/api/app-access.js`, plus 29 app-specific API endpoint files.
+
+---
+
 ## February 2026 — Auth Hardening & Security Audit (Session 62)
 
 Comprehensive security hardening in response to IT security review. Added server-side authentication gate, removed attack surface, and fixed critical authorization vulnerabilities.
