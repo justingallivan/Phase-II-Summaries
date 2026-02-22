@@ -25,9 +25,6 @@ export default async function handler(req, res) {
   try {
     const { files } = req.body;
     const apiKey = process.env.CLAUDE_API_KEY;
-    console.log('Received request body:', JSON.stringify(req.body, null, 2));
-    console.log('Files array:', files);
-    console.log('API key present:', !!apiKey);
 
     if (!apiKey) {
       return res.status(500).json({ error: 'Claude API key not configured on server' });
@@ -94,14 +91,11 @@ export default async function handler(req, res) {
     }
 
     // Send final results
-    console.log('Final results object:', JSON.stringify(results, null, 2));
-
     const finalData = {
       progress: 100,
       message: 'Complete!',
       results
     };
-    console.log('Sending final streaming data:', JSON.stringify(finalData, null, 2));
 
     res.write(`data: ${JSON.stringify(finalData)}\n\n`);
 
@@ -119,9 +113,6 @@ export default async function handler(req, res) {
 
 async function generatePhaseIWriteup(text, filename, institution, apiKey, userProfileId) {
   try {
-    console.log(`[Generate Writeup] Filename: ${filename}`);
-    console.log(`[Generate Writeup] Institution parameter: "${institution}"`);
-    console.log(`[Generate Writeup] Institution is ${institution ? 'provided' : 'NOT provided (will extract from PDF)'}`);
     const prompt = createPhaseIWriteupPrompt(text, institution);
 
     const startTime = Date.now();
@@ -158,9 +149,7 @@ async function generatePhaseIWriteup(text, filename, institution, apiKey, userPr
       outputTokens: data.usage?.output_tokens,
       latencyMs: Date.now() - startTime,
     });
-    console.log('Claude API response:', JSON.stringify(data, null, 2));
     const writeupText = data.content[0].text;
-    console.log(`Writeup text length: ${writeupText ? writeupText.length : 0}`);
 
     // Create formatted markdown version
     const formatted = enhanceFormatting(writeupText, filename);
@@ -254,9 +243,6 @@ function extractInstitutionFromFilename(filename) {
 
   // Remove .pdf extension
   const nameWithoutExt = filename.replace('.pdf', '');
-  console.log(`[Institution Extraction] Original filename: ${filename}`);
-  console.log(`[Institution Extraction] Name without extension: ${nameWithoutExt}`);
-
   // Common university/institution patterns
   const institutionPatterns = [
     /\b(University of [A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b/i,  // University of X (Y Z...)
@@ -270,12 +256,10 @@ function extractInstitutionFromFilename(filename) {
     const pattern = institutionPatterns[i];
     const match = nameWithoutExt.match(pattern);
     if (match) {
-      console.log(`[Institution Extraction] Pattern ${i} matched: "${match[1]}"`);
       return match[1];
     }
   }
 
-  console.log(`[Institution Extraction] No pattern matched, returning empty string`);
   return ''; // Return empty string if no institution found
 }
 

@@ -85,14 +85,11 @@ export default async function handler(req, res) {
     }
 
     // Send final results
-    console.log('Final results object:', JSON.stringify(results, null, 2));
-    
     const finalData = {
       progress: 100,
       message: 'Complete!',
       results
     };
-    console.log('Sending final streaming data:', JSON.stringify(finalData, null, 2));
     
     res.write(`data: ${JSON.stringify(finalData)}\n\n`);
 

@@ -143,7 +143,9 @@ export default async function handler(req, res) {
 
       const executeOne = async (toolBlock) => {
         const { id, name, input } = toolBlock;
-        console.log(`[DynExp] Round ${round} tool: ${name}`, JSON.stringify(input).substring(0, 200));
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[DynExp] Round ${round} tool: ${name}`, JSON.stringify(input).substring(0, 200));
+        }
 
         const restricted = checkRestriction(name, input, restrictions);
         if (restricted) {

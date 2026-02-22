@@ -25,10 +25,6 @@ export default async function handler(req, res) {
   try {
     const { files, summaryLength = 2, summaryLevel = 'technical-non-expert' } = req.body;
     const apiKey = process.env.CLAUDE_API_KEY;
-    console.log('Received request body:', JSON.stringify(req.body, null, 2));
-    console.log('Files array:', files);
-    console.log('API key present:', !!apiKey);
-    console.log('Summary length:', summaryLength, 'Summary level:', summaryLevel);
 
     if (!apiKey) {
       return res.status(500).json({ error: 'Claude API key not configured on server' });
@@ -92,14 +88,11 @@ export default async function handler(req, res) {
     }
 
     // Send final results
-    console.log('Final results object:', JSON.stringify(results, null, 2));
-
     const finalData = {
       progress: 100,
       message: 'Complete!',
       results
     };
-    console.log('Sending final streaming data:', JSON.stringify(finalData, null, 2));
 
     res.write(`data: ${JSON.stringify(finalData)}\n\n`);
 
@@ -154,9 +147,7 @@ async function generatePhaseISummary(text, filename, apiKey, summaryLength, summ
       outputTokens: data.usage?.output_tokens,
       latencyMs: Date.now() - startTime,
     });
-    console.log('Claude API response:', JSON.stringify(data, null, 2));
     const summaryText = data.content[0].text;
-    console.log(`Summary text length: ${summaryText ? summaryText.length : 0}`);
 
     // Create formatted markdown version for Phase I
     const formatted = enhancePhaseIFormatting(summaryText, filename);

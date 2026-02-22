@@ -1,6 +1,5 @@
 import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
 import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
-import { applySecurityMiddleware } from '../../shared/api/middleware/security';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { requireAuth } from '../../lib/utils/auth';
 
@@ -29,12 +28,6 @@ export default async function handler(req, res) {
   await loadModelOverrides();
 
   try {
-    // Apply security middleware
-    const securityCheck = await applySecurityMiddleware(req, res);
-    if (!securityCheck) {
-      return;
-    }
-
     // Apply rate limiting (more lenient for Q&A)
     const rateLimitCheck = await nextRateLimiter({ 
       max: 60, 
