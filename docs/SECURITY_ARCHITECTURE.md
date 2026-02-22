@@ -3,7 +3,7 @@
 **Prepared for:** IT Security Review
 **Application:** Document Processing Multi-App System
 **Date:** February 2026
-**Version:** 2.0
+**Version:** 2.1
 
 ---
 
@@ -867,6 +867,16 @@ Note: The regex-based input sanitization is defense-in-depth. Primary protection
 | **Upload auth** | File uploads require authenticated session |
 | **Blob proxy auth** | Blob downloads require authenticated session + URL validation |
 
+### 7.8 Error Handling & Information Disclosure
+
+| Control | Implementation |
+|---------|---------------|
+| **NODE_ENV error guarding** | Outer API catch blocks return `error.message` only when `NODE_ENV === 'development'`; generic messages in production |
+| **Inner helper functions** | Return static generic messages (e.g., `'An error occurred during evaluation'`, `'Tool execution failed'`), never `error.message` |
+| **Re-thrown errors** | Inner-to-outer throws use generic messages (e.g., `'Failed to generate summary'`); outer catch is NODE_ENV-guarded and logs the full error server-side |
+| **Health endpoint** | Service check errors guarded with `isDev` flag — production shows `'Service check failed'`, development shows full `error.message` |
+| **Server-side logging preserved** | All catch blocks `console.error()` the full error before returning the generic client message |
+
 ---
 
 ## 8. Security Findings & Recommendations
@@ -968,6 +978,18 @@ Note: The regex-based input sanitization is defense-in-depth. Primary protection
 **Risk:** Overly permissive CORS allows any origin to make credentialed requests to the API. While authentication still provides access control, a browser-based attack from a malicious site could make API calls on behalf of authenticated users.
 
 **Recommendation:** Set explicit allowed origins in the `ALLOWED_ORIGINS` environment variable for production. Remove hardcoded `*` headers from individual API routes. Update `next.config.js` to use environment-based origins.
+
+#### M8: Internal Error Messages Leaked to Clients
+
+**Finding:** ~19 catch blocks across 8 API routes returned `error.message` directly to clients without guarding behind `NODE_ENV === 'development'`. This included inner helper functions in evaluators, tool execution errors in Dynamics Explorer, email generation errors, re-thrown errors in document processors, and all service checks in the health endpoint. Leaked messages could expose database connection details, API error bodies, or stack-level information.
+
+**Location:** `pages/api/evaluate-concepts.js`, `pages/api/evaluate-multi-perspective.js`, `pages/api/dynamics-explorer/chat.js`, `pages/api/reviewer-finder/generate-emails.js`, `pages/api/process.js`, `pages/api/process-phase-i.js`, `pages/api/process-phase-i-writeup.js`, `pages/api/health.js`
+
+**Risk:** Internal implementation details could aid attackers in crafting targeted attacks against specific services or dependencies.
+
+**Recommendation:** Use generic error messages in production; show detailed errors only in development. Ensure full errors are still logged server-side for debugging.
+
+**Status: REMEDIATED.** Inner helper functions now return generic messages (e.g., `'An error occurred during evaluation'`, `'Tool execution failed'`). Re-thrown errors in document processors stripped of `error.message` interpolation (outer catch blocks were already NODE_ENV-guarded). Health endpoint service error messages guarded with `isDev` check — production returns `'Service check failed'`. All ~66 outer API catch blocks were already correctly guarded. Server-side `console.error()` logging preserved in all cases.
 
 #### M7: Rate Limiting Not Applied to AI Processing Routes
 
