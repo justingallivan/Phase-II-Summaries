@@ -7,7 +7,7 @@
  * DELETE: Revoke apps from a user (superuser only)
  */
 
-import { requireAuthWithProfile, isAuthRequired } from '../../lib/utils/auth';
+import { requireAuthWithProfile, isAuthRequired, clearAppAccessCache } from '../../lib/utils/auth';
 import { sql } from '@vercel/postgres';
 import { ALL_APP_KEYS } from '../../shared/config/appRegistry';
 
@@ -107,6 +107,7 @@ async function handlePost(req, res, profileId, isSuperuser) {
     `;
   }
 
+  clearAppAccessCache(userProfileId);
   return res.json({ success: true, granted: apps });
 }
 
@@ -128,6 +129,7 @@ async function handleDelete(req, res, profileId, isSuperuser) {
     `;
   }
 
+  clearAppAccessCache(userProfileId);
   return res.json({ success: true, revoked: apps });
 }
 
