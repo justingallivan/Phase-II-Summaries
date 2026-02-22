@@ -12,7 +12,10 @@
  */
 
 import { requireAuth } from '../../../lib/utils/auth';
+import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
+
+const limiter = nextRateLimiter({ max: 10 });
 
 // Enable verbose logging only in development with DEBUG_REVIEWER_FINDER env var
 const DEBUG = process.env.DEBUG_REVIEWER_FINDER === 'true';
@@ -34,6 +37,9 @@ export default async function handler(req, res) {
   // Require authentication (before setting up SSE)
   const session = await requireAuth(req, res);
   if (!session) return;
+
+  const allowed = await limiter(req, res);
+  if (allowed !== true) return;
 
   // Set up SSE headers
   res.setHeader('Content-Type', 'text/event-stream');

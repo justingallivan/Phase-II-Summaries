@@ -19,7 +19,10 @@
  */
 
 import { requireAuth } from '../../../lib/utils/auth';
+import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
+
+const limiter = nextRateLimiter({ max: 10 });
 
 const { ContactEnrichmentService } = require('../../../lib/services/contact-enrichment-service');
 
@@ -39,6 +42,9 @@ export default async function handler(req, res) {
   // Require authentication
   const session = await requireAuth(req, res);
   if (!session) return;
+
+  const allowed = await limiter(req, res);
+  if (allowed !== true) return;
 
   const { candidates, credentials = {}, options = {} } = req.body;
 

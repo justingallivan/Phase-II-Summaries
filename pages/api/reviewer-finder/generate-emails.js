@@ -28,6 +28,7 @@ import {
 
 import { createPersonalizationPrompt } from '../../../shared/config/prompts/email-reviewer';
 import { requireAuth } from '../../../lib/utils/auth';
+import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { logUsage } from '../../../lib/utils/usage-logger';
 import { BASE_CONFIG, getModelForApp } from '../../../shared/config/baseConfig';
 
@@ -109,6 +110,8 @@ async function fetchAttachment(url, attachmentCache, filename, contentType) {
   }
 }
 
+const limiter = nextRateLimiter({ max: 10 });
+
 export const config = {
   api: {
     bodyParser: {
@@ -126,6 +129,9 @@ export default async function handler(req, res) {
   // Require authentication (before setting up SSE)
   const session = await requireAuth(req, res);
   if (!session) return;
+
+  const allowed = await limiter(req, res);
+  if (allowed !== true) return;
 
   const userProfileId = session?.user?.profileId || null;
 

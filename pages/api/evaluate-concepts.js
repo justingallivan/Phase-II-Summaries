@@ -16,12 +16,16 @@ import {
 } from '../../shared/config/prompts/concept-evaluator';
 import { requireAuth } from '../../lib/utils/auth';
 import { logUsage } from '../../lib/utils/usage-logger';
+import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 
 // Import search services
 const { PubMedService } = require('../../lib/services/pubmed-service');
 const { ArXivService } = require('../../lib/services/arxiv-service');
 const { BioRxivService } = require('../../lib/services/biorxiv-service');
 const { ChemRxivService } = require('../../lib/services/chemrxiv-service');
+
+// Rate limiter for concept evaluation (expensive Opus model)
+const limiter = nextRateLimiter({ max: 3 });
 
 // Concurrency limit for processing pages (reduced to avoid rate limits with Opus)
 const CONCURRENCY_LIMIT = 2;
@@ -42,6 +46,10 @@ export default async function handler(req, res) {
   // Require authentication
   const session = await requireAuth(req, res);
   if (!session) return;
+
+  const allowed = await limiter(req, res);
+  if (allowed !== true) return;
+
   await loadModelOverrides();
 
   try {

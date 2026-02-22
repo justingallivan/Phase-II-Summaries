@@ -4,6 +4,9 @@ import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/co
 import { createPeerReviewAnalysisPrompt, createPeerReviewQuestionsPrompt } from '../../shared/config/prompts/peer-reviewer';
 import { requireAuth } from '../../lib/utils/auth';
 import { logUsage } from '../../lib/utils/usage-logger';
+import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
+
+const limiter = nextRateLimiter({ max: 5 });
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -13,6 +16,10 @@ export default async function handler(req, res) {
   // Require authentication
   const session = await requireAuth(req, res);
   if (!session) return;
+
+  const allowed = await limiter(req, res);
+  if (allowed !== true) return;
+
   await loadModelOverrides();
 
   try {

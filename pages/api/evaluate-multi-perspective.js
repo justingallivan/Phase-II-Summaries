@@ -27,12 +27,15 @@ import {
 } from '../../shared/config/prompts/multi-perspective-evaluator';
 import { requireAuth } from '../../lib/utils/auth';
 import { logUsage } from '../../lib/utils/usage-logger';
+import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 
 // Import search services
 const { PubMedService } = require('../../lib/services/pubmed-service');
 const { ArXivService } = require('../../lib/services/arxiv-service');
 const { BioRxivService } = require('../../lib/services/biorxiv-service');
 const { ChemRxivService } = require('../../lib/services/chemrxiv-service');
+
+const limiter = nextRateLimiter({ max: 5 });
 
 // Concurrency limit for processing pages
 const CONCURRENCY_LIMIT = 2;
@@ -53,6 +56,10 @@ export default async function handler(req, res) {
   // Require authentication
   const session = await requireAuth(req, res);
   if (!session) return;
+
+  const allowed = await limiter(req, res);
+  if (allowed !== true) return;
+
   await loadModelOverrides();
 
   // Set headers for streaming response

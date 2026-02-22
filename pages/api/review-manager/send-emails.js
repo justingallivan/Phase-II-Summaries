@@ -25,6 +25,9 @@ import {
   createFilename,
 } from '../../../lib/utils/email-generator';
 import { requireAuth } from '../../../lib/utils/auth';
+import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
+
+const limiter = nextRateLimiter({ max: 10 });
 
 export const config = {
   api: { bodyParser: { sizeLimit: '10mb' } },
@@ -38,6 +41,9 @@ export default async function handler(req, res) {
 
   const session = await requireAuth(req, res);
   if (!session) return;
+
+  const allowed = await limiter(req, res);
+  if (allowed !== true) return;
 
   // Set SSE headers
   res.setHeader('Content-Type', 'text/event-stream');

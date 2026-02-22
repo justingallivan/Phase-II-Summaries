@@ -11,6 +11,7 @@
  */
 
 import { requireAuth } from '../../../lib/utils/auth';
+import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { sql } from '@vercel/postgres';
 import * as XLSX from 'xlsx';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
@@ -25,6 +26,8 @@ export const config = {
   },
   maxDuration: 300,
 };
+
+const limiter = nextRateLimiter({ max: 10 });
 
 const MAX_TOOL_ROUNDS = 15;
 const MAX_RESULT_CHARS = 16000;
@@ -46,6 +49,10 @@ export default async function handler(req, res) {
 
   const session = await requireAuth(req, res);
   if (!session) return;
+
+  const allowed = await limiter(req, res);
+  if (allowed !== true) return;
+
   await loadModelOverrides();
 
   // Set up SSE

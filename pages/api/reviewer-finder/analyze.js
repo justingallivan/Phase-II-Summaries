@@ -14,7 +14,10 @@
 
 import { put } from '@vercel/blob';
 import { requireAuth } from '../../../lib/utils/auth';
+import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
+
+const limiter = nextRateLimiter({ max: 10 });
 
 export const config = {
   api: {
@@ -33,6 +36,9 @@ export default async function handler(req, res) {
   // Require authentication (before setting up SSE)
   const session = await requireAuth(req, res);
   if (!session) return;
+
+  const allowed = await limiter(req, res);
+  if (allowed !== true) return;
 
   // Set up SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
