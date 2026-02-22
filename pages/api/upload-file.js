@@ -7,11 +7,11 @@
 
 import { put } from '@vercel/blob';
 import { requireAuth } from '../../lib/utils/auth';
-import { BASE_CONFIG } from '../../shared/config/baseConfig';
+import Busboy from 'busboy';
 
 export const config = {
   api: {
-    bodyParser: false, // Handle multipart form data manually
+    bodyParser: false, // busboy needs the raw stream
   },
 };
 
@@ -56,106 +56,28 @@ export default async function handler(req, res) {
 }
 
 /**
- * Parse multipart form data from request
+ * Parse multipart form data using busboy
  */
-async function parseFormData(req) {
-  const contentType = req.headers['content-type'] || '';
+function parseFormData(req) {
+  return new Promise((resolve, reject) => {
+    const busboy = Busboy({ headers: req.headers });
+    let fileData = null;
+    let fileName = null;
+    let fileContentType = null;
 
-  if (!contentType.includes('multipart/form-data')) {
-    throw new Error('Content-Type must be multipart/form-data');
-  }
+    busboy.on('file', (fieldname, file, info) => {
+      const chunks = [];
+      fileName = info.filename;
+      fileContentType = info.mimeType;
+      file.on('data', (chunk) => chunks.push(chunk));
+      file.on('end', () => { fileData = Buffer.concat(chunks); });
+    });
 
-  // Get boundary from content-type header
-  const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
-  if (!boundaryMatch) {
-    throw new Error('No boundary found in Content-Type');
-  }
-  const boundary = boundaryMatch[1] || boundaryMatch[2];
+    busboy.on('finish', () => {
+      resolve({ file: fileData, filename: fileName, contentType: fileContentType });
+    });
 
-  // Read the entire body
-  const chunks = [];
-  for await (const chunk of req) {
-    chunks.push(chunk);
-  }
-  const buffer = Buffer.concat(chunks);
-
-  // Parse multipart data
-  const parts = parseMultipartBuffer(buffer, boundary);
-
-  const result = {
-    file: null,
-    filename: null,
-    contentType: null
-  };
-
-  for (const part of parts) {
-    if (part.name === 'file' && part.data.length > 0) {
-      result.file = part.data;
-      result.filename = part.filename;
-      result.contentType = part.contentType;
-    }
-  }
-
-  return result;
-}
-
-/**
- * Parse multipart buffer into parts
- */
-function parseMultipartBuffer(buffer, boundary) {
-  const parts = [];
-  const boundaryBuffer = Buffer.from(`--${boundary}`);
-
-  let start = 0;
-  let pos = 0;
-
-  while (pos < buffer.length) {
-    const boundaryIndex = buffer.indexOf(boundaryBuffer, pos);
-    if (boundaryIndex === -1) break;
-
-    if (start > 0 && boundaryIndex > start) {
-      // Parse the part between boundaries
-      const partData = buffer.slice(start, boundaryIndex - 2); // -2 for CRLF before boundary
-      const part = parseMultipartPart(partData);
-      if (part) {
-        parts.push(part);
-      }
-    }
-
-    // Check for end boundary
-    const afterBoundary = buffer.slice(boundaryIndex + boundaryBuffer.length, boundaryIndex + boundaryBuffer.length + 2);
-    if (afterBoundary.toString() === '--') {
-      break;
-    }
-
-    start = boundaryIndex + boundaryBuffer.length + 2; // +2 for CRLF after boundary
-    pos = start;
-  }
-
-  return parts;
-}
-
-/**
- * Parse a single multipart part
- */
-function parseMultipartPart(buffer) {
-  // Find the header/body separator (double CRLF)
-  const headerEnd = buffer.indexOf('\r\n\r\n');
-  if (headerEnd === -1) return null;
-
-  const headerStr = buffer.slice(0, headerEnd).toString('utf-8');
-  const data = buffer.slice(headerEnd + 4);
-
-  // Parse Content-Disposition header
-  const nameMatch = headerStr.match(/name="([^"]+)"/);
-  const filenameMatch = headerStr.match(/filename="([^"]+)"/);
-  const contentTypeMatch = headerStr.match(/Content-Type:\s*([^\r\n]+)/i);
-
-  const name = nameMatch ? nameMatch[1] : null;
-  const filename = filenameMatch ? filenameMatch[1] : null;
-  const contentType = contentTypeMatch ? contentTypeMatch[1].trim() : null;
-
-  if (!name) return null;
-
-  return { name, filename, contentType, data };
+    busboy.on('error', reject);
+    req.pipe(busboy);
+  });
 }

@@ -10,11 +10,11 @@
 import { put } from '@vercel/blob';
 import { sql } from '@vercel/postgres';
 import { requireAuth } from '../../../lib/utils/auth';
-import { BASE_CONFIG } from '../../../shared/config/baseConfig';
+import Busboy from 'busboy';
 
 export const config = {
   api: {
-    bodyParser: false, // We handle the raw body for file upload
+    bodyParser: false, // busboy needs the raw stream
   },
 };
 
@@ -27,35 +27,15 @@ export default async function handler(req, res) {
   if (!session) return;
 
   try {
-    // Parse multipart form data manually using Web API
-    const contentType = req.headers['content-type'] || '';
-    if (!contentType.includes('multipart/form-data')) {
-      return res.status(400).json({ error: 'Content-Type must be multipart/form-data' });
-    }
-
-    // Collect the raw body
-    const chunks = [];
-    for await (const chunk of req) {
-      chunks.push(chunk);
-    }
-    const buffer = Buffer.concat(chunks);
-
-    // Parse the boundary from content-type header
-    const boundary = contentType.split('boundary=')[1];
-    if (!boundary) {
-      return res.status(400).json({ error: 'Missing boundary in Content-Type' });
-    }
-
     // Parse multipart form data
-    const parts = parseMultipart(buffer, boundary);
+    const { fields, fileData, fileName, fileContentType } = await parseFormData(req);
 
-    const suggestionId = parts.find(p => p.name === 'suggestionId')?.value;
-    const filePart = parts.find(p => p.name === 'file' && p.filename);
+    const suggestionId = fields.suggestionId;
 
     if (!suggestionId) {
       return res.status(400).json({ error: 'suggestionId is required' });
     }
-    if (!filePart) {
+    if (!fileData || !fileName) {
       return res.status(400).json({ error: 'file is required' });
     }
 
@@ -69,12 +49,11 @@ export default async function handler(req, res) {
     }
 
     // Upload to Vercel Blob
-    const filename = filePart.filename;
-    const blobPath = `reviews/${existing.rows[0].proposal_id}/${suggestionId}_${filename}`;
+    const blobPath = `reviews/${existing.rows[0].proposal_id}/${suggestionId}_${fileName}`;
 
-    const blob = await put(blobPath, filePart.data, {
+    const blob = await put(blobPath, fileData, {
       access: 'public',
-      contentType: filePart.contentType || 'application/octet-stream',
+      contentType: fileContentType || 'application/octet-stream',
     });
 
     // Update the reviewer_suggestions row
@@ -82,7 +61,7 @@ export default async function handler(req, res) {
       UPDATE reviewer_suggestions
       SET
         review_blob_url = ${blob.url},
-        review_filename = ${filename},
+        review_filename = ${fileName},
         review_received_at = NOW(),
         review_status = 'review_received'
       WHERE id = ${parseInt(suggestionId, 10)}
@@ -92,7 +71,7 @@ export default async function handler(req, res) {
       success: true,
       message: 'Review uploaded successfully',
       blobUrl: blob.url,
-      filename,
+      filename: fileName,
     });
   } catch (error) {
     console.error('Review upload error:', error);
@@ -101,56 +80,31 @@ export default async function handler(req, res) {
 }
 
 /**
- * Simple multipart form data parser
+ * Parse multipart form data using busboy
  */
-function parseMultipart(buffer, boundary) {
-  const parts = [];
-  const boundaryStr = `--${boundary}`;
-  const endBoundaryStr = `--${boundary}--`;
+function parseFormData(req) {
+  return new Promise((resolve, reject) => {
+    const busboy = Busboy({ headers: req.headers });
+    const fields = {};
+    let fileData = null;
+    let fileName = null;
+    let fileContentType = null;
 
-  // Convert buffer to string for header parsing, keep binary for file data
-  const text = buffer.toString('latin1');
-  const segments = text.split(boundaryStr);
+    busboy.on('file', (fieldname, file, info) => {
+      const chunks = [];
+      fileName = info.filename;
+      fileContentType = info.mimeType;
+      file.on('data', (chunk) => chunks.push(chunk));
+      file.on('end', () => { fileData = Buffer.concat(chunks); });
+    });
 
-  for (const segment of segments) {
-    if (!segment || segment.trim() === '' || segment.trim() === '--') continue;
-    if (segment.startsWith('--')) continue;
+    busboy.on('field', (name, val) => { fields[name] = val; });
 
-    // Find the blank line separating headers from body
-    const headerEnd = segment.indexOf('\r\n\r\n');
-    if (headerEnd === -1) continue;
+    busboy.on('finish', () => {
+      resolve({ fields, fileData, fileName, fileContentType });
+    });
 
-    const headerText = segment.substring(0, headerEnd);
-    const bodyText = segment.substring(headerEnd + 4);
-
-    // Remove trailing \r\n
-    const body = bodyText.endsWith('\r\n')
-      ? bodyText.substring(0, bodyText.length - 2)
-      : bodyText;
-
-    // Parse Content-Disposition
-    const dispositionMatch = headerText.match(/Content-Disposition:\s*form-data;\s*name="([^"]+)"(?:;\s*filename="([^"]+)")?/i);
-    if (!dispositionMatch) continue;
-
-    const name = dispositionMatch[1];
-    const filename = dispositionMatch[2];
-
-    // Parse Content-Type if present
-    const ctMatch = headerText.match(/Content-Type:\s*(.+)/i);
-    const contentType = ctMatch ? ctMatch[1].trim() : null;
-
-    if (filename) {
-      // Binary file data — extract from original buffer
-      const headerEndInBuffer = buffer.indexOf(Buffer.from('\r\n\r\n', 'latin1'), buffer.indexOf(Buffer.from(headerText.substring(0, 40), 'latin1')));
-      const segmentStart = buffer.indexOf(Buffer.from(boundaryStr, 'latin1'));
-
-      // Re-extract binary data from buffer using offsets
-      const data = Buffer.from(body, 'latin1');
-      parts.push({ name, filename, contentType, data });
-    } else {
-      parts.push({ name, value: body.toString() });
-    }
-  }
-
-  return parts;
+    busboy.on('error', reject);
+    req.pipe(busboy);
+  });
 }
