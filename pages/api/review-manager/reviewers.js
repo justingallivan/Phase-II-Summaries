@@ -10,12 +10,13 @@
  */
 
 import { sql } from '@vercel/postgres';
-import { requireAuthWithProfile } from '../../../lib/utils/auth';
+import { requireAppAccess } from '../../../lib/utils/auth';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 
 export default async function handler(req, res) {
-  const sessionProfileId = await requireAuthWithProfile(req, res);
-  if (sessionProfileId === null) return;
+  const access = await requireAppAccess(req, res, 'review-manager');
+  if (!access) return;
+  const sessionProfileId = access.profileId;
 
   if (req.method === 'GET') return handleGet(req, res, sessionProfileId);
   if (req.method === 'PATCH') return handlePatch(req, res, sessionProfileId);

@@ -1,7 +1,7 @@
 import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
 import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
-import { requireAuth } from '../../lib/utils/auth';
+import { requireAppAccess } from '../../lib/utils/auth';
 
 // Q&A prompt template
 const QA_PROMPT = (context, question, filename) => `You are an expert research assistant helping analyze a research proposal. Based on the document content provided, please answer the question thoroughly and accurately.
@@ -22,9 +22,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Require authentication
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  // Require authentication + app access
+  const access = await requireAppAccess(req, res, 'proposal-summarizer', 'batch-proposal-summaries');
+  if (!access) return;
   await loadModelOverrides();
 
   try {
@@ -52,7 +52,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Claude API key not configured on server' });
     }
 
-    const userProfileId = session?.user?.profileId || null;
+    const userProfileId = access.profileId;
 
     // Initialize Claude client
     const claudeClient = createClaudeClient(apiKey, {

@@ -10,7 +10,7 @@
  * count_records, find_reports_due.
  */
 
-import { requireAuth } from '../../../lib/utils/auth';
+import { requireAppAccess } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { sql } from '@vercel/postgres';
 import ExcelJS from 'exceljs';
@@ -47,8 +47,8 @@ export default async function handler(req, res) {
     return;
   }
 
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  const access = await requireAppAccess(req, res, 'dynamics-explorer');
+  if (!access) return;
 
   const allowed = await limiter(req, res);
   if (allowed !== true) return;
@@ -68,7 +68,7 @@ export default async function handler(req, res) {
   try {
     const { messages, sessionId } = req.body;
     const claudeApiKey = process.env.CLAUDE_API_KEY;
-    const userProfileId = session?.user?.profileId || null;
+    const userProfileId = access.profileId;
 
     if (!claudeApiKey) {
       sendEvent('error', { message: 'Claude API key not configured on server' });

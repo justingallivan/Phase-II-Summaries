@@ -8,7 +8,7 @@
 
 import { sql } from '@vercel/postgres';
 import { DatabaseService } from '../../../lib/services/database-service';
-import { requireAuth } from '../../../lib/utils/auth';
+import { requireAppAccess } from '../../../lib/utils/auth';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 
 /**
@@ -73,9 +73,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Require authentication
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  // Require authentication + app access
+  const access = await requireAppAccess(req, res, 'reviewer-finder');
+  if (!access) return;
 
   try {
     const { proposalId, proposalTitle, proposalAbstract, proposalAuthors, proposalInstitution, programArea, summaryBlobUrl, grantCycleId, userProfileId, candidates } = req.body;

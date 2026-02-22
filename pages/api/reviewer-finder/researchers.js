@@ -49,7 +49,7 @@
  */
 
 import { sql } from '@vercel/postgres';
-import { requireAuth } from '../../../lib/utils/auth';
+import { requireAppAccess } from '../../../lib/utils/auth';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 
 async function checkSuperuser(profileId) {
@@ -65,9 +65,9 @@ async function checkSuperuser(profileId) {
 }
 
 export default async function handler(req, res) {
-  // Require authentication
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  // Require authentication + app access
+  const access = await requireAppAccess(req, res, 'reviewer-finder');
+  if (!access) return;
 
   if (req.method === 'GET') {
     return handleGet(req, res);
@@ -83,9 +83,8 @@ export default async function handler(req, res) {
     }
   } else if (req.method === 'PATCH' || req.method === 'DELETE') {
     // Restrict modifications to superusers (skip in dev mode)
-    if (!session.authBypassed) {
-      const profileId = session.user?.profileId;
-      if (!profileId || !(await checkSuperuser(profileId))) {
+    if (!access.session.authBypassed) {
+      if (!access.profileId || !(await checkSuperuser(access.profileId))) {
         return res.status(403).json({ error: 'Superuser access required to modify researchers' });
       }
     }

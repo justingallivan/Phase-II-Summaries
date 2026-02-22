@@ -2,7 +2,7 @@ import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
 import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
-import { requireAuth } from '../../lib/utils/auth';
+import { requireAppAccess } from '../../lib/utils/auth';
 
 export const config = {
   api: {
@@ -105,9 +105,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Require authentication
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  // Require authentication + app access
+  const access = await requireAppAccess(req, res, 'expense-reporter');
+  if (!access) return;
   await loadModelOverrides();
 
   // Apply rate limiting
@@ -132,7 +132,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Server API key not configured' });
     }
 
-    const userProfileId = session?.user?.profileId || null;
+    const userProfileId = access.profileId;
 
     // Set up streaming response
     res.writeHead(200, {

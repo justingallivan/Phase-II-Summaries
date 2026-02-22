@@ -1,7 +1,7 @@
 import pdf from 'pdf-parse';
 import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
 import { createSummarizationPrompt, createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer';
-import { requireAuth } from '../../lib/utils/auth';
+import { requireAppAccess } from '../../lib/utils/auth';
 import { logUsage } from '../../lib/utils/usage-logger';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 
@@ -12,9 +12,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Require authentication
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  // Require authentication + app access
+  const access = await requireAppAccess(req, res, 'batch-proposal-summaries', 'proposal-summarizer');
+  if (!access) return;
 
   const allowed = await limiter(req, res);
   if (allowed !== true) return;
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
     if (!apiKey) {
       return res.status(500).json({ error: 'Claude API key not configured on server' });
     }
-    const userProfileId = session?.user?.profileId || null;
+    const userProfileId = access.profileId;
 
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'No files provided' });

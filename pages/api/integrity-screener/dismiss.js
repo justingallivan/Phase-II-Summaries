@@ -7,13 +7,13 @@
  * GET /api/integrity-screener/dismiss?screeningId=N - Get dismissals for a screening
  */
 
-import { requireAuth } from '../../../lib/utils/auth';
+import { requireAppAccess } from '../../../lib/utils/auth';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 
 export default async function handler(req, res) {
-  // Require authentication
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  // Require authentication + app access
+  const access = await requireAppAccess(req, res, 'integrity-screener');
+  if (!access) return;
 
   try {
     const { IntegrityService } = await import('../../../lib/services/integrity-service');

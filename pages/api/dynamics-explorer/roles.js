@@ -7,22 +7,17 @@
  * DELETE: remove role, reverts to read_only (superuser only)
  */
 
-import { requireAuthWithProfile, isAuthRequired } from '../../../lib/utils/auth';
+import { requireAppAccess } from '../../../lib/utils/auth';
 import { sql } from '@vercel/postgres';
 
 export default async function handler(req, res) {
-  let profileId;
+  const access = await requireAppAccess(req, res, 'dynamics-explorer');
+  if (!access) return;
 
-  if (!isAuthRequired()) {
-    // Dev mode — skip auth, treat as superuser
-    profileId = 0;
-  } else {
-    profileId = await requireAuthWithProfile(req, res);
-    if (profileId === null) return;
-  }
+  const profileId = access.profileId;
 
-  // Get caller's role
-  const callerRole = !isAuthRequired() ? 'superuser' : await getRole(profileId);
+  // Get caller's role (dev mode with null profileId → superuser)
+  const callerRole = profileId === null ? 'superuser' : await getRole(profileId);
 
   switch (req.method) {
     case 'GET':

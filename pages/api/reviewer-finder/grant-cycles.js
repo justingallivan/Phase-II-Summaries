@@ -9,7 +9,7 @@
 
 import { sql } from '@vercel/postgres';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
-import { requireAuth } from '../../../lib/utils/auth';
+import { requireAppAccess } from '../../../lib/utils/auth';
 import { proxifyBlobUrl } from '../../../lib/utils/blob-proxy';
 
 // Proxify blobUrl fields inside an additionalAttachments JSON array
@@ -22,9 +22,9 @@ function proxifyAttachments(attachments) {
 }
 
 export default async function handler(req, res) {
-  // Require authentication
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  // Require authentication + app access
+  const access = await requireAppAccess(req, res, 'reviewer-finder');
+  if (!access) return;
 
   if (req.method === 'GET') {
     return handleGet(req, res);

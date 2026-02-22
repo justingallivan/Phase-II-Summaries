@@ -9,12 +9,14 @@
  * DELETE: remove a restriction by id
  */
 
-import { requireAuthWithProfile } from '../../../lib/utils/auth';
+import { requireAppAccess } from '../../../lib/utils/auth';
 import { sql } from '@vercel/postgres';
 
 export default async function handler(req, res) {
-  const profileId = await requireAuthWithProfile(req, res);
-  if (profileId === null) return;
+  const access = await requireAppAccess(req, res, 'dynamics-explorer');
+  if (!access) return;
+
+  const profileId = access.profileId;
 
   const callerRole = await getRole(profileId);
 

@@ -24,7 +24,7 @@ import {
   buildTemplateData,
   createFilename,
 } from '../../../lib/utils/email-generator';
-import { requireAuth } from '../../../lib/utils/auth';
+import { requireAppAccess } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 
 const limiter = nextRateLimiter({ max: 10 });
@@ -39,8 +39,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  const access = await requireAppAccess(req, res, 'review-manager');
+  if (!access) return;
 
   const allowed = await limiter(req, res);
   if (allowed !== true) return;

@@ -18,7 +18,7 @@
  * Response: Server-Sent Events (SSE) stream with progress updates
  */
 
-import { requireAuth } from '../../../lib/utils/auth';
+import { requireAppAccess } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 
@@ -39,9 +39,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Require authentication
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  // Require authentication + app access
+  const access = await requireAppAccess(req, res, 'reviewer-finder');
+  if (!access) return;
 
   const allowed = await limiter(req, res);
   if (allowed !== true) return;

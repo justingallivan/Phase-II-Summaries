@@ -9,7 +9,7 @@
 
 import { put } from '@vercel/blob';
 import { sql } from '@vercel/postgres';
-import { requireAuthWithProfile } from '../../../lib/utils/auth';
+import { requireAppAccess } from '../../../lib/utils/auth';
 import Busboy from 'busboy';
 
 export const config = {
@@ -23,8 +23,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const profileId = await requireAuthWithProfile(req, res);
-  if (profileId === null) return;
+  const access = await requireAppAccess(req, res, 'review-manager');
+  if (!access) return;
+  const profileId = access.profileId;
 
   try {
     // Parse multipart form data

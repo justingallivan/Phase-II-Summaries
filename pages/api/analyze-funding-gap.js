@@ -4,7 +4,7 @@ import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { createFundingExtractionPrompt, createFundingAnalysisPrompt } from '../../shared/config/prompts/funding-gap-analyzer';
 import { queryNSFforPI, queryNSFforKeywords, queryNIHforPI, queryNIHforKeywords, queryUSASpending, formatCurrency, formatDate } from '../../lib/fundingApis';
 import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
-import { requireAuth } from '../../lib/utils/auth';
+import { requireAppAccess } from '../../lib/utils/auth';
 
 export const config = {
   api: {
@@ -27,9 +27,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Require authentication
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  // Require authentication + app access
+  const access = await requireAppAccess(req, res, 'funding-gap-analyzer');
+  if (!access) return;
   await loadModelOverrides();
 
   // Apply rate limiting
@@ -53,7 +53,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Server configuration error: Claude API key not available.' });
     }
 
-    const userProfileId = session?.user?.profileId || null;
+    const userProfileId = access.profileId;
 
     // Set headers for streaming response
     res.setHeader('Content-Type', 'text/event-stream');

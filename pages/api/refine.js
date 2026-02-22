@@ -1,7 +1,7 @@
 import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
 import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
-import { requireAuth } from '../../lib/utils/auth';
+import { requireAppAccess } from '../../lib/utils/auth';
 
 // Refinement prompt template
 const REFINEMENT_PROMPT = (currentSummary, feedback) => `Please refine the following research proposal summary based on the specific feedback provided. Maintain the same structure and level of detail, but improve the content according to the feedback.
@@ -27,9 +27,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Require authentication
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  // Require authentication + app access
+  const access = await requireAppAccess(req, res, 'proposal-summarizer', 'batch-proposal-summaries');
+  if (!access) return;
   await loadModelOverrides();
 
   try {
@@ -57,7 +57,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Claude API key not configured on server' });
     }
 
-    const userProfileId = session?.user?.profileId || null;
+    const userProfileId = access.profileId;
 
     // Initialize Claude client
     const claudeClient = createClaudeClient(apiKey, {

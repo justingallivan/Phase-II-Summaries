@@ -7,14 +7,15 @@
  */
 
 import { sql } from '@vercel/postgres';
-import { requireAuthWithProfile } from '../../../lib/utils/auth';
+import { requireAppAccess } from '../../../lib/utils/auth';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 import { proxifyBlobUrl } from '../../../lib/utils/blob-proxy';
 
 export default async function handler(req, res) {
-  // Require authentication and extract profile ID from session
-  const sessionProfileId = await requireAuthWithProfile(req, res);
-  if (sessionProfileId === null) return;
+  // Require authentication + app access, extract profile ID
+  const access = await requireAppAccess(req, res, 'reviewer-finder');
+  if (!access) return;
+  const sessionProfileId = access.profileId;
 
   if (req.method === 'GET') {
     return handleGet(req, res, sessionProfileId);

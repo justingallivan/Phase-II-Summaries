@@ -9,12 +9,13 @@
  * PATCH /api/integrity-screener/history - Update screening status (must belong to user)
  */
 
-import { requireAuthWithProfile } from '../../../lib/utils/auth';
+import { requireAppAccess } from '../../../lib/utils/auth';
 
 export default async function handler(req, res) {
-  // Require authentication and extract profile ID from session
-  const sessionProfileId = await requireAuthWithProfile(req, res);
-  if (sessionProfileId === null) return;
+  // Require authentication + app access, extract profile ID
+  const access = await requireAppAccess(req, res, 'integrity-screener');
+  if (!access) return;
+  const sessionProfileId = access.profileId;
 
   try {
     const { IntegrityService } = await import('../../../lib/services/integrity-service');

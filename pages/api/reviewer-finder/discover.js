@@ -11,7 +11,7 @@
  * Uses streaming SSE for real-time progress updates.
  */
 
-import { requireAuth } from '../../../lib/utils/auth';
+import { requireAppAccess } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 
@@ -34,9 +34,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Require authentication (before setting up SSE)
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  // Require authentication + app access (before setting up SSE)
+  const access = await requireAppAccess(req, res, 'reviewer-finder');
+  if (!access) return;
 
   const allowed = await limiter(req, res);
   if (allowed !== true) return;
@@ -63,7 +63,7 @@ export default async function handler(req, res) {
       return res.end();
     }
 
-    const userProfileId = session?.user?.profileId || null;
+    const userProfileId = access.profileId;
 
     if (!analysisResult) {
       sendEvent('error', { message: 'Analysis result from Stage 1 is required' });
