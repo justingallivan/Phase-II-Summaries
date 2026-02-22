@@ -19,6 +19,7 @@
   "dependencies": {
     "@vercel/blob": "^2.0.0",
     "@vercel/postgres": "^0.10.0",
+    "busboy": "^1.6.0",
     "cors": "^2.8.5",
     "csv-parse": "^6.1.0",
     "exceljs": "^4.4.0",
