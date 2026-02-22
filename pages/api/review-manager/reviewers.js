@@ -10,21 +10,20 @@
  */
 
 import { sql } from '@vercel/postgres';
-import { requireAuth } from '../../../lib/utils/auth';
+import { requireAuthWithProfile } from '../../../lib/utils/auth';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 
 export default async function handler(req, res) {
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  const sessionProfileId = await requireAuthWithProfile(req, res);
+  if (sessionProfileId === null) return;
 
-  if (req.method === 'GET') return handleGet(req, res, session);
-  if (req.method === 'PATCH') return handlePatch(req, res, session);
+  if (req.method === 'GET') return handleGet(req, res, sessionProfileId);
+  if (req.method === 'PATCH') return handlePatch(req, res, sessionProfileId);
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
-async function handleGet(req, res, session) {
+async function handleGet(req, res, profileId) {
   const { cycleId, proposalId, status } = req.query;
-  const profileId = session.user?.profileId || (req.query.userProfileId ? parseInt(req.query.userProfileId, 10) : null);
 
   try {
     // Build query for accepted reviewers
@@ -73,7 +72,7 @@ async function handleGet(req, res, session) {
         LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
         WHERE rs.accepted = true
           AND rs.proposal_id = ${proposalId}
-          AND (rs.user_profile_id IS NULL OR rs.user_profile_id = ${profileId})
+          AND rs.user_profile_id = ${profileId}
         ORDER BY rs.suggested_at DESC
       `;
     } else if (cycleId && cycleId !== 'all') {
@@ -119,7 +118,7 @@ async function handleGet(req, res, session) {
         LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
         WHERE rs.accepted = true
           AND rs.grant_cycle_id = ${parseInt(cycleId, 10)}
-          AND (rs.user_profile_id IS NULL OR rs.user_profile_id = ${profileId})
+          AND rs.user_profile_id = ${profileId}
         ORDER BY rs.proposal_title, rs.suggested_at DESC
       `;
     } else {
@@ -164,7 +163,7 @@ async function handleGet(req, res, session) {
         JOIN researchers r ON rs.researcher_id = r.id
         LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
         WHERE rs.accepted = true
-          AND (rs.user_profile_id IS NULL OR rs.user_profile_id = ${profileId})
+          AND rs.user_profile_id = ${profileId}
         ORDER BY rs.grant_cycle_id DESC NULLS LAST, rs.proposal_title, rs.suggested_at DESC
       `;
     }
@@ -242,7 +241,7 @@ async function handleGet(req, res, session) {
   }
 }
 
-async function handlePatch(req, res, session) {
+async function handlePatch(req, res, profileId) {
   const {
     suggestionId,
     suggestionIds,
@@ -265,6 +264,7 @@ async function handlePatch(req, res, session) {
           UPDATE reviewer_suggestions
           SET proposal_url = ${proposalUrl || null}
           WHERE proposal_id = ${proposalId} AND accepted = true
+            AND user_profile_id = ${profileId}
         `;
       }
       if (proposalPassword !== undefined) {
@@ -272,6 +272,7 @@ async function handlePatch(req, res, session) {
           UPDATE reviewer_suggestions
           SET proposal_password = ${proposalPassword || null}
           WHERE proposal_id = ${proposalId} AND accepted = true
+            AND user_profile_id = ${profileId}
         `;
       }
       return res.status(200).json({ success: true, message: `Proposal ${updates.join(' & ')} updated for all reviewers` });
@@ -284,6 +285,7 @@ async function handlePatch(req, res, session) {
           UPDATE reviewer_suggestions
           SET review_status = ${reviewStatus}
           WHERE id = ANY(${suggestionIds})
+            AND user_profile_id = ${profileId}
         `;
       }
       return res.status(200).json({ success: true, message: `Updated ${suggestionIds.length} reviewers` });
@@ -299,6 +301,7 @@ async function handlePatch(req, res, session) {
         UPDATE reviewer_suggestions
         SET review_status = ${reviewStatus}
         WHERE id = ${suggestionId}
+          AND user_profile_id = ${profileId}
       `;
     }
 
@@ -307,6 +310,7 @@ async function handlePatch(req, res, session) {
         UPDATE reviewer_suggestions
         SET notes = ${notes}
         WHERE id = ${suggestionId}
+          AND user_profile_id = ${profileId}
       `;
     }
 
@@ -317,6 +321,7 @@ async function handlePatch(req, res, session) {
         UPDATE reviewer_suggestions
         SET review_received_at = COALESCE(review_received_at, NOW())
         WHERE id = ${suggestionId}
+          AND user_profile_id = ${profileId}
       `;
     }
 

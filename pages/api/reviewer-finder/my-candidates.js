@@ -87,7 +87,6 @@ async function handleGet(req, res, sessionProfileId) {
     const profileId = sessionProfileId;
 
     // Build query based on cycleId and userProfileId filters
-    // Legacy data (user_profile_id = NULL) is visible to all users until migrated
     let result;
     if (cycleId === 'unassigned') {
       // Only unassigned proposals (grant_cycle_id IS NULL)
@@ -128,7 +127,7 @@ async function handleGet(req, res, sessionProfileId) {
         JOIN researchers r ON rs.researcher_id = r.id
         WHERE rs.selected = true
           AND rs.grant_cycle_id IS NULL
-          AND (rs.user_profile_id IS NULL OR rs.user_profile_id = ${profileId})
+          AND rs.user_profile_id = ${profileId}
         ORDER BY rs.suggested_at DESC
       `;
     } else if (cycleId && cycleId !== 'all') {
@@ -171,7 +170,7 @@ async function handleGet(req, res, sessionProfileId) {
         LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
         WHERE rs.selected = true
           AND rs.grant_cycle_id = ${parseInt(cycleId, 10)}
-          AND (rs.user_profile_id IS NULL OR rs.user_profile_id = ${profileId})
+          AND rs.user_profile_id = ${profileId}
         ORDER BY rs.suggested_at DESC
       `;
     } else {
@@ -213,7 +212,7 @@ async function handleGet(req, res, sessionProfileId) {
         JOIN researchers r ON rs.researcher_id = r.id
         LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
         WHERE rs.selected = true
-          AND (rs.user_profile_id IS NULL OR rs.user_profile_id = ${profileId})
+          AND rs.user_profile_id = ${profileId}
         ORDER BY rs.suggested_at DESC
       `;
     }
@@ -312,7 +311,7 @@ async function handlePatch(req, res, sessionProfileId) {
           UPDATE reviewer_suggestions
           SET grant_cycle_id = ${cycleValue}
           WHERE proposal_id = ${proposalId} AND selected = true
-            AND (user_profile_id IS NULL OR user_profile_id = ${sessionProfileId})
+            AND user_profile_id = ${sessionProfileId}
         `;
         await sql`
           UPDATE proposal_searches
@@ -330,7 +329,7 @@ async function handlePatch(req, res, sessionProfileId) {
           UPDATE reviewer_suggestions
           SET program_area = ${programArea}
           WHERE proposal_id = ${proposalId} AND selected = true
-            AND (user_profile_id IS NULL OR user_profile_id = ${sessionProfileId})
+            AND user_profile_id = ${sessionProfileId}
         `;
         updates.programArea = programArea;
       }
@@ -341,7 +340,7 @@ async function handlePatch(req, res, sessionProfileId) {
           UPDATE reviewer_suggestions
           SET proposal_authors = ${proposalAuthors || null}
           WHERE proposal_id = ${proposalId} AND selected = true
-            AND (user_profile_id IS NULL OR user_profile_id = ${sessionProfileId})
+            AND user_profile_id = ${sessionProfileId}
         `;
         updates.proposalAuthors = proposalAuthors;
       }
@@ -352,7 +351,7 @@ async function handlePatch(req, res, sessionProfileId) {
           UPDATE reviewer_suggestions
           SET proposal_institution = ${proposalInstitution || null}
           WHERE proposal_id = ${proposalId} AND selected = true
-            AND (user_profile_id IS NULL OR user_profile_id = ${sessionProfileId})
+            AND user_profile_id = ${sessionProfileId}
         `;
         updates.proposalInstitution = proposalInstitution;
       }
@@ -374,7 +373,7 @@ async function handlePatch(req, res, sessionProfileId) {
     const ownerCheck = await sql`
       SELECT id FROM reviewer_suggestions
       WHERE id = ${suggestionId}
-        AND (user_profile_id IS NULL OR user_profile_id = ${sessionProfileId})
+        AND user_profile_id = ${sessionProfileId}
     `;
     if (ownerCheck.rows.length === 0) {
       return res.status(403).json({ error: 'Not authorized to modify this candidate' });
@@ -550,7 +549,7 @@ async function handleDelete(req, res, sessionProfileId) {
       UPDATE reviewer_suggestions
       SET selected = false
       WHERE id = ${suggestionId}
-        AND (user_profile_id IS NULL OR user_profile_id = ${sessionProfileId})
+        AND user_profile_id = ${sessionProfileId}
     `;
 
     if (result.rowCount === 0) {
