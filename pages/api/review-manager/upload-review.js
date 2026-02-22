@@ -9,7 +9,7 @@
 
 import { put } from '@vercel/blob';
 import { sql } from '@vercel/postgres';
-import { requireAuth } from '../../../lib/utils/auth';
+import { requireAuthWithProfile } from '../../../lib/utils/auth';
 import Busboy from 'busboy';
 
 export const config = {
@@ -23,8 +23,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const session = await requireAuth(req, res);
-  if (!session) return;
+  const profileId = await requireAuthWithProfile(req, res);
+  if (profileId === null) return;
 
   try {
     // Parse multipart form data
@@ -39,13 +39,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'file is required' });
     }
 
-    // Verify the suggestion exists and is accepted
+    // Verify the suggestion exists, is accepted, and belongs to the caller
     const existing = await sql`
       SELECT id, proposal_id, proposal_title FROM reviewer_suggestions
       WHERE id = ${parseInt(suggestionId, 10)} AND accepted = true
+        AND user_profile_id = ${profileId}
     `;
     if (existing.rows.length === 0) {
-      return res.status(404).json({ error: 'Reviewer suggestion not found or not accepted' });
+      return res.status(404).json({ error: 'Reviewer suggestion not found or not authorized' });
     }
 
     // Upload to Vercel Blob
@@ -56,7 +57,7 @@ export default async function handler(req, res) {
       contentType: fileContentType || 'application/octet-stream',
     });
 
-    // Update the reviewer_suggestions row
+    // Update the reviewer_suggestions row (ownership already verified above)
     await sql`
       UPDATE reviewer_suggestions
       SET
@@ -65,6 +66,7 @@ export default async function handler(req, res) {
         review_received_at = NOW(),
         review_status = 'review_received'
       WHERE id = ${parseInt(suggestionId, 10)}
+        AND user_profile_id = ${profileId}
     `;
 
     return res.status(200).json({
