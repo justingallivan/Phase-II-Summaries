@@ -4,6 +4,17 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## February 2026 — Error Message Hardening & Security Doc Regeneration (Session 64)
+
+Fixed internal error message leakage and regenerated the security architecture document.
+
+- **Error message leakage fix**: Patched ~19 unguarded catch blocks across 8 API files that returned `error.message` directly to clients. Inner helpers now return generic messages; health endpoint errors guarded with `NODE_ENV === 'development'`. Full errors preserved in server-side `console.error()` logs.
+- **Security Architecture v3.0**: Complete rewrite of `docs/SECURITY_ARCHITECTURE.md` to match current codebase — 14 apps, three-layer auth model, 18 database tables, app-level access control, corrected CSP/headers, renumbered findings.
+
+**Files:** `pages/api/evaluate-concepts.js`, `pages/api/evaluate-multi-perspective.js`, `pages/api/dynamics-explorer/chat.js`, `pages/api/reviewer-finder/generate-emails.js`, `pages/api/process.js`, `pages/api/process-phase-i.js`, `pages/api/process-phase-i-writeup.js`, `pages/api/health.js`, `docs/SECURITY_ARCHITECTURE.md`
+
+---
+
 ## February 2026 — API-Level App Access Enforcement (Session 63)
 
 Added server-side enforcement of app access control to all ~30 app-specific API endpoints. Previously, access control was UI-only — `RequireAppAccess` blocked page navigation and `Layout.js` hid nav links, but API endpoints had no checks. Any authenticated user could call any API directly.
