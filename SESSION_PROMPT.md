@@ -52,14 +52,14 @@ Security remediation session. Implemented 4 actionable security findings from `S
 - C3: Dynamics service principal should be scoped (requires Dynamics 365 admin action)
 - L5: CSP allows unsafe-inline/unsafe-eval (accepted risk; Next.js limitation)
 - L7: ArXiv API uses HTTP (accepted risk; public metadata only)
-- Run `scripts/assign-orphan-records.js` on production to claim legacy NULL records
-- Run V20 migration on production (`node scripts/setup-database.js`)
+- ~~Run `scripts/assign-orphan-records.js` on production~~ Done (2 rows → Justin)
+- ~~Run V20 migration on production~~ Done
 
 ## Post-Deploy Notes
 
-- Cron jobs should now be working after the middleware fix — check admin dashboard health history after 15-30 minutes
-- V20 migration needs to be run on production for the `was_denied`/`denial_reason` columns to exist
-- The orphan assignment script should be run once on production after deciding which profile to assign legacy records to
+- Cron jobs should now be working after the middleware fix — check admin dashboard health history
+- V20 migration has been run on production — `was_denied`/`denial_reason` columns exist on `dynamics_query_log`
+- Orphan records assigned: 2 `reviewer_suggestions` rows assigned to Justin (profile 2); 0 orphan `proposal_searches`
 
 ## Key Files Reference
 
