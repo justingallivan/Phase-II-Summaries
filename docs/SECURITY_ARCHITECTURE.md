@@ -3,7 +3,7 @@
 **Prepared for:** IT Security Review
 **Application:** Document Processing Multi-App System
 **Date:** February 2026
-**Version:** 3.0
+**Version:** 3.1
 
 ---
 
@@ -543,6 +543,7 @@
 | Integrity results | `integrity_screenings`, `screening_dismissals` | Medium — screening outcomes | Per-user |
 | CRM access control | `dynamics_user_roles`, `dynamics_restrictions` | Medium — access policies | Per-user / global |
 | CRM audit log | `dynamics_query_log` | Medium — query parameters, timing | Per-user |
+| Monitoring | `system_alerts`, `health_check_history`, `maintenance_runs` | Low — operational metrics, alert history | Global |
 | API cache | `search_cache` | Low — cached literature search results | Shared |
 
 ### Vercel Blob Storage
@@ -1025,6 +1026,19 @@ Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js. Migrating t
 
 **Status: REMEDIATED.** Inner helper functions now return generic messages (e.g., `'An error occurred during evaluation'`, `'Tool execution failed'`). Re-thrown errors in document processors stripped of `error.message` interpolation (outer catch blocks were already NODE_ENV-guarded). Health endpoint service error messages guarded with `isDev` check — production returns `'Service check failed'`. All ~66 outer API catch blocks were already correctly guarded. Server-side `console.error()` logging preserved in all cases.
 
+#### M7: Reviewer Suggestion Records Created with Wrong User Profile ID
+
+**Finding:** Two API endpoints created `reviewer_suggestions` records with incorrect `user_profile_id` values, making the records invisible to the user who created them:
+
+1. `save-candidates.js` accepted `userProfileId` from the request body. The ResearcherDetailModal's "Add to Proposal" flow did not send this field, resulting in `user_profile_id = NULL`. Since the my-candidates query filters on `user_profile_id = ${profileId}`, NULL records were invisible to all users.
+2. `researchers.js` `handleCreate` copied `user_profile_id` from an existing `reviewer_suggestions` record for the same proposal. If the existing record belonged to a different user, the new association was invisible to the user who created it.
+
+**Location:** `pages/api/reviewer-finder/save-candidates.js`, `pages/api/reviewer-finder/researchers.js`
+
+**Risk:** Data created by authenticated users was silently lost (invisible in their view). Additionally, `save-candidates.js` accepting `userProfileId` from the request body is the same class of vulnerability as M3 — a user could create records attributed to another user's profile.
+
+**Status: REMEDIATED.** Both endpoints now use `access.profileId` from the authenticated session as the source of truth for `user_profile_id`. The `save-candidates.js` endpoint falls back to the request body value only when auth is bypassed (dev mode). The `researchers.js` `handleCreate` function now receives the `access` object from the handler and uses `access.profileId` directly.
+
 ### Low
 
 #### L1: No Blob Retention Policy — REMEDIATED
@@ -1087,7 +1101,7 @@ Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js. Migrating t
 
 **Recommendation:** Log restriction violations (table, field, user, timestamp) to the audit table or a dedicated violations table for compliance tracking.
 
-#### L9: Legacy NULL User Profile Data Visibility
+#### L9: Legacy NULL User Profile Data Visibility — PARTIALLY REMEDIATED
 
 **Finding:** `reviewer_suggestions` and `proposal_searches` rows with `user_profile_id = NULL` (created before the user profile system) are visible to all users via queries like `WHERE user_profile_id IS NULL OR user_profile_id = ${profileId}`.
 
@@ -1096,6 +1110,8 @@ Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js. Migrating t
 **Risk:** Low — legacy data is organizational, not individually sensitive. But violates least-privilege principle.
 
 **Recommendation:** Run a one-time migration to assign NULL records to a default profile, then remove the `IS NULL` fallback from queries.
+
+**Partial remediation (M7 fix):** The two code paths that were creating new `reviewer_suggestions` records with `NULL` or incorrect `user_profile_id` have been fixed (see M7). All new records now correctly use the authenticated user's profile ID. However, existing legacy NULL records from before the V14 migration still need a one-time cleanup migration.
 
 #### L10: API Usage Log Unbounded Growth — REMEDIATED
 
@@ -1181,8 +1197,11 @@ openssl rand -hex 32
 | `dynamics_user_roles` | Medium | Per-user | ~10s | CRM access roles |
 | `dynamics_restrictions` | Medium | Global | ~10s | Table/field access blocks |
 | `dynamics_query_log` | Medium | Per-user | Growing | CRM query audit trail |
+| `system_alerts` | Low | Global | Growing | Operational alerts (severity, status, auto-resolve) |
+| `health_check_history` | Low | Global | Growing | Health check trend data (services, response time) |
+| `maintenance_runs` | Low | Global | Growing | Cleanup job audit trail (records processed/deleted) |
 
-**Total tables: 18**
+**Total tables: 21**
 
 **SQL injection prevention:** All database queries across the entire codebase use parameterized `sql` template literals via `@vercel/postgres`. No string interpolation in SQL was found during audit.
 
