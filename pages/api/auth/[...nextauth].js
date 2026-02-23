@@ -16,6 +16,7 @@ import NextAuth from 'next-auth';
 import AzureADProvider from 'next-auth/providers/azure-ad';
 import { sql } from '@vercel/postgres';
 import { DEFAULT_APP_GRANTS } from '../../../shared/config/appRegistry';
+import NotificationService from '../../../lib/services/notification-service';
 
 export const authOptions = {
   providers: [
@@ -104,6 +105,8 @@ export const authOptions = {
             // Grant default apps to new user
             if (tempResult.rows[0]?.id) {
               await grantDefaultApps(tempResult.rows[0].id);
+              // Fire-and-forget new user notification
+              NotificationService.notifyNewUser({ id: tempResult.rows[0].id, name: displayName, azure_email: azureEmail }).catch(() => {});
             }
 
             return true;
@@ -121,6 +124,8 @@ export const authOptions = {
           // Grant default apps to new user
           if (newResult.rows[0]?.id) {
             await grantDefaultApps(newResult.rows[0].id);
+            // Fire-and-forget new user notification
+            NotificationService.notifyNewUser({ id: newResult.rows[0].id, name: displayName, azure_email: azureEmail }).catch(() => {});
           }
 
           return true;

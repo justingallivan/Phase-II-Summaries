@@ -124,6 +124,47 @@ For deeper debugging: Vercel Dashboard → your project → **Logs** → filter 
 
 ---
 
+## Secret Expiration Tracking
+
+The system includes automated secret expiration monitoring via a daily cron job (`/api/cron/secret-check`, 8:00 AM UTC).
+
+### How It Works
+
+1. Expiration dates are stored in the `system_settings` table with keys like `secret_expiration:azure_ad_client_secret`
+2. The cron checks all tracked secrets daily and creates alerts at tiered thresholds:
+   - **Warning** at 14 days before expiry
+   - **Error** at 7 days before expiry
+   - **Critical** if expired
+3. Alerts appear on the admin dashboard and auto-resolve when the expiration date is updated
+
+### Setting Expiration Dates
+
+Use the **Secret Expiration Tracking** section on the admin dashboard (`/admin`) to set or update dates inline. Or insert directly into `system_settings`:
+
+```sql
+-- Set Azure AD client secret expiration
+INSERT INTO system_settings (setting_key, setting_value)
+VALUES ('secret_expiration:azure_ad_client_secret', '2026-06-15')
+ON CONFLICT (setting_key) DO UPDATE SET setting_value = '2026-06-15', updated_at = CURRENT_TIMESTAMP;
+
+-- Record when it was last rotated
+INSERT INTO system_settings (setting_key, setting_value)
+VALUES ('secret_rotation:azure_ad_client_secret', '2026-03-15')
+ON CONFLICT (setting_key) DO UPDATE SET setting_value = '2026-03-15', updated_at = CURRENT_TIMESTAMP;
+```
+
+### Tracked Secrets
+
+| Key | Name | Typical Expiry |
+|-----|------|---------------|
+| `azure_ad_client_secret` | Azure AD Client Secret | 90 days |
+| `dynamics_client_secret` | Dynamics CRM Client Secret | 90 days |
+| `nextauth_secret` | NextAuth Secret | No expiry (rotate if compromised) |
+| `user_prefs_encryption_key` | Encryption Key | No expiry (rotate with migration) |
+| `cron_secret` | Cron Secret | No expiry (rotate periodically) |
+
+---
+
 ## Setting Up a New Environment
 
 Configure in this order:

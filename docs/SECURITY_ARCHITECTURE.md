@@ -1027,11 +1027,11 @@ Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js. Migrating t
 
 ### Low
 
-#### L1: No Blob Retention Policy
+#### L1: No Blob Retention Policy — REMEDIATED
 
 **Finding:** Uploaded files persist indefinitely in Vercel Blob. There is no cleanup process for old or orphaned files.
 
-**Recommendation:** Implement a scheduled cleanup for files older than a defined retention period (e.g., 90 days).
+**Remediation:** Daily maintenance cron (`/api/cron/maintenance`) runs `MaintenanceService.cleanupBlobs()` which cross-references all blob URLs in `proposal_searches`, `grant_cycles`, and `reviewer_suggestions` against blob storage, and deletes orphaned files older than the configured retention period (default 90 days). Retention is configurable via `system_settings` table.
 
 #### L2: No Encryption Key Rotation Mechanism
 
@@ -1039,11 +1039,11 @@ Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js. Migrating t
 
 **Recommendation:** Document a key rotation procedure and consider building a migration script.
 
-#### L3: Dynamics Audit Log Unbounded Growth
+#### L3: Dynamics Audit Log Unbounded Growth — REMEDIATED
 
 **Finding:** `dynamics_query_log` grows with every CRM query and has no archival or cleanup mechanism.
 
-**Recommendation:** Implement log rotation (e.g., delete or archive records older than 12 months).
+**Remediation:** Daily maintenance cron (`/api/cron/maintenance`) runs `MaintenanceService.cleanupQueryLog()` to delete records older than the configured retention period (default 365 days). Retention is configurable via `system_settings` table.
 
 #### L4: Debug Information in Development
 
@@ -1097,11 +1097,26 @@ Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js. Migrating t
 
 **Recommendation:** Run a one-time migration to assign NULL records to a default profile, then remove the `IS NULL` fallback from queries.
 
-#### L10: API Usage Log Unbounded Growth
+#### L10: API Usage Log Unbounded Growth — REMEDIATED
 
 **Finding:** `api_usage_log` grows with every Claude API call across all 14 apps and has no archival or cleanup mechanism.
 
-**Recommendation:** Implement log rotation or partitioning (e.g., archive records older than 12 months).
+**Remediation:** Daily maintenance cron (`/api/cron/maintenance`) runs `MaintenanceService.cleanupUsageLog()` to delete records older than the configured retention period (default 90 days). Retention is configurable via `system_settings` table.
+
+### Cron Job Security
+
+Four Vercel Cron jobs run automated maintenance, monitoring, and analysis:
+
+| Endpoint | Schedule | Purpose |
+|----------|----------|---------|
+| `/api/cron/maintenance` | Daily 3:00 AM UTC | Database/blob cleanup |
+| `/api/cron/health-check` | Every 15 minutes | Service health monitoring |
+| `/api/cron/secret-check` | Daily 8:00 AM UTC | Secret expiration alerts |
+| `/api/cron/log-analysis` | Every 6 hours | Vercel error log analysis |
+
+**Authentication:** All cron endpoints verify `Authorization: Bearer <CRON_SECRET>` via `lib/utils/cron-auth.js`. In development mode, auth is bypassed for local testing. Vercel automatically sends the `CRON_SECRET` header for configured cron jobs.
+
+**Audit trail:** Maintenance jobs record results in `maintenance_runs` table. Health checks store results in `health_check_history`. All crons create alerts in `system_alerts` for dashboard visibility.
 
 ---
 
@@ -1127,6 +1142,11 @@ Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js. Migrating t
 | `ORCID_CLIENT_ID` | Medium | Optional | ORCID OAuth client | N/A |
 | `ORCID_CLIENT_SECRET` | Medium | Optional | ORCID OAuth secret | Annually |
 | `BLOB_READ_WRITE_TOKEN` | **High** | Yes | Vercel Blob access (auto-set) | Managed by Vercel |
+| `CRON_SECRET` | **High** | Yes (prod) | Vercel cron endpoint authentication | Rotate periodically |
+| `VERCEL_API_TOKEN` | **High** | Optional | Vercel REST API for log analysis cron | Per Vercel policy |
+| `VERCEL_PROJECT_ID` | Low | Optional | Target project for log analysis | N/A |
+| `NOTIFICATION_EMAIL_FROM` | Low | Optional | Graph API email sender (future) | N/A |
+| `NOTIFICATION_EMAIL_TO` | Low | Optional | Graph API email recipient (future) | N/A |
 
 **Key generation commands:**
 ```bash

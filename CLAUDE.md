@@ -96,6 +96,15 @@ DYNAMICS_URL=https://wmkf.crm.dynamics.com
 DYNAMICS_TENANT_ID=...
 DYNAMICS_CLIENT_ID=...
 DYNAMICS_CLIENT_SECRET=...
+
+# Optional - Cron Jobs & Monitoring
+CRON_SECRET=...               # Vercel cron authentication (required in prod)
+VERCEL_API_TOKEN=...           # Log analysis via Vercel API
+VERCEL_PROJECT_ID=...          # Target project for log analysis
+
+# Optional - Email Notifications (future)
+NOTIFICATION_EMAIL_FROM=...    # Graph API email sender
+NOTIFICATION_EMAIL_TO=...      # Graph API email recipient
 ```
 
 ## Per-App Model Configuration
@@ -181,6 +190,15 @@ Located in `lib/services/`:
 - `integrity-service.js` - Integrity screening orchestration
 - `integrity-matching-service.js` - Name matching algorithms
 - `dynamics-service.js` - Microsoft Dynamics 365 CRM API (OAuth, OData queries, Dataverse Search)
+- `alert-service.js` - CRUD for system_alerts table (deduplication, auto-resolve)
+- `notification-service.js` - Unified notifications (DB alerts + future Graph API email)
+- `maintenance-service.js` - Database/blob cleanup operations with audit trail
+
+### Utility Classes
+
+Located in `lib/utils/`:
+- `cron-auth.js` - Vercel cron secret verification
+- `health-checker.js` - Reusable health check logic (6 services)
 
 ---
 
@@ -248,6 +266,12 @@ Located in `lib/services/`:
 - `integrity_screenings` - Screening history per user
 - `screening_dismissals` - False positive dismissals
 
+### Monitoring & Maintenance Tables
+
+- `system_alerts` - Central alert store (type, severity, title, message, metadata, status, auto_resolve_key)
+- `health_check_history` - Health check trend data (overall_status, services JSONB, response_time_ms)
+- `maintenance_runs` - Cleanup job audit trail (job_name, status, records_processed/deleted, duration)
+
 ---
 
 ## API Endpoints
@@ -296,6 +320,10 @@ Located in `lib/services/`:
 - `GET /api/admin/stats` - Aggregated API usage statistics (superuser only)
 - `GET /api/admin/models` - Per-app model config + available models from Anthropic API (superuser only)
 - `PUT /api/admin/models` - Set/clear model override for an app (superuser only)
+- `GET/PATCH /api/admin/alerts` - List active alerts; acknowledge/resolve (superuser only)
+- `GET /api/admin/maintenance` - Last run per job + retention config (superuser only)
+- `GET/PUT /api/admin/secrets` - Secret expiration status; update rotation dates (superuser only)
+- `GET /api/admin/health-history` - Health check history with uptime % (superuser only)
 
 ### User Management
 - `GET/POST/PATCH/DELETE /api/user-profiles` - Profile CRUD
@@ -307,6 +335,12 @@ Located in `lib/services/`:
 
 ### Operations
 - `GET /api/health` - Service health check (database, Claude, Azure AD, Dynamics, encryption)
+
+### Cron Jobs (Vercel Cron, authenticated via CRON_SECRET)
+- `GET /api/cron/maintenance` - Daily cleanup (3:00 AM UTC)
+- `GET /api/cron/health-check` - Health monitoring (every 15 min)
+- `GET /api/cron/secret-check` - Secret expiration check (8:00 AM UTC daily)
+- `GET /api/cron/log-analysis` - Vercel error log analysis (every 6 hours)
 
 ### Other
 - `POST /api/analyze-funding-gap` - Federal funding analysis
@@ -335,7 +369,7 @@ Located in `lib/services/`:
 | `docs/CREDENTIALS_RUNBOOK.md` | Environment variables, secret rotation, diagnostics |
 | `docs/SYSTEM_OVERVIEW.md` | One-page system overview for administrators |
 | `docs/SECURITY_ARCHITECTURE.md` | Security architecture and threat model |
-| `docs/TODO_EMAIL_NOTIFICATIONS.md` | Deferred new-user email notification setup |
+| `docs/TODO_EMAIL_NOTIFICATIONS.md` | Unified notification service (dashboard alerts + future email) |
 
 ---
 
