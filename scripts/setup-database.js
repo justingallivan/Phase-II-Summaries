@@ -481,6 +481,65 @@ const v18Alterations = [
   `CREATE INDEX IF NOT EXISTS idx_suggestions_review_status ON reviewer_suggestions(review_status)`,
 ];
 
+// V19: System alerts, health check history, and maintenance runs
+const v19Statements = [
+  // Table: system_alerts — central alert store for all automated notifications
+  `CREATE TABLE IF NOT EXISTS system_alerts (
+    id SERIAL PRIMARY KEY,
+    alert_type VARCHAR(50) NOT NULL,
+    severity VARCHAR(20) NOT NULL DEFAULT 'info',
+    title VARCHAR(500) NOT NULL,
+    message TEXT,
+    metadata JSONB,
+    source VARCHAR(100),
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    auto_resolve_key VARCHAR(255),
+    acknowledged_by INTEGER REFERENCES user_profiles(id),
+    acknowledged_at TIMESTAMP,
+    resolved_by INTEGER REFERENCES user_profiles(id),
+    resolved_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+
+  // Table: health_check_history — trend data for health monitoring
+  `CREATE TABLE IF NOT EXISTS health_check_history (
+    id SERIAL PRIMARY KEY,
+    overall_status VARCHAR(20) NOT NULL,
+    services JSONB NOT NULL,
+    response_time_ms INTEGER,
+    triggered_by VARCHAR(50) DEFAULT 'cron',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+
+  // Table: maintenance_runs — audit trail for cleanup jobs
+  `CREATE TABLE IF NOT EXISTS maintenance_runs (
+    id SERIAL PRIMARY KEY,
+    job_name VARCHAR(100) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'running',
+    records_processed INTEGER DEFAULT 0,
+    records_deleted INTEGER DEFAULT 0,
+    details JSONB,
+    error_message TEXT,
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP,
+    duration_ms INTEGER
+  )`,
+
+  // Indexes for system_alerts
+  `CREATE INDEX IF NOT EXISTS idx_system_alerts_status ON system_alerts(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_system_alerts_type ON system_alerts(alert_type)`,
+  `CREATE INDEX IF NOT EXISTS idx_system_alerts_severity_status ON system_alerts(severity, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_system_alerts_created ON system_alerts(created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_system_alerts_auto_resolve ON system_alerts(auto_resolve_key) WHERE status = 'active'`,
+
+  // Indexes for health_check_history
+  `CREATE INDEX IF NOT EXISTS idx_health_history_created ON health_check_history(created_at DESC)`,
+
+  // Indexes for maintenance_runs
+  `CREATE INDEX IF NOT EXISTS idx_maintenance_runs_job ON maintenance_runs(job_name)`,
+  `CREATE INDEX IF NOT EXISTS idx_maintenance_runs_created ON maintenance_runs(started_at DESC)`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -916,6 +975,25 @@ async function runMigration() {
       }
     }
 
+    // Run V19 table creation (System alerts, health history, maintenance runs)
+    console.log(`\nApplying v19 schema updates - Alerts & monitoring (${v19Statements.length} statements)...`);
+    for (let i = 0; i < v19Statements.length; i++) {
+      const statement = v19Statements[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v19-${i + 1}/${v19Statements.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v19-${i + 1}/${v19Statements.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v19-${i + 1}/${v19Statements.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -997,7 +1075,13 @@ async function runMigration() {
     console.log('  • reviewer_suggestions.review_filename');
     console.log('  • reviewer_suggestions.thankyou_sent_at');
     console.log('  • reviewer_suggestions.review_status');
-    console.log('\nIndexes created: 46');
+    console.log('\nV19 new tables (Alerts & monitoring):');
+    console.log('  • system_alerts (alert_type, severity, title, message, metadata,');
+    console.log('    source, status, auto_resolve_key, acknowledged_by/at, resolved_by/at)');
+    console.log('  • health_check_history (overall_status, services, response_time_ms, triggered_by)');
+    console.log('  • maintenance_runs (job_name, status, records_processed, records_deleted,');
+    console.log('    details, error_message, started_at, completed_at, duration_ms)');
+    console.log('\nIndexes created: 54');
 
   } catch (error) {
     console.error('\n✗ Migration failed:', error.message);
