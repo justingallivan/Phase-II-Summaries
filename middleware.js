@@ -37,7 +37,8 @@ export const config = {
      * - _next/image (image optimization)
      * - favicon.ico (browser icon)
      * - /api/auth/* (NextAuth routes must be accessible for login flow)
+     * - /api/cron/* (Vercel cron jobs authenticate via CRON_SECRET, not JWT)
      */
-    '/((?!_next/static|_next/image|favicon\\.ico|api/auth).*)',
+    '/((?!_next/static|_next/image|favicon\\.ico|api/auth|api/cron).*)',
   ],
 };
