@@ -2,7 +2,7 @@
 
 ## Session 65 Summary
 
-Implemented the full Admin Automation system: maintenance, monitoring, and alerting. This was a 4-phase effort adding a system alerts framework, 4 Vercel Cron jobs, new admin dashboard sections, and a unified notification service.
+Implemented the full Admin Automation system: maintenance, monitoring, and alerting. This was a 4-phase effort adding a system alerts framework, 4 Vercel Cron jobs, new admin dashboard sections, and a unified notification service. Ran V19 migration on production. Deployed and verified secret expiration editing works on the live dashboard.
 
 ### What Was Completed
 
@@ -33,13 +33,17 @@ Implemented the full Admin Automation system: maintenance, monitoring, and alert
    - `TODO_EMAIL_NOTIFICATIONS.md` rewritten for unified notification architecture
    - `CLAUDE.md` and `.env.example` updated with all new endpoints, tables, services, and env vars
 
-5. **Database migration run** — V19 tables created successfully on production database
+5. **Deployment & Verification**
+   - V19 migration run on production database — all tables/indexes created
+   - `CRON_SECRET` set in Vercel environment variables
+   - Secret expiration dates configured via admin dashboard (verified working after redeploy)
 
 ### Commits
 - `778d350` Add Phase 1 foundation for admin automation system
 - `4525529` Add 4 Vercel Cron jobs for automated maintenance and monitoring
 - `451a176` Add admin dashboard sections for alerts, maintenance, secrets, and health history
 - `8e44ee9` Wire new-user notification and update all documentation
+- `30e26ae` Add error logging to secret expiration save handler
 
 ## Deferred Items (Carried Forward)
 
@@ -51,11 +55,12 @@ Implemented the full Admin Automation system: maintenance, monitoring, and alert
 - C3: Dynamics service principal should be scoped (requires Dynamics 365 admin)
 - M5: CORS wildcard on SSE streaming routes (set ALLOWED_ORIGINS env var)
 
-## Post-Deploy Setup
+## Post-Deploy Notes
 
-- **CRON_SECRET**: Must be set in Vercel environment variables for cron auth to work in production. Generate with `openssl rand -base64 32`
-- **Secret expiration dates**: Set via admin dashboard Secret Expiration section or SQL insert to `system_settings`
+- `CRON_SECRET` is set in Vercel — crons are authenticated
+- Secret expiration dates have been entered via the dashboard
 - **Optional**: Set `VERCEL_API_TOKEN` + `VERCEL_PROJECT_ID` to enable automated log analysis cron
+- Gotcha: After setting new env vars in Vercel, a redeploy is needed for running functions to pick them up
 
 ## Key Files Reference
 
