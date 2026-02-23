@@ -107,6 +107,479 @@ function HealthSection() {
   );
 }
 
+// --- Section A2: Health Check History ---
+function HealthHistorySection() {
+  const [history, setHistory] = useState(null);
+  const [hours, setHours] = useState(24);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/admin/health-history?hours=${hours}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(setHistory)
+      .catch(() => setHistory(null))
+      .finally(() => setLoading(false));
+  }, [hours]);
+
+  if (loading && !history) {
+    return (
+      <Card>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Health Check History</h2>
+        <div className="text-gray-500 text-sm">Loading history...</div>
+      </Card>
+    );
+  }
+
+  if (!history || !history.checks?.length) {
+    return (
+      <Card>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Health Check History</h2>
+        <p className="text-gray-500 text-sm">No health checks recorded yet. The cron job runs every 15 minutes.</p>
+      </Card>
+    );
+  }
+
+  const { summary, checks } = history;
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-gray-900">Health Check History</h2>
+        <div className="flex gap-1">
+          {[24, 72, 168].map(h => (
+            <button
+              key={h}
+              onClick={() => setHours(h)}
+              className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                hours === h ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {h <= 24 ? '24h' : h <= 72 ? '3d' : '7d'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Uptime summary */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div className="p-3 rounded-lg border border-gray-200 bg-gray-50">
+          <div className="text-xs font-medium text-gray-500 uppercase">Uptime</div>
+          <div className="text-xl font-bold text-gray-900">{summary.uptimePercent}%</div>
+        </div>
+        <div className="p-3 rounded-lg border border-green-200 bg-green-50">
+          <div className="text-xs font-medium text-gray-500 uppercase">Healthy</div>
+          <div className="text-xl font-bold text-green-700">{summary.healthy}</div>
+        </div>
+        <div className="p-3 rounded-lg border border-yellow-200 bg-yellow-50">
+          <div className="text-xs font-medium text-gray-500 uppercase">Degraded</div>
+          <div className="text-xl font-bold text-yellow-700">{summary.degraded}</div>
+        </div>
+        <div className="p-3 rounded-lg border border-red-200 bg-red-50">
+          <div className="text-xs font-medium text-gray-500 uppercase">Unhealthy</div>
+          <div className="text-xl font-bold text-red-700">{summary.unhealthy}</div>
+        </div>
+      </div>
+
+      {/* Recent checks table */}
+      <div className="overflow-x-auto max-h-64 overflow-y-auto">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-white">
+            <tr className="border-b border-gray-200">
+              <th className="text-left py-2 px-2 font-medium text-gray-600">Time</th>
+              <th className="text-left py-2 px-2 font-medium text-gray-600">Status</th>
+              <th className="text-right py-2 px-2 font-medium text-gray-600">Response</th>
+              <th className="text-left py-2 px-2 font-medium text-gray-600">Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {checks.slice(0, 50).map(check => (
+              <tr key={check.id} className="border-b border-gray-100">
+                <td className="py-1.5 px-2 text-gray-700 text-xs">{new Date(check.created_at).toLocaleString()}</td>
+                <td className="py-1.5 px-2"><StatusBadge status={check.overall_status} /></td>
+                <td className="py-1.5 px-2 text-right text-gray-600 text-xs">{check.response_time_ms}ms</td>
+                <td className="py-1.5 px-2 text-gray-500 text-xs">{check.triggered_by}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+// --- Section A3: System Alerts ---
+function SystemAlertsSection() {
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [actionInProgress, setActionInProgress] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+
+  const fetchAlerts = () => {
+    fetch('/api/admin/alerts')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => setAlerts(data?.alerts || []))
+      .catch(() => setAlerts([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { fetchAlerts(); }, []);
+
+  const handleAction = async (id, action) => {
+    setActionInProgress(id);
+    try {
+      const res = await fetch('/api/admin/alerts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action }),
+      });
+      if (res.ok) fetchAlerts();
+    } catch {}
+    setActionInProgress(null);
+  };
+
+  const severityColors = {
+    critical: 'bg-red-100 text-red-800 border-red-200',
+    error: 'bg-red-50 text-red-700 border-red-200',
+    warning: 'bg-yellow-50 text-yellow-800 border-yellow-200',
+    info: 'bg-blue-50 text-blue-700 border-blue-200',
+  };
+
+  const severityDots = {
+    critical: 'bg-red-500',
+    error: 'bg-red-400',
+    warning: 'bg-yellow-400',
+    info: 'bg-blue-400',
+  };
+
+  if (loading) {
+    return (
+      <Card>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">System Alerts</h2>
+        <div className="text-gray-500 text-sm">Loading alerts...</div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-gray-900">System Alerts</h2>
+        {alerts.length > 0 && (
+          <span className="text-sm text-gray-500">{alerts.length} active</span>
+        )}
+      </div>
+
+      {alerts.length === 0 ? (
+        <p className="text-gray-500 text-sm">No active alerts. All systems normal.</p>
+      ) : (
+        <div className="space-y-2">
+          {alerts.map(alert => (
+            <div
+              key={alert.id}
+              className={`p-3 rounded-lg border ${severityColors[alert.severity] || severityColors.info}`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2 flex-1 min-w-0">
+                  <span className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${severityDots[alert.severity]}`} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium">{alert.title}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/50 text-gray-600">
+                        {alert.alert_type.replace(/_/g, ' ')}
+                      </span>
+                      {alert.status === 'acknowledged' && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/50 text-gray-500">
+                          ack&apos;d by {alert.acknowledged_by_name}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-600 mt-0.5">
+                      {new Date(alert.created_at).toLocaleString()}
+                      {alert.source && ` \u00b7 ${alert.source}`}
+                    </div>
+                    {expandedId === alert.id && (
+                      <div className="mt-2 text-xs text-gray-700 space-y-1">
+                        {alert.message && <p>{alert.message}</p>}
+                        {alert.metadata && (
+                          <pre className="bg-white/50 p-2 rounded text-[11px] overflow-x-auto max-h-40">
+                            {JSON.stringify(alert.metadata, null, 2)}
+                          </pre>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => setExpandedId(expandedId === alert.id ? null : alert.id)}
+                    className="p-1 text-xs text-gray-500 hover:text-gray-700 rounded"
+                    title={expandedId === alert.id ? 'Collapse' : 'Expand'}
+                  >
+                    {expandedId === alert.id ? '\u25B2' : '\u25BC'}
+                  </button>
+                  {alert.status === 'active' && (
+                    <button
+                      onClick={() => handleAction(alert.id, 'acknowledge')}
+                      disabled={actionInProgress === alert.id}
+                      className="px-2 py-1 text-xs bg-white/70 hover:bg-white rounded border border-gray-300 text-gray-700 transition-colors disabled:opacity-50"
+                    >
+                      Ack
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleAction(alert.id, 'resolve')}
+                    disabled={actionInProgress === alert.id}
+                    className="px-2 py-1 text-xs bg-white/70 hover:bg-white rounded border border-gray-300 text-gray-700 transition-colors disabled:opacity-50"
+                  >
+                    Resolve
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// --- Section A4: Maintenance Status ---
+function MaintenanceSection() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/admin/maintenance')
+      .then(r => r.ok ? r.json() : null)
+      .then(setData)
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <Card>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Maintenance Jobs</h2>
+        <div className="text-gray-500 text-sm">Loading...</div>
+      </Card>
+    );
+  }
+
+  if (!data) return null;
+
+  const statusColors = {
+    completed: 'text-green-700 bg-green-100',
+    running: 'text-blue-700 bg-blue-100',
+    failed: 'text-red-700 bg-red-100',
+  };
+
+  const jobLabels = {
+    'daily-maintenance': { name: 'Daily Maintenance', icon: '\uD83E\uDDF9' },
+    'health-check': { name: 'Health Monitor', icon: '\uD83D\uDC93' },
+    'secret-check': { name: 'Secret Expiration', icon: '\uD83D\uDD10' },
+    'log-analysis': { name: 'Log Analysis', icon: '\uD83D\uDCCA' },
+  };
+
+  return (
+    <Card>
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">Maintenance Jobs</h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {data.jobs.map(job => {
+          const label = jobLabels[job.jobName] || { name: job.jobName, icon: '\u2699\uFE0F' };
+          return (
+            <div key={job.jobName} className="p-4 rounded-lg border border-gray-200 bg-gray-50">
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-medium text-sm text-gray-900">
+                  {label.icon} {label.name}
+                </span>
+                {job.lastRun && (
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[job.lastRun.status] || 'text-gray-600 bg-gray-100'}`}>
+                    {job.lastRun.status}
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-gray-500 space-y-0.5">
+                <div>Schedule: {job.schedule}</div>
+                {job.lastRun ? (
+                  <>
+                    <div>Last run: {new Date(job.lastRun.startedAt).toLocaleString()}</div>
+                    {job.lastRun.recordsDeleted > 0 && (
+                      <div>Cleaned: {job.lastRun.recordsDeleted} records</div>
+                    )}
+                    {job.lastRun.durationMs && (
+                      <div>Duration: {(job.lastRun.durationMs / 1000).toFixed(1)}s</div>
+                    )}
+                    {job.lastRun.errorMessage && (
+                      <div className="text-red-600 mt-1">{job.lastRun.errorMessage}</div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-gray-400 italic">No runs recorded yet</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {data.retentionConfig && (
+        <div className="mt-4 pt-3 border-t border-gray-200">
+          <div className="text-xs text-gray-500">
+            <span className="font-medium">Retention:</span>{' '}
+            Usage log {data.retentionConfig.usage_log_days}d,{' '}
+            Query log {data.retentionConfig.query_log_days}d,{' '}
+            Blobs {data.retentionConfig.blob_days}d,{' '}
+            Health {data.retentionConfig.health_history_days}d,{' '}
+            Alerts {data.retentionConfig.alert_days}d
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// --- Section A5: Secret Expiration ---
+function SecretExpirationSection() {
+  const [secrets, setSecrets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editingKey, setEditingKey] = useState(null);
+  const [editValues, setEditValues] = useState({ rotationDate: '', expirationDate: '' });
+  const [saving, setSaving] = useState(false);
+
+  const fetchSecrets = () => {
+    fetch('/api/admin/secrets')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => setSecrets(data?.secrets || []))
+      .catch(() => setSecrets([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { fetchSecrets(); }, []);
+
+  const startEdit = (secret) => {
+    setEditingKey(secret.key);
+    setEditValues({
+      rotationDate: secret.lastRotated || '',
+      expirationDate: secret.expirationDate || '',
+    });
+  };
+
+  const saveEdit = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/secrets', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: editingKey, ...editValues }),
+      });
+      if (res.ok) {
+        setEditingKey(null);
+        fetchSecrets();
+      }
+    } catch {}
+    setSaving(false);
+  };
+
+  const statusBadge = (status) => {
+    const colors = {
+      ok: 'bg-green-100 text-green-800',
+      attention: 'bg-yellow-100 text-yellow-700',
+      warning: 'bg-orange-100 text-orange-800',
+      critical: 'bg-red-100 text-red-800',
+      expired: 'bg-red-200 text-red-900',
+      not_tracked: 'bg-gray-100 text-gray-500',
+    };
+    return (
+      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${colors[status] || colors.not_tracked}`}>
+        {status === 'not_tracked' ? 'not set' : status}
+      </span>
+    );
+  };
+
+  if (loading) {
+    return (
+      <Card>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Secret Expiration Tracking</h2>
+        <div className="text-gray-500 text-sm">Loading...</div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">Secret Expiration Tracking</h2>
+      <p className="text-xs text-gray-500 mb-3">
+        Set expiration dates to receive automated alerts as secrets approach expiry. Dates are checked daily at 8:00 AM UTC.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-200">
+              <th className="text-left py-2 px-2 font-medium text-gray-600">Secret</th>
+              <th className="text-left py-2 px-2 font-medium text-gray-600">Status</th>
+              <th className="text-left py-2 px-2 font-medium text-gray-600">Expires</th>
+              <th className="text-left py-2 px-2 font-medium text-gray-600">Last Rotated</th>
+              <th className="text-right py-2 px-2 font-medium text-gray-600">Days Left</th>
+              <th className="text-right py-2 px-2 font-medium text-gray-600"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {secrets.map(secret => (
+              <tr key={secret.key} className="border-b border-gray-100">
+                <td className="py-2 px-2 text-gray-900 font-medium text-xs">{secret.name}</td>
+                <td className="py-2 px-2">{statusBadge(secret.status)}</td>
+                {editingKey === secret.key ? (
+                  <>
+                    <td className="py-2 px-2">
+                      <input
+                        type="date"
+                        value={editValues.expirationDate}
+                        onChange={e => setEditValues(v => ({ ...v, expirationDate: e.target.value }))}
+                        className="px-2 py-1 border border-gray-300 rounded text-xs w-32"
+                      />
+                    </td>
+                    <td className="py-2 px-2">
+                      <input
+                        type="date"
+                        value={editValues.rotationDate}
+                        onChange={e => setEditValues(v => ({ ...v, rotationDate: e.target.value }))}
+                        className="px-2 py-1 border border-gray-300 rounded text-xs w-32"
+                      />
+                    </td>
+                    <td className="py-2 px-2 text-right">
+                      <button onClick={saveEdit} disabled={saving} className="text-xs text-green-700 hover:text-green-900 mr-2">
+                        {saving ? '...' : 'Save'}
+                      </button>
+                      <button onClick={() => setEditingKey(null)} className="text-xs text-gray-500 hover:text-gray-700">
+                        Cancel
+                      </button>
+                    </td>
+                    <td />
+                  </>
+                ) : (
+                  <>
+                    <td className="py-2 px-2 text-gray-600 text-xs">{secret.expirationDate || '-'}</td>
+                    <td className="py-2 px-2 text-gray-600 text-xs">{secret.lastRotated || '-'}</td>
+                    <td className="py-2 px-2 text-right text-gray-700 text-xs">
+                      {secret.daysUntilExpiry !== null ? secret.daysUntilExpiry : '-'}
+                    </td>
+                    <td className="py-2 px-2 text-right">
+                      <button onClick={() => startEdit(secret)} className="text-xs text-blue-600 hover:text-blue-800">
+                        Edit
+                      </button>
+                    </td>
+                  </>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
 // --- Section B: Usage Overview ---
 function UsageSection() {
   const [period, setPeriod] = useState('30d');
@@ -1053,6 +1526,10 @@ export default function AdminDashboard() {
 
       <div className="py-8 space-y-6">
         <HealthSection />
+        <HealthHistorySection />
+        <SystemAlertsSection />
+        <MaintenanceSection />
+        <SecretExpirationSection />
         <UsageSection />
         <ModelConfigSection />
         <RoleManagementSection />

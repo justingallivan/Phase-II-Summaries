@@ -17,6 +17,7 @@ export default function Layout({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [authEnabled, setAuthEnabled] = useState(false);
+  const [alertCount, setAlertCount] = useState(0);
   const { data: session, status } = useSession();
   const { currentProfile } = useProfile();
   const { hasAccess, isSuperuser } = useAppAccess();
@@ -28,6 +29,17 @@ export default function Layout({
       .then(data => setAuthEnabled(data.enabled))
       .catch(() => setAuthEnabled(false));
   }, []);
+
+  // Fetch active alert count for superusers (for nav badge)
+  useEffect(() => {
+    if (!isSuperuser) return;
+    fetch('/api/admin/alerts?summary=true')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data) setAlertCount((data.critical || 0) + (data.error || 0));
+      })
+      .catch(() => {});
+  }, [isSuperuser]);
 
   const navigationItems = useMemo(() => {
     const items = [{ name: 'Home', href: '/', icon: '🏠' }];
@@ -44,11 +56,11 @@ export default function Layout({
 
     // Admin link only for superusers
     if (isSuperuser) {
-      items.push({ name: 'Admin', href: '/admin', icon: '⚙️' });
+      items.push({ name: 'Admin', href: '/admin', icon: '⚙️', badge: alertCount > 0 ? alertCount : null });
     }
 
     return items;
-  }, [hasAccess, isSuperuser]);
+  }, [hasAccess, isSuperuser, alertCount]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -69,10 +81,15 @@ export default function Layout({
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-all duration-200"
+                    className="relative flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-all duration-200"
                   >
                     <span className="text-base">{item.icon}</span>
                     <span>{item.name}</span>
+                    {item.badge && (
+                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
+                        {item.badge > 99 ? '99+' : item.badge}
+                      </span>
+                    )}
                   </Link>
                 ))}
               </nav>
