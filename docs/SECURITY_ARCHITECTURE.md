@@ -3,7 +3,7 @@
 **Prepared for:** IT Security Review
 **Application:** Document Processing Multi-App System
 **Date:** February 2026
-**Version:** 3.1
+**Version:** 3.2
 
 ---
 
@@ -280,7 +280,7 @@
 
 **Session details:**
 - Strategy: JWT (encrypted, not database-stored)
-- Max age: 30 days
+- Max age: 7 days
 - Cookie: httpOnly, Secure, SameSite=Lax (set by NextAuth automatically)
 - JWT contains: azureId, azureEmail, profileId, profileName, avatarColor, needsLinking
 - Signed/encrypted with: `NEXTAUTH_SECRET`
@@ -589,11 +589,12 @@
 | Attribute | Detail |
 |-----------|--------|
 | **Strategy** | JWT (encrypted, not stored in database) |
-| **Max age** | 30 days |
+| **Max age** | 7 days |
 | **Signing secret** | `NEXTAUTH_SECRET` (32-byte random value) |
 | **Cookie flags** | httpOnly, Secure, SameSite=Lax (set by NextAuth automatically) |
 | **JWT payload** | azureId, azureEmail, profileId, profileName, avatarColor, needsLinking |
 | **Debug mode** | `debug: process.env.NODE_ENV === 'development'` — disabled in production |
+| **Session revocation** | Setting `user_profiles.is_active = false` blocks requests within 2-minute cache TTL. Checked in `requireAppAccess()` (cached, parallel query) and `requireAuthWithProfile()` (direct query). Disabled accounts are blocked before superuser bypass. |
 
 ### 5.3 Three-Layer Auth Enforcement
 
@@ -614,9 +615,9 @@ Authentication is enforced at three levels — edge middleware, API route middle
 
 | Function | Behavior | Used by |
 |----------|----------|---------|
-| `requireAppAccess(req, res, ...appKeys)` | Validates auth + profile + app grant (OR logic — any listed app suffices). Returns `{ profileId, session }` or sends 401/403. Uses in-memory cache with 2-minute TTL. Superusers bypass all app checks. | All 30+ app-specific API endpoints |
-| `requireAuthWithProfile(req, res)` | Validates auth + linked profile. Returns `profileId` or sends 401/403. Blocks request-body `profileId` injection in production. | User-scoped infrastructure (admin, preferences, app-access) |
-| `requireAuth(req, res)` | Validates auth only. Returns session or sends 401. | System endpoints (health, file upload, blob proxy) |
+| `requireAppAccess(req, res, ...appKeys)` | CSRF origin check + auth + profile + `is_active` check + app grant (OR logic). Returns `{ profileId, session }` or sends 401/403. Uses in-memory cache with 2-minute TTL (includes `isActive` flag). Disabled accounts blocked before superuser bypass. | All 30+ app-specific API endpoints |
+| `requireAuthWithProfile(req, res)` | Auth + linked profile + `is_active` check (direct DB query, fail-open). Returns `profileId` or sends 401/403. Blocks request-body `profileId` injection in production. | User-scoped infrastructure (admin, preferences, app-access) |
+| `requireAuth(req, res)` | CSRF origin check + auth. Returns session or sends 401. | System endpoints (health, file upload, blob proxy) |
 | `optionalAuth(req, res)` | Returns session or null; no error response. | Public-optional routes |
 | `clearAppAccessCache([profileId])` | Invalidates cached app access; called on grant/revoke changes. | App access management endpoints |
 
@@ -774,9 +775,11 @@ Every Dynamics tool execution is logged to `dynamics_query_log`:
 | `query_params` | Sanitized JSONB of query parameters |
 | `record_count` | Number of records returned |
 | `execution_time_ms` | Query duration |
+| `was_denied` | Whether the query was blocked by a restriction (BOOLEAN, default false) |
+| `denial_reason` | Restriction message if denied (TEXT, null if allowed) |
 | `created_at` | Timestamp |
 
-**Logging is non-fatal:** failures are caught and logged to console but do not block the query.
+**Logging is non-fatal:** failures are caught and logged to console but do not block the query. Restriction violations are logged with `was_denied = true` for compliance tracking (partial index enables efficient queries on denied rows).
 
 ### 6.6 Data Residency
 
@@ -809,6 +812,8 @@ Every Dynamics tool execution is logged to `dynamics_query_log`:
 | **Superuser bypass** | Users with `role = 'superuser'` in `dynamics_user_roles` bypass all app access checks |
 | **CRM authentication** | OAuth 2.0 Client Credentials, server-side only |
 | **ORCID authentication** | OAuth 2.0 Client Credentials (`/read-public` scope), server-side only |
+| **CSRF protection** | Origin header validation on state-changing methods (POST/PUT/PATCH/DELETE) in `requireAuth()` and `requireAppAccess()` |
+| **Session revocation** | `is_active` check on `user_profiles` in `requireAppAccess()` (cached, 2-min TTL) and `requireAuthWithProfile()` (direct query) |
 | **Kill switch** | `AUTH_REQUIRED=false` disables user auth (emergency use only) |
 | **Production guard** | Auth bypass returns 403 in production for profile-scoped routes |
 
@@ -1039,6 +1044,26 @@ Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js. Migrating t
 
 **Status: REMEDIATED.** Both endpoints now use `access.profileId` from the authenticated session as the source of truth for `user_profile_id`. The `save-candidates.js` endpoint falls back to the request body value only when auth is bypassed (dev mode). The `researchers.js` `handleCreate` function now receives the `access` object from the handler and uses `access.profileId` directly.
 
+#### M8: No CSRF Protection Beyond SameSite Cookies
+
+**Finding:** No explicit CSRF protection on POST/DELETE API routes beyond SameSite=Lax cookies. While SameSite=Lax mitigates most CSRF vectors (blocks cross-origin POST), it does not protect against attacks from subdomains or certain browser edge cases.
+
+**Location:** `lib/utils/auth.js`
+
+**Recommendation:** Add Origin header validation for state-changing methods (POST, PUT, PATCH, DELETE).
+
+**Status: REMEDIATED.** Added `validateOrigin()` helper in `lib/utils/auth.js` that compares the `Origin` header (or `Referer` fallback) against `NEXTAUTH_URL` for state-changing methods. Called in both `requireAuth()` and `requireAppAccess()` after the auth kill switch check. GET/HEAD/OPTIONS are exempt. Missing headers are allowed through (covers cron jobs and server-to-server calls). Dev mode (`AUTH_REQUIRED=false`) bypasses the check entirely.
+
+#### M9: Session Revocation for Disabled Accounts
+
+**Finding:** Setting `is_active = false` on `user_profiles` blocks new logins but existing JWTs remained valid for up to 7 days.
+
+**Location:** `lib/utils/auth.js`
+
+**Recommendation:** Check `is_active` status during request authorization.
+
+**Status: REMEDIATED.** `requireAppAccess()` now includes an `is_active` query in its parallel fetch (zero additional latency), cached alongside `apps` and `isSuperuser` with 2-minute TTL. Disabled accounts are blocked before the superuser bypass. `requireAuthWithProfile()` performs a direct `is_active` check (wraps in try/catch — session still valid if DB fails). Revocation effective within 2-minute cache window.
+
 ### Low
 
 #### L1: No Blob Retention Policy — REMEDIATED
@@ -1093,15 +1118,17 @@ Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js. Migrating t
 
 **Recommendation:** Switch to `https://export.arxiv.org/api/query` if ArXiv supports HTTPS.
 
-#### L8: Dynamics Restriction Violations Not Logged to Database
+#### L8: Dynamics Restriction Violations Not Logged to Database — REMEDIATED
 
 **Finding:** When a restriction blocks a CRM query, the denial is sent to the user via SSE and logged to console, but not persisted in the `dynamics_query_log` audit table.
 
-**Location:** `pages/api/dynamics-explorer/chat.js`
+**Location:** `pages/api/dynamics-explorer/chat.js`, `scripts/setup-database.js`
 
 **Recommendation:** Log restriction violations (table, field, user, timestamp) to the audit table or a dedicated violations table for compliance tracking.
 
-#### L9: Legacy NULL User Profile Data Visibility — PARTIALLY REMEDIATED
+**Status: REMEDIATED.** V20 migration adds `was_denied` (BOOLEAN) and `denial_reason` (TEXT) columns to `dynamics_query_log` with a partial index on denied rows. The `logQuery()` function now accepts `wasDenied` and `denialReason` parameters. Restriction violations are logged with `wasDenied: true` and the restriction message. Denied queries are queryable via `SELECT * FROM dynamics_query_log WHERE was_denied = true`.
+
+#### L9: Legacy NULL User Profile Data Visibility — REMEDIATED
 
 **Finding:** `reviewer_suggestions` and `proposal_searches` rows with `user_profile_id = NULL` (created before the user profile system) are visible to all users via queries like `WHERE user_profile_id IS NULL OR user_profile_id = ${profileId}`.
 
@@ -1111,7 +1138,7 @@ Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js. Migrating t
 
 **Recommendation:** Run a one-time migration to assign NULL records to a default profile, then remove the `IS NULL` fallback from queries.
 
-**Partial remediation (M7 fix):** The two code paths that were creating new `reviewer_suggestions` records with `NULL` or incorrect `user_profile_id` have been fixed (see M7). All new records now correctly use the authenticated user's profile ID. However, existing legacy NULL records from before the V14 migration still need a one-time cleanup migration.
+**Status: REMEDIATED.** The two code paths that were creating new records with NULL or incorrect `user_profile_id` were fixed in M7 (all new records use `access.profileId`). For existing legacy NULL records, `scripts/assign-orphan-records.js` provides a CLI tool to assign them to a specified profile. Supports `--dry-run` for preview and `--profile-id <N>` for target assignment. Idempotent — re-running finds 0 orphans.
 
 #### L10: API Usage Log Unbounded Growth — REMEDIATED
 

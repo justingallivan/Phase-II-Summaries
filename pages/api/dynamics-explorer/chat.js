@@ -150,6 +150,7 @@ export default async function handler(req, res) {
         const restricted = checkRestriction(name, input, restrictions);
         if (restricted) {
           sendEvent('thinking', { message: `Blocked: ${restricted}` });
+          logQuery({ userProfileId, sessionId, queryType: name, tableName: input.table_name || null, queryParams: input, recordCount: 0, executionTime: 0, wasDenied: true, denialReason: restricted });
           return { type: 'tool_result', tool_use_id: id, content: `DENIED: ${restricted}` };
         }
 
@@ -166,7 +167,7 @@ export default async function handler(req, res) {
         const recordCount = result?.records?.length || result?.count || (result?.error ? -1 : 0);
         console.log(`[DynExp] Round ${round} ${name} → ${recordCount} records, ${executionTime}ms`);
 
-        logQuery({ userProfileId, sessionId, queryType: name, tableName: input.table_name || null, queryParams: input, recordCount, executionTime });
+        logQuery({ userProfileId, sessionId, queryType: name, tableName: input.table_name || null, queryParams: input, recordCount, executionTime, wasDenied: false });
 
         const charLimit = TOOL_CHAR_LIMITS[name] || MAX_RESULT_CHARS;
         const resultStr = truncateResult(result, charLimit);
@@ -1939,8 +1940,8 @@ async function getActiveRestrictions() {
   } catch { return []; }
 }
 
-function logQuery({ userProfileId, sessionId, queryType, tableName, queryParams, recordCount, executionTime }) {
-  sql`INSERT INTO dynamics_query_log (user_profile_id, session_id, query_type, table_name, query_params, record_count, execution_time_ms)
-    VALUES (${userProfileId || null}, ${sessionId || null}, ${queryType}, ${tableName}, ${JSON.stringify(queryParams)}, ${recordCount}, ${executionTime})`
+function logQuery({ userProfileId, sessionId, queryType, tableName, queryParams, recordCount, executionTime, wasDenied = false, denialReason = null }) {
+  sql`INSERT INTO dynamics_query_log (user_profile_id, session_id, query_type, table_name, query_params, record_count, execution_time_ms, was_denied, denial_reason)
+    VALUES (${userProfileId || null}, ${sessionId || null}, ${queryType}, ${tableName}, ${JSON.stringify(queryParams)}, ${recordCount}, ${executionTime}, ${wasDenied}, ${denialReason})`
     .catch(err => console.warn('Failed to log dynamics query:', err.message));
 }

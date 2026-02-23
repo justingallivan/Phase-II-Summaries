@@ -48,6 +48,20 @@ node scripts/manage-preferences.js --delete-all-keys
 node scripts/manage-preferences.js --delete-keys --profile 2
 ```
 
+## Data Cleanup
+
+| Script | Description |
+|--------|-------------|
+| `assign-orphan-records.js` | Assign legacy NULL `user_profile_id` rows in `reviewer_suggestions` and `proposal_searches` to a specified user profile |
+
+```bash
+# Preview orphan records (no changes)
+node scripts/assign-orphan-records.js --profile-id 1 --dry-run
+
+# Execute assignment
+node scripts/assign-orphan-records.js --profile-id 1
+```
+
 ## Security
 
 | Script | Description |

@@ -540,6 +540,13 @@ const v19Statements = [
   `CREATE INDEX IF NOT EXISTS idx_maintenance_runs_created ON maintenance_runs(started_at DESC)`,
 ];
 
+// V20: Dynamics restriction violation logging
+const v20Alterations = [
+  `ALTER TABLE dynamics_query_log ADD COLUMN IF NOT EXISTS was_denied BOOLEAN DEFAULT false`,
+  `ALTER TABLE dynamics_query_log ADD COLUMN IF NOT EXISTS denial_reason TEXT`,
+  `CREATE INDEX IF NOT EXISTS idx_dynamics_query_log_denied ON dynamics_query_log(was_denied) WHERE was_denied = true`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -994,6 +1001,24 @@ async function runMigration() {
       }
     }
 
+    // Run V20 alterations (Dynamics restriction violation logging)
+    console.log(`\nApplying v20 schema updates - Dynamics denial logging (${v20Alterations.length} statements)...`);
+    for (let i = 0; i < v20Alterations.length; i++) {
+      const statement = v20Alterations[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v20-${i + 1}/${v20Alterations.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v20-${i + 1}/${v20Alterations.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v20-${i + 1}/${v20Alterations.length}] ✗ Error: ${error.message}`);
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -1081,7 +1106,10 @@ async function runMigration() {
     console.log('  • health_check_history (overall_status, services, response_time_ms, triggered_by)');
     console.log('  • maintenance_runs (job_name, status, records_processed, records_deleted,');
     console.log('    details, error_message, started_at, completed_at, duration_ms)');
-    console.log('\nIndexes created: 54');
+    console.log('\nV20 column additions (Dynamics denial logging):');
+    console.log('  • dynamics_query_log.was_denied');
+    console.log('  • dynamics_query_log.denial_reason');
+    console.log('\nIndexes created: 55');
 
   } catch (error) {
     console.error('\n✗ Migration failed:', error.message);
