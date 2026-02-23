@@ -8,6 +8,27 @@
     },
     "pages/api/analyze-*.js": {
       "maxDuration": 300
+    },
+    "pages/api/cron/*.js": {
+      "maxDuration": 120
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/maintenance",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/health-check",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/secret-check",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/log-analysis",
+      "schedule": "0 */6 * * *"
+    }
+  ]
 }
