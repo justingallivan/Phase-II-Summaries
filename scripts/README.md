@@ -48,6 +48,25 @@ node scripts/manage-preferences.js --delete-all-keys
 node scripts/manage-preferences.js --delete-keys --profile 2
 ```
 
+## Security
+
+| Script | Description |
+|--------|-------------|
+| `rotate-encryption-key.js` | Rotate `USER_PREFS_ENCRYPTION_KEY` — re-encrypts all encrypted user preferences |
+
+```bash
+# Generate a new key
+node scripts/rotate-encryption-key.js --generate-key
+
+# Preview what will be re-encrypted (no changes)
+OLD_KEY=<current_key> NEW_KEY=<new_key> node scripts/rotate-encryption-key.js --dry-run
+
+# Execute rotation
+OLD_KEY=<current_key> NEW_KEY=<new_key> node scripts/rotate-encryption-key.js
+```
+
+After rotating, update `USER_PREFS_ENCRYPTION_KEY` in Vercel and redeploy.
+
 ## Integrity Screener
 
 | Script | Description |

@@ -1047,11 +1047,11 @@ Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js. Migrating t
 
 **Remediation:** Daily maintenance cron (`/api/cron/maintenance`) runs `MaintenanceService.cleanupBlobs()` which cross-references all blob URLs in `proposal_searches`, `grant_cycles`, and `reviewer_suggestions` against blob storage, and deletes orphaned files older than the configured retention period (default 90 days). Retention is configurable via `system_settings` table.
 
-#### L2: No Encryption Key Rotation Mechanism
+#### L2: No Encryption Key Rotation Mechanism — REMEDIATED
 
 **Finding:** There is no documented process for rotating `USER_PREFS_ENCRYPTION_KEY`. Rotation would require re-encrypting all values in the `user_preferences` table.
 
-**Recommendation:** Document a key rotation procedure and consider building a migration script.
+**Remediation:** `scripts/rotate-encryption-key.js` provides a CLI tool for key rotation. The script decrypts all encrypted `user_preferences` rows with the old key, re-encrypts with the new key, and verifies each round-trip before committing. Supports `--dry-run` for preview and `--generate-key` for new key generation. After running, update `USER_PREFS_ENCRYPTION_KEY` in Vercel and redeploy. Secret expiration tracking in the admin dashboard and daily cron alerts provide rotation reminders.
 
 #### L3: Dynamics Audit Log Unbounded Growth — REMEDIATED
 
