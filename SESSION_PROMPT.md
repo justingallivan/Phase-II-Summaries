@@ -1,58 +1,83 @@
-# Session 65 Prompt: Next Steps
+# Session 66 Prompt: Next Steps
 
-## Session 64 Summary
+## Session 65 Summary
 
-Fixed internal error message leakage in API catch blocks and regenerated the Security Architecture document to reflect all changes made over recent sessions.
+Implemented the full Admin Automation system: maintenance, monitoring, and alerting. This was a 4-phase effort adding a system alerts framework, 4 Vercel Cron jobs, new admin dashboard sections, and a unified notification service.
 
 ### What Was Completed
 
-1. **Error message leakage fix** — Patched ~19 unguarded catch blocks across 8 API route files that exposed `error.message` directly to clients in production:
-   - Inner helper functions in evaluators now return generic messages (`'An error occurred during evaluation'`)
-   - Dynamics Explorer tool errors: `'Tool execution failed'` instead of `err.message`
-   - Email generation errors: `BASE_CONFIG.ERROR_MESSAGES.EMAIL_GENERATION_FAILED`
-   - Re-thrown errors in `process.js`, `process-phase-i.js`, `process-phase-i-writeup.js` stripped of interpolated `error.message`
-   - Health endpoint service errors guarded with `NODE_ENV === 'development'` check
+1. **Phase 1: Foundation**
+   - V19 database migration: 3 new tables (`system_alerts`, `health_check_history`, `maintenance_runs`) with 8 indexes
+   - `AlertService` — CRUD for alerts with deduplication via `auto_resolve_key`, severity-ordered queries
+   - `NotificationService` — Unified interface: stores alerts in DB, sends Graph API email when configured
+   - `MaintenanceService` — Cleanup for usage log, query log, cache, health history, blobs; audit trail; configurable retention via `system_settings`
+   - `cron-auth.js` — Bearer token verification for cron endpoints (dev mode bypass)
+   - `health-checker.js` — Extracted 6-service check logic; `pages/api/health.js` refactored to thin wrapper
 
-2. **Security Architecture regeneration (v3.0)** — Complete rewrite of `docs/SECURITY_ARCHITECTURE.md` based on codebase audit:
-   - 14 apps (added Review Manager)
-   - Three-layer auth model: edge middleware → `requireAppAccess` → client guards
-   - App-level access control system (user_app_access, appRegistry, admin UI)
-   - 18 database tables (added api_usage_log, user_app_access, system_settings)
-   - Centralized API keys (removed user-provided key references)
-   - Security headers via next.config.js (removed stale security.js/helmet references)
-   - CSP connect-src corrected to Vercel Blob (not api.anthropic.com)
-   - Rate limiting confirmed on all AI-processing routes
-   - Renumbered findings; added M6 (error.message leakage, remediated) and L10 (api_usage_log growth)
-   - Removed stale references to security middleware file, API_SECRET_KEY, helmet
+2. **Phase 2: Cron Jobs**
+   - `/api/cron/maintenance` — Daily 3AM UTC: all cleanup tasks, audit trail, summary alert
+   - `/api/cron/health-check` — Every 15 min: stores history, alerts on degradation, auto-resolves on recovery, escalates severity
+   - `/api/cron/secret-check` — Daily 8AM UTC: checks `system_settings` expiration dates, alerts at 14d/7d/expired
+   - `/api/cron/log-analysis` — Every 6h: fetches Vercel error logs, sends to Claude Haiku for root-cause analysis
+   - `vercel.json` updated with `crons` array and 120s `maxDuration`
+
+3. **Phase 3: Admin Dashboard**
+   - 4 new API endpoints: `/api/admin/alerts`, `/api/admin/maintenance`, `/api/admin/secrets`, `/api/admin/health-history`
+   - 4 new dashboard sections: Health History (uptime %), System Alerts (severity cards with ack/resolve), Maintenance Jobs (status cards), Secret Expiration (inline date editing)
+   - Alert count badge on Admin nav link (critical+error count for superusers)
+
+4. **Phase 4: Integration & Documentation**
+   - New-user notification wired into `[...nextauth].js` sign-in flow
+   - L1, L3, L10 marked as REMEDIATED in `SECURITY_ARCHITECTURE.md`
+   - Secret expiration tracking added to `CREDENTIALS_RUNBOOK.md`
+   - `TODO_EMAIL_NOTIFICATIONS.md` rewritten for unified notification architecture
+   - `CLAUDE.md` and `.env.example` updated with all new endpoints, tables, services, and env vars
+
+5. **Database migration run** — V19 tables created successfully on production database
 
 ### Commits
-- `f4ed56f` Fix error.message leakage in API catch blocks
-- `f06b512` Update SECURITY_ARCHITECTURE.md for error.message leakage fix
-- `2246fdf` Regenerate SECURITY_ARCHITECTURE.md (v3.0)
+- `778d350` Add Phase 1 foundation for admin automation system
+- `4525529` Add 4 Vercel Cron jobs for automated maintenance and monitoring
+- `451a176` Add admin dashboard sections for alerts, maintenance, secrets, and health history
+- `8e44ee9` Wire new-user notification and update all documentation
 
 ## Deferred Items (Carried Forward)
 
 - SharePoint document access (blocked on Azure AD admin consent — see `docs/SHAREPOINT_DOCUMENT_ACCESS.md`)
-- Disambiguate CRM program lookup fields (needs domain expert)
 - Dynamics Explorer search heuristics & query optimization
-- Deferred email notifications (`docs/TODO_EMAIL_NOTIFICATIONS.md`)
+- Email notifications via Graph API (deferred until `Mail.Send` permission granted — see `docs/TODO_EMAIL_NOTIFICATIONS.md`)
 - 30-day JWT session lifetime (no revocation mechanism)
 - No CSRF on custom POST/DELETE routes
 - C3: Dynamics service principal should be scoped (requires Dynamics 365 admin)
 - M5: CORS wildcard on SSE streaming routes (set ALLOWED_ORIGINS env var)
 
+## Post-Deploy Setup
+
+- **CRON_SECRET**: Must be set in Vercel environment variables for cron auth to work in production. Generate with `openssl rand -base64 32`
+- **Secret expiration dates**: Set via admin dashboard Secret Expiration section or SQL insert to `system_settings`
+- **Optional**: Set `VERCEL_API_TOKEN` + `VERCEL_PROJECT_ID` to enable automated log analysis cron
+
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `docs/SECURITY_ARCHITECTURE.md` | Security architecture & data flow report (v3.0) |
-| `lib/utils/auth.js` | Auth utilities — requireAuth, requireAuthWithProfile, requireAppAccess |
-| `pages/api/health.js` | Health endpoint with NODE_ENV-guarded error messages |
-| `shared/config/baseConfig.js` | Per-app model config, error message constants |
+| `lib/services/alert-service.js` | CRUD for system_alerts with deduplication |
+| `lib/services/notification-service.js` | Unified notifications (DB + future email) |
+| `lib/services/maintenance-service.js` | Cleanup operations with audit trail |
+| `lib/utils/cron-auth.js` | Vercel cron secret verification |
+| `lib/utils/health-checker.js` | Reusable 6-service health checks |
+| `pages/api/cron/*.js` | 4 cron endpoints (maintenance, health, secrets, logs) |
+| `pages/api/admin/alerts.js` | Alert management API |
+| `pages/api/admin/maintenance.js` | Maintenance status API |
+| `pages/api/admin/secrets.js` | Secret expiration API |
+| `pages/api/admin/health-history.js` | Health check history API |
 
 ## Testing
 
 ```bash
-npm run dev              # Dev mode — error messages show full detail
-npm run build            # Verify no syntax errors
+npm run dev                                          # Start dev server
+curl http://localhost:3000/api/cron/maintenance       # Test maintenance cron (dev mode skips auth)
+curl http://localhost:3000/api/cron/health-check      # Test health check cron
+curl http://localhost:3000/api/cron/secret-check      # Test secret check cron
+npm run build                                        # Verify no syntax errors
 ```
