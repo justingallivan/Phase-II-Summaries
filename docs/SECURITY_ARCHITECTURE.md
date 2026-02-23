@@ -606,7 +606,7 @@ Authentication is enforced at three levels — edge middleware, API route middle
 |-----------|--------|
 | **Runtime** | Vercel Edge Runtime (not Node.js) |
 | **Library** | `next-auth/middleware` `withAuth` + `jose` for JWT validation |
-| **Scope** | All routes except `_next/static`, `_next/image`, `favicon.ico`, `/api/auth/*` |
+| **Scope** | All routes except `_next/static`, `_next/image`, `favicon.ico`, `/api/auth/*`, `/api/cron/*` |
 | **Behavior** | Validates JWT cookie; redirects unauthenticated users to `/auth/signin` |
 | **Kill switch** | `AUTH_REQUIRED=false` disables edge auth check entirely |
 | **Stateless** | No database access; crypto-only validation |
@@ -1157,7 +1157,7 @@ Four Vercel Cron jobs run automated maintenance, monitoring, and analysis:
 | `/api/cron/secret-check` | Daily 8:00 AM UTC | Secret expiration alerts |
 | `/api/cron/log-analysis` | Every 6 hours | Vercel error log analysis |
 
-**Authentication:** All cron endpoints verify `Authorization: Bearer <CRON_SECRET>` via `lib/utils/cron-auth.js`. In development mode, auth is bypassed for local testing. Vercel automatically sends the `CRON_SECRET` header for configured cron jobs.
+**Authentication:** Cron endpoints are excluded from the edge middleware JWT check (`middleware.js` matcher skips `/api/cron/*`) since Vercel cron requests carry `CRON_SECRET`, not a session cookie. Each handler verifies `Authorization: Bearer <CRON_SECRET>` via `lib/utils/cron-auth.js`. In development mode, auth is bypassed for local testing. Vercel automatically sends the `CRON_SECRET` header for configured cron jobs.
 
 **Audit trail:** Maintenance jobs record results in `maintenance_runs` table. Health checks store results in `health_check_history`. All crons create alerts in `system_alerts` for dashboard visibility.
 
