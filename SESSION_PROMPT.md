@@ -1,88 +1,83 @@
-# Session 66 Prompt: Next Steps
+# Session 68 Prompt: Next Steps
 
-## Session 65 Summary
+## Session 67 Summary
 
-Implemented the full Admin Automation system: maintenance, monitoring, and alerting. This was a 4-phase effort adding a system alerts framework, 4 Vercel Cron jobs, new admin dashboard sections, and a unified notification service. Ran V19 migration on production. Deployed and verified secret expiration editing works on the live dashboard.
+Security remediation session. Implemented 4 actionable security findings from `SECURITY_ARCHITECTURE.md`, then diagnosed and fixed a production bug where all Vercel cron jobs were silently failing.
 
 ### What Was Completed
 
-1. **Phase 1: Foundation**
-   - V19 database migration: 3 new tables (`system_alerts`, `health_check_history`, `maintenance_runs`) with 8 indexes
-   - `AlertService` — CRUD for alerts with deduplication via `auto_resolve_key`, severity-ordered queries
-   - `NotificationService` — Unified interface: stores alerts in DB, sends Graph API email when configured
-   - `MaintenanceService` — Cleanup for usage log, query log, cache, health history, blobs; audit trail; configurable retention via `system_settings`
-   - `cron-auth.js` — Bearer token verification for cron endpoints (dev mode bypass)
-   - `health-checker.js` — Extracted 6-service check logic; `pages/api/health.js` refactored to thin wrapper
+1. **CSRF Origin Header Validation** (`lib/utils/auth.js`)
+   - Added `validateOrigin()` helper — compares `Origin`/`Referer` against `NEXTAUTH_URL` for POST/PUT/PATCH/DELETE
+   - Called in both `requireAuth()` and `requireAppAccess()`, after kill switch check
+   - GET/HEAD/OPTIONS exempt; missing headers allowed through (cron/server-to-server safe)
+   - Dev mode (`AUTH_REQUIRED=false`) bypasses entirely
 
-2. **Phase 2: Cron Jobs**
-   - `/api/cron/maintenance` — Daily 3AM UTC: all cleanup tasks, audit trail, summary alert
-   - `/api/cron/health-check` — Every 15 min: stores history, alerts on degradation, auto-resolves on recovery, escalates severity
-   - `/api/cron/secret-check` — Daily 8AM UTC: checks `system_settings` expiration dates, alerts at 14d/7d/expired
-   - `/api/cron/log-analysis` — Every 6h: fetches Vercel error logs, sends to Claude Haiku for root-cause analysis
-   - `vercel.json` updated with `crons` array and 120s `maxDuration`
+2. **Session Revocation for Disabled Accounts** (`lib/utils/auth.js`)
+   - `requireAppAccess()`: Added third parallel query for `is_active` on `user_profiles`, cached with 2-min TTL; disabled accounts blocked **before** superuser bypass
+   - `requireAuthWithProfile()`: Direct `is_active` DB check with fail-open try/catch
+   - `requireAuth()` intentionally unchanged (infrastructure endpoints don't need `is_active`)
 
-3. **Phase 3: Admin Dashboard**
-   - 4 new API endpoints: `/api/admin/alerts`, `/api/admin/maintenance`, `/api/admin/secrets`, `/api/admin/health-history`
-   - 4 new dashboard sections: Health History (uptime %), System Alerts (severity cards with ack/resolve), Maintenance Jobs (status cards), Secret Expiration (inline date editing)
-   - Alert count badge on Admin nav link (critical+error count for superusers)
+3. **Dynamics Restriction Violation Logging** (`scripts/setup-database.js`, `pages/api/dynamics-explorer/chat.js`)
+   - V20 migration: `was_denied` BOOLEAN + `denial_reason` TEXT columns on `dynamics_query_log`, partial index on denied rows
+   - `logQuery()` updated with `wasDenied`/`denialReason` params
+   - Restriction-denied branch now persists denial to audit table
 
-4. **Phase 4: Integration & Documentation**
-   - New-user notification wired into `[...nextauth].js` sign-in flow
-   - L1, L3, L10 marked as REMEDIATED in `SECURITY_ARCHITECTURE.md`
-   - Secret expiration tracking added to `CREDENTIALS_RUNBOOK.md`
-   - `TODO_EMAIL_NOTIFICATIONS.md` rewritten for unified notification architecture
-   - `CLAUDE.md` and `.env.example` updated with all new endpoints, tables, services, and env vars
+4. **Legacy NULL user_profile_id Cleanup** (`scripts/assign-orphan-records.js`)
+   - New script: `--profile-id <N>` and `--dry-run` flags
+   - Assigns NULL rows in `reviewer_suggestions` and `proposal_searches`
+   - Idempotent; documented in `scripts/README.md`
 
-5. **Deployment & Verification**
-   - V19 migration run on production database — all tables/indexes created
-   - `CRON_SECRET` set in Vercel environment variables
-   - Secret expiration dates configured via admin dashboard (verified working after redeploy)
+5. **Security Architecture v3.2** (`docs/SECURITY_ARCHITECTURE.md`)
+   - Fixed session maxAge: "30 days" → "7 days" (two locations)
+   - Added M8 (CSRF) and M9 (Session Revocation) as REMEDIATED
+   - Updated L8 (Denial Logging) and L9 (Orphan Records) to REMEDIATED
+   - Updated auth function table, audit logging table, security controls
+   - Added cron middleware exclusion documentation
+
+6. **Cron Job Middleware Fix** (`middleware.js`)
+   - **Root cause**: Edge middleware matched `/api/cron/*`, causing JWT validation on cron requests that carry `CRON_SECRET` instead of a session cookie — all 4 crons silently redirected to `/auth/signin`
+   - **Fix**: Added `api/cron` to the middleware matcher exclusion list
+   - All crons should now be executing in production (health checks writing to `health_check_history`, maintenance running, etc.)
 
 ### Commits
-- `778d350` Add Phase 1 foundation for admin automation system
-- `4525529` Add 4 Vercel Cron jobs for automated maintenance and monitoring
-- `451a176` Add admin dashboard sections for alerts, maintenance, secrets, and health history
-- `8e44ee9` Wire new-user notification and update all documentation
-- `30e26ae` Add error logging to secret expiration save handler
+- `bd2a98d` Add CSRF protection, session revocation, and denial audit logging
+- `4de6433` Fix cron jobs blocked by edge middleware JWT check
+- `499b1ee` Document cron middleware exclusion in SECURITY_ARCHITECTURE.md
 
 ## Deferred Items (Carried Forward)
 
 - SharePoint document access (blocked on Azure AD admin consent — see `docs/SHAREPOINT_DOCUMENT_ACCESS.md`)
 - Dynamics Explorer search heuristics & query optimization
 - Email notifications via Graph API (deferred until `Mail.Send` permission granted — see `docs/TODO_EMAIL_NOTIFICATIONS.md`)
-- 30-day JWT session lifetime (no revocation mechanism)
-- No CSRF on custom POST/DELETE routes
-- C3: Dynamics service principal should be scoped (requires Dynamics 365 admin)
-- M5: CORS wildcard on SSE streaming routes (set ALLOWED_ORIGINS env var)
+- C3: Dynamics service principal should be scoped (requires Dynamics 365 admin action)
+- L5: CSP allows unsafe-inline/unsafe-eval (accepted risk; Next.js limitation)
+- L7: ArXiv API uses HTTP (accepted risk; public metadata only)
+- Run `scripts/assign-orphan-records.js` on production to claim legacy NULL records
+- Run V20 migration on production (`node scripts/setup-database.js`)
 
 ## Post-Deploy Notes
 
-- `CRON_SECRET` is set in Vercel — crons are authenticated
-- Secret expiration dates have been entered via the dashboard
-- **Optional**: Set `VERCEL_API_TOKEN` + `VERCEL_PROJECT_ID` to enable automated log analysis cron
-- Gotcha: After setting new env vars in Vercel, a redeploy is needed for running functions to pick them up
+- Cron jobs should now be working after the middleware fix — check admin dashboard health history after 15-30 minutes
+- V20 migration needs to be run on production for the `was_denied`/`denial_reason` columns to exist
+- The orphan assignment script should be run once on production after deciding which profile to assign legacy records to
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `lib/services/alert-service.js` | CRUD for system_alerts with deduplication |
-| `lib/services/notification-service.js` | Unified notifications (DB + future email) |
-| `lib/services/maintenance-service.js` | Cleanup operations with audit trail |
-| `lib/utils/cron-auth.js` | Vercel cron secret verification |
-| `lib/utils/health-checker.js` | Reusable 6-service health checks |
-| `pages/api/cron/*.js` | 4 cron endpoints (maintenance, health, secrets, logs) |
-| `pages/api/admin/alerts.js` | Alert management API |
-| `pages/api/admin/maintenance.js` | Maintenance status API |
-| `pages/api/admin/secrets.js` | Secret expiration API |
-| `pages/api/admin/health-history.js` | Health check history API |
+| `lib/utils/auth.js` | CSRF validation, session revocation, app access enforcement |
+| `middleware.js` | Edge middleware with cron exclusion |
+| `scripts/setup-database.js` | V20 migration (denial logging columns) |
+| `scripts/assign-orphan-records.js` | One-time orphan record assignment |
+| `pages/api/dynamics-explorer/chat.js` | Updated logQuery with denial params |
+| `docs/SECURITY_ARCHITECTURE.md` | Security doc v3.2 |
 
 ## Testing
 
 ```bash
 npm run dev                                          # Start dev server
-curl http://localhost:3000/api/cron/maintenance       # Test maintenance cron (dev mode skips auth)
-curl http://localhost:3000/api/cron/health-check      # Test health check cron
-curl http://localhost:3000/api/cron/secret-check      # Test secret check cron
-npm run build                                        # Verify no syntax errors
+npm run build                                        # Verify no build errors
+curl http://localhost:3000/api/cron/health-check      # Test health check cron (dev bypasses auth)
+curl http://localhost:3000/api/cron/maintenance        # Test maintenance cron
+node scripts/assign-orphan-records.js --profile-id 1 --dry-run  # Preview orphan records
 ```

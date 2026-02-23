@@ -4,6 +4,21 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## February 2026 — Security Remediation & Cron Fix (Session 67)
+
+Implemented 4 security findings from SECURITY_ARCHITECTURE.md and fixed a production bug where all Vercel cron jobs were silently failing.
+
+- **CSRF origin validation**: `validateOrigin()` in `lib/utils/auth.js` — checks `Origin`/`Referer` against `NEXTAUTH_URL` for state-changing methods. Called in `requireAuth()` and `requireAppAccess()`.
+- **Session revocation**: `is_active` check added to `requireAppAccess()` (parallel query, cached) and `requireAuthWithProfile()` (direct query). Disabled accounts blocked before superuser bypass.
+- **Dynamics denial logging**: V20 migration adds `was_denied`/`denial_reason` to `dynamics_query_log`. Restriction violations now persisted to audit table.
+- **Orphan record cleanup**: `scripts/assign-orphan-records.js` for legacy NULL `user_profile_id` rows.
+- **Cron middleware fix**: Edge middleware was intercepting `/api/cron/*` requests (JWT check on CRON_SECRET-authenticated requests). Added `api/cron` to matcher exclusions. All 4 crons were silently failing in production.
+- **SECURITY_ARCHITECTURE.md v3.2**: Fixed maxAge (30d→7d), added M8/M9 as REMEDIATED, updated L8/L9 to REMEDIATED, documented cron exclusion.
+
+**Files:** `lib/utils/auth.js`, `middleware.js`, `pages/api/dynamics-explorer/chat.js`, `scripts/setup-database.js`, `scripts/assign-orphan-records.js`, `scripts/README.md`, `docs/SECURITY_ARCHITECTURE.md`
+
+---
+
 ## February 2026 — Error Message Hardening & Security Doc Regeneration (Session 64)
 
 Fixed internal error message leakage and regenerated the security architecture document.
