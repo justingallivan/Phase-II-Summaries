@@ -1012,7 +1012,7 @@ Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js. Migrating t
 
 **Risk:** Overly permissive CORS allows any origin to make requests to API endpoints. While authentication still provides access control, a browser-based attack from a malicious site could make API calls on behalf of authenticated users.
 
-**Recommendation:** Set explicit allowed origins in the `ALLOWED_ORIGINS` environment variable for production.
+**Status: REMEDIATED.** The `Access-Control-Allow-Origin: *` header was removed from `next.config.js` global headers and 10 inline SSE endpoints (Session 62), and from the shared `ResponseStreamer` class (Session 66). All SSE requests are same-origin and do not require CORS headers.
 
 #### M6: Internal Error Messages Leaked to Clients
 

@@ -19,10 +19,7 @@ export class ResponseStreamer {
     this.res.setHeader('Cache-Control', 'no-cache');
     this.res.setHeader('Connection', 'keep-alive');
     this.res.setHeader('Transfer-Encoding', 'chunked');
-    
-    // For CORS if needed
-    this.res.setHeader('Access-Control-Allow-Origin', '*');
-    
+
     this.isStreaming = true;
   }
 
