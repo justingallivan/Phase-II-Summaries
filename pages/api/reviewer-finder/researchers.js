@@ -77,7 +77,7 @@ export default async function handler(req, res) {
     if (primaryId) {
       return handleMerge(req, res);
     } else if (name) {
-      return handleCreate(req, res);
+      return handleCreate(req, res, access);
     } else {
       return res.status(400).json({ error: 'Either primaryId (for merge) or name (for create) is required' });
     }
@@ -743,7 +743,7 @@ async function handleDelete(req, res) {
  * Handle POST - Create new researcher
  * Creates a new researcher with optional proposal association
  */
-async function handleCreate(req, res) {
+async function handleCreate(req, res, access) {
   try {
     const {
       name,
@@ -838,7 +838,7 @@ async function handleCreate(req, res) {
       const proposalResult = await sql`
         SELECT DISTINCT ON (proposal_id)
           proposal_id, proposal_title, summary_blob_url, co_investigators, co_investigator_count,
-          grant_cycle_id, user_profile_id
+          grant_cycle_id
         FROM reviewer_suggestions
         WHERE proposal_id = ${proposalId}
         ORDER BY proposal_id, suggested_at DESC
@@ -848,7 +848,7 @@ async function handleCreate(req, res) {
       if (proposalResult.rows.length > 0) {
         const proposal = proposalResult.rows[0];
 
-        // Create reviewer_suggestions entry
+        // Create reviewer_suggestions entry using the authenticated user's profile ID
         await sql`
           INSERT INTO reviewer_suggestions (
             proposal_id,
@@ -877,7 +877,7 @@ async function handleCreate(req, res) {
             ${proposal.co_investigators},
             ${proposal.co_investigator_count},
             ${proposal.grant_cycle_id},
-            ${proposal.user_profile_id}
+            ${access.profileId}
           )
           ON CONFLICT (proposal_id, researcher_id) DO NOTHING
         `;

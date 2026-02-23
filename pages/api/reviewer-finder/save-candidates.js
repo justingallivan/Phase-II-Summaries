@@ -189,9 +189,10 @@ export default async function handler(req, res) {
         }
 
         // Step 5: Insert/update reviewer suggestion
-        // Parse grantCycleId and userProfileId (may be string from request body)
+        // Parse grantCycleId (may be string from request body)
+        // Always use authenticated user's profile ID; fall back to body value only if auth bypassed
         const cycleIdValue = grantCycleId ? parseInt(grantCycleId, 10) : null;
-        const profileIdValue = userProfileId ? parseInt(userProfileId, 10) : null;
+        const profileIdValue = access.profileId || (userProfileId ? parseInt(userProfileId, 10) : null);
 
         await sql`
           INSERT INTO reviewer_suggestions (
