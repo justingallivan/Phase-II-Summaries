@@ -466,6 +466,7 @@ function SecretExpirationSection() {
   };
 
   const saveEdit = async () => {
+    if (!editValues.rotationDate && !editValues.expirationDate) return;
     setSaving(true);
     try {
       const res = await fetch('/api/admin/secrets', {
@@ -476,8 +477,13 @@ function SecretExpirationSection() {
       if (res.ok) {
         setEditingKey(null);
         fetchSecrets();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        console.error('Secret save failed:', res.status, err);
       }
-    } catch {}
+    } catch (err) {
+      console.error('Secret save error:', err);
+    }
     setSaving(false);
   };
 
