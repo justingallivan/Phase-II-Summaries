@@ -1,48 +1,18 @@
-# Session 68 Prompt: Next Steps
+# Session 69 Prompt: Next Steps
 
-## Session 67 Summary
+## Session 68 Summary
 
-Security remediation session. Implemented 4 actionable security findings from `SECURITY_ARCHITECTURE.md`, then diagnosed and fixed a production bug where all Vercel cron jobs were silently failing.
+Quick bug fix session. Fixed a CSP (Content Security Policy) violation that was blocking all Vercel Blob client-side file uploads across every app that uses `FileUploaderSimple`.
 
 ### What Was Completed
 
-1. **CSRF Origin Header Validation** (`lib/utils/auth.js`)
-   - Added `validateOrigin()` helper — compares `Origin`/`Referer` against `NEXTAUTH_URL` for POST/PUT/PATCH/DELETE
-   - Called in both `requireAuth()` and `requireAppAccess()`, after kill switch check
-   - GET/HEAD/OPTIONS exempt; missing headers allowed through (cron/server-to-server safe)
-   - Dev mode (`AUTH_REQUIRED=false`) bypasses entirely
-
-2. **Session Revocation for Disabled Accounts** (`lib/utils/auth.js`)
-   - `requireAppAccess()`: Added third parallel query for `is_active` on `user_profiles`, cached with 2-min TTL; disabled accounts blocked **before** superuser bypass
-   - `requireAuthWithProfile()`: Direct `is_active` DB check with fail-open try/catch
-   - `requireAuth()` intentionally unchanged (infrastructure endpoints don't need `is_active`)
-
-3. **Dynamics Restriction Violation Logging** (`scripts/setup-database.js`, `pages/api/dynamics-explorer/chat.js`)
-   - V20 migration: `was_denied` BOOLEAN + `denial_reason` TEXT columns on `dynamics_query_log`, partial index on denied rows
-   - `logQuery()` updated with `wasDenied`/`denialReason` params
-   - Restriction-denied branch now persists denial to audit table
-
-4. **Legacy NULL user_profile_id Cleanup** (`scripts/assign-orphan-records.js`)
-   - New script: `--profile-id <N>` and `--dry-run` flags
-   - Assigns NULL rows in `reviewer_suggestions` and `proposal_searches`
-   - Idempotent; documented in `scripts/README.md`
-
-5. **Security Architecture v3.2** (`docs/SECURITY_ARCHITECTURE.md`)
-   - Fixed session maxAge: "30 days" → "7 days" (two locations)
-   - Added M8 (CSRF) and M9 (Session Revocation) as REMEDIATED
-   - Updated L8 (Denial Logging) and L9 (Orphan Records) to REMEDIATED
-   - Updated auth function table, audit logging table, security controls
-   - Added cron middleware exclusion documentation
-
-6. **Cron Job Middleware Fix** (`middleware.js`)
-   - **Root cause**: Edge middleware matched `/api/cron/*`, causing JWT validation on cron requests that carry `CRON_SECRET` instead of a session cookie — all 4 crons silently redirected to `/auth/signin`
-   - **Fix**: Added `api/cron` to the middleware matcher exclusion list
-   - All crons should now be executing in production (health checks writing to `health_check_history`, maintenance running, etc.)
+1. **CSP connect-src Fix for Blob Uploads** (`next.config.js`)
+   - **Root cause**: The `@vercel/blob/client` `upload()` function sends files directly to `https://vercel.com/api/blob/` after obtaining a token from `/api/upload-handler`, but the CSP `connect-src` directive only allowed `'self'` and `https://*.public.blob.vercel-storage.com` (for reading blobs)
+   - **Fix**: Added `https://vercel.com` to the `connect-src` directive
+   - Affects all apps using `FileUploaderSimple`: batch summaries, Phase I/II writeups, expense reporter, peer review summarizer, literature analyzer, etc.
 
 ### Commits
-- `bd2a98d` Add CSRF protection, session revocation, and denial audit logging
-- `4de6433` Fix cron jobs blocked by edge middleware JWT check
-- `499b1ee` Document cron middleware exclusion in SECURITY_ARCHITECTURE.md
+- `feded1f` Fix CSP blocking Vercel Blob client uploads
 
 ## Deferred Items (Carried Forward)
 
@@ -52,32 +22,19 @@ Security remediation session. Implemented 4 actionable security findings from `S
 - C3: Dynamics service principal should be scoped (requires Dynamics 365 admin action)
 - L5: CSP allows unsafe-inline/unsafe-eval (accepted risk; Next.js limitation)
 - L7: ArXiv API uses HTTP (accepted risk; public metadata only)
-- ~~Run `scripts/assign-orphan-records.js` on production~~ Done (2 rows → Justin)
-- ~~Run V20 migration on production~~ Done
-
-## Post-Deploy Notes
-
-- Cron jobs should now be working after the middleware fix — check admin dashboard health history
-- V20 migration has been run on production — `was_denied`/`denial_reason` columns exist on `dynamics_query_log`
-- Orphan records assigned: 2 `reviewer_suggestions` rows assigned to Justin (profile 2); 0 orphan `proposal_searches`
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `lib/utils/auth.js` | CSRF validation, session revocation, app access enforcement |
-| `middleware.js` | Edge middleware with cron exclusion |
-| `scripts/setup-database.js` | V20 migration (denial logging columns) |
-| `scripts/assign-orphan-records.js` | One-time orphan record assignment |
-| `pages/api/dynamics-explorer/chat.js` | Updated logQuery with denial params |
-| `docs/SECURITY_ARCHITECTURE.md` | Security doc v3.2 |
+| `next.config.js` | CSP and security headers |
+| `shared/components/FileUploaderSimple.js` | Client-side blob upload component |
+| `pages/api/upload-handler.js` | Server-side blob upload token handler |
 
 ## Testing
 
 ```bash
-npm run dev                                          # Start dev server
-npm run build                                        # Verify no build errors
-curl http://localhost:3000/api/cron/health-check      # Test health check cron (dev bypasses auth)
-curl http://localhost:3000/api/cron/maintenance        # Test maintenance cron
-node scripts/assign-orphan-records.js --profile-id 1 --dry-run  # Preview orphan records
+npm run dev                    # Start dev server
+npm run build                  # Verify no build errors
+# Upload a PDF via batch-proposal-summaries to verify blob uploads work
 ```
