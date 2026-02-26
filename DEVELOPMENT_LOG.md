@@ -4,6 +4,21 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## February 2026 — ErrorAlert, Crawler Prevention, Analytics & Dependency Cleanup (Session 69)
+
+Security hardening and infrastructure cleanup session.
+
+- **Shared ErrorAlert component**: `shared/components/ErrorAlert.js` — pattern-matches errors into 12 categories with user-friendly messages, timestamps, reference codes, and collapsible raw details. Validation messages get amber styling. Replaced 11 identical inline error blocks across all app pages.
+- **Bot/crawler prevention**: `public/robots.txt` (disallow all), `X-Robots-Tag` header (noindex/nofollow/noarchive), `<meta name="robots">` tag in `_app.js`.
+- **Vercel Web Analytics**: Added `@vercel/analytics` package and `<Analytics />` component, CSP updated for `vercel-insights.com`.
+- **Dependency cleanup**: Removed unused `eslint`/`eslint-config-next` (resolved all 3 npm audit vulnerabilities), removed deprecated `swcMinify` config, committed missing `dompurify` dependency.
+- **Dependabot**: `.github/dependabot.yml` for weekly npm dependency checks.
+- **IT security response**: Drafted architecture documentation for IT review of Dynamics Explorer data flow.
+
+**Files:** `shared/components/ErrorAlert.js`, `public/robots.txt`, `next.config.js`, `pages/_app.js`, `.github/dependabot.yml`, `package.json`, 11 app pages
+
+---
+
 ## February 2026 — Security Remediation & Cron Fix (Session 67)
 
 Implemented 4 security findings from SECURITY_ARCHITECTURE.md and fixed a production bug where all Vercel cron jobs were silently failing.
