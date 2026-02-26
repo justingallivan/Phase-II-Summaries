@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import DOMPurify from 'dompurify';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import HelpButton from '../shared/components/HelpButton';
 import { useProfile } from '../shared/context/ProfileContext';
@@ -537,7 +538,7 @@ const MessageBubble = React.memo(function MessageBubble({ message, onCopy }) {
               <div
                 key={i}
                 className="text-sm leading-relaxed prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: renderMarkdownText(seg.content) }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdownText(seg.content)) }}
               />
             )
           ))}
