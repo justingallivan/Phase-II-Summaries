@@ -1,4 +1,5 @@
 import Head from 'next/head'
+import { Analytics } from '@vercel/analytics/next'
 import '../styles/globals.css'
 import { SessionProvider } from 'next-auth/react'
 import { ProfileProvider } from '../shared/context/ProfileContext'
@@ -17,6 +18,7 @@ export default function App({ Component, pageProps: { session, ...pageProps } })
           <AppAccessProvider>
             <WelcomeModal />
             <Component {...pageProps} />
+            <Analytics />
           </AppAccessProvider>
         </ProfileProvider>
       </RequireAuth>
