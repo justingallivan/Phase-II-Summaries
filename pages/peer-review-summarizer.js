@@ -1,7 +1,9 @@
 import { useState, useCallback } from 'react';
+import DOMPurify from 'dompurify';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
+import ErrorAlert from '../shared/components/ErrorAlert';
 
 function PeerReviewSummarizer() {
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -153,14 +155,7 @@ function PeerReviewSummarizer() {
         icon="📝"
       />
 
-      {error && (
-        <Card className="mb-6 border-red-200 bg-red-50">
-          <div className="flex items-center gap-3">
-            <span className="text-red-600 text-xl">⚠️</span>
-            <p className="text-red-800 font-medium">{error}</p>
-          </div>
-        </Card>
-      )}
+      <ErrorAlert error={error} onDismiss={() => setError(null)} />
 
       <Card className="mb-6">
         <div className="mb-4">
@@ -233,7 +228,7 @@ function PeerReviewSummarizer() {
               <div className="prose max-w-none p-4 bg-gray-50 rounded-lg border">
                 <div 
                   dangerouslySetInnerHTML={{
-                    __html: convertMarkdownToHTML(results.formatted)
+                    __html: DOMPurify.sanitize(convertMarkdownToHTML(results.formatted))
                   }}
                 />
               </div>
@@ -245,7 +240,7 @@ function PeerReviewSummarizer() {
                 <div className="prose max-w-none p-4 bg-gray-50 rounded-lg border">
                   <div 
                     dangerouslySetInnerHTML={{
-                      __html: convertMarkdownToHTML(results.structured.questions)
+                      __html: DOMPurify.sanitize(convertMarkdownToHTML(results.structured.questions))
                     }}
                   />
                 </div>

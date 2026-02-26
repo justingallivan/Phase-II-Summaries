@@ -3,6 +3,7 @@ import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import ResultsDisplay from '../shared/components/ResultsDisplay';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
+import ErrorAlert from '../shared/components/ErrorAlert';
 
 function ProposalSummarizer() {
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -239,14 +240,7 @@ function ProposalSummarizer() {
         icon="✍️"
       />
 
-      {error && (
-        <Card className="mb-6 border-red-200 bg-red-50">
-          <div className="flex items-center gap-3">
-            <span className="text-red-600 text-xl">⚠️</span>
-            <p className="text-red-800 font-medium">{error}</p>
-          </div>
-        </Card>
-      )}
+      <ErrorAlert error={error} onDismiss={() => setError(null)} />
 
       <Card className="mb-6">
         <div className="mb-4">

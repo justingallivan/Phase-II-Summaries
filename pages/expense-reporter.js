@@ -3,6 +3,7 @@ import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import { FiDollarSign, FiDownload, FiEdit, FiCheck, FiX } from 'react-icons/fi';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
+import ErrorAlert from '../shared/components/ErrorAlert';
 
 function ExpenseReporter() {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -347,11 +348,7 @@ function ExpenseReporter() {
               </div>
             )}
 
-            {error && (
-              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-red-700">{error}</p>
-              </div>
-            )}
+            <ErrorAlert error={error} onDismiss={() => setError(null)} className="mt-4" />
 
             <div className="flex justify-center mt-6">
               <Button

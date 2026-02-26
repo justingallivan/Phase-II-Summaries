@@ -4,6 +4,7 @@ import HelpButton from '../shared/components/HelpButton';
 import ApiSettingsPanel from '../shared/components/ApiSettingsPanel';
 import { useProfile } from '../shared/context/ProfileContext';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
+import ErrorAlert from '../shared/components/ErrorAlert';
 
 /**
  * Confidence badge component
@@ -635,13 +636,7 @@ function IntegrityScreenerPage() {
         )}
 
         {/* Error */}
-        {error && (
-          <Card>
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-red-700">{error}</p>
-            </div>
-          </Card>
-        )}
+        <ErrorAlert error={error} onDismiss={() => setError(null)} />
 
         {/* Results */}
         {results && (

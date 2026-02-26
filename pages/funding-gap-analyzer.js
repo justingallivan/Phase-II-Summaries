@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
+import ErrorAlert from '../shared/components/ErrorAlert';
 
 function FundingGapAnalyzer() {
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -116,20 +117,7 @@ function FundingGapAnalyzer() {
         name: error.name
       });
 
-      let errorMessage = 'Failed to analyze funding gaps';
-      if (error.name === 'SyntaxError') {
-        errorMessage = 'Error parsing server response. Please try again.';
-      } else if (error.message.includes('fetch')) {
-        errorMessage = 'Network error. Please check your connection and try again.';
-      } else if (error.message.includes('API key')) {
-        errorMessage = 'Invalid API key. Please check your API key and try again.';
-      } else if (error.message.includes('rate limit')) {
-        errorMessage = 'Rate limit exceeded. Please wait a moment and try again.';
-      } else {
-        errorMessage = error.message || 'Failed to analyze funding gaps';
-      }
-
-      setError(errorMessage);
+      setError(error.message || 'Failed to analyze funding gaps');
     } finally {
       setProcessing(false);
     }
@@ -210,14 +198,7 @@ function FundingGapAnalyzer() {
         icon="💵"
       />
 
-      {error && (
-        <Card className="mb-6 border-red-200 bg-red-50">
-          <div className="flex items-center gap-3">
-            <span className="text-red-600 text-xl">⚠️</span>
-            <p className="text-red-800 font-medium">{error}</p>
-          </div>
-        </Card>
-      )}
+      <ErrorAlert error={error} onDismiss={() => setError(null)} />
 
       <div className="space-y-6">
         <Card>
