@@ -12,6 +12,7 @@ export default function App({ Component, pageProps: { session, ...pageProps } })
     <SessionProvider session={session}>
       <Head>
         <meta name="robots" content="noindex, nofollow" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
       </Head>
       <RequireAuth>
         <ProfileProvider>
