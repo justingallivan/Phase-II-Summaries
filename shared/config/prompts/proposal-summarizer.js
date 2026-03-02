@@ -81,15 +81,18 @@ Write in a neutral, factual tone. Avoid promotional language or unnecessary adje
 export function createStructuredDataExtractionPrompt(text, filename, textLimit = 10000) {
   return `Based on this research proposal, please extract the following information and return it as a JSON object.
 
-IMPORTANT: The filename "${filename}" may contain hints about the institution name. Use this information to help identify the correct institution.
+IMPORTANT:
+- The filename "${filename}" may contain hints about the institution name. Use this information to help identify the correct institution.
+- For investigator names, look specifically at the "Key Personnel" or "Senior/Key Personnel" section of the proposal. This section contains the most complete and accurate names with full first and last names. Do NOT rely on abbreviated or last-name-only references elsewhere in the text.
+- Always use full names (first and last) for all investigators.
 
 {
   "filename": "${filename}",
   "institution": "Primary institution name (check filename for hints)",
   "city_state": "City, State of the primary institution (e.g., 'Pasadena, California')",
   "project_title": "Full project title as stated in the proposal",
-  "principal_investigator": "Name of PI",
-  "investigators": ["List", "of", "investigators"],
+  "principal_investigator": "Full name of PI (first and last name from Key Personnel section)",
+  "investigators": ["Full name of each investigator from Key Personnel section"],
   "research_area": "Main research domain",
   "methods": ["List", "of", "key", "methods"],
   "funding_amount": "Amount requested if mentioned",
