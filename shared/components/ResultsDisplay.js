@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import styles from './ResultsDisplay.module.css';
 
-export default function ResultsDisplay({ 
-  results, 
-  onRefine, 
+export default function ResultsDisplay({
+  results,
+  onRefine,
   onQuestionAsk,
+  onWordExport,
   showActions = true,
   exportFormats = ['markdown', 'json'],
   hideMetadata = false
@@ -219,6 +220,15 @@ export default function ResultsDisplay({
                           title="Export reviewers as CSV"
                         >
                           📈 CSV
+                        </button>
+                      )}
+                      {onWordExport && (
+                        <button
+                          onClick={() => onWordExport(filename, result)}
+                          className={styles.actionButton}
+                          title="Export as Word document"
+                        >
+                          📄 Word
                         </button>
                       )}
                     </div>

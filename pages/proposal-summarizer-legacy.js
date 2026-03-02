@@ -1,14 +1,11 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import ResultsDisplay from '../shared/components/ResultsDisplay';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
 import ErrorAlert from '../shared/components/ErrorAlert';
-import { useProfile } from '../shared/context/ProfileContext';
-import { parseSections } from '../shared/config/prompts/proposal-summarizer';
 
-function ProposalSummarizer() {
-  const { profileName } = useProfile();
+function ProposalSummarizerLegacy() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
@@ -24,31 +21,6 @@ function ProposalSummarizer() {
   const [feedbackText, setFeedbackText] = useState('');
   const [selectedFileForQA, setSelectedFileForQA] = useState('');
   const [selectedFileForRefine, setSelectedFileForRefine] = useState('');
-
-  // Staff Lead — pre-filled from profile, editable
-  const [staffLead, setStaffLead] = useState('');
-
-  // Word export modal state
-  const [showWordExportModal, setShowWordExportModal] = useState(false);
-  const [selectedFileForExport, setSelectedFileForExport] = useState('');
-  const [selectedResultForExport, setSelectedResultForExport] = useState(null);
-  const [wordExportFields, setWordExportFields] = useState({
-    programType: 'Science and Engineering',
-    invitedAmount: '',
-    projectBudget: '',
-    recommendation: '',
-    shortTitle: '',
-    cityState: '',
-    requestedAmount: '',
-  });
-  const [isGeneratingWord, setIsGeneratingWord] = useState(false);
-
-  // Initialize staff lead from profile name
-  useEffect(() => {
-    if (profileName && !staffLead) {
-      setStaffLead(profileName);
-    }
-  }, [profileName]);
 
   const handleFilesUploaded = useCallback((uploadedFiles) => {
     setSelectedFiles(uploadedFiles);
@@ -68,7 +40,7 @@ function ProposalSummarizer() {
     setError(null);
 
     try {
-      const response = await fetch('/api/process', {
+      const response = await fetch('/api/process-legacy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -239,72 +211,14 @@ function ProposalSummarizer() {
     }
   };
 
-  // --- Word Export ---
-  const handleWordExport = (filename, result) => {
-    setSelectedFileForExport(filename);
-    setSelectedResultForExport(result);
-
-    // Pre-fill from structured data
-    const structured = result.structured || {};
-    setWordExportFields(prev => ({
-      ...prev,
-      requestedAmount: structured.funding_amount && structured.funding_amount !== 'Not specified'
-        ? structured.funding_amount : '',
-      cityState: structured.city_state || '',
-      staffLead: staffLead,
-    }));
-
-    setShowWordExportModal(true);
-  };
-
-  const generateWordDocument = async () => {
-    setIsGeneratingWord(true);
-    setError(null);
-
-    try {
-      const { generatePhaseIIDocument } = await import('../shared/utils/word-export');
-
-      const result = selectedResultForExport;
-      const sections = parseSections(result.formatted);
-      const metadata = result.structured || {};
-
-      const blob = await generatePhaseIIDocument(sections, metadata, {
-        ...wordExportFields,
-        staffLead: wordExportFields.staffLead || staffLead,
-      });
-
-      // Trigger download
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const cleanFilename = selectedFileForExport.replace(/\.[^/.]+$/, '');
-      a.download = `${cleanFilename}_Phase_II_Writeup.docx`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      setShowWordExportModal(false);
-    } catch (err) {
-      console.error('Word export error:', err);
-      setError(`Failed to generate Word document: ${err.message}`);
-    } finally {
-      setIsGeneratingWord(false);
-    }
-  };
-
-  const updateExportField = (field, value) => {
-    setWordExportFields(prev => ({ ...prev, [field]: value }));
-  };
-
   return (
     <Layout
-      title="Create Phase II Writeup Draft"
+      title="Create Phase II Writeup Draft (Legacy)"
       description="Generate standardized writeup drafts from PDF research proposals using Claude AI"
     >
       <PageHeader
-        title="Create Phase II Writeup Draft"
-        subtitle="Generate standardized writeup drafts from PDF research proposals using Claude AI"
+        title="Create Phase II Writeup Draft (Legacy)"
+        subtitle="Legacy version — generates original-format summaries"
         icon="✍️"
       />
 
@@ -317,23 +231,6 @@ function ProposalSummarizer() {
             <span>Upload Research Proposals</span>
           </h2>
         </div>
-
-        {/* Staff Lead field */}
-        <div className="mb-4">
-          <label htmlFor="staff-lead" className="block text-sm font-medium text-gray-700 mb-1">
-            Staff Lead
-          </label>
-          <input
-            id="staff-lead"
-            type="text"
-            value={staffLead}
-            onChange={(e) => setStaffLead(e.target.value)}
-            placeholder="Enter staff lead name"
-            className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-          />
-          <p className="mt-1 text-xs text-gray-500">Pre-filled from your profile. Used in Word template export.</p>
-        </div>
-
         <FileUploaderSimple
           onFilesUploaded={handleFilesUploaded}
           multiple={true}
@@ -384,7 +281,6 @@ function ProposalSummarizer() {
             results={results}
             onRefine={handleRefine}
             onQuestionAsk={handleQuestionAsk}
-            onWordExport={handleWordExport}
             showActions={true}
             exportFormats={['markdown', 'json']}
           />
@@ -520,182 +416,10 @@ function ProposalSummarizer() {
           </div>
         </div>
       )}
-
-      {/* Word Export Modal */}
-      {showWordExportModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={isGeneratingWord ? null : () => setShowWordExportModal(false)}>
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Export Word Document</h2>
-              <button
-                onClick={() => setShowWordExportModal(false)}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-                disabled={isGeneratingWord}
-              >
-                ✕
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
-              <p className="text-sm text-gray-600 mb-4">
-                Review and complete the fields below. Pre-filled values come from the AI analysis. The generated Word document will follow the Keck Phase II writeup template format.
-              </p>
-
-              <div className="space-y-4">
-                {/* Pre-filled from Claude */}
-                <div className="bg-gray-50 rounded-lg p-3 space-y-3">
-                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">From AI Analysis</h3>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Institution</label>
-                    <input
-                      type="text"
-                      value={selectedResultForExport?.structured?.institution || ''}
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm text-gray-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">City, State</label>
-                    <input
-                      type="text"
-                      value={wordExportFields.cityState}
-                      onChange={(e) => updateExportField('cityState', e.target.value)}
-                      placeholder="e.g., Pasadena, California"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">PI Name</label>
-                    <input
-                      type="text"
-                      value={selectedResultForExport?.structured?.principal_investigator || ''}
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm text-gray-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Project Title</label>
-                    <input
-                      type="text"
-                      value={selectedResultForExport?.structured?.project_title || ''}
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm text-gray-600"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Requested Amount</label>
-                    <input
-                      type="text"
-                      value={wordExportFields.requestedAmount}
-                      onChange={(e) => updateExportField('requestedAmount', e.target.value)}
-                      placeholder="e.g., $1,000,000"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-
-                {/* Internal fields */}
-                <div className="bg-blue-50 rounded-lg p-3 space-y-3">
-                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Internal Fields</h3>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Program Type</label>
-                    <select
-                      value={wordExportFields.programType}
-                      onChange={(e) => updateExportField('programType', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="Science and Engineering">Science and Engineering</option>
-                      <option value="Medical Research">Medical Research</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Staff Lead</label>
-                    <input
-                      type="text"
-                      value={wordExportFields.staffLead || staffLead}
-                      onChange={(e) => updateExportField('staffLead', e.target.value)}
-                      placeholder="Staff lead name"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Short Title (for header)</label>
-                    <input
-                      type="text"
-                      value={wordExportFields.shortTitle}
-                      onChange={(e) => updateExportField('shortTitle', e.target.value)}
-                      placeholder="Abbreviated project title for page header"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Invited Amount ($)</label>
-                      <input
-                        type="text"
-                        value={wordExportFields.invitedAmount}
-                        onChange={(e) => updateExportField('invitedAmount', e.target.value)}
-                        placeholder="e.g., $1,000,000"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Project Budget ($)</label>
-                      <input
-                        type="text"
-                        value={wordExportFields.projectBudget}
-                        onChange={(e) => updateExportField('projectBudget', e.target.value)}
-                        placeholder="e.g., $1,500,000"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Recommendation ($)</label>
-                    <input
-                      type="text"
-                      value={wordExportFields.recommendation}
-                      onChange={(e) => updateExportField('recommendation', e.target.value)}
-                      placeholder="e.g., $1,000,000"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-gray-200 p-4 flex justify-end gap-3">
-              <Button
-                variant="secondary"
-                onClick={() => setShowWordExportModal(false)}
-                disabled={isGeneratingWord}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={generateWordDocument}
-                disabled={isGeneratingWord}
-              >
-                {isGeneratingWord ? 'Generating...' : 'Generate Word Document'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </Layout>
   );
 }
 
-export default function ProposalSummarizerPage() {
-  return <RequireAppAccess appKey="proposal-summarizer"><ProposalSummarizer /></RequireAppAccess>;
+export default function ProposalSummarizerLegacyPage() {
+  return <RequireAppAccess appKey="proposal-summarizer"><ProposalSummarizerLegacy /></RequireAppAccess>;
 }

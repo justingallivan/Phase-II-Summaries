@@ -1,6 +1,6 @@
 import pdf from 'pdf-parse';
 import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
-import { createSummarizationPrompt, createStructuredDataExtractionPrompt, enhanceFormatting as enhanceFormattingPrompt } from '../../shared/config/prompts/proposal-summarizer';
+import { createSummarizationPrompt, createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer-legacy';
 import { requireAppAccess } from '../../lib/utils/auth';
 import { logUsage } from '../../lib/utils/usage-logger';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
@@ -12,7 +12,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Require authentication + app access
+  // Require authentication + app access (same as main endpoint)
   const access = await requireAppAccess(req, res, 'batch-proposal-summaries', 'proposal-summarizer');
   if (!access) return;
 
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   await loadModelOverrides();
 
   try {
-    const { files, summaryLength = 2 } = req.body;
+    const { files, summaryLength = 2, summaryLevel = 'technical-non-expert' } = req.body;
     const apiKey = process.env.CLAUDE_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: 'Claude API key not configured on server' });
@@ -40,42 +40,31 @@ export default async function handler(req, res) {
     res.setHeader('Connection', 'keep-alive');
 
     const results = {};
-    
+
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const progress = Math.round((i / files.length) * 90); // Leave 10% for final processing
-      
-      // Send progress update
+      const progress = Math.round((i / files.length) * 90);
+
       res.write(`data: ${JSON.stringify({
         progress,
         message: `Processing ${file.filename}...`
       })}\n\n`);
 
       try {
-        console.log(`Processing file: ${file.filename}, URL: ${file.url}`);
-        
-        // Fetch file from blob URL
         const fileResponse = await fetch(file.url);
         if (!fileResponse.ok) {
           throw new Error(`Failed to fetch file from blob storage: ${fileResponse.statusText}`);
         }
-        
+
         const fileBuffer = await fileResponse.arrayBuffer();
-        console.log(`File buffer size: ${fileBuffer.byteLength} bytes`);
-        
-        // Extract text from PDF
         const pdfData = await pdf(Buffer.from(fileBuffer));
         const text = pdfData.text;
-        console.log(`Extracted text length: ${text ? text.length : 0} characters`);
 
         if (!text || text.trim().length < 100) {
           throw new Error('PDF appears to be empty or contains insufficient text');
         }
 
-        // Generate summary using Claude API
-        console.log(`Sending to Claude API with text length: ${text.length}`);
-        const summary = await generateSummary(text, file.filename, apiKey, summaryLength, userProfileId);
-        console.log(`Received summary:`, summary ? 'Success' : 'Failed');
+        const summary = await generateSummary(text, file.filename, apiKey, summaryLength, summaryLevel, userProfileId);
         results[file.filename] = summary;
 
       } catch (fileError) {
@@ -84,15 +73,13 @@ export default async function handler(req, res) {
       }
     }
 
-    // Send final results
     const finalData = {
       progress: 100,
       message: 'Complete!',
       results
     };
-    
-    res.write(`data: ${JSON.stringify(finalData)}\n\n`);
 
+    res.write(`data: ${JSON.stringify(finalData)}\n\n`);
     res.end();
 
   } catch (error) {
@@ -105,9 +92,9 @@ export default async function handler(req, res) {
   }
 }
 
-async function generateSummary(text, filename, apiKey, summaryLength, userProfileId) {
+async function generateSummary(text, filename, apiKey, summaryLength, summaryLevel, userProfileId) {
   try {
-    const prompt = createSummarizationPrompt(text, summaryLength);
+    const prompt = createSummarizationPrompt(text, summaryLength, summaryLevel);
     const startTime = Date.now();
 
     const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
@@ -145,10 +132,7 @@ async function generateSummary(text, filename, apiKey, summaryLength, userProfil
     });
     const summaryText = data.content[0].text;
 
-    // Create formatted markdown version
     const formatted = enhanceFormatting(summaryText, filename);
-    
-    // Extract structured data
     const structured = await extractStructuredData(text, filename, summaryText, apiKey);
 
     return {
@@ -187,7 +171,7 @@ async function extractStructuredData(text, filename, summary, apiKey) {
     if (response.ok) {
       const data = await response.json();
       const jsonText = data.content[0].text;
-      
+
       try {
         const parsed = JSON.parse(jsonText);
         return {
@@ -203,12 +187,27 @@ async function extractStructuredData(text, filename, summary, apiKey) {
     console.warn('Structured data extraction failed, using fallback:', error.message);
   }
 
-  // Fallback to basic extraction if AI fails
   return createStructuredDataFallback(text, filename);
 }
 
 function enhanceFormatting(summary, filename) {
-  return enhanceFormattingPrompt(summary, filename);
+  const institution = extractInstitutionFromFilename(filename) || 'Research Institution';
+  const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+
+  let formatted = `# ${institution}\n`;
+  formatted += `Phase II Review: ${date}\n\n`;
+  formatted += `**Filename:** ${filename}\n`;
+  formatted += `**Date Processed:** ${new Date().toLocaleDateString()}\n\n`;
+  formatted += '---\n\n';
+
+  let processedSummary = summary
+    .replace(/\*\*Executive Summary\*\*/g, '## Executive Summary')
+    .replace(/\*\*Background & Impact\*\*/g, '## Background & Impact')
+    .replace(/\*\*Methodology\*\*/g, '## Methodology')
+    .replace(/\*\*Personnel\*\*/g, '## Personnel')
+    .replace(/\*\*Justification for Keck Funding\*\*/g, '## Justification for Keck Funding');
+
+  return formatted + processedSummary;
 }
 
 function createErrorResult(filename, errorMessage) {
@@ -242,10 +241,8 @@ function createStructuredDataFallback(text, filename) {
   };
 }
 
-// Utility functions (unchanged from original)
 function extractInstitutionFromFilename(filename) {
   if (!filename) return 'Not specified';
-  
   const cleanName = filename
     .replace(/\.(pdf|PDF)$/, '')
     .replace(/_SE_Phase_II_Staff_Version$/, '')
@@ -253,7 +250,6 @@ function extractInstitutionFromFilename(filename) {
     .replace(/_Staff_Version$/, '')
     .replace(/_Final$/, '')
     .replace(/_Draft$/, '');
-  
   const patterns = [
     /California Institute of Technology/i,
     /Massachusetts Institute of Technology/i,
@@ -266,12 +262,10 @@ function extractInstitutionFromFilename(filename) {
     /[A-Za-z\s]+ Medical Center/i,
     /[A-Za-z\s]+ Research Institute/i
   ];
-  
   for (const pattern of patterns) {
     const match = cleanName.match(pattern);
     if (match) return match[0].trim();
   }
-  
   const parts = cleanName.split('_');
   if (parts.length > 1) {
     const firstPart = parts[0].replace(/([a-z])([A-Z])/g, '$1 $2');
@@ -279,14 +273,12 @@ function extractInstitutionFromFilename(filename) {
       return firstPart;
     }
   }
-  
   return 'Not specified';
 }
 
 function extractPrincipalInvestigator(text) {
   const piMatch = text.match(/(?:Principal Investigator|PI)[:]\s*([A-Z][a-z]+ [A-Z][a-z]+)/i);
   if (piMatch) return piMatch[1];
-  
   const nameMatch = text.match(/(?:Dr\.?\s+)?([A-Z][a-z]+ [A-Z][a-z]+)/);
   return nameMatch ? nameMatch[1] : 'Not specified';
 }
@@ -318,11 +310,9 @@ function extractMethods(text) {
     'PCR': /PCR|polymerase chain reaction/i,
     'Microscopy': /microscopy/i
   };
-  
   for (const [method, pattern] of Object.entries(methodsMap)) {
     if (pattern.test(text)) methods.push(method);
   }
-  
   return methods.length ? methods : ['Not specified'];
 }
 
@@ -340,13 +330,11 @@ function extractKeywords(text) {
   const commonWords = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'];
   const words = text.toLowerCase().match(/\b[a-z]{4,}\b/g) || [];
   const wordCount = {};
-  
   words.forEach(word => {
     if (!commonWords.includes(word)) {
       wordCount[word] = (wordCount[word] || 0) + 1;
     }
   });
-  
   return Object.entries(wordCount)
     .sort(([,a], [,b]) => b - a)
     .slice(0, 10)
@@ -356,10 +344,10 @@ function extractKeywords(text) {
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '1mb', // Only for JSON payload with blob URLs
+      sizeLimit: '1mb',
     },
     responseLimit: false,
     externalResolver: true,
   },
-  maxDuration: 300, // 5 minutes timeout for large files
+  maxDuration: 300,
 };
