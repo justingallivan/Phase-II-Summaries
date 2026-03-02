@@ -51,7 +51,7 @@ export async function generatePhaseIIDocument(sections, metadata, internalFields
   const {
     Document, Packer, Paragraph, TextRun, Header,
     TabStopType, AlignmentType, HeadingLevel, NumberFormat,
-    UnderlineType, PageNumber, BorderStyle,
+    UnderlineType, PageNumber, BorderStyle, PageBreak,
   } = await import('docx');
 
   const programAbbrev = internalFields.programType === 'Medical Research' ? 'MR' : 'SE';
@@ -106,7 +106,7 @@ export async function generatePhaseIIDocument(sections, metadata, internalFields
   function pageBreakParagraph() {
     return new Paragraph({
       spacing: { after: 0 },
-      children: [new TextRun({ break: 1 })],
+      children: [new PageBreak()],
     });
   }
 
