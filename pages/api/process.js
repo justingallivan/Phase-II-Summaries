@@ -148,8 +148,9 @@ async function generateSummary(text, filename, apiKey, summaryLength, userProfil
     // Create formatted markdown version
     const formatted = enhanceFormatting(summaryText, filename);
     
-    // Extract structured data
+    // Extract structured data, then cross-reference with summary
     const structured = await extractStructuredData(text, filename, summaryText, apiKey);
+    crossReferenceWithSummary(structured, summaryText);
 
     return {
       formatted,
@@ -209,6 +210,44 @@ async function extractStructuredData(text, filename, summary, apiKey) {
 
 function enhanceFormatting(summary, filename) {
   return enhanceFormattingPrompt(summary, filename);
+}
+
+/**
+ * Cross-reference structured extraction with the generated summary text.
+ * The summary reliably tags PI/co-PI names with <u> tags, so use those
+ * to fix the principal_investigator field when the extraction is wrong.
+ */
+function crossReferenceWithSummary(structured, summaryText) {
+  // Extract all <u>-tagged names from the summary
+  const underlinedNames = [];
+  const uRegex = /<u>(.*?)<\/u>/g;
+  let match;
+  while ((match = uRegex.exec(summaryText)) !== null) {
+    const name = match[1].trim();
+    if (name) underlinedNames.push(name);
+  }
+
+  if (underlinedNames.length === 0) return;
+
+  // Fix PI name: if the extracted value doesn't match any underlined name,
+  // use the first underlined name (which is typically the PI)
+  const currentPI = structured.principal_investigator || '';
+  const piMatchesAnyName = underlinedNames.some(name =>
+    name.toLowerCase() === currentPI.toLowerCase() ||
+    currentPI.toLowerCase().includes(name.toLowerCase()) ||
+    name.toLowerCase().includes(currentPI.toLowerCase())
+  );
+
+  if (!piMatchesAnyName && underlinedNames.length > 0) {
+    console.log(`Cross-reference fix: PI "${currentPI}" → "${underlinedNames[0]}" (from summary <u> tags)`);
+    structured.principal_investigator = underlinedNames[0];
+  }
+
+  // Also populate investigators list from <u> tags if the extraction missed them
+  if (!structured.investigators || structured.investigators.length === 0 ||
+      (structured.investigators.length === 1 && structured.investigators[0] === 'Not specified')) {
+    structured.investigators = underlinedNames;
+  }
 }
 
 function createErrorResult(filename, errorMessage) {

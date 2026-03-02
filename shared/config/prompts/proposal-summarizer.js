@@ -201,6 +201,11 @@ export function enhanceFormatting(summary, filename) {
 
   // Process the summary with proper section headers for both parts
   let processedSummary = summary
+    // Remove the --- separator and PART markers (page breaks are handled by Word export)
+    .replace(/^---+\s*$/gm, '')
+    .replace(/\*\*PART\s*1[^*]*\*\*/gi, '')
+    .replace(/\*\*PART\s*2[^*]*\*\*/gi, '')
+    .replace(/#{1,3}\s*PART\s*\d[^\n]*/gi, '')
     // Part 1 sections
     .replace(/\*\*Executive Summary:?\*\*/g, '## Executive Summary')
     .replace(/\*\*Impact:?\*\*/g, '## Impact')
@@ -211,9 +216,8 @@ export function enhanceFormatting(summary, filename) {
     .replace(/\*\*Background & Impact:?\*\*/g, '## Background & Impact')
     .replace(/\*\*Methodology:?\*\*/g, '## Methodology')
     .replace(/\*\*Personnel:?\*\*/g, '## Personnel')
-    // Part markers
-    .replace(/\*\*PART 1[^*]*\*\*/g, '### PART 1 — Summary Page')
-    .replace(/\*\*PART 2[^*]*\*\*/g, '### PART 2 — Detailed Writeup');
+    // Clean up excess blank lines left by removals
+    .replace(/\n{3,}/g, '\n\n');
 
   return formatted + processedSummary;
 }
@@ -239,7 +243,12 @@ export function parseSections(formattedMarkdown) {
   for (let i = 0; i < headers.length; i++) {
     const start = headers[i].index + headers[i].length;
     const end = i + 1 < headers.length ? headers[i + 1].index : formattedMarkdown.length;
-    const content = formattedMarkdown.substring(start, end).trim();
+    // Strip any residual --- separators, PART markers, or ### headers from content
+    const content = formattedMarkdown.substring(start, end)
+      .replace(/^---+\s*$/gm, '')
+      .replace(/#{1,3}\s*PART\s*\d[^\n]*/gi, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
     sections.set(headers[i].name, content);
   }
 
