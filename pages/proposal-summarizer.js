@@ -33,13 +33,16 @@ function ProposalSummarizer() {
   const [selectedFileForExport, setSelectedFileForExport] = useState('');
   const [selectedResultForExport, setSelectedResultForExport] = useState(null);
   const [wordExportFields, setWordExportFields] = useState({
+    institution: '',
+    cityState: '',
+    piName: '',
+    projectTitle: '',
+    requestedAmount: '',
     programType: 'Science and Engineering',
     invitedAmount: '',
     projectBudget: '',
     recommendation: '',
     shortTitle: '',
-    cityState: '',
-    requestedAmount: '',
   });
   const [isGeneratingWord, setIsGeneratingWord] = useState(false);
 
@@ -248,9 +251,14 @@ function ProposalSummarizer() {
     const structured = result.structured || {};
     setWordExportFields(prev => ({
       ...prev,
+      institution: structured.institution && structured.institution !== 'Not specified'
+        ? structured.institution : '',
+      cityState: structured.city_state || '',
+      piName: structured.principal_investigator && structured.principal_investigator !== 'Not specified'
+        ? structured.principal_investigator : '',
+      projectTitle: structured.project_title || '',
       requestedAmount: structured.funding_amount && structured.funding_amount !== 'Not specified'
         ? structured.funding_amount : '',
-      cityState: structured.city_state || '',
       staffLead: staffLead,
     }));
 
@@ -266,7 +274,14 @@ function ProposalSummarizer() {
 
       const result = selectedResultForExport;
       const sections = parseSections(result.formatted);
-      const metadata = result.structured || {};
+      // Use editable fields as overrides over raw AI extraction
+      const metadata = {
+        ...(result.structured || {}),
+        institution: wordExportFields.institution || result.structured?.institution,
+        city_state: wordExportFields.cityState || result.structured?.city_state,
+        principal_investigator: wordExportFields.piName || result.structured?.principal_investigator,
+        project_title: wordExportFields.projectTitle || result.structured?.project_title,
+      };
 
       const blob = await generatePhaseIIDocument(sections, metadata, {
         ...wordExportFields,
@@ -543,15 +558,16 @@ function ProposalSummarizer() {
               <div className="space-y-4">
                 {/* Pre-filled from Claude */}
                 <div className="bg-gray-50 rounded-lg p-3 space-y-3">
-                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">From AI Analysis</h3>
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">From AI Analysis (editable)</h3>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Institution</label>
                     <input
                       type="text"
-                      value={selectedResultForExport?.structured?.institution || ''}
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm text-gray-600"
+                      value={wordExportFields.institution}
+                      onChange={(e) => updateExportField('institution', e.target.value)}
+                      placeholder="Institution name"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
 
@@ -570,9 +586,10 @@ function ProposalSummarizer() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">PI Name</label>
                     <input
                       type="text"
-                      value={selectedResultForExport?.structured?.principal_investigator || ''}
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm text-gray-600"
+                      value={wordExportFields.piName}
+                      onChange={(e) => updateExportField('piName', e.target.value)}
+                      placeholder="Principal Investigator name"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
 
@@ -580,9 +597,10 @@ function ProposalSummarizer() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Project Title</label>
                     <input
                       type="text"
-                      value={selectedResultForExport?.structured?.project_title || ''}
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm text-gray-600"
+                      value={wordExportFields.projectTitle}
+                      onChange={(e) => updateExportField('projectTitle', e.target.value)}
+                      placeholder="Full project title"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
 
