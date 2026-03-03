@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import ResultsDisplay from '../shared/components/ResultsDisplay';
@@ -198,6 +198,18 @@ function ProposalSummarizer() {
     setShowQAModal(true);
   };
 
+  // Ref for auto-scrolling the chat container
+  const qaChatRef = useRef(null);
+  // Ref to track abort controller for cancelling streams
+  const qaAbortRef = useRef(null);
+
+  // Auto-scroll chat when messages change
+  useEffect(() => {
+    if (qaChatRef.current) {
+      qaChatRef.current.scrollTop = qaChatRef.current.scrollHeight;
+    }
+  }, [qaMessages]);
+
   const submitQuestion = async () => {
     if (!currentQuestion.trim()) {
       setError('Please enter a question');
@@ -208,37 +220,150 @@ function ProposalSummarizer() {
     const question = currentQuestion;
     setCurrentQuestion('');
 
+    // Add user message
     setQAMessages(prev => [...prev, { role: 'user', content: question }]);
 
+    // Add thinking indicator
+    setQAMessages(prev => [...prev, { role: 'assistant', content: '', isThinking: true, thinkingText: 'Analyzing your question...' }]);
+
+    const abortController = new AbortController();
+    qaAbortRef.current = abortController;
+
     try {
+      const result = results[selectedFileForQA];
       const response = await fetch('/api/qa', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
+        signal: abortController.signal,
         body: JSON.stringify({
           question,
-          context: results[selectedFileForQA].formatted,
-          filename: selectedFileForQA
-        })
+          messages: qaMessages.filter(m => !m.isThinking && !m.isError).map(m => ({ role: m.role, content: m.content })),
+          proposalText: result.extractedText || '',
+          summaryText: result.formatted || '',
+          filename: selectedFileForQA,
+        }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to get answer');
+        let errorMessage = `HTTP ${response.status}`;
+        try {
+          const errData = await response.json();
+          errorMessage = errData.error || errorMessage;
+        } catch {}
+        throw new Error(errorMessage);
       }
 
-      setQAMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
+      // Parse SSE stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let streamedText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop();
+
+        for (const chunk of lines) {
+          const eventMatch = chunk.match(/^event: (\w+)\ndata: (.+)$/s);
+          if (!eventMatch) continue;
+
+          const [, eventType, eventData] = eventMatch;
+          let parsed;
+          try {
+            parsed = JSON.parse(eventData);
+          } catch {
+            continue;
+          }
+
+          switch (eventType) {
+            case 'thinking':
+              // Update thinking indicator text
+              setQAMessages(prev => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                if (last && last.isThinking) {
+                  updated[updated.length - 1] = { ...last, thinkingText: parsed.message };
+                }
+                return updated;
+              });
+              break;
+
+            case 'text_delta':
+              streamedText += parsed.text;
+              // Replace thinking indicator with streaming message, or update streaming message
+              setQAMessages(prev => {
+                const updated = [...prev];
+                const lastIdx = updated.length - 1;
+                const last = updated[lastIdx];
+                if (last && (last.isThinking || last.isStreaming)) {
+                  updated[lastIdx] = { role: 'assistant', content: streamedText, isStreaming: true };
+                } else {
+                  updated.push({ role: 'assistant', content: streamedText, isStreaming: true });
+                }
+                return updated;
+              });
+              break;
+
+            case 'complete':
+              // Finalize the message
+              setQAMessages(prev => {
+                const updated = [...prev];
+                const lastIdx = updated.length - 1;
+                if (updated[lastIdx]?.isStreaming || updated[lastIdx]?.isThinking) {
+                  updated[lastIdx] = { role: 'assistant', content: streamedText || 'No response received.' };
+                }
+                return updated;
+              });
+              break;
+
+            case 'error':
+              setQAMessages(prev => {
+                const updated = [...prev];
+                const lastIdx = updated.length - 1;
+                if (updated[lastIdx]?.isThinking || updated[lastIdx]?.isStreaming) {
+                  updated[lastIdx] = { role: 'assistant', content: parsed.message, isError: true };
+                } else {
+                  updated.push({ role: 'assistant', content: parsed.message, isError: true });
+                }
+                return updated;
+              });
+              break;
+          }
+        }
+      }
+
+      // Ensure finalization if stream ends without 'complete' event
+      setQAMessages(prev => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (updated[lastIdx]?.isStreaming) {
+          updated[lastIdx] = { role: 'assistant', content: streamedText || 'No response received.' };
+        } else if (updated[lastIdx]?.isThinking) {
+          updated[lastIdx] = { role: 'assistant', content: streamedText || 'No response received.' };
+        }
+        return updated;
+      });
 
     } catch (error) {
+      if (error.name === 'AbortError') return;
       console.error('Q&A error:', error);
-      setQAMessages(prev => [...prev, {
-        role: 'assistant',
-        content: `Error: ${error.message}`
-      }]);
+      setQAMessages(prev => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (updated[lastIdx]?.isThinking || updated[lastIdx]?.isStreaming) {
+          updated[lastIdx] = { role: 'assistant', content: error.message || 'Failed to get answer', isError: true };
+        } else {
+          updated.push({ role: 'assistant', content: error.message || 'Failed to get answer', isError: true });
+        }
+        return updated;
+      });
     } finally {
       setIsQAProcessing(false);
+      qaAbortRef.current = null;
     }
   };
 
@@ -423,35 +548,46 @@ function ProposalSummarizer() {
 
       {/* Q&A Modal */}
       {showQAModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowQAModal(false)}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => { if (!isQAProcessing) setShowQAModal(false); }}>
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <h2 className="text-xl font-semibold text-gray-900">Ask Questions - {selectedFileForQA}</h2>
-              <button onClick={() => setShowQAModal(false)} className="text-gray-500 hover:text-gray-700 text-2xl leading-none">
+              <button onClick={() => { if (qaAbortRef.current) qaAbortRef.current.abort(); setShowQAModal(false); }} className="text-gray-500 hover:text-gray-700 text-2xl leading-none">
                 ✕
               </button>
             </div>
             <div className="flex-1 overflow-hidden flex flex-col">
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {qaMessages.map((msg, index) => (
-                  <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[80%] p-3 rounded-lg ${
-                      msg.role === 'user'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-900'
-                    }`}>
-                      <div className="whitespace-pre-wrap">{msg.content}</div>
-                    </div>
-                  </div>
-                ))}
-                {isQAProcessing && (
-                  <div className="flex justify-start">
-                    <div className="bg-gray-100 text-gray-900 p-3 rounded-lg flex items-center gap-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent"></div>
-                      Thinking...
-                    </div>
+              <div ref={qaChatRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+                {qaMessages.length === 0 && (
+                  <div className="text-center text-gray-500 py-8">
+                    <p className="text-sm">Ask questions about this proposal. Claude can search the web for PI publications, institutional context, and related research.</p>
                   </div>
                 )}
+                {qaMessages.map((msg, index) => {
+                  if (msg.isThinking) {
+                    return (
+                      <div key={index} className="flex justify-start">
+                        <div className="bg-gray-100 text-gray-600 p-3 rounded-lg flex items-center gap-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent"></div>
+                          <span className="text-sm">{msg.thinkingText || 'Thinking...'}</span>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[80%] p-3 rounded-lg ${
+                        msg.role === 'user'
+                          ? 'bg-blue-600 text-white'
+                          : msg.isError
+                            ? 'bg-red-50 text-red-800 border border-red-200'
+                            : 'bg-gray-100 text-gray-900'
+                      }`}>
+                        <div className="whitespace-pre-wrap">{msg.content}{msg.isStreaming && <span className="inline-block w-2 h-4 bg-gray-400 ml-0.5 animate-pulse" />}</div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
               <div className="border-t border-gray-200 p-4">
                 <div className="flex gap-2">
@@ -459,7 +595,7 @@ function ProposalSummarizer() {
                     type="text"
                     value={currentQuestion}
                     onChange={(e) => setCurrentQuestion(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && !isQAProcessing && submitQuestion()}
+                    onKeyDown={(e) => e.key === 'Enter' && !isQAProcessing && submitQuestion()}
                     placeholder="Ask a question about this proposal..."
                     disabled={isQAProcessing}
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"

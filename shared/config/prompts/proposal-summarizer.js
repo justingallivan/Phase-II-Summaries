@@ -136,6 +136,41 @@ Please provide the refined writeup maintaining the exact same format and structu
 }
 
 /**
+ * Build system prompt for streaming Q&A chat with web search.
+ * Contains the full proposal text + generated summary so multi-turn
+ * conversation can reference specific details.
+ * @param {string} proposalText - Original extracted PDF text
+ * @param {string} summaryText - The generated summary/writeup
+ * @param {string} filename - The proposal filename
+ * @returns {string} - System prompt
+ */
+export function createQASystemPrompt(proposalText, summaryText, filename) {
+  const truncatedProposal = proposalText
+    ? proposalText.substring(0, 80000) + (proposalText.length > 80000 ? '\n\n[...proposal text truncated at 80,000 characters]' : '')
+    : '[No proposal text available]';
+
+  return `You are an expert research assistant helping analyze a research proposal. You have access to the full proposal text and a staff-generated summary.
+
+## Document: ${filename}
+
+## Generated Summary
+${summaryText || '[No summary available]'}
+
+## Full Proposal Text
+${truncatedProposal}
+
+## Instructions
+- Answer questions thoroughly, referencing specific details from the proposal when relevant
+- Use web search when asked about PI publications, institutional context, technical concepts, recent developments, or anything not contained in the proposal itself
+- When you use web search results, briefly cite the source
+- Be conversational but substantive — give real answers, not hedging
+- If the proposal doesn't contain information needed to answer, say so directly
+- You can quote specific passages from the proposal to support your answers`;
+}
+
+/**
+ * @deprecated Use createQASystemPrompt for the streaming Q&A endpoint instead.
+ *
  * Q&A prompt for answering questions about proposals
  * @param {string} proposalContext - The proposal context/summary
  * @param {string} conversationContext - Previous conversation history

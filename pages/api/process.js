@@ -76,7 +76,7 @@ export default async function handler(req, res) {
         console.log(`Sending to Claude API with text length: ${text.length}`);
         const summary = await generateSummary(text, file.filename, apiKey, summaryLength, userProfileId);
         console.log(`Received summary:`, summary ? 'Success' : 'Failed');
-        results[file.filename] = summary;
+        results[file.filename] = { ...summary, extractedText: text };
 
       } catch (fileError) {
         console.error(`Error processing ${file.filename}:`, fileError);

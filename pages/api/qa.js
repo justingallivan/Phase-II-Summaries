@@ -1,86 +1,244 @@
-import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
+/**
+ * API Route: /api/qa
+ *
+ * Streaming Q&A endpoint for the Proposal Summarizer.
+ * Accepts multi-turn conversation history + proposal text,
+ * streams Claude responses via SSE, supports web search tool.
+ */
+
 import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { requireAppAccess } from '../../lib/utils/auth';
+import { logUsage } from '../../lib/utils/usage-logger';
+import { createQASystemPrompt } from '../../shared/config/prompts/proposal-summarizer';
 
-// Q&A prompt template
-const QA_PROMPT = (context, question, filename) => `You are an expert research assistant helping analyze a research proposal. Based on the document content provided, please answer the question thoroughly and accurately.
+export const config = {
+  api: {
+    bodyParser: { sizeLimit: '4mb' },
+  },
+  maxDuration: 120,
+};
 
-**Document**: ${filename}
-
-**Question**: ${question}
-
-**Document Content**:
-${context.substring(0, 100000)}${context.length > 100000 ? '...[truncated]' : ''}
-
-Please provide a comprehensive, accurate answer based solely on the information in the document. If the document doesn't contain enough information to fully answer the question, please say so and explain what additional information would be needed.
-
-Focus on being helpful, accurate, and specific in your response.`;
+const limiter = nextRateLimiter({ max: 30 });
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Require authentication + app access
   const access = await requireAppAccess(req, res, 'proposal-summarizer', 'batch-proposal-summaries');
   if (!access) return;
+
+  const allowed = await limiter(req, res);
+  if (allowed !== true) return;
+
   await loadModelOverrides();
 
+  // Set up SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const sendEvent = (event, data) => {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
   try {
-    // Apply rate limiting (more lenient for Q&A)
-    const rateLimitCheck = await nextRateLimiter({ 
-      max: 60, 
-      windowMs: 60000 
-    })(req, res);
-    if (!rateLimitCheck) {
-      return;
-    }
+    const { question, messages = [], proposalText, summaryText, filename } = req.body;
 
-    const { question, context, filename } = req.body;
-
-    if (!question || !context) {
-      return res.status(400).json({
-        error: 'Question and proposal data required',
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    // Use server-side API key
     const apiKey = process.env.CLAUDE_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ error: 'Claude API key not configured on server' });
+      sendEvent('error', { message: 'Claude API key not configured on server' });
+      return res.end();
+    }
+
+    if (!question) {
+      sendEvent('error', { message: 'Question is required' });
+      return res.end();
     }
 
     const userProfileId = access.profileId;
 
-    // Initialize Claude client
-    const claudeClient = createClaudeClient(apiKey, {
-      model: getModelForApp('qa'),
-      defaultMaxTokens: 1500,
-      defaultTemperature: 0.3,
-      appName: 'qa',
-      userProfileId,
-    });
+    // Build system prompt with proposal context
+    const systemPrompt = createQASystemPrompt(
+      proposalText || '',
+      summaryText || '',
+      filename || 'Unknown'
+    );
 
-    // Generate Q&A response
-    const prompt = QA_PROMPT(context, question, filename);
-    const answer = await claudeClient.sendMessage(prompt, {
-      maxTokens: 1500,
-      temperature: 0.3
-    });
-    
-    res.status(200).json({ 
-      answer,
-      timestamp: new Date().toISOString()
-    });
+    // Build conversation messages — trim to last 6 messages (3 exchanges)
+    // to keep context manageable while preserving recent conversation
+    let conversationMessages = [];
+    if (messages.length > 6) {
+      conversationMessages.push({
+        role: 'user',
+        content: '[Earlier conversation messages omitted for brevity. The proposal text and summary are in the system prompt above.]'
+      });
+      conversationMessages.push({
+        role: 'assistant',
+        content: 'Understood. I have the full proposal and summary available. How can I help?'
+      });
+      conversationMessages = conversationMessages.concat(messages.slice(-6));
+    } else {
+      conversationMessages = [...messages];
+    }
 
+    // Add the new question
+    conversationMessages.push({ role: 'user', content: question });
+
+    sendEvent('thinking', { message: 'Analyzing your question...' });
+
+    const startTime = Date.now();
+    const model = getModelForApp('qa');
+
+    // Call Claude with streaming and web search
+    const response = await callClaudeStreaming(apiKey, model, systemPrompt, conversationMessages, sendEvent);
+
+    // Log usage
+    if (response.usage) {
+      logUsage({
+        userProfileId,
+        appName: 'qa',
+        model: response.model || model,
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+        latencyMs: Date.now() - startTime,
+      });
+    }
+
+    sendEvent('complete', {});
   } catch (error) {
-    console.error('Q&A API error:', error);
-    res.status(500).json({ 
-      error: BASE_CONFIG.ERROR_MESSAGES.PROCESSING_FAILED,
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-      timestamp: new Date().toISOString()
-    });
+    console.error('Q&A streaming error:', error);
+    sendEvent('error', { message: error.message || 'Failed to process question' });
+  } finally {
+    res.end();
+  }
+}
+
+/**
+ * Call Claude API with streaming, relay text deltas to client via SSE.
+ * Supports web_search server-side tool (executed by the API automatically).
+ * Retries once on 429.
+ */
+async function callClaudeStreaming(apiKey, model, systemPrompt, messages, sendEvent, retryCount = 0) {
+  const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey.trim(),
+      'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION,
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 4096,
+      temperature: 0.4,
+      system: systemPrompt,
+      messages,
+      stream: true,
+      tools: [
+        {
+          type: 'web_search_20250305',
+          name: 'web_search',
+          max_uses: 3,
+        },
+      ],
+    }),
+  });
+
+  // Handle non-streaming errors
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    // Retry once on 429
+    if (response.status === 429 && retryCount === 0) {
+      const retryAfter = parseInt(response.headers.get('retry-after') || '5', 10);
+      const delay = Math.min(retryAfter * 1000, 30000);
+      sendEvent('thinking', { message: 'Rate limited, retrying...' });
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return callClaudeStreaming(apiKey, model, systemPrompt, messages, sendEvent, 1);
+    }
+
+    console.error(`Claude API error ${response.status}:`, errorText.substring(0, 500));
+    throw new Error(getApiErrorMessage(response.status, errorText));
+  }
+
+  // Parse streaming response
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let usage = null;
+  let responseModel = null;
+  let sentSearchEvent = false;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop(); // keep incomplete line in buffer
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6).trim();
+      if (data === '[DONE]') continue;
+
+      let event;
+      try {
+        event = JSON.parse(data);
+      } catch {
+        continue;
+      }
+
+      switch (event.type) {
+        case 'message_start':
+          if (event.message?.model) responseModel = event.message.model;
+          if (event.message?.usage) usage = { ...event.message.usage };
+          break;
+
+        case 'content_block_start':
+          // Detect web search tool use
+          if (event.content_block?.type === 'server_tool_use' && !sentSearchEvent) {
+            sendEvent('thinking', { message: 'Searching the web...' });
+            sentSearchEvent = true;
+          }
+          break;
+
+        case 'content_block_delta':
+          if (event.delta?.type === 'text_delta' && event.delta.text) {
+            sendEvent('text_delta', { text: event.delta.text });
+          }
+          break;
+
+        case 'message_delta':
+          if (event.usage) {
+            usage = { ...usage, ...event.usage };
+          }
+          break;
+      }
+    }
+  }
+
+  return { usage, model: responseModel };
+}
+
+function getApiErrorMessage(status, responseText) {
+  switch (status) {
+    case 429:
+      return 'Rate limit exceeded. Please wait a moment and try again.';
+    case 529:
+    case 503:
+      return 'Claude API is temporarily overloaded. Please try again in a minute.';
+    case 401:
+      return 'API authentication failed. Please contact an administrator.';
+    case 400: {
+      if (responseText.includes('context_length_exceeded') || responseText.includes('too many tokens')) {
+        return 'Conversation is too long. Please start a new chat.';
+      }
+      return 'Request error. Please try again.';
+    }
+    default:
+      return `API error (${status}). Please try again.`;
   }
 }
