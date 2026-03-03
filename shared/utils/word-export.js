@@ -110,7 +110,7 @@ export async function generatePhaseIIDocument(sections, metadata, internalFields
     });
   }
 
-  /** Convert section content (which may contain <u>tags</u> and **bold**) to TextRun array */
+  /** Convert section content (which may contain <u>tags</u>, **bold**, and *italic*) to TextRun array */
   function contentToRuns(text) {
     if (!text) return [bodyRun('[To be completed]')];
     const runs = [];
@@ -121,14 +121,24 @@ export async function generatePhaseIIDocument(sections, metadata, internalFields
       if (uMatch) {
         runs.push(bodyRun(uMatch[1], { underline: { type: UnderlineType.SINGLE } }));
       } else if (part) {
-        // Also handle **bold** markdown
+        // Handle **bold** and *italic* markdown
+        // Split on bold first (**...**), then italic (*...*) within non-bold segments
         const boldParts = part.split(/(\*\*.*?\*\*)/g);
         for (const bp of boldParts) {
           const bMatch = bp.match(/^\*\*(.*?)\*\*$/);
           if (bMatch) {
             runs.push(bodyRun(bMatch[1], { bold: true }));
           } else if (bp) {
-            runs.push(bodyRun(bp));
+            // Handle *italic* within this segment
+            const italicParts = bp.split(/(\*[^*]+?\*)/g);
+            for (const ip of italicParts) {
+              const iMatch = ip.match(/^\*(.*?)\*$/);
+              if (iMatch) {
+                runs.push(bodyRun(iMatch[1], { italics: true }));
+              } else if (ip) {
+                runs.push(bodyRun(ip));
+              }
+            }
           }
         }
       }

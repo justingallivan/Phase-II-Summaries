@@ -7,11 +7,11 @@
  * Common text processing limits
  */
 export const TEXT_LIMITS = {
-  SMALL: 5000,
-  MEDIUM: 10000,
-  LARGE: 15000,
-  EXTRA_LARGE: 20000,
-  MAXIMUM: 30000
+  SMALL: 20000,
+  MEDIUM: 50000,
+  LARGE: 100000,
+  EXTRA_LARGE: 100000,
+  MAXIMUM: 100000
 };
 
 /**

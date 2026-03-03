@@ -21,8 +21,8 @@ export function createPhaseISummarizationPrompt(text, summaryLength = 1, summary
 
   const targetAudience = levelDescriptions[summaryLevel] || levelDescriptions['technical-non-expert'];
 
-  // Text truncation limit (15000 characters)
-  const textLimit = 15000;
+  // Text truncation limit — high enough to include full proposals (personnel, budgets, etc.)
+  const textLimit = 100000;
   const truncatedText = text.substring(0, textLimit);
   const truncationIndicator = text.length > textLimit ? '...' : '';
 
@@ -91,5 +91,5 @@ Provide your response now following the exact format above.`;
  * @returns {number} - Character limit
  */
 export function getPhaseITextLimit() {
-  return 15000;
+  return 100000;
 }

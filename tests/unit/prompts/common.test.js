@@ -21,11 +21,11 @@ describe('Common Prompt Utilities', () => {
   
   describe('Constants', () => {
     test('TEXT_LIMITS are properly defined', () => {
-      expect(TEXT_LIMITS.SMALL).toBe(5000);
-      expect(TEXT_LIMITS.MEDIUM).toBe(10000);
-      expect(TEXT_LIMITS.LARGE).toBe(15000);
-      expect(TEXT_LIMITS.EXTRA_LARGE).toBe(20000);
-      expect(TEXT_LIMITS.MAXIMUM).toBe(30000);
+      expect(TEXT_LIMITS.SMALL).toBe(20000);
+      expect(TEXT_LIMITS.MEDIUM).toBe(50000);
+      expect(TEXT_LIMITS.LARGE).toBe(100000);
+      expect(TEXT_LIMITS.EXTRA_LARGE).toBe(100000);
+      expect(TEXT_LIMITS.MAXIMUM).toBe(100000);
     });
 
     test('TEMPERATURE_SETTINGS are in valid range', () => {
@@ -45,7 +45,7 @@ describe('Common Prompt Utilities', () => {
 
   describe('truncateText', () => {
     test('truncates long text with default suffix', () => {
-      const longText = 'a'.repeat(20000);
+      const longText = 'a'.repeat(200000);
       const truncated = truncateText(longText, TEXT_LIMITS.MEDIUM);
       
       expect(truncated.length).toBe(TEXT_LIMITS.MEDIUM + 3); // +3 for '...'

@@ -10,8 +10,8 @@
  * @returns {string} - The formatted prompt
  */
 export function createPhaseIWriteupPrompt(text, institution = '') {
-  // Text truncation limit (15000 characters)
-  const textLimit = 15000;
+  // Text truncation limit — high enough to include full proposals (personnel, budgets, etc.)
+  const textLimit = 100000;
   const truncatedText = text.substring(0, textLimit);
   const truncationIndicator = text.length > textLimit ? '...' : '';
 
@@ -152,5 +152,5 @@ Generate the writeup now following this exact format.`;
  * @returns {number} - Character limit
  */
 export function getPhaseIWriteupTextLimit() {
-  return 15000;
+  return 100000;
 }

@@ -6,10 +6,10 @@
 /**
  * Extract PI, institution, state, and keywords from proposal
  * @param {string} proposalText - The proposal text to analyze
- * @param {number} textLimit - Character limit for extraction (default: 6000)
+ * @param {number} textLimit - Character limit for extraction (default: 100000)
  * @returns {string} - The formatted prompt
  */
-export function createFundingExtractionPrompt(proposalText, textLimit = 6000) {
+export function createFundingExtractionPrompt(proposalText, textLimit = 100000) {
   const truncatedText = proposalText.substring(0, textLimit);
   const truncationIndicator = proposalText.length > textLimit ? '...' : '';
 
@@ -288,5 +288,5 @@ Be concise and data-driven. Focus on patterns across the batch of proposals.`;
  * @returns {number} - Character limit
  */
 export function getFundingExtractionLimit() {
-  return 6000;
+  return 100000;
 }

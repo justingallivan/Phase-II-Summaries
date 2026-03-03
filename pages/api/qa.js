@@ -11,7 +11,7 @@ const QA_PROMPT = (context, question, filename) => `You are an expert research a
 **Question**: ${question}
 
 **Document Content**:
-${context.substring(0, 10000)}${context.length > 10000 ? '...[truncated]' : ''}
+${context.substring(0, 100000)}${context.length > 100000 ? '...[truncated]' : ''}
 
 Please provide a comprehensive, accurate answer based solely on the information in the document. If the document doesn't contain enough information to fully answer the question, please say so and explain what additional information would be needed.
 

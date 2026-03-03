@@ -13,8 +13,8 @@
  */
 export function createAnalysisPrompt(proposalText, additionalNotes = '', excludedNames = [], reviewerCount = 12) {
   const safeText = proposalText || 'No proposal text provided';
-  const truncatedText = safeText.length > 15000
-    ? safeText.substring(0, 15000) + '\n\n[...truncated for length...]'
+  const truncatedText = safeText.length > 100000
+    ? safeText.substring(0, 100000) + '\n\n[...truncated for length...]'
     : safeText;
 
   const excludedSection = excludedNames.length > 0

@@ -131,7 +131,8 @@ async function generateSummary(text, filename, apiKey, summaryLength, userProfil
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Claude API error:', errorText);
-      throw new Error(`Claude API error ${response.status}: ${errorText}`);
+      const userMessage = getApiErrorMessage(response.status, errorText);
+      throw new Error(userMessage);
     }
 
     const data = await response.json();
@@ -159,7 +160,7 @@ async function generateSummary(text, filename, apiKey, summaryLength, userProfil
 
   } catch (error) {
     console.error('Summary generation error:', error);
-    throw new Error('Failed to generate summary');
+    throw error;
   }
 }
 
@@ -247,6 +248,27 @@ function crossReferenceWithSummary(structured, summaryText) {
   if (!structured.investigators || structured.investigators.length === 0 ||
       (structured.investigators.length === 1 && structured.investigators[0] === 'Not specified')) {
     structured.investigators = underlinedNames;
+  }
+}
+
+function getApiErrorMessage(status, responseText) {
+  switch (status) {
+    case 429:
+      return 'Claude API rate limit exceeded. Please wait a moment and try again.';
+    case 529:
+    case 503:
+      return 'Claude API is temporarily overloaded. Please try again in a minute or two.';
+    case 401:
+      return 'Claude API authentication failed. Please contact an administrator.';
+    case 400: {
+      // Check for specific 400 errors
+      if (responseText.includes('context_length_exceeded') || responseText.includes('too many tokens')) {
+        return 'This document is too large for the AI model to process. Try a shorter document.';
+      }
+      return `Claude API request error: ${responseText.substring(0, 200)}`;
+    }
+    default:
+      return `Claude API error (${status}). Please try again.`;
   }
 }
 

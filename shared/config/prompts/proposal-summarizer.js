@@ -11,10 +11,10 @@
  * Main summarization prompt for research proposals
  * @param {string} text - The proposal text to summarize
  * @param {number} summaryLength - Detail level for pages 3-4 content (1-5, default: 2 ≈ 800 words)
- * @param {number} textLimit - Maximum characters to process (default: 15000)
+ * @param {number} textLimit - Maximum characters to process (default: 100000)
  * @returns {string} - The formatted prompt
  */
-export function createSummarizationPrompt(text, summaryLength = 2, textLimit = 15000) {
+export function createSummarizationPrompt(text, summaryLength = 2, textLimit = 100000) {
   const detailedWordTarget = summaryLength * 400;
 
   return `Please analyze this research proposal and create a two-part writeup following the exact structure below.
@@ -32,7 +32,8 @@ Write for a "grade 13 science audience" — an educated reader who is NOT a spec
 [1-3 sentences. High-level description of the methods, approach, and goals — no jargon.]
 
 **Personnel Overview:**
-[1-3 sentences. Names of PI and key co-investigators with their primary expertise. Use format: "<u>Name</u>, expertise area".]
+[2-4 sentences. Introduce the PI and each co-investigator by name with their title, institution, and area of expertise. Use format: "The principal investigator is <u>Full Name</u>, a [lowercase title] at [institution], who [studies/specializes in area]." Then list co-investigators similarly: "Co-investigators include <u>Full Name</u>, [expertise]; <u>Full Name</u>, [expertise]."
+Example: "The principal investigator is <u>Aneel Aggarwal</u>, a professor of pharmacological sciences and oncological sciences at the Icahn School of Medicine at Mount Sinai, who studies the structural biology of bacterial defense systems. Co-investigators include <u>Yi Shi</u>, a mass spectrometry expert; <u>Harm van Bakel</u>, a microbiologist specializing in host-pathogen interactions; and <u>Olga Rechkoblit</u>, who studies cyclic nucleotide biochemistry."]
 
 **Rationale for Keck Funding:**
 [1-3 sentences. Why does this project need foundation support rather than traditional funding? Focus on risk, novelty, or cross-disciplinary nature.]
@@ -49,7 +50,7 @@ Technical language is acceptable here, but define all abbreviations on first use
 [1-2 paragraphs. Research approach, techniques, experimental design. Be specific about methods and technical approaches.]
 
 **Personnel:**
-[1 paragraph. Principal investigators with full names underlined using <u>Name</u> tags, their titles (lowercase), institutional affiliations, and relevant expertise. Co-investigators likewise underlined. State areas of study directly without promotional language. Format: "The principal investigator is <u>John Smith</u>, a professor of biology at [institution]..."]
+[3-5 sentences. Name each investigator with their title, institution, and specific role on this project. Keep it factual and brief — no lengthy descriptions of lab capabilities or career achievements. Use <u>Name</u> tags. Format: "The principal investigator is <u>John Smith</u>, a professor of biology at [institution]. For this project, he will lead [specific contribution]. The co-investigator is <u>Jane Doe</u>, an associate professor of chemistry at [institution], who will [specific contribution]."]
 
 **TONE AND LANGUAGE RULES (apply to both parts):**
 - Use neutral, matter-of-fact language — avoid promotional or effusive terms
@@ -57,6 +58,7 @@ Technical language is acceptable here, but define all abbreviations on first use
 - Write in a straightforward, academic tone similar to scientific review documents
 - State facts and qualifications directly without embellishment
 - Focus on what the researchers do/study rather than how well they do it
+- Minimize use of em dashes. Prefer commas, semicolons, parentheses, or separate sentences instead.
 
 **FORMATTING RULES:**
 - Principal Investigator and Co-Investigator names should be underlined using HTML tags <u>Name</u>
@@ -78,21 +80,18 @@ Write in a neutral, factual tone. Avoid promotional language or unnecessary adje
  * @param {number} textLimit - Maximum characters to process
  * @returns {string} - The extraction prompt
  */
-export function createStructuredDataExtractionPrompt(text, filename, textLimit = 10000) {
+export function createStructuredDataExtractionPrompt(text, filename, textLimit = 100000) {
   return `Based on this research proposal, please extract the following information and return it as a JSON object.
 
-IMPORTANT:
-- The filename "${filename}" may contain hints about the institution name. Use this information to help identify the correct institution.
-- For investigator names, look specifically at the "Key Personnel" or "Senior/Key Personnel" section of the proposal. This section contains the most complete and accurate names with full first and last names. Do NOT rely on abbreviated or last-name-only references elsewhere in the text.
-- Always use full names (first and last) for all investigators.
+IMPORTANT: The filename "${filename}" may contain hints about the institution name. Use this information to help identify the correct institution.
 
 {
   "filename": "${filename}",
   "institution": "Primary institution name (check filename for hints)",
   "city_state": "City, State of the primary institution (e.g., 'Pasadena, California')",
   "project_title": "Full project title as stated in the proposal",
-  "principal_investigator": "Full name of PI (first and last name from Key Personnel section)",
-  "investigators": ["Full name of each investigator from Key Personnel section"],
+  "principal_investigator": "Name of PI",
+  "investigators": ["List", "of", "investigators"],
   "research_area": "Main research domain",
   "methods": ["List", "of", "key", "methods"],
   "funding_amount": "Amount requested if mentioned",
