@@ -4,6 +4,21 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## March 2026 — Word Template Export & Silent Truncation Fix (Session 70)
+
+Implemented Phase II Word template export for Proposal Summarizer and fixed a critical silent text truncation bug affecting all PDF-processing apps.
+
+- **Word template export**: `shared/utils/word-export.js` generates .docx files matching the Keck Phase II writeup template (Times New Roman, correct margins/tabs/spacing, page headers with PI/institution/title, page numbers). Export modal in `pages/proposal-summarizer.js` with editable AI-extracted fields and internal fields (Program Type, amounts, Staff Lead). Added Word button to `ResultsDisplay.js`.
+- **Prompt restructure**: Two-part output — Part 1 (grade 13 audience summary page with Executive Summary, Impact, Methodology Overview, Personnel Overview, Rationale for Keck Funding) and Part 2 (technical detailed writeup with Background & Impact, Methodology, Personnel). `parseSections()` splits markdown into named sections for Word generation.
+- **Silent truncation fix**: All prompt templates were truncating PDF text to 6K-15K characters, silently dropping personnel sections, budgets, and methodology details that appear later in proposals. Increased all limits to 100K characters across 6 prompt files, Q&A endpoint, and common.js TEXT_LIMITS. Affected: Proposal Summarizer, Phase I Summaries, Phase I Writeup, Reviewer Finder, Funding Gap Analyzer, Q&A.
+- **PI name cross-reference**: `crossReferenceWithSummary()` in `process.js` extracts `<u>`-tagged names from the summary to fix incorrect PI names in structured extraction.
+- **User-friendly API errors**: `getApiErrorMessage()` translates HTTP status codes (429 rate limit, 529/503 overloaded, 401 auth, 400 context length) into clear user-facing messages instead of generic "Failed to generate summary."
+- **Legacy fallback**: Current implementation preserved as `proposal-summarizer-legacy.js`, `process-legacy.js`, and legacy prompts file.
+
+**Files:** `shared/utils/word-export.js` (new), `shared/config/prompts/proposal-summarizer.js`, `pages/proposal-summarizer.js`, `pages/api/process.js`, `shared/components/ResultsDisplay.js`, `shared/config/prompts/common.js`, 5 other prompt files, `pages/api/qa.js`
+
+---
+
 ## February 2026 — ErrorAlert, Crawler Prevention, Analytics & Dependency Cleanup (Session 69)
 
 Security hardening and infrastructure cleanup session.

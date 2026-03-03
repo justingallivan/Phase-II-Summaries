@@ -1,82 +1,91 @@
-# Session 70 Prompt: Next Steps
+# Session 71 Prompt: Next Steps
 
-## Session 69 Summary
+## Session 70 Summary
 
-Security hardening, shared UI component, and infrastructure cleanup session. Created a shared ErrorAlert component replacing 11 identical inline error blocks, added bot/crawler prevention, integrated Vercel Web Analytics, cleaned up dependency vulnerabilities, and drafted IT security response for Dynamics Explorer architecture.
+Implemented Word template export for Proposal Summarizer and fixed a critical silent text truncation bug affecting all PDF-processing apps.
 
 ### What Was Completed
 
-1. **Shared ErrorAlert Component** (`shared/components/ErrorAlert.js`)
-   - Pattern-matches error strings against 12 categories (rate limit, overloaded, AI unavailable, network, auth, upload, etc.)
-   - Validation messages ("Please ...") get simple amber/yellow styling
-   - Operational errors get full enhanced display: category label, user-friendly message, timestamp, reference code (`ERR-YYYYMMDD-HHMM-XXX`), collapsible raw details
-   - Optional dismiss (X) button via `onDismiss` prop
-   - Replaced inline error blocks in 11 pages; removed redundant catch-block error mapping from 3 pages
+1. **Phase II Word Template Export** (Steps 0-6 of plan)
+   - Legacy fallback files created (`proposal-summarizer-legacy.js`, `process-legacy.js`, prompts legacy)
+   - Installed `docx` npm package for client-side .docx generation
+   - Restructured summarization prompt into two-part output: Part 1 (grade 13 audience summary page) and Part 2 (technical detailed writeup)
+   - Created `shared/utils/word-export.js` — generates .docx matching the Keck Phase II writeup template (Times New Roman, correct margins/tabs/spacing, page headers, page breaks)
+   - Added Word export modal to `pages/proposal-summarizer.js` with Staff Lead field, editable AI-extracted fields, and internal fields (Program Type, Invited Amount, etc.)
+   - Added Word export button to `shared/components/ResultsDisplay.js`
 
-2. **Bot/Crawler Prevention**
-   - `public/robots.txt` — disallow all user agents from all paths
-   - `X-Robots-Tag: noindex, nofollow, noarchive` response header in `next.config.js`
-   - `<meta name="robots" content="noindex, nofollow">` in `_app.js`
+2. **Critical Bug Fix: Silent Text Truncation** (all apps)
+   - All prompt templates were truncating PDF text to 6K-15K characters, silently dropping content that appears later in proposals (personnel sections, budgets, methodology details)
+   - Increased all text limits to 100K characters (well within Claude's 200K token context window)
+   - Fixed in 6 prompt files + Q&A endpoint + common.js TEXT_LIMITS constants
+   - Affected apps: Proposal Summarizer, Phase I Summaries, Phase I Writeup, Reviewer Finder, Funding Gap Analyzer, Q&A
 
-3. **Vercel Web Analytics** (`_app.js`)
-   - Added `@vercel/analytics` package and `<Analytics />` component
-   - Added `https://*.vercel-insights.com` to CSP `connect-src`
-   - Requires enabling in Vercel dashboard (Project > Analytics > Enable)
+3. **User-Friendly API Error Messages** (`pages/api/process.js`)
+   - Added `getApiErrorMessage()` — translates HTTP status codes (429, 529, 503, 401, 400) into clear user-facing messages
+   - Previously threw generic "Failed to generate summary" for all errors
 
-4. **Dependency Cleanup**
-   - Added `dompurify` to committed `package.json` (was imported but not committed)
-   - Removed unused `eslint` and `eslint-config-next` — resolved all 3 npm audit vulnerabilities
-   - Removed dead `lint` script from `package.json`
-   - Removed deprecated `swcMinify` config option from `next.config.js`
+4. **Word Export Formatting Fixes**
+   - Analyzed actual Word template XML for exact formatting specs
+   - Fixed font (Calibri → Times New Roman), sizes, tab stops, margins
+   - Fixed page breaks (`TextRun({ break: 1 })` → `PageBreak` class)
+   - Added italic markdown (`*text*`) support in `contentToRuns()`
+   - Strip `---` separators and PART markers from output
 
-5. **Dependabot** (`.github/dependabot.yml`)
-   - Weekly npm dependency checks on Mondays
-   - Minor/patch updates grouped into single PR
-
-6. **IT Security Response** (not committed — email drafted for IT department)
-   - Documented complete Dynamics Explorer data flow architecture
-   - Confirmed all external API calls are server-side in Vercel Functions
-   - No secrets or credentials exposed to browser
-   - Detailed security controls: JWT auth, app access, CSRF, query logging, parameterized SQL
+5. **Prompt Improvements**
+   - Personnel Overview (Part 1): now 2-4 sentences with title, institution, and expertise per investigator (with example)
+   - Personnel (Part 2): concise 3-5 sentences focused on project roles, no lengthy lab descriptions
+   - Added cross-reference between summary `<u>` tags and structured extraction to fix PI name errors
+   - Added em dash minimization rule to style guide
 
 ### Commits
-- `e3263c5` Add shared ErrorAlert component with categorized error display
-- `b386a82` Block search engine indexing and crawler access
-- `d5c609c` Add dompurify dependency for HTML sanitization
-- `b1a2adf` Add Vercel Web Analytics
-- `6774364` Add @vercel/analytics dependency to package.json
-- `6e17dd1` Revert eslint-config-next to ^14.2.35 to fix peer dep conflict
-- `46285ea` Remove unused ESLint dependencies
-- `1f5075a` Remove deprecated swcMinify config option
-- `ed729da` Add Dependabot config for weekly npm dependency updates
+- `291f238` Add Word template export and restructure Phase II writeup prompt
+- `051b09d` Fix Word export: match template formatting, make all fields editable
+- `0b7e15e` Fix PI extraction and strip part markers from output
+- `7564157` Fix page breaks in Word export using PageBreak class
+- `524ac20` Direct structured extraction to use Key Personnel section for names
+- `22a5974` Increase text limits to 100K chars across all apps, fix silent truncation
 
 ## Deferred Items (Carried Forward)
 
 - SharePoint document access (blocked on Azure AD admin consent — see `docs/SHAREPOINT_DOCUMENT_ACCESS.md`)
 - Dynamics Explorer search heuristics & query optimization
 - Email notifications via Graph API (deferred until `Mail.Send` permission granted — see `docs/TODO_EMAIL_NOTIFICATIONS.md`)
-- C3: Dynamics service principal should be scoped (requires Dynamics 365 admin action)
-- L5: CSP allows unsafe-inline/unsafe-eval (accepted risk; Next.js limitation)
-- L7: ArXiv API uses HTTP (accepted risk; public metadata only)
-- next-auth v5 migration (still in beta — beta.30 as of Feb 2026; will address middleware deprecation warning)
+- next-auth v5 migration (still in beta)
+
+## Potential Next Steps
+
+### 1. Test Word Export with More Proposals
+Run several different proposals through the Word export to verify formatting consistency, personnel extraction accuracy, and section content with the new 100K text limit.
+
+### 2. Phase I Writeup Word Export
+Apply the same Word template export pattern to Phase I writeups if a template exists.
+
+### 3. Batch Word Export
+Currently Word export is per-file. Could add a "Download All as Word" button that generates a ZIP of .docx files for batch processing.
+
+### 4. Graphical Abstract Page
+Page 2 of the Word template is a placeholder. Could add image upload support to let users insert a graphical abstract.
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `shared/components/ErrorAlert.js` | Shared error display with categorization |
-| `public/robots.txt` | Crawler disallow rules |
-| `next.config.js` | Security headers, CSP, X-Robots-Tag |
-| `pages/_app.js` | Analytics component, meta robots tag |
-| `.github/dependabot.yml` | Weekly dependency update config |
+| `shared/config/prompts/proposal-summarizer.js` | Two-part prompt template, `parseSections()`, `enhanceFormatting()` |
+| `shared/utils/word-export.js` | Client-side .docx generation matching Keck template |
+| `pages/proposal-summarizer.js` | Frontend with Word export modal and Staff Lead field |
+| `pages/api/process.js` | API endpoint with cross-reference fix and error messages |
+| `shared/components/ResultsDisplay.js` | Added Word export button |
+| `shared/config/prompts/common.js` | TEXT_LIMITS constants (updated to 100K) |
+| `WMKF Templates/Phase II writeup template 2.25.26.docx` | Reference Word template |
 
 ## Testing
 
 ```bash
 npm run dev                    # Start dev server
 npm run build                  # Verify no build errors
-npm audit                      # Should show 0 vulnerabilities
-# Upload wrong file type to verify ErrorAlert validation styling (amber)
-# Disconnect network to verify ErrorAlert operational styling (red with ref code)
-# Enable Analytics in Vercel dashboard, then check Network tab for /_vercel/insights/view
+# Upload a PDF proposal → Generate Writeup Drafts
+# Click Word export → verify modal pre-fills correctly
+# Fill internal fields → Generate Word Document
+# Open .docx in Word → verify formatting matches template
+# Test with overloaded API → verify user-friendly error message
 ```
