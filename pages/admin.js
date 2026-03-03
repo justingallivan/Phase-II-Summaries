@@ -50,6 +50,7 @@ const SERVICE_LABELS = {
 function HealthSection() {
   const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [expandedService, setExpandedService] = useState(null);
 
   useEffect(() => {
     fetch('/api/health')
@@ -77,28 +78,33 @@ function HealthSection() {
         <StatusBadge status={health.overall} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {Object.entries(health.services || {}).map(([key, svc]) => (
-          <div
-            key={key}
-            className={`p-3 rounded-lg border ${
-              svc.status === 'ok' ? 'border-green-200 bg-green-50' :
-              svc.status === 'error' ? 'border-red-200 bg-red-50' :
-              svc.status === 'warning' ? 'border-yellow-200 bg-yellow-50' :
-              'border-gray-200 bg-gray-50'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-sm font-medium text-gray-900">{SERVICE_LABELS[key] || key}</span>
-              <StatusBadge status={svc.status} />
+        {Object.entries(health.services || {}).map(([key, svc]) => {
+          const isExpanded = expandedService === key;
+          const hasOverflow = svc.message || svc.detail;
+          return (
+            <div
+              key={key}
+              onClick={() => hasOverflow && setExpandedService(isExpanded ? null : key)}
+              className={`p-3 rounded-lg border ${hasOverflow ? 'cursor-pointer' : ''} ${
+                svc.status === 'ok' ? 'border-green-200 bg-green-50' :
+                svc.status === 'error' ? 'border-red-200 bg-red-50' :
+                svc.status === 'warning' ? 'border-yellow-200 bg-yellow-50' :
+                'border-gray-200 bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-medium text-gray-900">{SERVICE_LABELS[key] || key}</span>
+                <StatusBadge status={svc.status} />
+              </div>
+              {svc.message && (
+                <p className={`text-xs text-gray-600 ${isExpanded ? 'break-words' : 'truncate'}`} title={svc.message}>{svc.message}</p>
+              )}
+              {svc.detail && (
+                <p className={`text-xs text-gray-500 ${isExpanded ? 'break-words' : 'truncate'}`} title={svc.detail}>{svc.detail}</p>
+              )}
             </div>
-            {svc.message && (
-              <p className="text-xs text-gray-600 truncate" title={svc.message}>{svc.message}</p>
-            )}
-            {svc.detail && (
-              <p className="text-xs text-gray-500 truncate" title={svc.detail}>{svc.detail}</p>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
       {health.timestamp && (
         <p className="text-xs text-gray-400 mt-3">Checked at {new Date(health.timestamp).toLocaleString()}</p>
