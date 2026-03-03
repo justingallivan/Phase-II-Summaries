@@ -145,10 +145,7 @@ async function callClaudeStreaming(apiKey, model, systemPrompt, messages, sendEv
           name: 'web_search',
           max_uses: 3,
         },
-        {
-          type: 'code_execution_20250825',
-          name: 'code_execution',
-        },
+        // code_execution is auto-injected by web_search_20260209 for dynamic filtering
       ],
     }),
   });
