@@ -2,8 +2,8 @@
 
 **Prepared for:** IT Security Review
 **Application:** Document Processing Multi-App System
-**Date:** February 2026
-**Version:** 3.2
+**Date:** March 2026
+**Version:** 3.3
 
 ---
 
@@ -605,9 +605,9 @@ Authentication is enforced at three levels — edge middleware, API route middle
 | Attribute | Detail |
 |-----------|--------|
 | **Runtime** | Vercel Edge Runtime (not Node.js) |
-| **Library** | `next-auth/middleware` `withAuth` + `jose` for JWT validation |
+| **Library** | `next-auth/middleware` `withAuth` (function form) + `jose` for JWT validation |
 | **Scope** | All routes except `_next/static`, `_next/image`, `favicon.ico`, `/api/auth/*`, `/api/cron/*` |
-| **Behavior** | Validates JWT cookie; redirects unauthenticated users to `/auth/signin` |
+| **Behavior** | Validates JWT cookie; redirects unauthenticated users to `/auth/signin`. Generates per-request CSP nonce (see [Section 7.4](#74-security-headers)). |
 | **Kill switch** | `AUTH_REQUIRED=false` disables edge auth check entirely |
 | **Stateless** | No database access; crypto-only validation |
 
@@ -829,7 +829,7 @@ Every Dynamics tool execution is logged to `dynamics_query_log`:
 
 ### 7.4 Security Headers
 
-Set by `next.config.js` on all routes (`/:path*`):
+**Static headers** set by `next.config.js` on all routes (`/:path*`):
 
 | Header | Value |
 |--------|-------|
@@ -838,20 +838,35 @@ Set by `next.config.js` on all routes (`/:path*`):
 | `X-Frame-Options` | `DENY` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `X-Powered-By` | Suppressed (`poweredByHeader: false`) |
-| `Content-Security-Policy` | See below |
+| `X-Robots-Tag` | `noindex, nofollow, noarchive` |
 
-**CSP directives (via `next.config.js`):**
+**Dynamic Content Security Policy** set per-request by middleware (`middleware.js`):
+
+The middleware generates a unique cryptographic nonce for each request via `crypto.randomUUID()` → Base64. The nonce is passed to `pages/_document.js` via the `x-nonce` request header, which propagates it to `<Head>` and `<NextScript>` so Next.js applies it to all framework-injected `<script>` tags.
+
+**Production CSP directives:**
 
 | Directive | Value |
 |-----------|-------|
 | `default-src` | `'self'` |
-| `script-src` | `'self'`, `'unsafe-inline'`, `'unsafe-eval'` |
+| `script-src` | `'self'`, `'nonce-{per-request}'`, `https://va.vercel-scripts.com` |
 | `style-src` | `'self'`, `'unsafe-inline'` |
 | `img-src` | `'self'`, `data:`, `https:` |
-| `connect-src` | `'self'`, `https://*.public.blob.vercel-storage.com` |
+| `font-src` | `'self'` |
+| `connect-src` | `'self'`, `https://*.public.blob.vercel-storage.com`, `https://vercel.com`, `https://*.vercel-insights.com` |
 | `frame-ancestors` | `'none'` |
+| `upgrade-insecure-requests` | (enforces HTTPS for all subresources) |
 
-Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js. Migrating to nonce-based CSP is recommended when feasible. The `connect-src` allowlist covers Vercel Blob for file downloads; all Claude API calls are server-side and not subject to CSP.
+**Key security properties:**
+- **No `'unsafe-inline'` in script-src** — injected `<script>` tags are blocked unless they carry the per-request nonce
+- **No `'unsafe-eval'`** — `eval()` and related functions are blocked
+- `'self'` allows same-origin script chunks (`/_next/static/...`); the nonce covers any inline scripts on SSR pages
+- `'unsafe-inline'` is retained only for `style-src` (standard practice; no script execution vector)
+- `https://va.vercel-scripts.com` is explicitly allowed for Vercel Web Analytics
+
+**Development mode differences:** `script-src` includes `'unsafe-inline'` and `'unsafe-eval'` (required by Turbopack HMR); `connect-src` includes `ws://localhost:3000` for WebSocket hot reload; `upgrade-insecure-requests` is omitted (localhost is HTTP).
+
+**Note:** Pages are statically generated (SSG) at build time, so `'strict-dynamic'` is not used — it would override `'self'` per the CSP spec and block same-origin script chunks that lack nonce attributes. The `connect-src` allowlist covers Vercel Blob for file downloads and Vercel Analytics; all Claude API calls are server-side and not subject to CSP.
 
 ### 7.5 Input Validation
 
@@ -1101,6 +1116,8 @@ Note: `'unsafe-inline'` and `'unsafe-eval'` are required by Next.js. Migrating t
 
 **Recommendation:** Migrate to nonce-based CSP when feasible. Note: Next.js requires `unsafe-eval` in development mode; consider a stricter policy for production only.
 
+**Status: REMEDIATED.** CSP is now generated dynamically per-request in `middleware.js` with a unique cryptographic nonce. Production `script-src` no longer includes `'unsafe-inline'` or `'unsafe-eval'` — only `'self'`, the per-request nonce, and `https://va.vercel-scripts.com` (Vercel Analytics). The nonce is propagated to framework scripts via `pages/_document.js`. `'unsafe-inline'` is retained only in `style-src` (no script execution vector). Development mode retains `'unsafe-inline'` and `'unsafe-eval'` for Turbopack HMR compatibility. Static CSP removed from `next.config.js`.
+
 #### L6: Rate Limiter Uses In-Memory Storage
 
 **Finding:** Rate limiting state is stored in an in-memory `Map()` which resets on each serverless function cold start and does not distribute across function instances. This makes rate limiting ineffective for persistent abuse patterns.
@@ -1237,4 +1254,4 @@ openssl rand -hex 32
 
 ---
 
-*Report generated from comprehensive codebase audit. All findings verified against source code as of February 2026.*
+*Report generated from comprehensive codebase audit. All findings verified against source code as of March 2026.*
