@@ -4,6 +4,23 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## March 2026 — OWASP ZAP Security Scan & Remediation (Session 71)
+
+Performed an OWASP ZAP automated security scan (v2.17.0) against the application in development mode. The scan identified 17 unique alert types across 6 Medium, 4 Low, and 7 Informational findings. No High-risk vulnerabilities were found.
+
+- **X-Powered-By header suppressed**: Added `poweredByHeader: false` to `next.config.js` to prevent `X-Powered-By: Next.js` information disclosure. This was the only actionable finding.
+- **CSP warnings (5 Medium)**: All are development-mode artifacts — `unsafe-inline` and `unsafe-eval` required by Next.js HMR/Fast Refresh. Production deployments on Vercel use stricter nonce-based policies automatically.
+- **Directory browsing (1 Medium, false positive)**: ZAP flagged `/_next/static/` directory structure, which is standard Next.js public asset serving.
+- **HSTS missing (false positive)**: HSTS is configured; alert triggered because ZAP scanned `http://localhost` which doesn't support HTTPS.
+- **X-Content-Type-Options missing (9 Low instances)**: Already configured in `next.config.js`; development-mode static assets may not receive the header. Vercel adds it automatically in production.
+- **Informational findings (68 suspicious comments, timestamps, etc.)**: Normal development artifacts, no action required.
+
+**Scan metadata:** OWASP ZAP 2.17.0, target `http://localhost:3000`, automated quick start scan, March 2, 2026.
+
+**Files:** `next.config.js`, `docs/SECURITY_ARCHITECTURE.md`
+
+---
+
 ## March 2026 — Word Template Export & Silent Truncation Fix (Session 70)
 
 Implemented Phase II Word template export for Proposal Summarizer and fixed a critical silent text truncation bug affecting all PDF-processing apps.

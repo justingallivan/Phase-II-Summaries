@@ -837,6 +837,7 @@ Set by `next.config.js` on all routes (`/:path*`):
 | `X-Content-Type-Options` | `nosniff` |
 | `X-Frame-Options` | `DENY` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `X-Powered-By` | Suppressed (`poweredByHeader: false`) |
 | `Content-Security-Policy` | See below |
 
 **CSP directives (via `next.config.js`):**
