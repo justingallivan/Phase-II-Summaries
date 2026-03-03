@@ -141,9 +141,13 @@ async function callClaudeStreaming(apiKey, model, systemPrompt, messages, sendEv
       stream: true,
       tools: [
         {
-          type: 'web_search_20250305',
+          type: 'web_search_20260209',
           name: 'web_search',
           max_uses: 3,
+        },
+        {
+          type: 'code_execution_20250825',
+          name: 'code_execution',
         },
       ],
     }),
