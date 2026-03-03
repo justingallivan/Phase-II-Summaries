@@ -107,7 +107,10 @@ export default async function handler(req, res) {
       });
     }
 
-    sendEvent('complete', {});
+    sendEvent('complete', {
+      // Let client know if the turn was paused (response may be incomplete)
+      ...(response.stopReason === 'pause_turn' ? { paused: true } : {}),
+    });
   } catch (error) {
     console.error('Q&A streaming error:', error);
     sendEvent('error', { message: error.message || 'Failed to process question' });
@@ -170,6 +173,8 @@ async function callClaudeStreaming(apiKey, model, systemPrompt, messages, sendEv
   let usage = null;
   let responseModel = null;
   let sentSearchEvent = false;
+  const sources = []; // Collect web search source URLs for citations
+  let stopReason = null;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -203,10 +208,36 @@ async function callClaudeStreaming(apiKey, model, systemPrompt, messages, sendEv
             sendEvent('thinking', { message: 'Searching the web...' });
             sentSearchEvent = true;
           }
+          // Extract source URLs from web search results
+          if (event.content_block?.type === 'web_search_tool_result') {
+            const results = event.content_block.content;
+            if (Array.isArray(results)) {
+              for (const r of results) {
+                if (r.type === 'web_search_result' && r.url) {
+                  // Deduplicate by URL
+                  if (!sources.some(s => s.url === r.url)) {
+                    sources.push({ url: r.url, title: r.title || '' });
+                  }
+                }
+              }
+            }
+          }
           break;
 
         case 'content_block_delta':
           if (event.delta?.type === 'text_delta' && event.delta.text) {
+            // Check for inline citations attached to text deltas
+            if (event.delta.citations) {
+              for (const cite of event.delta.citations) {
+                if (cite.url && !sources.some(s => s.url === cite.url)) {
+                  sources.push({
+                    url: cite.url,
+                    title: cite.title || '',
+                    cited_text: cite.cited_text || '',
+                  });
+                }
+              }
+            }
             sendEvent('text_delta', { text: event.delta.text });
           }
           break;
@@ -215,12 +246,20 @@ async function callClaudeStreaming(apiKey, model, systemPrompt, messages, sendEv
           if (event.usage) {
             usage = { ...usage, ...event.usage };
           }
+          if (event.delta?.stop_reason) {
+            stopReason = event.delta.stop_reason;
+          }
           break;
       }
     }
   }
 
-  return { usage, model: responseModel };
+  // Send collected sources to client if any were found
+  if (sources.length > 0) {
+    sendEvent('sources', { sources });
+  }
+
+  return { usage, model: responseModel, stopReason };
 }
 
 function getApiErrorMessage(status, responseText) {

@@ -258,6 +258,7 @@ function ProposalSummarizer() {
       const decoder = new TextDecoder();
       let buffer = '';
       let streamedText = '';
+      let streamedSources = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -308,13 +309,24 @@ function ProposalSummarizer() {
               });
               break;
 
+            case 'sources':
+              // Collect web search sources for citation display
+              if (parsed.sources) {
+                streamedSources = parsed.sources;
+              }
+              break;
+
             case 'complete':
-              // Finalize the message
+              // Finalize the message with sources if available
               setQAMessages(prev => {
                 const updated = [...prev];
                 const lastIdx = updated.length - 1;
                 if (updated[lastIdx]?.isStreaming || updated[lastIdx]?.isThinking) {
-                  updated[lastIdx] = { role: 'assistant', content: streamedText || 'No response received.' };
+                  updated[lastIdx] = {
+                    role: 'assistant',
+                    content: streamedText || 'No response received.',
+                    ...(streamedSources.length > 0 ? { sources: streamedSources } : {}),
+                  };
                 }
                 return updated;
               });
@@ -341,7 +353,11 @@ function ProposalSummarizer() {
         const updated = [...prev];
         const lastIdx = updated.length - 1;
         if (updated[lastIdx]?.isStreaming) {
-          updated[lastIdx] = { role: 'assistant', content: streamedText || 'No response received.' };
+          updated[lastIdx] = {
+            role: 'assistant',
+            content: streamedText || 'No response received.',
+            ...(streamedSources.length > 0 ? { sources: streamedSources } : {}),
+          };
         } else if (updated[lastIdx]?.isThinking) {
           updated[lastIdx] = { role: 'assistant', content: streamedText || 'No response received.' };
         }
@@ -576,14 +592,33 @@ function ProposalSummarizer() {
                   }
                   return (
                     <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[80%] p-3 rounded-lg ${
+                      <div className={`max-w-[80%] rounded-lg ${
                         msg.role === 'user'
-                          ? 'bg-blue-600 text-white'
+                          ? 'bg-blue-600 text-white p-3'
                           : msg.isError
-                            ? 'bg-red-50 text-red-800 border border-red-200'
-                            : 'bg-gray-100 text-gray-900'
+                            ? 'bg-red-50 text-red-800 border border-red-200 p-3'
+                            : 'bg-gray-100 text-gray-900 p-3'
                       }`}>
                         <div className="whitespace-pre-wrap">{msg.content}{msg.isStreaming && <span className="inline-block w-2 h-4 bg-gray-400 ml-0.5 animate-pulse" />}</div>
+                        {msg.sources && msg.sources.length > 0 && (
+                          <div className="mt-2 pt-2 border-t border-gray-200">
+                            <p className="text-xs font-medium text-gray-500 mb-1">Sources:</p>
+                            <div className="space-y-0.5">
+                              {msg.sources.map((source, i) => (
+                                <a
+                                  key={i}
+                                  href={source.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="block text-xs text-blue-600 hover:text-blue-800 hover:underline truncate"
+                                  title={source.url}
+                                >
+                                  {source.title || source.url}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
