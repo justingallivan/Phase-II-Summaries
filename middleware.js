@@ -27,14 +27,18 @@ export default withAuth(
     // Build CSP directives
     // Dev: Turbopack injects inline scripts without nonces, needs unsafe-inline + unsafe-eval.
     //      localhost is HTTP, so upgrade-insecure-requests would break all resource loads.
-    // Prod: nonce + strict-dynamic for full XSS protection.
+    // Prod: 'self' allows same-origin script chunks, nonce covers any inline scripts on
+    //      SSR pages. No unsafe-inline or unsafe-eval — blocks injected scripts and eval.
+    //      Note: 'strict-dynamic' is NOT used because SSG pages are pre-rendered at build
+    //      time without nonces on script tags, so strict-dynamic would override 'self' and
+    //      block all same-origin scripts.
     const scriptSrc = isDev
       ? `'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com`
-      : `'self' 'nonce-${nonce}' 'strict-dynamic'`;
+      : `'self' 'nonce-${nonce}' https://va.vercel-scripts.com`;
 
-    const styleSrc = isDev
-      ? `'self' 'unsafe-inline'`
-      : `'self' 'nonce-${nonce}'`;
+    // style-src: 'unsafe-inline' in both modes — safe (no script execution vector),
+    // avoids edge cases with framework-injected styles on SSG pages.
+    const styleSrc = `'self' 'unsafe-inline'`;
 
     const connectSrc = isDev
       ? `'self' https://*.public.blob.vercel-storage.com https://vercel.com https://*.vercel-insights.com ws://localhost:3000 ws://127.0.0.1:3000`
