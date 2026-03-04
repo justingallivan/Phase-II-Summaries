@@ -95,7 +95,7 @@ export default async function handler(req, res) {
     // Call Claude with streaming and web search
     const response = await callClaudeStreaming(apiKey, model, systemPrompt, conversationMessages, sendEvent);
 
-    // Log usage
+    // Log usage (with cache token metrics for accurate cost calculation)
     if (response.usage) {
       logUsage({
         userProfileId,
@@ -103,6 +103,8 @@ export default async function handler(req, res) {
         model: response.model || model,
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens,
+        cacheCreationTokens: response.usage.cache_creation_input_tokens || 0,
+        cacheReadTokens: response.usage.cache_read_input_tokens || 0,
         latencyMs: Date.now() - startTime,
       });
     }
@@ -136,7 +138,7 @@ async function callClaudeStreaming(apiKey, model, systemPrompt, messages, sendEv
       model,
       max_tokens: 4096,
       temperature: 0.4,
-      system: systemPrompt,
+      system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       messages,
       stream: true,
       tools: [

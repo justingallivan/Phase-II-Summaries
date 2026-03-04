@@ -54,7 +54,9 @@ async function getSummary(days) {
       COALESCE(SUM(output_tokens), 0)::bigint AS total_output_tokens,
       COALESCE(SUM(estimated_cost_cents), 0)::numeric AS total_cost_cents,
       COUNT(DISTINCT user_profile_id)::int AS unique_users,
-      COUNT(*) FILTER (WHERE request_status = 'error')::int AS error_count
+      COUNT(*) FILTER (WHERE request_status = 'error')::int AS error_count,
+      COALESCE(SUM(cache_creation_tokens), 0)::bigint AS total_cache_creation_tokens,
+      COALESCE(SUM(cache_read_tokens), 0)::bigint AS total_cache_read_tokens
     FROM api_usage_log
     WHERE created_at >= NOW() - MAKE_INTERVAL(days => ${days})
   `;

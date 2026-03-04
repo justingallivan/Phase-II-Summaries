@@ -547,6 +547,12 @@ const v20Alterations = [
   `CREATE INDEX IF NOT EXISTS idx_dynamics_query_log_denied ON dynamics_query_log(was_denied) WHERE was_denied = true`,
 ];
 
+// V21: Prompt cache token tracking on api_usage_log
+const v21Alterations = [
+  `ALTER TABLE api_usage_log ADD COLUMN IF NOT EXISTS cache_creation_tokens INTEGER DEFAULT 0`,
+  `ALTER TABLE api_usage_log ADD COLUMN IF NOT EXISTS cache_read_tokens INTEGER DEFAULT 0`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -1019,6 +1025,24 @@ async function runMigration() {
       }
     }
 
+    // Run V21 alterations (Prompt cache token tracking)
+    console.log(`\nApplying v21 schema updates - Prompt cache tokens (${v21Alterations.length} statements)...`);
+    for (let i = 0; i < v21Alterations.length; i++) {
+      const statement = v21Alterations[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v21-${i + 1}/${v21Alterations.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists') || error.message.includes('duplicate column')) {
+          console.log(`[v21-${i + 1}/${v21Alterations.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v21-${i + 1}/${v21Alterations.length}] ✗ Error: ${error.message}`);
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -1109,6 +1133,9 @@ async function runMigration() {
     console.log('\nV20 column additions (Dynamics denial logging):');
     console.log('  • dynamics_query_log.was_denied');
     console.log('  • dynamics_query_log.denial_reason');
+    console.log('\nV21 column additions (Prompt cache tracking):');
+    console.log('  • api_usage_log.cache_creation_tokens');
+    console.log('  • api_usage_log.cache_read_tokens');
     console.log('\nIndexes created: 55');
 
   } catch (error) {
