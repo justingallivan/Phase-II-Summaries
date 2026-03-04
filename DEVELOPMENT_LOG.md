@@ -4,6 +4,20 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## March 2026 — Streaming Q&A Chat with Web Search (Session 72)
+
+Upgraded the Proposal Summarizer Q&A from isolated single-question requests to a full streaming multi-turn chat with web search and a side panel UI.
+
+- **Streaming Q&A endpoint**: Rewrote `/api/qa` as SSE streaming endpoint. Full conversation history, system prompt with proposal text (80K chars) + summary, conversation trimming (last 6 messages), 4096 max_tokens, retry on 429.
+- **Web search with dynamic filtering**: `web_search_20260209` tool with code_execution auto-injected for dynamic result filtering. Source URLs extracted from streaming blocks and rendered as clickable citation links. Note: `web_search_20260209` auto-injects code_execution — do NOT add it explicitly or you get a 400 error.
+- **Side panel UI**: Replaced centered modal with a 520px right-side slide-in panel. Writeup content stays visible underneath. Streaming text with pulsing cursor, dynamic thinking indicators, auto-scroll, AbortController for cancellation.
+- **Prompt improvements**: Removed all em dashes from prompt templates to reduce Claude's em dash usage in output. Existing "minimize em dashes" instruction kept; the fix was removing the examples Claude was mirroring.
+- **Extraction fixes**: Strip markdown code fences before JSON.parse (most common cause of fallback triggering). Expanded fallback keyword stop list from 12 to ~80 words. State postal abbreviations in city_state field. Extracted Data section collapsed by default.
+
+**Files:** `pages/api/qa.js`, `pages/api/process.js`, `pages/proposal-summarizer.js`, `shared/config/prompts/proposal-summarizer.js`, `shared/components/ResultsDisplay.js`, `tailwind.config.js`
+
+---
+
 ## March 2026 — OWASP ZAP Security Scan & Remediation (Session 71)
 
 Performed an OWASP ZAP automated security scan (v2.17.0) against the application in development mode. The scan identified 17 unique alert types across 6 Medium, 4 Low, and 7 Informational findings. No High-risk vulnerabilities were found.
