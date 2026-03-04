@@ -3,8 +3,8 @@
  * Used for creating Phase II writeup drafts from research proposals
  *
  * Produces a two-part output matching the Keck Phase II writeup template:
- *   PART 1 — Summary Page (grade 13 audience, jargon-free)
- *   PART 2 — Detailed Writeup (technical language OK, abbreviations defined on first use)
+ *   PART 1: Summary Page (grade 13 audience, jargon-free)
+ *   PART 2: Detailed Writeup (technical language OK, abbreviations defined on first use)
  */
 
 /**
@@ -19,17 +19,17 @@ export function createSummarizationPrompt(text, summaryLength = 2, textLimit = 1
 
   return `Please analyze this research proposal and create a two-part writeup following the exact structure below.
 
-**PART 1 — SUMMARY PAGE**
-Write for a "grade 13 science audience" — an educated reader who is NOT a specialist in this field. Avoid jargon entirely; if a technical term is unavoidable, include a brief plain-English parenthetical. Each item below should be concise (1-3 sentences).
+**PART 1: SUMMARY PAGE**
+Write for a "grade 13 science audience" (an educated reader who is NOT a specialist in this field). Avoid jargon entirely; if a technical term is unavoidable, include a brief plain-English parenthetical. Each item below should be concise (1-3 sentences).
 
 **Executive Summary:**
-[2-4 sentences describing what this project is about — the core scientific question, the approach, and the expected outcome. Written so a non-specialist can understand.]
+[2-4 sentences describing what this project is about: the core scientific question, the approach, and the expected outcome. Written so a non-specialist can understand.]
 
 **Impact:**
 [1-3 sentences. If this research succeeds, what will be learned or enabled? Focus on broad significance.]
 
 **Methodology Overview:**
-[1-3 sentences. High-level description of the methods, approach, and goals — no jargon.]
+[1-3 sentences. High-level description of the methods, approach, and goals. No jargon.]
 
 **Personnel Overview:**
 [2-4 sentences. Introduce the PI and each co-investigator by name with their title, institution, and area of expertise. Use format: "The principal investigator is <u>Full Name</u>, a [lowercase title] at [institution], who [studies/specializes in area]." Then list co-investigators similarly: "Co-investigators include <u>Full Name</u>, [expertise]; <u>Full Name</u>, [expertise]."
@@ -40,7 +40,7 @@ Example: "The principal investigator is <u>Aneel Aggarwal</u>, a professor of ph
 
 ---
 
-**PART 2 — DETAILED WRITEUP**
+**PART 2: DETAILED WRITEUP**
 Technical language is acceptable here, but define all abbreviations on first use (e.g., "cryo-electron microscopy (cryo-EM)"). Target approximately ${detailedWordTarget} words for Part 2.
 
 **Background & Impact:**
@@ -50,10 +50,10 @@ Technical language is acceptable here, but define all abbreviations on first use
 [1-2 paragraphs. Research approach, techniques, experimental design. Be specific about methods and technical approaches.]
 
 **Personnel:**
-[3-5 sentences. Name each investigator with their title, institution, and specific role on this project. Keep it factual and brief — no lengthy descriptions of lab capabilities or career achievements. Use <u>Name</u> tags. Format: "The principal investigator is <u>John Smith</u>, a professor of biology at [institution]. For this project, he will lead [specific contribution]. The co-investigator is <u>Jane Doe</u>, an associate professor of chemistry at [institution], who will [specific contribution]."]
+[3-5 sentences. Name each investigator with their title, institution, and specific role on this project. Keep it factual and brief; no lengthy descriptions of lab capabilities or career achievements. Use <u>Name</u> tags. Format: "The principal investigator is <u>John Smith</u>, a professor of biology at [institution]. For this project, he will lead [specific contribution]. The co-investigator is <u>Jane Doe</u>, an associate professor of chemistry at [institution], who will [specific contribution]."]
 
 **TONE AND LANGUAGE RULES (apply to both parts):**
-- Use neutral, matter-of-fact language — avoid promotional or effusive terms
+- Use neutral, matter-of-fact language. Avoid promotional or effusive terms
 - Avoid unnecessary adjectives like "technical", "deep", "rigorous", "proper", "comprehensive", "excellent", "outstanding"
 - Write in a straightforward, academic tone similar to scientific review documents
 - State facts and qualifications directly without embellishment
@@ -163,7 +163,7 @@ ${truncatedProposal}
 - Answer questions thoroughly, referencing specific details from the proposal when relevant
 - Use web search when asked about PI publications, institutional context, technical concepts, recent developments, or anything not contained in the proposal itself
 - When you use web search results, briefly cite the source
-- Be conversational but substantive — give real answers, not hedging
+- Be conversational but substantive; give real answers, not hedging
 - If the proposal doesn't contain information needed to answer, say so directly
 - You can quote specific passages from the proposal to support your answers`;
 }
