@@ -4,6 +4,20 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## March 2026 — Q&A Prompt Caching & Output Fixes (Session 73)
+
+Implemented prompt caching, fixed truncated writeups, and improved Q&A UX.
+
+- **Prompt caching**: System prompt in `/api/qa` now uses `cache_control: { type: 'ephemeral' }` so the large proposal context (~20K tokens) is cached across turns. Cache token metrics extracted from streaming response and logged to `api_usage_log` with correct pricing (1.25x write, 0.1x read). V21 migration adds `cache_creation_tokens` and `cache_read_tokens` columns.
+- **Fixed truncated writeups**: `DEFAULT_MAX_TOKENS` was 2000, far too low for the two-part writeup format. Increased to 16384 (model output limit). Affects all summarization endpoints.
+- **Q&A markdown rendering**: Added `renderMarkdown()` with DOMPurify sanitization for assistant responses (headers, bold, italic, lists, code, horizontal rules). User messages remain plain text.
+- **Q&A conversation persistence**: Closing and reopening the side panel for the same file preserves the conversation. Only resets when switching files.
+- **Admin stats**: Summary query now includes `total_cache_creation_tokens` and `total_cache_read_tokens` for monitoring cache effectiveness.
+
+**Files:** `pages/api/qa.js`, `lib/utils/usage-logger.js`, `scripts/setup-database.js`, `pages/api/admin/stats.js`, `pages/proposal-summarizer.js`, `shared/config/baseConfig.js`
+
+---
+
 ## March 2026 — Streaming Q&A Chat with Web Search (Session 72)
 
 Upgraded the Proposal Summarizer Q&A from isolated single-question requests to a full streaming multi-turn chat with web search and a side panel UI.
