@@ -88,7 +88,7 @@ IMPORTANT: The filename "${filename}" may contain hints about the institution na
 {
   "filename": "${filename}",
   "institution": "Primary institution name (check filename for hints)",
-  "city_state": "City, State of the primary institution (e.g., 'Pasadena, California')",
+  "city_state": "City, State of the primary institution using postal abbreviation (e.g., 'Pasadena, CA')",
   "project_title": "Full project title as stated in the proposal",
   "principal_investigator": "Name of PI",
   "investigators": ["List", "of", "investigators"],
