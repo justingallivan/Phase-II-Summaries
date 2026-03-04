@@ -188,9 +188,11 @@ async function extractStructuredData(text, filename, summary, apiKey) {
 
     if (response.ok) {
       const data = await response.json();
-      const jsonText = data.content[0].text;
-      
+      let jsonText = data.content[0].text;
+
       try {
+        // Strip markdown code fences if present (```json ... ``` or ``` ... ```)
+        jsonText = jsonText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
         const parsed = JSON.parse(jsonText);
         return {
           ...parsed,
@@ -198,7 +200,7 @@ async function extractStructuredData(text, filename, summary, apiKey) {
           wordCount: text.split(' ').length
         };
       } catch (parseError) {
-        console.warn('Failed to parse structured data, using fallback');
+        console.warn('Failed to parse structured data, using fallback. Raw text:', jsonText.substring(0, 200));
       }
     }
   } catch (error) {
@@ -398,7 +400,16 @@ function extractDuration(text) {
 }
 
 function extractKeywords(text) {
-  const commonWords = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'];
+  const commonWords = [
+    'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
+    'this', 'that', 'these', 'those', 'from', 'will', 'would', 'could', 'should',
+    'have', 'been', 'were', 'also', 'more', 'most', 'some', 'such', 'than', 'them',
+    'then', 'they', 'their', 'there', 'what', 'when', 'which', 'while', 'each',
+    'into', 'other', 'about', 'over', 'after', 'between', 'through', 'both', 'same',
+    'only', 'used', 'using', 'based', 'can', 'may', 'our', 'all', 'are', 'was',
+    'not', 'has', 'its', 'does', 'how', 'who', 'any', 'well', 'very', 'many',
+    'much', 'just', 'like', 'make', 'made', 'being', 'here', 'where', 'under',
+  ];
   const words = text.toLowerCase().match(/\b[a-z]{4,}\b/g) || [];
   const wordCount = {};
   

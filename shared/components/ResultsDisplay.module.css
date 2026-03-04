@@ -194,16 +194,26 @@
 .structuredDataSection {
   background-color: #f5f5f5;
   border-radius: 8px;
-  padding: 1rem;
+  padding: 0.75rem 1rem;
   margin-bottom: 1.5rem;
 }
 
-.structuredDataSection h4 {
-  margin: 0 0 1rem 0;
+.structuredDataToggle {
+  display: flex;
+  align-items: center;
+  background: none;
+  border: none;
   color: #666;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.structuredDataToggle:hover {
+  color: #333;
 }
 
 .structuredData {
@@ -211,6 +221,7 @@
   border: 1px solid #e0e0e0;
   border-radius: 4px;
   padding: 1rem;
+  margin-top: 0.75rem;
   overflow-x: auto;
 }
 

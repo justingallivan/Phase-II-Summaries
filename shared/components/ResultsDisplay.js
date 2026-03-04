@@ -12,6 +12,7 @@ export default function ResultsDisplay({
 }) {
   const [activeTab, setActiveTab] = useState(0);
   const [copySuccess, setCopySuccess] = useState({});
+  const [showStructuredData, setShowStructuredData] = useState({});
 
   if (!results || Object.keys(results).length === 0) {
     return null;
@@ -280,10 +281,17 @@ export default function ResultsDisplay({
 
                 {!hideMetadata && result.structured && (
                   <div className={styles.structuredDataSection}>
-                    <h4>Extracted Data</h4>
-                    <div className={styles.structuredData}>
-                      <pre>{JSON.stringify(result.structured, null, 2)}</pre>
-                    </div>
+                    <button
+                      onClick={() => setShowStructuredData(prev => ({ ...prev, [filename]: !prev[filename] }))}
+                      className={styles.structuredDataToggle}
+                    >
+                      <span>{showStructuredData[filename] ? '▾' : '▸'} Extracted Data</span>
+                    </button>
+                    {showStructuredData[filename] && (
+                      <div className={styles.structuredData}>
+                        <pre>{JSON.stringify(result.structured, null, 2)}</pre>
+                      </div>
+                    )}
                   </div>
                 )}
 
