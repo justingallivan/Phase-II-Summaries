@@ -75,9 +75,13 @@ export default async function handler(req, res) {
           throw new Error('PDF appears to be empty or contains insufficient text');
         }
 
+        // Parse cover page metadata
+        const coverData = parseCoverPage(text);
+        console.log(`Cover page: institution=${coverData.institution}, PI=${coverData.projectLeader}, title=${coverData.projectTitle?.substring(0, 50)}`);
+
         // Generate summary using Claude API with Phase I prompt
         console.log(`Sending to Claude API with text length: ${text.length}`);
-        const summary = await generatePhaseISummary(text, file.filename, apiKey, summaryLength, summaryLevel, userProfileId);
+        const summary = await generatePhaseISummary(text, file.filename, apiKey, summaryLength, summaryLevel, userProfileId, coverData);
         console.log(`Received summary:`, summary ? 'Success' : 'Failed');
         results[file.filename] = summary;
 
@@ -108,7 +112,7 @@ export default async function handler(req, res) {
   }
 }
 
-async function generatePhaseISummary(text, filename, apiKey, summaryLength, summaryLevel, userProfileId) {
+async function generatePhaseISummary(text, filename, apiKey, summaryLength, summaryLevel, userProfileId, coverData) {
   try {
     // Use Phase I specific prompt
     const prompt = createPhaseISummarizationPrompt(text, summaryLength, summaryLevel, KECK_GUIDELINES);
@@ -150,10 +154,15 @@ async function generatePhaseISummary(text, filename, apiKey, summaryLength, summ
     const summaryText = data.content[0].text;
 
     // Create formatted markdown version for Phase I
-    const formatted = enhancePhaseIFormatting(summaryText, filename);
+    const formatted = enhancePhaseIFormatting(summaryText, filename, coverData);
 
-    // Extract structured data
+    // Extract structured data — supplement with cover page data
     const structured = await extractStructuredData(text, filename, summaryText, apiKey, userProfileId);
+    if (coverData.institution) structured.institution = coverData.institution;
+    if (coverData.projectLeader) structured.principal_investigator = coverData.projectLeader;
+    if (coverData.projectTitle) structured.project_title = coverData.projectTitle;
+    if (coverData.amountRequested) structured.funding_amount = coverData.amountRequested;
+    if (coverData.projectPeriod) structured.duration = coverData.projectPeriod;
 
     return {
       formatted,
@@ -220,26 +229,99 @@ async function extractStructuredData(text, filename, summary, apiKey, userProfil
   return createStructuredDataFallback(text, filename);
 }
 
-function enhancePhaseIFormatting(summary, filename) {
-  const institution = extractInstitutionFromFilename(filename) || 'Research Institution';
+function enhancePhaseIFormatting(summary, filename, coverData = {}) {
+  const institution = coverData.institution || extractInstitutionFromFilename(filename) || 'Research Institution';
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
 
   let formatted = `# ${institution}\n`;
   formatted += `Phase I Review: ${date}\n\n`;
   formatted += `**Filename:** ${filename}\n`;
   formatted += `**Date Processed:** ${new Date().toLocaleDateString()}\n\n`;
-  formatted += '---\n\n';
 
-  // Process the summary with proper section headers
-  // Phase I summaries might have different sections than Phase II
+  // Project title and metadata line (mirrors Phase II format)
+  if (coverData.projectTitle) {
+    formatted += `## ${coverData.projectTitle}\n`;
+    const metaParts = [institution];
+    if (coverData.amountRequested) metaParts.push(`Requested Amount: ${coverData.amountRequested}`);
+    if (coverData.projectPeriod) metaParts.push(`Project Period: ${coverData.projectPeriod}`);
+    formatted += `**${metaParts.join(' | ')}**\n\n`;
+  }
+
+  if (coverData.projectLeader) {
+    formatted += `**Project Leader:** ${coverData.projectLeader}\n`;
+  }
+  if (coverData.coPIs && coverData.coPIs.length > 0) {
+    formatted += `**Co-PIs:** ${coverData.coPIs.join(', ')}\n`;
+  }
+  formatted += '\n';
+
+  // Process the summary — Phase I doesn't use Part markers or --- separators
   let processedSummary = summary
     .replace(/\*\*Executive Summary\*\*/g, '## Executive Summary')
     .replace(/\*\*Background & Impact\*\*/g, '## Background & Impact')
     .replace(/\*\*Methodology\*\*/g, '## Methodology')
     .replace(/\*\*Personnel\*\*/g, '## Personnel')
-    .replace(/\*\*Justification for Keck Funding\*\*/g, '## Justification for Keck Funding');
+    .replace(/\*\*Justification for Keck Funding\*\*/g, '## Justification for Keck Funding')
+    // Downgrade any H1s in the summary to H2
+    .replace(/^# (.+)$/gm, '## $1')
+    .replace(/\n{3,}/g, '\n\n');
 
   return formatted + processedSummary;
+}
+
+/**
+ * Parse structured metadata from the Phase I cover page.
+ * Cover pages follow a consistent "Key  Value" format.
+ */
+function parseCoverPage(text) {
+  const result = {
+    institution: null,
+    projectTitle: null,
+    projectLeader: null,
+    amountRequested: null,
+    projectPeriod: null,
+    coPIs: [],
+  };
+
+  // Institution
+  const instMatch = text.match(/Applicant Institution\s+(.+?)(?:\s{2,}|\n)/);
+  if (instMatch) result.institution = instMatch[1].trim();
+
+  // Project title (may span multiple lines before the next field)
+  const titleMatch = text.match(/Project Title\s+(.+?)(?=\nProject Time Period|\nAmount Requested)/s);
+  if (titleMatch) result.projectTitle = titleMatch[1].replace(/\s+/g, ' ').trim();
+
+  // Amount
+  const amountMatch = text.match(/Amount Requested\s+(\$[\d,]+)/);
+  if (amountMatch) result.amountRequested = amountMatch[1].trim();
+
+  // Project period
+  const periodMatch = text.match(/Project Time Period\s+(?:from\s+)?(\d{4}[-/]\d{2}[-/]\d{2})\s+to\s+(\d{4}[-/]\d{2}[-/]\d{2})/);
+  if (periodMatch) {
+    const startYear = periodMatch[1].substring(0, 4);
+    const endYear = periodMatch[2].substring(0, 4);
+    result.projectPeriod = `${startYear}–${endYear}`;
+  }
+
+  // Project Leader — look for "Project Leader" section, then grab the name on the next line
+  const leaderMatch = text.match(/Project Leader\s*\n\s*(?:Dr\.?\s+)?([A-Z][a-zA-Z'-]+\s[A-Z][a-zA-Z'-]+)/);
+  if (leaderMatch) result.projectLeader = leaderMatch[1].trim();
+
+  // Co-PIs — listed as "Dr. Firstname Lastname email" lines after the header.
+  // Stop at the next section (e.g., "Project Summary", "PROJECT SUMMARY", blank-line runs).
+  const copiSection = text.match(/Co-Principal Investigators\s*\n([\s\S]*?)(?=\n\s*(?:Project Summary|PROJECT SUMMARY|PART\s|Budget|Key Personnel)\b|\n\n\n)/);
+  if (copiSection) {
+    // Only match "Dr. Name Name" patterns (the standard cover page format)
+    const nameMatches = copiSection[1].matchAll(/Dr\.?\s+([A-Z][a-zA-Z'-]+)\s+([A-Z][a-zA-Z'-]+)/g);
+    for (const m of nameMatches) {
+      const name = `${m[1].trim()} ${m[2].trim()}`;
+      if (name !== result.projectLeader) {
+        result.coPIs.push(name);
+      }
+    }
+  }
+
+  return result;
 }
 
 function createErrorResult(filename, errorMessage) {

@@ -116,6 +116,112 @@ function BatchPhaseISummaries() {
     }
   };
 
+  const exportAllAsPdf = async () => {
+    if (!results || Object.keys(results).length === 0) return;
+
+    try {
+      const { PDFReportBuilder, downloadPdf } = await import('../shared/utils/pdf-export');
+      const builder = new PDFReportBuilder();
+      await builder.init();
+
+      builder
+        .addTitle('Batch Phase I Summaries')
+        .addMetadata('Generated', new Date().toLocaleDateString())
+        .addMetadata('Summary Length', `${summaryLength} paragraph${summaryLength > 1 ? 's' : ''}`)
+        .addMetadata('Technical Level', summaryLevel.replace(/-/g, ' '))
+        .addMetadata('Documents Processed', String(Object.keys(results).length))
+        .addDivider();
+
+      const entries = Object.entries(results);
+
+      for (let i = 0; i < entries.length; i++) {
+        const [filename, result] = entries[i];
+
+        builder.addPage();
+
+        if (result.metadata?.error) {
+          builder
+            .addSection(filename)
+            .addParagraph(`Error: ${result.metadata.errorMessage}`, { font: 'italic' });
+          continue;
+        }
+
+        if (!result.formatted) {
+          builder
+            .addSection(filename)
+            .addParagraph('No summary available.');
+          continue;
+        }
+
+        const lines = result.formatted.split('\n');
+        let bulletBuffer = [];
+
+        const flushBullets = () => {
+          if (bulletBuffer.length > 0) {
+            builder.addBulletList(bulletBuffer);
+            bulletBuffer = [];
+          }
+        };
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            flushBullets();
+            continue;
+          }
+
+          if (trimmed.startsWith('# ')) {
+            flushBullets();
+            builder.addSection(trimmed.slice(2));
+            continue;
+          }
+
+          if (trimmed.startsWith('## ')) {
+            flushBullets();
+            builder.addSection(trimmed.slice(3), 2);
+            continue;
+          }
+
+          if (trimmed.startsWith('•') || trimmed.startsWith('- ')) {
+            const bulletText = trimmed.replace(/^[•\-]\s*/, '');
+            bulletBuffer.push(bulletText.replace(/\*\*/g, ''));
+            continue;
+          }
+
+          flushBullets();
+
+          const kvMatch = trimmed.match(/^\*\*(.+?):\*\*\s*(.+)$/);
+          if (kvMatch) {
+            builder.addKeyValue(kvMatch[1], kvMatch[2]);
+            continue;
+          }
+
+          if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
+            const boldText = trimmed.slice(2, -2);
+            builder.addParagraph(boldText, { font: 'bold' });
+            continue;
+          }
+
+          const cleanText = trimmed
+            .replace(/<\/?u>/g, '')
+            .replace(/\*\*/g, '');
+          if (cleanText) {
+            builder.addParagraph(cleanText);
+          }
+        }
+
+        flushBullets();
+      }
+
+      const pdfBytes = await builder.build();
+      downloadPdf(pdfBytes, `batch_phase_i_summaries_${new Date().toISOString().split('T')[0]}.pdf`);
+
+    } catch (err) {
+      console.error('PDF export error:', err);
+      setError('Failed to export PDF: ' + err.message);
+    }
+  };
+
   const exportAllAsMarkdown = () => {
     if (!results || Object.keys(results).length === 0) return;
 
@@ -126,8 +232,7 @@ function BatchPhaseISummaries() {
     content += `Documents Processed: ${Object.keys(results).length}\n\n`;
     content += `---\n\n`;
 
-    Object.entries(results).forEach(([filename, result], index) => {
-      content += `# ${index + 1}. ${filename}\n\n`;
+    Object.entries(results).forEach(([filename, result]) => {
       if (result.metadata?.error) {
         content += `❌ **Error**: ${result.metadata.errorMessage}\n\n`;
       } else {
@@ -266,12 +371,20 @@ function BatchPhaseISummaries() {
                   <span>📄</span>
                   <span>Batch Results</span>
                 </h2>
-                <Button
-                  variant="secondary"
-                  onClick={exportAllAsMarkdown}
-                >
-                  📝 Export All as Markdown
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    onClick={exportAllAsPdf}
+                  >
+                    📄 Export PDF
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={exportAllAsMarkdown}
+                  >
+                    📝 Export Markdown
+                  </Button>
+                </div>
               </div>
 
               <div className="bg-blue-50 p-4 rounded-lg mb-6 text-center">

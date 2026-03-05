@@ -19,6 +19,13 @@ export function createSummarizationPrompt(text, summaryLength = 2, textLimit = 1
 
   return `Please analyze this research proposal and create a two-part writeup following the exact structure below.
 
+Begin with the project title and a one-line summary of the institution, requested amount, and project period:
+
+# [Project Title]
+**[Institution] | Requested Amount: [Amount] | Project Period: [Years]**
+
+Then proceed with the two-part writeup.
+
 **PART 1: SUMMARY PAGE**
 Write for a "grade 13 science audience" (an educated reader who is NOT a specialist in this field). Avoid jargon entirely; if a technical term is unavoidable, include a brief plain-English parenthetical. Each item below should be concise (1-3 sentences).
 
@@ -234,7 +241,6 @@ export function enhanceFormatting(summary, filename) {
   formatted += `Phase II Review: ${date}\n\n`;
   formatted += `**Filename:** ${filename}\n`;
   formatted += `**Date Processed:** ${new Date().toLocaleDateString()}\n\n`;
-  formatted += '---\n\n';
 
   // Process the summary with proper section headers for both parts
   let processedSummary = summary
@@ -253,6 +259,8 @@ export function enhanceFormatting(summary, filename) {
     .replace(/\*\*Background & Impact:?\*\*/g, '## Background & Impact')
     .replace(/\*\*Methodology:?\*\*/g, '## Methodology')
     .replace(/\*\*Personnel:?\*\*/g, '## Personnel')
+    // Downgrade H1s in the summary to H2 (institution H1 is already prepended)
+    .replace(/^# (.+)$/gm, '## $1')
     // Clean up excess blank lines left by removals
     .replace(/\n{3,}/g, '\n\n');
 

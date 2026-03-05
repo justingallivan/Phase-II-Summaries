@@ -67,6 +67,40 @@ const COLORS = {
   purple: rgb(0.5, 0.3, 0.7),
 };
 
+/**
+ * Sanitize text for WinAnsi encoding (Helvetica only supports WinAnsi).
+ * Replaces Unicode characters that pdf-lib cannot encode.
+ */
+function sanitizeForPdf(text) {
+  if (!text) return text;
+  return text
+    // Subscript digits
+    .replace(/\u2080/g, '0').replace(/\u2081/g, '1').replace(/\u2082/g, '2')
+    .replace(/\u2083/g, '3').replace(/\u2084/g, '4').replace(/\u2085/g, '5')
+    .replace(/\u2086/g, '6').replace(/\u2087/g, '7').replace(/\u2088/g, '8')
+    .replace(/\u2089/g, '9')
+    // Superscript digits
+    .replace(/\u2070/g, '0').replace(/\u00B9/g, '1').replace(/\u00B2/g, '2')
+    .replace(/\u00B3/g, '3').replace(/\u2074/g, '4').replace(/\u2075/g, '5')
+    .replace(/\u2076/g, '6').replace(/\u2077/g, '7').replace(/\u2078/g, '8')
+    .replace(/\u2079/g, '9')
+    // Dashes and quotes
+    .replace(/\u2013/g, '-')   // en dash
+    .replace(/\u2014/g, '--')  // em dash
+    .replace(/\u2018/g, "'")   // left single quote
+    .replace(/\u2019/g, "'")   // right single quote
+    .replace(/\u201C/g, '"')   // left double quote
+    .replace(/\u201D/g, '"')   // right double quote
+    // Other common Unicode
+    .replace(/\u2026/g, '...') // ellipsis
+    .replace(/\u00A0/g, ' ')   // non-breaking space
+    .replace(/\u2032/g, "'")   // prime
+    .replace(/\u2033/g, '"')   // double prime
+    // Fallback: replace any remaining non-WinAnsi chars with '?'
+    // WinAnsi covers 0x20-0x7E (ASCII printable) + 0xA0-0xFF (Latin-1 Supplement)
+    .replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF]/g, '?');
+}
+
 // Page settings
 const PAGE_WIDTH = 612; // Letter size
 const PAGE_HEIGHT = 792;
@@ -123,7 +157,7 @@ export class PDFReportBuilder {
   addTitle(title, subtitle = null) {
     this.ensureSpace(60);
 
-    this.currentPage.drawText(title, {
+    this.currentPage.drawText(sanitizeForPdf(title), {
       x: MARGIN,
       y: this.yPosition,
       size: 20,
@@ -133,7 +167,7 @@ export class PDFReportBuilder {
     this.yPosition -= 28;
 
     if (subtitle) {
-      this.currentPage.drawText(subtitle, {
+      this.currentPage.drawText(sanitizeForPdf(subtitle), {
         x: MARGIN,
         y: this.yPosition,
         size: 11,
@@ -153,9 +187,11 @@ export class PDFReportBuilder {
   addMetadata(key, value) {
     this.ensureSpace(20);
 
-    const keyWidth = this.fonts.bold.widthOfTextAtSize(`${key}: `, 10);
+    const safeKey = sanitizeForPdf(key);
+    const safeValue = sanitizeForPdf(value);
+    const keyWidth = this.fonts.bold.widthOfTextAtSize(`${safeKey}: `, 10);
 
-    this.currentPage.drawText(`${key}: `, {
+    this.currentPage.drawText(`${safeKey}: `, {
       x: MARGIN,
       y: this.yPosition,
       size: 10,
@@ -163,7 +199,7 @@ export class PDFReportBuilder {
       color: COLORS.gray,
     });
 
-    this.currentPage.drawText(value, {
+    this.currentPage.drawText(safeValue, {
       x: MARGIN + keyWidth,
       y: this.yPosition,
       size: 10,
@@ -185,7 +221,7 @@ export class PDFReportBuilder {
     this.ensureSpace(fontSize + topPadding + 10);
     this.yPosition -= topPadding;
 
-    this.currentPage.drawText(title, {
+    this.currentPage.drawText(sanitizeForPdf(title), {
       x: MARGIN,
       y: this.yPosition,
       size: fontSize,
@@ -280,7 +316,7 @@ export class PDFReportBuilder {
 
     this.ensureSpace(fontSize + 8);
 
-    const keyText = `${key}: `;
+    const keyText = `${sanitizeForPdf(key)}: `;
     const keyWidth = this.fonts.bold.widthOfTextAtSize(keyText, fontSize);
 
     this.currentPage.drawText(keyText, {
@@ -291,7 +327,7 @@ export class PDFReportBuilder {
       color: keyColor,
     });
 
-    // Wrap value text
+    // Wrap value text (sanitized inside wrapText)
     const valueLines = this.wrapText(value, CONTENT_WIDTH - keyWidth, this.fonts.regular, fontSize);
 
     for (let i = 0; i < valueLines.length; i++) {
@@ -325,7 +361,7 @@ export class PDFReportBuilder {
 
     this.ensureSpace(20);
 
-    this.currentPage.drawText(`[ ${label} ]`, {
+    this.currentPage.drawText(`[ ${sanitizeForPdf(label)} ]`, {
       x: MARGIN,
       y: this.yPosition,
       size: 11,
@@ -375,7 +411,7 @@ export class PDFReportBuilder {
     this.ensureSpace(boxHeight + 10);
 
     // Draw title
-    this.currentPage.drawText(title, {
+    this.currentPage.drawText(sanitizeForPdf(title), {
       x: MARGIN,
       y: this.yPosition,
       size: 11,
@@ -451,7 +487,7 @@ export class PDFReportBuilder {
   wrapText(text, maxWidth, font, fontSize) {
     if (!text) return [];
 
-    const words = text.split(' ');
+    const words = sanitizeForPdf(text).split(' ');
     const lines = [];
     let currentLine = '';
 

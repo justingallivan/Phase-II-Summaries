@@ -116,6 +116,122 @@ function BatchProposalSummaries() {
     }
   };
 
+  const exportAllAsPdf = async () => {
+    if (!results || Object.keys(results).length === 0) return;
+
+    try {
+      const { PDFReportBuilder, downloadPdf } = await import('../shared/utils/pdf-export');
+      const builder = new PDFReportBuilder();
+      await builder.init();
+
+      // Cover page
+      builder
+        .addTitle('Batch Phase II Summaries')
+        .addMetadata('Generated', new Date().toLocaleDateString())
+        .addMetadata('Summary Length', `${summaryLength} pages`)
+        .addMetadata('Technical Level', summaryLevel.replace(/-/g, ' '))
+        .addMetadata('Documents Processed', String(Object.keys(results).length))
+        .addDivider();
+
+      const entries = Object.entries(results);
+
+      for (let i = 0; i < entries.length; i++) {
+        const [filename, result] = entries[i];
+
+        // Page break between entries
+        builder.addPage();
+
+        if (result.metadata?.error) {
+          builder
+            .addSection(filename)
+            .addParagraph(`Error: ${result.metadata.errorMessage}`, { font: 'italic' });
+          continue;
+        }
+
+        if (!result.formatted) {
+          builder
+            .addSection(filename)
+            .addParagraph('No summary available.');
+          continue;
+        }
+
+        // Parse the formatted markdown into PDF builder calls
+        const lines = result.formatted.split('\n');
+        let bulletBuffer = [];
+
+        const flushBullets = () => {
+          if (bulletBuffer.length > 0) {
+            builder.addBulletList(bulletBuffer);
+            bulletBuffer = [];
+          }
+        };
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            flushBullets();
+            continue;
+          }
+
+          // H1 header (institution name)
+          if (trimmed.startsWith('# ')) {
+            flushBullets();
+            builder.addSection(trimmed.slice(2));
+            continue;
+          }
+
+          // H2 header (section titles, project title)
+          if (trimmed.startsWith('## ')) {
+            flushBullets();
+            builder.addSection(trimmed.slice(3), 2);
+            continue;
+          }
+
+          // Bullet points (• or -)
+          if (trimmed.startsWith('•') || trimmed.startsWith('- ')) {
+            const bulletText = trimmed.replace(/^[•\-]\s*/, '');
+            // Strip bold markers from bullet text
+            bulletBuffer.push(bulletText.replace(/\*\*/g, ''));
+            continue;
+          }
+
+          flushBullets();
+
+          // Metadata lines (bold key-value)
+          const kvMatch = trimmed.match(/^\*\*(.+?):\*\*\s*(.+)$/);
+          if (kvMatch) {
+            builder.addKeyValue(kvMatch[1], kvMatch[2]);
+            continue;
+          }
+
+          // Bold line (e.g., institution | amount | period)
+          if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
+            const boldText = trimmed.slice(2, -2);
+            builder.addParagraph(boldText, { font: 'bold' });
+            continue;
+          }
+
+          // Regular paragraph — strip HTML underline tags and bold markers
+          const cleanText = trimmed
+            .replace(/<\/?u>/g, '')
+            .replace(/\*\*/g, '');
+          if (cleanText) {
+            builder.addParagraph(cleanText);
+          }
+        }
+
+        flushBullets();
+      }
+
+      const pdfBytes = await builder.build();
+      downloadPdf(pdfBytes, `batch_summaries_${new Date().toISOString().split('T')[0]}.pdf`);
+
+    } catch (err) {
+      console.error('PDF export error:', err);
+      setError('Failed to export PDF: ' + err.message);
+    }
+  };
+
   const exportAllAsMarkdown = () => {
     if (!results || Object.keys(results).length === 0) return;
 
@@ -126,8 +242,7 @@ function BatchProposalSummaries() {
     content += `Documents Processed: ${Object.keys(results).length}\n\n`;
     content += `---\n\n`;
 
-    Object.entries(results).forEach(([filename, result], index) => {
-      content += `# ${index + 1}. ${filename}\n\n`;
+    Object.entries(results).forEach(([filename, result]) => {
       if (result.metadata?.error) {
         content += `❌ **Error**: ${result.metadata.errorMessage}\n\n`;
       } else {
@@ -269,12 +384,20 @@ function BatchProposalSummaries() {
                   <span>📄</span>
                   <span>Batch Results</span>
                 </h2>
-                <Button
-                  variant="secondary"
-                  onClick={exportAllAsMarkdown}
-                >
-                  📝 Export All as Markdown
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    onClick={exportAllAsPdf}
+                  >
+                    📄 Export PDF
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={exportAllAsMarkdown}
+                  >
+                    📝 Export Markdown
+                  </Button>
+                </div>
               </div>
               
               <div className="bg-blue-50 p-4 rounded-lg mb-6 text-center">
