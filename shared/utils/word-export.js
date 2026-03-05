@@ -4,40 +4,42 @@
  * Client-side utility that generates .docx files matching the Keck Foundation
  * Phase II writeup template. Uses the `docx` package (dynamically imported).
  *
- * Template structure (from Phase II writeup template 2.25.26.docx):
- *   Page 1 — Cover/Summary (no header; institution, fields, hr, exec summary, bullets)
+ * Template structure (from Research_Phase II_Write Up_Template J27.docx):
+ *   Page 1 — Summary (no header; institution line, tab-aligned metadata, exec summary, bullets)
  *   Page 2 — Graphical Abstract placeholder (header appears)
  *   Pages 3-4 — Detailed Writeup (header appears)
  *
- * Formatting reference (extracted from template XML):
- *   Font: Times New Roman throughout; body 12pt, header 10.5pt, institution 14pt bold
- *   Heading 1: TNR 12pt bold, before 12pt, after 0
+ * Formatting reference (extracted from template):
+ *   Font: Times New Roman throughout; body 12pt, header 13pt, institution 16pt bold
+ *   Section headings: TNR 12pt bold (Normal style, not Heading 1)
  *   Margins: 0.75" all sides
- *   Page 1 field tab: 2.3125" (3330 twips)
- *   Header tabs: center 5.5" (7920), right 7.0" (10080)
+ *   Metadata: two-column tab-aligned layout (left fields at 2.3", right labels at 5.5", right values at 7.0")
  *   Bullets: indent 547 twips, after 8pt (160 twips)
  *   Normal paragraph: after 6pt (120 twips), single line spacing
  */
 
 // All sizes in half-points unless noted
 const FONT = 'Times New Roman';
-const FONT_SIZE_BODY = 24;    // 12pt
-const FONT_SIZE_HEADER = 21;  // 10.5pt
-const FONT_SIZE_TITLE = 28;   // 14pt
-const FONT_SIZE_HEADING1 = 24; // 12pt (bold)
+const FONT_SIZE_BODY = 24;       // 12pt
+const FONT_SIZE_HEADER = 26;     // 13pt
+const FONT_SIZE_INSTITUTION = 32; // 16pt
+const FONT_SIZE_HEADING = 24;    // 12pt (bold)
 
 // Twips (1 inch = 1440 twips)
 const PAGE_MARGIN = 1080;          // 0.75"
-const FIELD_TAB_POS = 3330;        // 2.3125" — page 1 field values
-const HEADER_CENTER_TAB = 7920;    // 5.5"
 const HEADER_RIGHT_TAB = 10080;    // 7.0"
 const BULLET_INDENT = 547;         // 0.38"
 const BULLET_HANGING = 360;
 
+// Metadata field tab positions
+const FIELD_LEFT_TAB = 2880;       // 2.0" — left-column values
+const FIELD_RIGHT_LABEL_TAB = 7920; // 5.5" — right-column labels (right-aligned)
+const FIELD_RIGHT_VALUE_TAB = 8100; // 5.625" — right-column values
+
 // Spacing in twips
 const SPACING_NORMAL_AFTER = 120;  // 6pt
 const SPACING_BULLET_AFTER = 160;  // 8pt
-const SPACING_HEADING_BEFORE = 240; // 12pt
+const SPACING_SECTION_BEFORE = 240; // 12pt
 
 /**
  * Generate a Phase II writeup .docx matching the Keck template.
@@ -49,28 +51,24 @@ const SPACING_HEADING_BEFORE = 240; // 12pt
  */
 export async function generatePhaseIIDocument(sections, metadata, internalFields) {
   const {
-    Document, Packer, Paragraph, TextRun, Header,
-    TabStopType, AlignmentType, HeadingLevel, NumberFormat,
-    UnderlineType, PageNumber, BorderStyle, PageBreak,
+    Document, Packer, Paragraph, TextRun, Header, ImageRun,
+    Table, TableRow, TableCell, WidthType,
+    TabStopType, AlignmentType, NumberFormat, BorderStyle,
+    UnderlineType, PageNumber, PageBreak,
   } = await import('docx');
 
-  const programAbbrev = internalFields.programType === 'Medical Research' ? 'MR' : 'SE';
-  const piName = metadata.principal_investigator || '[PI Name]';
-  const institutionName = metadata.institution || '[Institution]';
-  const shortTitle = internalFields.shortTitle || '[Short Title]';
+  const programName = internalFields.programType || 'Science and Engineering';
+  const institutionName = internalFields.institution || metadata.institution || '[Institution]';
 
   // --- Header (pages 2+ only; page 1 uses titlePg to suppress) ---
   const pageHeader = new Header({
     children: [
       new Paragraph({
         tabStops: [
-          { type: TabStopType.CENTER, position: HEADER_CENTER_TAB },
           { type: TabStopType.RIGHT, position: HEADER_RIGHT_TAB },
         ],
         children: [
-          new TextRun({ text: `${piName}, ${institutionName}, ${shortTitle}`, size: FONT_SIZE_HEADER, font: FONT }),
-          new TextRun({ text: '\t', size: FONT_SIZE_HEADER, font: FONT }),
-          new TextRun({ text: `Phase II: ${programAbbrev}`, size: FONT_SIZE_HEADER, font: FONT }),
+          new TextRun({ text: 'Phase II Review', size: FONT_SIZE_HEADER, font: FONT }),
           new TextRun({ text: '\t', size: FONT_SIZE_HEADER, font: FONT }),
           new TextRun({ text: 'Page ', size: FONT_SIZE_HEADER, font: FONT }),
           new TextRun({ children: [PageNumber.CURRENT], size: FONT_SIZE_HEADER, font: FONT }),
@@ -102,7 +100,6 @@ export async function generatePhaseIIDocument(sections, metadata, internalFields
     return new Paragraph({ children: [bodyRun('')], spacing: { after: afterSpacing } });
   }
 
-  /** Inline page break as a run within a paragraph (matching template pattern) */
   function pageBreakParagraph() {
     return new Paragraph({
       spacing: { after: 0 },
@@ -114,22 +111,18 @@ export async function generatePhaseIIDocument(sections, metadata, internalFields
   function contentToRuns(text) {
     if (!text) return [bodyRun('[To be completed]')];
     const runs = [];
-    // Split on <u>...</u> tags to handle underlined names
     const parts = text.split(/(<u>.*?<\/u>)/g);
     for (const part of parts) {
       const uMatch = part.match(/^<u>(.*?)<\/u>$/);
       if (uMatch) {
         runs.push(bodyRun(uMatch[1], { underline: { type: UnderlineType.SINGLE } }));
       } else if (part) {
-        // Handle **bold** and *italic* markdown
-        // Split on bold first (**...**), then italic (*...*) within non-bold segments
         const boldParts = part.split(/(\*\*.*?\*\*)/g);
         for (const bp of boldParts) {
           const bMatch = bp.match(/^\*\*(.*?)\*\*$/);
           if (bMatch) {
             runs.push(bodyRun(bMatch[1], { bold: true }));
           } else if (bp) {
-            // Handle *italic* within this segment
             const italicParts = bp.split(/(\*[^*]+?\*)/g);
             for (const ip of italicParts) {
               const iMatch = ip.match(/^\*(.*?)\*$/);
@@ -159,19 +152,25 @@ export async function generatePhaseIIDocument(sections, metadata, internalFields
     });
   }
 
-  /** Create a labeled field row: "Label:\tValue" with after=0 for tight layout */
-  function fieldRow(label, value, afterSpacing = 0) {
+  /** Two-column metadata row: "Left Label\tLeft Value\tRight Label\tRight Value" */
+  function metadataRow(leftLabel, leftValue, rightLabel, rightValue, afterSpacing = 0) {
     return new Paragraph({
-      tabStops: [{ type: TabStopType.LEFT, position: FIELD_TAB_POS }],
+      tabStops: [
+        { type: TabStopType.LEFT, position: FIELD_LEFT_TAB },
+        { type: TabStopType.RIGHT, position: FIELD_RIGHT_LABEL_TAB },
+        { type: TabStopType.RIGHT, position: HEADER_RIGHT_TAB },
+      ],
       spacing: { after: afterSpacing },
       children: [
-        boldLabel(`${label}:`),
-        bodyRun(`\t${value || '[To be completed]'}`),
+        boldLabel(leftLabel),
+        bodyRun(`\t${leftValue || ''}`),
+        boldLabel(`\t${rightLabel}`),
+        bodyRun(`\t${rightValue || ''}`),
       ],
     });
   }
 
-  /** Horizontal rule (bottom border on an empty paragraph, matching template) */
+  /** Horizontal rule (bottom border on an empty paragraph) */
   function horizontalRule() {
     return new Paragraph({
       spacing: { after: SPACING_NORMAL_AFTER },
@@ -183,28 +182,109 @@ export async function generatePhaseIIDocument(sections, metadata, internalFields
   }
 
   // --- PAGE 1: Cover / Summary ---
+
+  const projectTitle = internalFields.projectTitle || metadata.project_title || '[Project Title]';
+  const meetingDate = internalFields.meetingDate || metadata.meeting_date || '';
+  const requestedAmount = internalFields.requestedAmount || metadata.funding_amount || '';
+  const invitedAmount = internalFields.invitedAmount || metadata.invited_amount || '';
+  const projectBudget = internalFields.projectBudget || metadata.total_project_cost || '';
+  const staffLead = internalFields.staffLead || '';
+  const cityState = internalFields.cityState || metadata.city_state || '';
+
+  // Fetch the Keck Foundation logo for page 1
+  let logoImageData = null;
+  try {
+    const response = await fetch('/keck-logo.png');
+    if (response.ok) {
+      logoImageData = await response.arrayBuffer();
+    }
+  } catch (e) {
+    console.warn('Could not load Keck logo:', e);
+  }
+
+  const noBorders = {
+    top: { style: BorderStyle.NONE, size: 0 },
+    bottom: { style: BorderStyle.NONE, size: 0 },
+    left: { style: BorderStyle.NONE, size: 0 },
+    right: { style: BorderStyle.NONE, size: 0 },
+  };
+
+  // Logo cell (left) — image scaled to ~2.5" wide, maintaining aspect ratio (510x146 → 2.5" x 0.72")
+  const logoCell = new TableCell({
+    width: { size: 40, type: WidthType.PERCENTAGE },
+    borders: noBorders,
+    verticalAlign: 'top',
+    children: logoImageData ? [
+      new Paragraph({
+        spacing: { after: 0 },
+        children: [
+          new ImageRun({
+            data: logoImageData,
+            transformation: { width: 204, height: 58 },
+            type: 'png',
+          }),
+        ],
+      }),
+    ] : [new Paragraph({ children: [] })],
+  });
+
+  // Institution info cell (right)
+  const institutionCell = new TableCell({
+    width: { size: 60, type: WidthType.PERCENTAGE },
+    borders: noBorders,
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.RIGHT,
+        spacing: { after: 0 },
+        children: [new TextRun({ text: institutionName, size: FONT_SIZE_INSTITUTION, font: FONT, bold: true })],
+      }),
+      new Paragraph({
+        alignment: AlignmentType.RIGHT,
+        spacing: { after: 0 },
+        children: [bodyRun(cityState)],
+      }),
+      new Paragraph({
+        alignment: AlignmentType.RIGHT,
+        spacing: { after: 0 },
+        children: [bodyRun(`${programName} - Phase II Review`)],
+      }),
+    ],
+  });
+
+  const headerTable = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: noBorders,
+    rows: [
+      new TableRow({
+        children: [logoCell, institutionCell],
+      }),
+    ],
+  });
+
   const page1Children = [
-    // Institution name (bold, 14pt, centered, after=0)
+    // Logo + Institution header
+    headerTable,
+
+    // Blank line after header
+    emptyLine(0),
+
+    // Project Title row
     new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 0 },
-      children: [new TextRun({ text: institutionName, size: FONT_SIZE_TITLE, font: FONT, bold: true })],
-    }),
-    // City, State (centered)
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
+      tabStops: [{ type: TabStopType.RIGHT, position: HEADER_RIGHT_TAB }],
       spacing: { after: SPACING_BULLET_AFTER },
-      children: [bodyRun(metadata.city_state || internalFields.cityState || '[City, State]')],
+      children: [
+        boldLabel('Project Title'),
+        bodyRun(`\t${projectTitle}`),
+      ],
     }),
 
-    // Field rows (after=0 for tight layout, except Project Budget and Project Title get spacing)
-    fieldRow('Program', internalFields.programType || '[To be completed]'),
-    fieldRow('Requested Amount', internalFields.requestedAmount || metadata.funding_amount || '[To be completed]'),
-    fieldRow('Invited Amount', internalFields.invitedAmount || '[To be completed]'),
-    fieldRow('Project Budget', internalFields.projectBudget || '[To be completed]', SPACING_BULLET_AFTER),
-    fieldRow('Project Title', metadata.project_title || '[To be completed]', SPACING_BULLET_AFTER),
-    fieldRow('Staff Lead', internalFields.staffLead || '[To be completed]'),
-    fieldRow("Staff/Committee Chairs' Recommendation", internalFields.recommendation || '[To be completed]'),
+    // Empty line before financial fields
+    emptyLine(0),
+
+    // Two-column metadata rows
+    metadataRow('Meeting Date', meetingDate, 'Requested Amount', requestedAmount),
+    metadataRow('Staff Lead', staffLead, 'Invited Amount', invitedAmount),
+    metadataRow('Recommendation', 'Approve for', 'Project Budget', projectBudget),
 
     // Horizontal rule
     horizontalRule(),
@@ -250,15 +330,12 @@ export async function generatePhaseIIDocument(sections, metadata, internalFields
     pageBreakParagraph(),
   ];
 
-  // --- PAGES 3-4: Detailed Writeup ---
-  function heading1(text, extraRuns = []) {
+  // --- PAGES 3+: Detailed Writeup ---
+  /** Bold section heading (Normal style, not Heading 1) */
+  function sectionHeading(text) {
     return new Paragraph({
-      heading: HeadingLevel.HEADING_1,
-      spacing: { before: SPACING_HEADING_BEFORE, after: 0 },
-      children: [
-        new TextRun({ text, size: FONT_SIZE_HEADING1, font: FONT, bold: true }),
-        ...extraRuns,
-      ],
+      spacing: { before: SPACING_SECTION_BEFORE, after: 0 },
+      children: [bodyRun(text, { bold: true })],
     });
   }
 
@@ -267,7 +344,6 @@ export async function generatePhaseIIDocument(sections, metadata, internalFields
     if (!content) {
       return [new Paragraph({ spacing: { after: SPACING_NORMAL_AFTER }, children: [bodyRun('[To be completed]')] })];
     }
-    // Split into paragraphs on double newline
     return content.split(/\n\n+/).filter(p => p.trim()).map(para =>
       new Paragraph({
         spacing: { after: SPACING_NORMAL_AFTER },
@@ -277,34 +353,36 @@ export async function generatePhaseIIDocument(sections, metadata, internalFields
   }
 
   const page3Children = [
-    heading1('Background & Impact:'),
+    sectionHeading('Background & Impact:'),
     ...contentParagraphs('Background & Impact'),
 
-    heading1('Methodology:'),
+    emptyLine(0),
+    sectionHeading('Methodology:'),
     ...contentParagraphs('Methodology'),
 
-    heading1('Personnel:'),
+    emptyLine(0),
+    sectionHeading('Personnel:'),
     ...contentParagraphs('Personnel'),
 
-    heading1('Referee Comments:'),
+    emptyLine(0),
+    sectionHeading('Referee Comments:'),
     new Paragraph({
       spacing: { after: SPACING_NORMAL_AFTER },
-      children: [bodyRun('[To be completed — summarize referee comments and panel discussion after review is complete.]', { italics: true })],
+      children: [bodyRun('[To be completed]', { italics: true })],
     }),
 
-    heading1('Scientific Presentation:'),
+    emptyLine(0),
+    sectionHeading('Scientific Presentation:'),
     new Paragraph({
       spacing: { after: SPACING_NORMAL_AFTER },
-      children: [bodyRun('[To be completed — summarize the site visit presentation and Q&A after the site visit.]', { italics: true })],
+      children: [bodyRun('[To be completed]', { italics: true })],
     }),
 
-    // "Institutional Funding History" has non-bold inline text in brackets per template
-    heading1('Institutional Funding History:', [
-      new TextRun({ text: ' [# and $ of past grants]', size: FONT_SIZE_HEADING1, font: FONT, bold: false }),
-    ]),
+    emptyLine(0),
+    sectionHeading('Institutional Funding History:'),
     new Paragraph({
       spacing: { after: SPACING_NORMAL_AFTER },
-      children: [bodyRun('[To be completed — add a description of institution funding history if needed.]', { italics: true })],
+      children: [bodyRun('[To be completed]', { italics: true })],
     }),
   ];
 
@@ -317,16 +395,6 @@ export async function generatePhaseIIDocument(sections, metadata, internalFields
           paragraph: { spacing: { after: SPACING_NORMAL_AFTER, line: 240 } },
         },
       },
-      paragraphStyles: [
-        {
-          id: 'Heading1',
-          name: 'Heading 1',
-          basedOn: 'Normal',
-          next: 'Normal',
-          run: { size: FONT_SIZE_HEADING1, font: FONT, bold: true },
-          paragraph: { spacing: { before: SPACING_HEADING_BEFORE, after: 0, line: 240 } },
-        },
-      ],
     },
     numbering: {
       config: [{

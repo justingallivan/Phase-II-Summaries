@@ -13,7 +13,7 @@ export default async function handler(req, res) {
   }
 
   // Require authentication + app access
-  const access = await requireAppAccess(req, res, 'batch-proposal-summaries', 'proposal-summarizer');
+  const access = await requireAppAccess(req, res, 'batch-proposal-summaries', 'phase-ii-writeup');
   if (!access) return;
 
   const allowed = await limiter(req, res);

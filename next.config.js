@@ -2,6 +2,15 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  async redirects() {
+    return [
+      {
+        source: '/proposal-summarizer',
+        destination: '/phase-ii-writeup',
+        permanent: true,
+      },
+    ]
+  },
   async headers() {
     return [
       {

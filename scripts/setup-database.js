@@ -553,6 +553,11 @@ const v21Alterations = [
   `ALTER TABLE api_usage_log ADD COLUMN IF NOT EXISTS cache_read_tokens INTEGER DEFAULT 0`,
 ];
 
+// V22: Rename proposal-summarizer app key to phase-ii-writeup
+const v22Updates = [
+  `UPDATE user_app_access SET app_key = 'phase-ii-writeup' WHERE app_key = 'proposal-summarizer'`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -1043,6 +1048,20 @@ async function runMigration() {
       }
     }
 
+    // Run V22 updates (Rename proposal-summarizer to phase-ii-writeup)
+    console.log(`\nApplying v22 data updates - Rename app key (${v22Updates.length} statements)...`);
+    for (let i = 0; i < v22Updates.length; i++) {
+      const statement = v22Updates[i];
+      const preview = statement.substring(0, 80).replace(/\s+/g, ' ');
+
+      try {
+        const result = await sql.query(statement);
+        console.log(`[v22-${i + 1}/${v22Updates.length}] ✓ ${preview}... (${result.rowCount} rows updated)`);
+      } catch (error) {
+        console.error(`[v22-${i + 1}/${v22Updates.length}] ✗ Error: ${error.message}`);
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -1136,6 +1155,8 @@ async function runMigration() {
     console.log('\nV21 column additions (Prompt cache tracking):');
     console.log('  • api_usage_log.cache_creation_tokens');
     console.log('  • api_usage_log.cache_read_tokens');
+    console.log('\nV22 data updates (App key rename):');
+    console.log('  • user_app_access: proposal-summarizer → phase-ii-writeup');
     console.log('\nIndexes created: 55');
 
   } catch (error) {

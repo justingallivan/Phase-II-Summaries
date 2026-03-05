@@ -67,14 +67,12 @@ function ProposalSummarizer() {
   const [wordExportFields, setWordExportFields] = useState({
     institution: '',
     cityState: '',
-    piName: '',
     projectTitle: '',
+    meetingDate: '',
     requestedAmount: '',
     programType: 'Science and Engineering',
     invitedAmount: '',
     projectBudget: '',
-    recommendation: '',
-    shortTitle: '',
   });
   const [isGeneratingWord, setIsGeneratingWord] = useState(false);
 
@@ -425,17 +423,16 @@ function ProposalSummarizer() {
 
     // Pre-fill from structured data
     const structured = result.structured || {};
+    const notSpecified = (v) => !v || v === 'Not specified';
     setWordExportFields(prev => ({
       ...prev,
-      institution: structured.institution && structured.institution !== 'Not specified'
-        ? structured.institution : '',
-      cityState: structured.city_state || '',
-      piName: structured.principal_investigator && structured.principal_investigator !== 'Not specified'
-        ? structured.principal_investigator : '',
-      projectTitle: structured.project_title || '',
-      requestedAmount: structured.funding_amount && structured.funding_amount !== 'Not specified'
-        ? structured.funding_amount : '',
-      staffLead: staffLead,
+      institution: notSpecified(structured.institution) ? '' : structured.institution,
+      cityState: notSpecified(structured.city_state) ? '' : structured.city_state,
+      projectTitle: notSpecified(structured.project_title) ? '' : structured.project_title,
+      meetingDate: notSpecified(structured.meeting_date) ? '' : structured.meeting_date,
+      requestedAmount: notSpecified(structured.funding_amount) ? '' : structured.funding_amount,
+      invitedAmount: notSpecified(structured.invited_amount) ? '' : structured.invited_amount,
+      projectBudget: notSpecified(structured.total_project_cost) ? '' : structured.total_project_cost,
     }));
 
     setShowWordExportModal(true);
@@ -455,13 +452,16 @@ function ProposalSummarizer() {
         ...(result.structured || {}),
         institution: wordExportFields.institution || result.structured?.institution,
         city_state: wordExportFields.cityState || result.structured?.city_state,
-        principal_investigator: wordExportFields.piName || result.structured?.principal_investigator,
         project_title: wordExportFields.projectTitle || result.structured?.project_title,
+        meeting_date: wordExportFields.meetingDate || result.structured?.meeting_date,
+        funding_amount: wordExportFields.requestedAmount || result.structured?.funding_amount,
+        invited_amount: wordExportFields.invitedAmount || result.structured?.invited_amount,
+        total_project_cost: wordExportFields.projectBudget || result.structured?.total_project_cost,
       };
 
       const blob = await generatePhaseIIDocument(sections, metadata, {
         ...wordExportFields,
-        staffLead: wordExportFields.staffLead || staffLead,
+        staffLead: staffLead,
       });
 
       // Trigger download
@@ -785,7 +785,7 @@ function ProposalSummarizer() {
               <div className="space-y-4">
                 {/* Pre-filled from Claude */}
                 <div className="bg-gray-50 rounded-lg p-3 space-y-3">
-                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">From AI Analysis (editable)</h3>
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">From Proposal (editable)</h3>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Institution</label>
@@ -793,7 +793,7 @@ function ProposalSummarizer() {
                       type="text"
                       value={wordExportFields.institution}
                       onChange={(e) => updateExportField('institution', e.target.value)}
-                      placeholder="Institution name"
+                      placeholder="Common institution name (e.g., University of California, Los Angeles)"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
@@ -804,18 +804,7 @@ function ProposalSummarizer() {
                       type="text"
                       value={wordExportFields.cityState}
                       onChange={(e) => updateExportField('cityState', e.target.value)}
-                      placeholder="e.g., Pasadena, California"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">PI Name</label>
-                    <input
-                      type="text"
-                      value={wordExportFields.piName}
-                      onChange={(e) => updateExportField('piName', e.target.value)}
-                      placeholder="Principal Investigator name"
+                      placeholder="e.g., Berkeley, CA"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
@@ -831,15 +820,50 @@ function ProposalSummarizer() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Requested Amount</label>
-                    <input
-                      type="text"
-                      value={wordExportFields.requestedAmount}
-                      onChange={(e) => updateExportField('requestedAmount', e.target.value)}
-                      placeholder="e.g., $1,000,000"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Meeting Date</label>
+                      <input
+                        type="text"
+                        value={wordExportFields.meetingDate}
+                        onChange={(e) => updateExportField('meetingDate', e.target.value)}
+                        placeholder="e.g., June 2026"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Requested Amount</label>
+                      <input
+                        type="text"
+                        value={wordExportFields.requestedAmount}
+                        onChange={(e) => updateExportField('requestedAmount', e.target.value)}
+                        placeholder="e.g., $1,000,000"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Invited Amount</label>
+                      <input
+                        type="text"
+                        value={wordExportFields.invitedAmount}
+                        onChange={(e) => updateExportField('invitedAmount', e.target.value)}
+                        placeholder="e.g., $1,000,000"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Project Budget (Total Project Cost)</label>
+                      <input
+                        type="text"
+                        value={wordExportFields.projectBudget}
+                        onChange={(e) => updateExportField('projectBudget', e.target.value)}
+                        placeholder="e.g., $1,500,000"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -863,56 +887,11 @@ function ProposalSummarizer() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Staff Lead</label>
                     <input
                       type="text"
-                      value={wordExportFields.staffLead || staffLead}
-                      onChange={(e) => updateExportField('staffLead', e.target.value)}
-                      placeholder="Staff lead name"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      value={staffLead}
+                      disabled
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-100 text-gray-600"
                     />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Short Title (for header)</label>
-                    <input
-                      type="text"
-                      value={wordExportFields.shortTitle}
-                      onChange={(e) => updateExportField('shortTitle', e.target.value)}
-                      placeholder="Abbreviated project title for page header"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Invited Amount ($)</label>
-                      <input
-                        type="text"
-                        value={wordExportFields.invitedAmount}
-                        onChange={(e) => updateExportField('invitedAmount', e.target.value)}
-                        placeholder="e.g., $1,000,000"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Project Budget ($)</label>
-                      <input
-                        type="text"
-                        value={wordExportFields.projectBudget}
-                        onChange={(e) => updateExportField('projectBudget', e.target.value)}
-                        placeholder="e.g., $1,500,000"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Recommendation ($)</label>
-                    <input
-                      type="text"
-                      value={wordExportFields.recommendation}
-                      onChange={(e) => updateExportField('recommendation', e.target.value)}
-                      placeholder="e.g., $1,000,000"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
+                    <p className="text-xs text-gray-500 mt-1">Set in the main upload form</p>
                   </div>
                 </div>
               </div>
@@ -942,5 +921,5 @@ function ProposalSummarizer() {
 }
 
 export default function ProposalSummarizerPage() {
-  return <RequireAppAccess appKey="proposal-summarizer"><ProposalSummarizer /></RequireAppAccess>;
+  return <RequireAppAccess appKey="phase-ii-writeup"><ProposalSummarizer /></RequireAppAccess>;
 }

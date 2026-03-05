@@ -26,7 +26,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const access = await requireAppAccess(req, res, 'proposal-summarizer', 'batch-proposal-summaries');
+  const access = await requireAppAccess(req, res, 'phase-ii-writeup', 'batch-proposal-summaries');
   if (!access) return;
 
   const allowed = await limiter(req, res);

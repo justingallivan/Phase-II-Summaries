@@ -48,7 +48,7 @@ const ALL_APP_KEYS = [
   'batch-proposal-summaries',
   'funding-gap-analyzer',
   'phase-i-writeup',
-  'proposal-summarizer',
+  'phase-ii-writeup',
   'reviewer-finder',
   'peer-review-summarizer',
   'expense-reporter',

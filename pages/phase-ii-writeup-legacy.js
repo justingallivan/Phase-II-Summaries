@@ -421,5 +421,5 @@ function ProposalSummarizerLegacy() {
 }
 
 export default function ProposalSummarizerLegacyPage() {
-  return <RequireAppAccess appKey="proposal-summarizer"><ProposalSummarizerLegacy /></RequireAppAccess>;
+  return <RequireAppAccess appKey="phase-ii-writeup"><ProposalSummarizerLegacy /></RequireAppAccess>;
 }

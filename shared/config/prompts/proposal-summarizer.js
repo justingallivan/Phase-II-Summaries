@@ -102,6 +102,9 @@ IMPORTANT: The filename "${filename}" may contain hints about the institution na
   "research_area": "Main research domain",
   "methods": ["List", "of", "key", "methods"],
   "funding_amount": "Amount requested if mentioned",
+  "invited_amount": "Invited amount if mentioned on cover page",
+  "total_project_cost": "Total project cost/budget if mentioned on cover page",
+  "meeting_date": "Meeting date from the cover page (e.g., 'June 2026')",
   "duration": "Project duration if mentioned",
   "keywords": ["Key", "research", "terms"]
 }

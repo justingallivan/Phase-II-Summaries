@@ -28,7 +28,7 @@ export default async function handler(req, res) {
   }
 
   // Require authentication + app access
-  const access = await requireAppAccess(req, res, 'proposal-summarizer', 'batch-proposal-summaries');
+  const access = await requireAppAccess(req, res, 'phase-ii-writeup', 'batch-proposal-summaries');
   if (!access) return;
   await loadModelOverrides();
 

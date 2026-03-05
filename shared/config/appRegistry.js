@@ -61,9 +61,9 @@ export const APP_REGISTRY = [
     features: ['PDF Analysis', '1-Page Format', 'Institution Detection', 'Export Options'],
   },
   {
-    key: 'proposal-summarizer',
+    key: 'phase-ii-writeup',
     name: 'Create Phase II Writeup Draft',
-    href: '/proposal-summarizer',
+    href: '/phase-ii-writeup',
     icon: '✍️',
     description: 'Generate Keck Foundation Phase II writeup drafts with standardized formatting',
     categories: ['phase-ii'],
