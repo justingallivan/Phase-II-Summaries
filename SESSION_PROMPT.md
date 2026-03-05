@@ -33,6 +33,21 @@ Fixed integrity screener URL issues and action type display, renamed proposal-su
    - **New extracted fields**: `meeting_date`, `invited_amount`, `total_project_cost` added to structured data extraction prompt
    - Export modal simplified — pre-fills from proposal cover page data, Staff Lead shown as read-only (set in main form)
 
+5. **IT Meeting Requirements Document** (from this machine)
+   - Created `docs/IT_MEETING_GRAPH_API_REQUIREMENTS.md` for IT meeting on Microsoft Graph integration
+   - Covers SharePoint document access (`Sites.Read.All`, `Files.Read.All`) and three email sending options
+   - Recommended Option A: Dynamics 365 Email Activities (no new Azure AD permissions, just `prvSendEmail` role)
+   - Option B: Graph Mail API with Application Access Policy instructions
+   - Option C: Customer Insights - Journeys (may require additional licensing)
+
+### Key Decisions from IT Meeting
+
+*(Fill in after the meeting — what did IT approve?)*
+- SharePoint approach: _____
+- Email approach (Option A/B/C): _____
+- App registration: extend existing or new? _____
+- Sending mailbox: _____
+
 ### Commits
 - `2da54ad` - Fix integrity screener: split concatenated URLs, promote action type badges
 - `1451488` - Rename proposal-summarizer to phase-ii-writeup, update Word export to new template
@@ -46,35 +61,40 @@ Fixed integrity screener URL issues and action type display, renamed proposal-su
 
 ## Potential Next Steps
 
-### 1. Word Export Refinements
+### 1. Implement Microsoft Graph Integration
+Based on IT meeting outcomes (see `docs/IT_MEETING_GRAPH_API_REQUIREMENTS.md`):
+- **SharePoint access**: Add Graph authentication, resolve `sharepointdocumentlocation` entities to drive items, retrieve file content
+- **Email sending**: Replace `.eml` file generation with direct sending (via Dynamics Email Activities or Graph Mail API)
+- New service class needed (e.g., `lib/services/graph-service.js` for SharePoint, or extend `dynamics-service.js` for email activities)
+
+### 2. Word Export Refinements
 - Test with more proposals to verify field extraction and layout consistency
 - Graphical abstract page (image upload for page 2)
 - Batch Word export (ZIP of .docx files)
 
-### 2. Batch Proposal Summaries Q&A
+### 3. Batch Proposal Summaries Q&A
 The batch page (`batch-proposal-summaries.js`) uses the same ResultsDisplay component but may need its own Q&A wiring to pass extractedText through.
 
-### 3. Phase I Writeup Q&A
+### 4. Phase I Writeup Q&A
 Apply the same streaming Q&A pattern to Phase I writeups (`phase-i-writeup.js`, `batch-phase-i-summaries.js`).
 
-### 4. Prompt Caching for Other Endpoints
+### 5. Prompt Caching for Other Endpoints
 The same `cache_control` pattern could be applied to other endpoints that send large repeated context (e.g., batch processing, concept evaluator).
 
-### 5. Production Deployment
+### 6. Production Deployment
 Push to Vercel and verify all changes work in production (URL rename redirect, DB migration, logo asset).
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
+| `docs/IT_MEETING_GRAPH_API_REQUIREMENTS.md` | IT meeting requirements (SharePoint + email) |
+| `docs/SECURITY_ARCHITECTURE.md` | Security architecture and threat model |
 | `pages/phase-ii-writeup.js` | Phase II writeup page with Word export modal |
-| `pages/phase-ii-writeup-legacy.js` | Legacy fallback page |
 | `shared/utils/word-export.js` | Word document generator matching J27 template |
-| `public/keck-logo.png` | Keck Foundation logo for Word export |
-| `shared/config/prompts/proposal-summarizer.js` | Phase II prompt with structured data extraction |
 | `shared/config/appRegistry.js` | App registry (key: `phase-ii-writeup`) |
-| `next.config.js` | 301 redirect from old URL |
-| `scripts/setup-database.js` | V22 migration for app key rename |
+| `lib/services/dynamics-service.js` | Dynamics API service (OAuth, OData queries) |
+| `lib/utils/email-generator.js` | Current .eml file generation |
 | `pages/integrity-screener.js` | Integrity screener with URL fix and action badges |
 
 ## Testing
