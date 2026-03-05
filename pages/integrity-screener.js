@@ -56,6 +56,15 @@ function RetractionMatchCard({ match, onDismiss }) {
       </div>
 
       <div className="p-4 space-y-2">
+        {match.retractionNature && (
+          <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded ${
+            match.retractionNature.toLowerCase().includes('retraction')
+              ? 'bg-red-100 text-red-800'
+              : 'bg-yellow-100 text-yellow-800'
+          }`}>
+            {match.retractionNature}
+          </span>
+        )}
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
           {match.journal && <span>Journal: {match.journal}</span>}
           {match.retractionDate && <span>Date: {new Date(match.retractionDate).toLocaleDateString()}</span>}
@@ -76,7 +85,6 @@ function RetractionMatchCard({ match, onDismiss }) {
             {match.authors && <p><strong>Authors:</strong> {match.authors}</p>}
             {match.matchedAuthor && <p><strong>Matched Name:</strong> {match.matchedAuthor}</p>}
             {match.institution && <p><strong>Institution:</strong> {match.institution}</p>}
-            {match.retractionNature && <p><strong>Nature:</strong> {match.retractionNature}</p>}
             {match.doi && (
               <p>
                 <strong>DOI:</strong>{' '}
@@ -92,7 +100,7 @@ function RetractionMatchCard({ match, onDismiss }) {
         <div className="flex gap-2 pt-2">
           {match.urls && (
             <a
-              href={match.urls}
+              href={match.urls.split(';')[0].trim()}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-blue-600 hover:underline"
@@ -478,13 +486,13 @@ function IntegrityScreenerPage() {
               builder.addSpace(5);
               builder.addParagraph(match.title || 'Untitled', { font: 'bold' });
               if (match.confidence) builder.addKeyValue('Confidence', `${match.confidence}%`);
+              if (match.retractionNature) builder.addKeyValue('Action', match.retractionNature);
               if (match.journal) builder.addKeyValue('Journal', match.journal);
-              if (match.retractionDate) builder.addKeyValue('Retraction Date', new Date(match.retractionDate).toLocaleDateString());
+              if (match.retractionDate) builder.addKeyValue('Date', new Date(match.retractionDate).toLocaleDateString());
               if (match.reasons?.length > 0) builder.addKeyValue('Reasons', match.reasons.join(', '));
               if (match.authors) builder.addKeyValue('Authors', match.authors);
               if (match.matchedAuthor) builder.addKeyValue('Matched Name', match.matchedAuthor);
               if (match.institution) builder.addKeyValue('Institution', match.institution);
-              if (match.retractionNature) builder.addKeyValue('Nature', match.retractionNature);
               if (match.doi) builder.addKeyValue('DOI', match.doi);
             });
           } else {
@@ -600,9 +608,10 @@ function IntegrityScreenerPage() {
           retractionMatches.forEach((match, i) => {
             md += `#### Match ${i + 1}: ${match.title}\n\n`;
             md += `- **Confidence:** ${match.confidence}%\n`;
+            if (match.retractionNature) md += `- **Action:** ${match.retractionNature}\n`;
             if (match.journal) md += `- **Journal:** ${match.journal}\n`;
             if (match.retractionDate) {
-              md += `- **Retraction Date:** ${new Date(match.retractionDate).toLocaleDateString()}\n`;
+              md += `- **Date:** ${new Date(match.retractionDate).toLocaleDateString()}\n`;
             }
             if (match.reasons && match.reasons.length > 0) {
               md += `- **Reasons:** ${match.reasons.join(', ')}\n`;
@@ -610,9 +619,8 @@ function IntegrityScreenerPage() {
             if (match.authors) md += `- **Authors:** ${match.authors}\n`;
             if (match.matchedAuthor) md += `- **Matched Name:** ${match.matchedAuthor}\n`;
             if (match.institution) md += `- **Institution:** ${match.institution}\n`;
-            if (match.retractionNature) md += `- **Nature:** ${match.retractionNature}\n`;
             if (match.doi) md += `- **DOI:** [${match.doi}](https://doi.org/${match.doi})\n`;
-            if (match.urls) md += `- **Source:** [View on Retraction Watch](${match.urls})\n`;
+            if (match.urls) md += `- **Source:** [View on Retraction Watch](${match.urls.split(';')[0].trim()})\n`;
             md += `\n`;
           });
         } else {
