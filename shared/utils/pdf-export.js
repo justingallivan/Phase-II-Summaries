@@ -487,27 +487,38 @@ export class PDFReportBuilder {
   wrapText(text, maxWidth, font, fontSize) {
     if (!text) return [];
 
-    const words = sanitizeForPdf(text).split(' ');
-    const lines = [];
-    let currentLine = '';
+    const sanitized = sanitizeForPdf(text);
+    const allLines = [];
 
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+    // Split on newlines first, then wrap each paragraph
+    for (const paragraph of sanitized.split('\n')) {
+      const trimmed = paragraph.trim();
+      if (!trimmed) {
+        allLines.push('');
+        continue;
+      }
 
-      if (testWidth > maxWidth && currentLine) {
-        lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = testLine;
+      const words = trimmed.split(' ');
+      let currentLine = '';
+
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+
+        if (testWidth > maxWidth && currentLine) {
+          allLines.push(currentLine);
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      }
+
+      if (currentLine) {
+        allLines.push(currentLine);
       }
     }
 
-    if (currentLine) {
-      lines.push(currentLine);
-    }
-
-    return lines;
+    return allLines;
   }
 
   /**

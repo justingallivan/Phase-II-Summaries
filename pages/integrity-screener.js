@@ -1,8 +1,6 @@
 import { useState, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import HelpButton from '../shared/components/HelpButton';
-import ApiSettingsPanel from '../shared/components/ApiSettingsPanel';
-import { useProfile } from '../shared/context/ProfileContext';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
 import ErrorAlert from '../shared/components/ErrorAlert';
 
@@ -336,8 +334,6 @@ function ApplicantInputRow({ applicant, index, onUpdate, onRemove, canRemove }) 
  * Main page component
  */
 function IntegrityScreenerPage() {
-  const { currentProfile } = useProfile();
-
   // State
   const [applicants, setApplicants] = useState([
     { name: '', institution: '' }
@@ -346,9 +342,6 @@ function IntegrityScreenerPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progressMessage, setProgressMessage] = useState('');
   const [error, setError] = useState(null);
-
-  // API keys
-  const [apiSettings, setApiSettings] = useState({});
 
   // Applicant management
   const addApplicant = useCallback(() => {
@@ -387,8 +380,6 @@ function IntegrityScreenerPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           applicants: validApplicants,
-          serpApiKey: apiSettings?.serpApiKey || null,
-          userProfileId: currentProfile?.id || null,
         }),
       });
 
@@ -432,7 +423,7 @@ function IntegrityScreenerPage() {
       setIsProcessing(false);
       setProgressMessage('');
     }
-  }, [applicants, apiSettings, currentProfile]);
+  }, [applicants]);
 
   // Handle dismissal (placeholder - would need screening ID for persistence)
   const handleDismiss = useCallback((match, source) => {
@@ -440,6 +431,111 @@ function IntegrityScreenerPage() {
     console.log('Dismiss:', { match, source });
     alert('Dismissal noted. In full implementation, this would be saved to database.');
   }, []);
+
+  // Export results as PDF
+  const exportPdf = useCallback(async () => {
+    if (!results) return;
+
+    try {
+      const { PDFReportBuilder, downloadPdf } = await import('../shared/utils/pdf-export');
+      const builder = new PDFReportBuilder();
+      await builder.init();
+
+      const dateStr = new Date().toLocaleDateString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric',
+      });
+
+      builder
+        .addTitle('Integrity Screening Report')
+        .addMetadata('Date', dateStr)
+        .addMetadata('Total Applicants', String(results.results.length))
+        .addMetadata('Applicants with Concerns', String(results.applicantsWithConcerns))
+        .addMetadata('Total Matches', String(results.totalMatches))
+        .addDivider();
+
+      results.results.forEach((result, index) => {
+        if (index > 0) builder.addPage();
+
+        builder.addSection(`${index + 1}. ${result.name}`);
+        if (result.institution) {
+          builder.addKeyValue('Institution', result.institution);
+        }
+        builder.addBadge(
+          result.hasConcerns ? 'Review Needed' : 'No Concerns',
+          result.hasConcerns ? 'warning' : 'success'
+        );
+        if (result.isCommonName) {
+          builder.addParagraph('Note: Common name (higher false positive risk)', { font: 'italic' });
+        }
+
+        // Retraction Watch
+        const retractionMatches = result.sources.retraction_watch?.matches || [];
+        if (result.sources.retraction_watch?.searched) {
+          builder.addSection('Retraction Watch', 2);
+          if (retractionMatches.length > 0) {
+            builder.addParagraph(`${retractionMatches.length} match${retractionMatches.length !== 1 ? 'es' : ''} found`, { font: 'bold' });
+            retractionMatches.forEach((match) => {
+              builder.addSpace(5);
+              builder.addParagraph(match.title || 'Untitled', { font: 'bold' });
+              if (match.confidence) builder.addKeyValue('Confidence', `${match.confidence}%`);
+              if (match.journal) builder.addKeyValue('Journal', match.journal);
+              if (match.retractionDate) builder.addKeyValue('Retraction Date', new Date(match.retractionDate).toLocaleDateString());
+              if (match.reasons?.length > 0) builder.addKeyValue('Reasons', match.reasons.join(', '));
+              if (match.authors) builder.addKeyValue('Authors', match.authors);
+              if (match.matchedAuthor) builder.addKeyValue('Matched Name', match.matchedAuthor);
+              if (match.institution) builder.addKeyValue('Institution', match.institution);
+              if (match.retractionNature) builder.addKeyValue('Nature', match.retractionNature);
+              if (match.doi) builder.addKeyValue('DOI', match.doi);
+            });
+          } else {
+            builder.addParagraph('No retractions found in the database.');
+          }
+          if (result.sources.retraction_watch?.error) {
+            builder.addParagraph(`Error: ${result.sources.retraction_watch.error}`, { font: 'italic' });
+          }
+        }
+
+        // PubPeer
+        const pubpeerResult = result.sources.pubpeer || {};
+        if (pubpeerResult.searched) {
+          builder.addSection('PubPeer', 2);
+          builder.addBadge(
+            pubpeerResult.hasConcerns ? 'Review Needed' : 'Clear',
+            pubpeerResult.hasConcerns ? 'warning' : 'success'
+          );
+          if (pubpeerResult.resultCount > 0) {
+            builder.addKeyValue('Results Found', String(pubpeerResult.resultCount));
+          }
+          if (pubpeerResult.summary) {
+            builder.addParagraph(pubpeerResult.summary);
+          }
+        }
+
+        // News
+        const newsResult = result.sources.news || {};
+        if (newsResult.searched) {
+          builder.addSection('News Search', 2);
+          builder.addBadge(
+            newsResult.hasConcerns ? 'Review Needed' : 'Clear',
+            newsResult.hasConcerns ? 'warning' : 'success'
+          );
+          if (newsResult.resultCount > 0) {
+            builder.addKeyValue('Results Found', String(newsResult.resultCount));
+          }
+          if (newsResult.summary) {
+            builder.addParagraph(newsResult.summary);
+          }
+        }
+      });
+
+      const pdfBytes = await builder.build();
+      downloadPdf(pdfBytes, `integrity-screening-${new Date().toISOString().split('T')[0]}.pdf`);
+
+    } catch (err) {
+      console.error('PDF export error:', err);
+      setError('Failed to export PDF: ' + err.message);
+    }
+  }, [results]);
 
   // Export results as JSON
   const exportJSON = useCallback(() => {
@@ -580,14 +676,6 @@ function IntegrityScreenerPage() {
       </PageHeader>
 
       <div className="max-w-5xl mx-auto space-y-6">
-        {/* API Configuration */}
-        <Card>
-          <ApiSettingsPanel onSettingsChange={setApiSettings} />
-          <p className="mt-2 text-xs text-gray-500">
-            SERP API enables PubPeer and news searches. Without it, only the Retraction Watch database will be searched.
-          </p>
-        </Card>
-
         {/* Input Form */}
         <Card title="Applicants to Screen">
           <div className="space-y-4">
@@ -611,10 +699,7 @@ function IntegrityScreenerPage() {
               + Add Another Applicant
             </button>
 
-            <div className="pt-4 border-t border-gray-200 flex items-center justify-between">
-              <p className="text-sm text-gray-500">
-                {!apiSettings?.serpApiKey && 'Note: Without SERP API key, only Retraction Watch database will be searched.'}
-              </p>
+            <div className="pt-4 border-t border-gray-200 flex justify-end">
               <Button
                 onClick={runScreening}
                 disabled={isProcessing}
@@ -652,6 +737,9 @@ function IntegrityScreenerPage() {
                   </p>
                 </div>
                 <div className="flex gap-2">
+                  <Button onClick={exportPdf} variant="secondary">
+                    Export PDF
+                  </Button>
                   <Button onClick={exportMarkdown} variant="secondary">
                     Export Markdown
                   </Button>

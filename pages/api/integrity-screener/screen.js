@@ -50,11 +50,10 @@ export default async function handler(req, res) {
   try {
     const {
       applicants,
-      serpApiKey,
-      userProfileId,
     } = req.body;
 
     const claudeApiKey = process.env.CLAUDE_API_KEY;
+    const serpApiKey = process.env.SERP_API_KEY || null;
 
     // Validate required fields
     if (!applicants || !Array.isArray(applicants) || applicants.length === 0) {
@@ -88,8 +87,8 @@ export default async function handler(req, res) {
     const screeningGenerator = IntegrityService.screenApplicants(
       applicants,
       claudeApiKey,
-      serpApiKey || null,
-      userProfileId || null
+      serpApiKey,
+      access.profileId || null
     );
 
     for await (const update of screeningGenerator) {
