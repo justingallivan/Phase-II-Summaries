@@ -46,7 +46,7 @@ A multi-application document processing system using Claude AI for grant-related
 | Batch Phase II Summaries | `batch-proposal-summaries.js` | `/api/process` | Batch Phase II proposal processing |
 | Funding Analysis | `funding-gap-analyzer.js` | `/api/analyze-funding-gap` | NSF API integration for federal funding |
 | Phase I Writeup | `phase-i-writeup.js` | `/api/process-phase-i` | Single Phase I writeup |
-| Phase II Writeup | `proposal-summarizer.js` | `/api/process` | Single Phase II writeup with Q&A |
+| Phase II Writeup | `phase-ii-writeup.js` | `/api/process` | Single Phase II writeup with Q&A |
 | Reviewer Finder | `reviewer-finder.js` | `/api/reviewer-finder/*` | AI + database search for expert reviewers |
 | Review Manager | `review-manager.js` | `/api/review-manager/*` | Post-acceptance review lifecycle management |
 | Peer Review Summarizer | `peer-review-summarizer.js` | `/api/summarize-reviews` | Analyze peer reviews |

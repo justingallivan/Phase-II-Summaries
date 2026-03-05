@@ -1,48 +1,41 @@
-# Session 75 Prompt: Next Steps
+# Session 76 Prompt: Next Steps
 
-## Session 74 Summary
+## Session 75 Summary
 
-Improved batch summary formatting and exports, added PDF export to three apps, parsed Phase I cover pages, and moved integrity screener API keys server-side.
+Fixed integrity screener URL issues and action type display, renamed proposal-summarizer to phase-ii-writeup with full URL/DB migration, and rewrote the Word export to match the new J27 template from leadership.
 
 ### What Was Completed
 
-1. **Batch Phase II Summary Formatting**
-   - Removed redundant `# {index}. {filename}` headers from markdown export
-   - Removed unnecessary horizontal rule after metadata block in `enhanceFormatting()`
-   - Downgraded project title from H1 to H2 so institution name is the only H1
-   - Added explicit project title instruction to the Phase II summarization prompt
+1. **Integrity Screener Source URL Fix**
+   - Split semicolon-concatenated Retraction Watch URLs — now uses only the first (article) URL for "View Source" links
+   - Fixed across HTML, markdown export, and PDF export paths
 
-2. **PDF Export for Batch Summaries**
-   - Added `exportAllAsPdf()` to both `batch-proposal-summaries.js` and `batch-phase-i-summaries.js`
-   - Parses markdown-formatted results into PDFReportBuilder calls (headers, bullets, key-values, paragraphs)
-   - Page break between each proposal entry, cover page with batch metadata
-   - Uses dynamic import for `pdf-lib` to avoid bundle bloat
+2. **Integrity Screener Action Type Badges**
+   - Promoted `retractionNature` field to a colored badge displayed prominently on each match card
+   - Red badge for retractions, yellow for expressions of concern
+   - Renamed "Retraction Date" to "Date" since not all entries are retractions
+   - Renamed "Nature" to "Action" in markdown and PDF exports, moved earlier in display order
 
-3. **WinAnsi Encoding Fix in pdf-export.js**
-   - Added `sanitizeForPdf()` function that replaces Unicode characters unsupported by Helvetica (subscripts, superscripts, em dashes, smart quotes, etc.) with ASCII equivalents
-   - Applied to all text paths: `wrapText`, `addTitle`, `addSection`, `addMetadata`, `addKeyValue`, `addBadge`, `addHighlightBox`
-   - Fixed newline encoding error by splitting on `\n` before word-wrapping in `wrapText()`
+3. **Rename proposal-summarizer to phase-ii-writeup**
+   - Renamed page files: `proposal-summarizer.js` → `phase-ii-writeup.js` (and legacy)
+   - Updated app key from `proposal-summarizer` to `phase-ii-writeup` in appRegistry, all API routes (`process.js`, `process-legacy.js`, `qa.js`, `refine.js`), and backfill script
+   - Added 301 redirect in `next.config.js` from `/proposal-summarizer` to `/phase-ii-writeup`
+   - V22 DB migration in `setup-database.js` renames app key in `user_app_access` (7 rows updated)
 
-4. **Phase I Cover Page Parsing**
-   - Added `parseCoverPage()` to `process-phase-i.js` — deterministic regex extraction of institution, project title, PI, co-PIs, amount, and period from the structured cover page
-   - Cover page data used in `enhancePhaseIFormatting()` for proper headers and metadata
-   - Structured data supplemented with cover page fields
-   - Co-PI parser scoped to `Dr. Firstname Lastname` patterns, bounded by section headers to prevent runaway matching into budget/references
-
-5. **Integrity Screener API Keys Server-Side**
-   - `serpApiKey` now read from `process.env.SERP_API_KEY` in the API endpoint
-   - `userProfileId` derived from `access.profileId` (authenticated session)
-   - Removed `ApiSettingsPanel`, `useProfile`, and `apiSettings` state from frontend
-   - Added PDF export with per-applicant pages, status badges, and source details
+4. **Word Export: New J27 Template**
+   - Rewrote `shared/utils/word-export.js` to match the new template from leadership
+   - **Page 1 header area**: Borderless two-column table with Keck Foundation logo (left, `public/keck-logo.png`) and right-aligned institution name, city/state, program line
+   - **Metadata fields**: Tab-aligned two-column layout (Meeting Date/Staff Lead/Recommendation on left, Requested Amount/Invited Amount/Project Budget right-aligned on right)
+   - **Project Title**: Right-aligned tab value
+   - **Page header**: Simplified to `Phase II Review` + `Page N` (pages 2+ only, no header on page 1)
+   - **Section headings**: Bold Normal style instead of Heading 1
+   - **Removed**: old table-based layout, short title field, PI name in header, city/state in old position
+   - **New extracted fields**: `meeting_date`, `invited_amount`, `total_project_cost` added to structured data extraction prompt
+   - Export modal simplified — pre-fills from proposal cover page data, Staff Lead shown as read-only (set in main form)
 
 ### Commits
-- `a5cca0f` - Add PDF export to batch summaries, improve formatting, and parse Phase I cover pages
-- `760ab75` - Move integrity screener API keys server-side, add PDF export, fix newlines in pdf-export
-
-## Known Issues
-
-### Integrity Screener: Malformed "View Source" URLs
-The Retraction Watch match URLs contain two URLs concatenated with a semicolon (e.g., `https://retractionwatch.com/.../;https://retractionwatch.com/?s=Name`). The first is the article URL and the second is a search URL. These need to be split and handled separately — likely use the first URL for the "View on Retraction Watch" link. Investigate where the URLs are joined in `integrity-service.js` or `integrity-matching-service.js`.
+- `2da54ad` - Fix integrity screener: split concatenated URLs, promote action type badges
+- `1451488` - Rename proposal-summarizer to phase-ii-writeup, update Word export to new template
 
 ## Deferred Items (Carried Forward)
 
@@ -53,8 +46,10 @@ The Retraction Watch match URLs contain two URLs concatenated with a semicolon (
 
 ## Potential Next Steps
 
-### 1. Fix Integrity Screener Source URLs
-Split the concatenated Retraction Watch URLs so only the article URL is used for the link.
+### 1. Word Export Refinements
+- Test with more proposals to verify field extraction and layout consistency
+- Graphical abstract page (image upload for page 2)
+- Batch Word export (ZIP of .docx files)
 
 ### 2. Batch Proposal Summaries Q&A
 The batch page (`batch-proposal-summaries.js`) uses the same ResultsDisplay component but may need its own Q&A wiring to pass extractedText through.
@@ -62,36 +57,34 @@ The batch page (`batch-proposal-summaries.js`) uses the same ResultsDisplay comp
 ### 3. Phase I Writeup Q&A
 Apply the same streaming Q&A pattern to Phase I writeups (`phase-i-writeup.js`, `batch-phase-i-summaries.js`).
 
-### 4. Word Export Enhancements
-- Batch Word export (ZIP of .docx files)
-- Graphical abstract page (image upload for page 2)
-- Test Word export with more proposals for formatting consistency
-
-### 5. Prompt Caching for Other Endpoints
+### 4. Prompt Caching for Other Endpoints
 The same `cache_control` pattern could be applied to other endpoints that send large repeated context (e.g., batch processing, concept evaluator).
 
-### 6. Production Deployment
-Push to Vercel and verify all changes work in production.
+### 5. Production Deployment
+Push to Vercel and verify all changes work in production (URL rename redirect, DB migration, logo asset).
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `pages/batch-proposal-summaries.js` | Batch Phase II page with PDF/Markdown export |
-| `pages/batch-phase-i-summaries.js` | Batch Phase I page with PDF/Markdown export |
-| `pages/api/process-phase-i.js` | Phase I API with cover page parser |
-| `shared/config/prompts/proposal-summarizer.js` | Phase II prompt with project title instruction, `enhanceFormatting()` |
-| `shared/utils/pdf-export.js` | PDFReportBuilder with WinAnsi sanitizer and newline handling |
-| `pages/integrity-screener.js` | Integrity screener with PDF export, no client-side API keys |
-| `pages/api/integrity-screener/screen.js` | Screening endpoint with server-side SERP key |
+| `pages/phase-ii-writeup.js` | Phase II writeup page with Word export modal |
+| `pages/phase-ii-writeup-legacy.js` | Legacy fallback page |
+| `shared/utils/word-export.js` | Word document generator matching J27 template |
+| `public/keck-logo.png` | Keck Foundation logo for Word export |
+| `shared/config/prompts/proposal-summarizer.js` | Phase II prompt with structured data extraction |
+| `shared/config/appRegistry.js` | App registry (key: `phase-ii-writeup`) |
+| `next.config.js` | 301 redirect from old URL |
+| `scripts/setup-database.js` | V22 migration for app key rename |
+| `pages/integrity-screener.js` | Integrity screener with URL fix and action badges |
 
 ## Testing
 
 ```bash
 npm run dev                    # Start dev server
 npm run build                  # Verify no build errors
-# Batch Phase II: process proposals, export PDF and Markdown
-# Batch Phase I: process proposals, verify cover page metadata in output
-# Integrity Screener: run a screening, export PDF
-# Verify SERP_API_KEY is in .env.local for local dev
+# Phase II Writeup: upload proposal, verify Word export (logo, fields, layout)
+# Test /proposal-summarizer redirects to /phase-ii-writeup
+# Integrity Screener: verify "View Source" links are clean single URLs
+# Verify action type badges (red for retraction, yellow for expression of concern)
+node scripts/setup-database.js # Run V22 migration on new environments
 ```
