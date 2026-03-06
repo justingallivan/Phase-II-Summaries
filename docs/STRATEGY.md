@@ -31,15 +31,15 @@ The end state:
 
 Today:
 ```
-AkoyaGO → Export PDFs → Upload to apps → Process → Download → Edit → Re-upload to AkoyaGO
+AkoyaGO → Export PDFs → Upload to apps → AI drafts → Download → Edit → Re-upload to AkoyaGO
 ```
 
 Tomorrow:
 ```
-App Suite → Select proposal from Dynamics → Process → Results written back to Dynamics/SharePoint
+App Suite → Select proposal from Dynamics → Collaborate with AI → Save to Dynamics/SharePoint
 ```
 
-Staff work in the app suite. Dynamics is invisible infrastructure. No file shuffling.
+The mechanical steps (export, upload, download, re-upload) disappear. The *thinking* steps don't. Staff still engage with the material, refine AI-generated drafts, make editorial judgments, and apply institutional knowledge. The tools bring proposals to the user faster and put results where they belong afterward — they don't bypass the human work in between.
 
 ---
 
@@ -51,8 +51,8 @@ Every feature reads from and writes back to Dynamics/SharePoint. The app suite i
 ### 2. Build Modular, Wire Together Later
 The grant cycle is actively being redesigned. We don't know exactly what it will look like. Individual apps and services should remain independent with clean APIs so they can be composed into whatever workflow the new cycle requires. A rigid pipeline built for today's process would be obsolete by the time it's finished.
 
-### 3. Automate the Round-Trip, Not Just the Processing
-The AI processing (summarization, evaluation, reviewer discovery) is already built. The missing value is in the connectors — pulling data in from Dynamics without manual export, and depositing results back without manual upload. Every new feature should close a manual handoff.
+### 3. Automate the Mechanical, Not the Intellectual
+The AI processing (summarization, evaluation, reviewer discovery) is already built. The missing value is in the connectors — pulling data in from Dynamics without manual export, and depositing results back without manual upload. Every new feature should eliminate a mechanical handoff (file transfer, data re-entry, status updates) while preserving the human decision points. The goal is to get staff to the thinking work faster, not to remove them from it.
 
 ### 4. Co-Evolve Tools and Process
 The new grant cycle and the new tools should inform each other. What's possible with automation should shape how the cycle is designed. What the cycle requires should prioritize what gets built. Don't build for the legacy process — build for the one you're moving toward.
@@ -111,7 +111,7 @@ Get processed results flowing back to Dynamics/SharePoint without manual downloa
 - Batch processing by grant cycle ("process all proposals for the June meeting")
 - Results and summaries written to Dynamics fields or attached as SharePoint documents
 
-**Value:** Eliminates the "download → edit → re-upload" step. The full round-trip is automated.
+**Value:** Eliminates the mechanical file shuffling. Staff still review and edit AI-generated drafts — the difference is that those drafts are waiting in SharePoint rather than requiring a download-edit-reupload cycle. The tools handle the plumbing; staff focus on the substance.
 
 ### Phase 3: Workflow Automation (Longer-Term)
 Replace AkoyaGO's workflow management with purpose-built automation.
