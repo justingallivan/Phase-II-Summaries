@@ -39,7 +39,7 @@ Tomorrow:
 App Suite → Select proposal from Dynamics → Collaborate with AI → Save to Dynamics/SharePoint
 ```
 
-The mechanical steps (export, upload, download, re-upload) disappear. The *thinking* steps don't. Staff still engage with the material, refine AI-generated drafts, make editorial judgments, and apply institutional knowledge. The tools bring proposals to the user faster and put results where they belong afterward — they don't bypass the human work in between.
+The mechanical steps (export, upload, download, re-upload) disappear. The *thinking* steps don't. Staff still engage with the material, refine AI-generated drafts, make editorial judgments, and apply their expertise. The tools bring proposals to the user faster and put results where they belong afterward — they don't bypass the human work in between.
 
 ---
 
