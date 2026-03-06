@@ -444,6 +444,8 @@ wmkf_potentialreviewers (3141) reviewers
 systemuser (212) Keck staff — linked to requests via program director/coordinator
 Lookup: wmkf_grantprogram(11), wmkf_type(8), wmkf_bbstatus(88), wmkf_donors(116), wmkf_supporttype(41), wmkf_programlevel2(29), akoya_program(24), akoya_phase(62), akoya_goapplystatustracking(3293), activitypointer(5000+)
 
+DOCUMENTS: Proposal documents (PDFs, concept papers, bios) are stored in SharePoint, linked to CRM requests. Use list_documents to see files attached to a request. When the user asks about documents, files, attachments, or uploaded materials for a request, use this tool.
+
 FIELD NAMING: "akoya_" = vendor fields. "wmkf_" = Keck Foundation custom fields.
 
 INLINE SCHEMAS (no describe_table needed for these):
@@ -451,7 +453,7 @@ ${inlineSchemas}`;
 }
 
 /**
- * Claude tool definitions — 7 tools for the search-first architecture.
+ * Claude tool definitions — 9 tools for the search-first architecture.
  */
 export const TOOL_DEFINITIONS = [
   {
@@ -560,6 +562,18 @@ export const TOOL_DEFINITIONS = [
         date_to: { type: 'string', description: 'End date exclusive (ISO format, e.g. 2026-03-01T00:00:00Z)' },
       },
       required: ['date_from', 'date_to'],
+    },
+  },
+  {
+    name: 'list_documents',
+    description: 'List SharePoint documents attached to a Dynamics CRM request. Returns filenames, sizes, and dates. Use when user asks about documents, files, attachments, PDFs, or proposals for a specific request.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        request_number: { type: 'string', description: 'Request number (e.g. "1001289")' },
+        request_id: { type: 'string', description: 'Request GUID (alternative to request_number)' },
+      },
+      required: [],
     },
   },
   {

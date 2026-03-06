@@ -6,8 +6,8 @@
  * → Dynamics API execution → Claude response → SSE stream to client.
  *
  * Architecture: Search-first discovery with server-side relationship traversal.
- * 7 tools: search, get_entity, get_related, describe_table, query_records,
- * count_records, find_reports_due.
+ * 9 tools: search, get_entity, get_related, describe_table, query_records,
+ * count_records, find_reports_due, list_documents, export_csv.
  */
 
 import { requireAppAccess } from '../../../lib/utils/auth';
@@ -15,6 +15,7 @@ import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { sql } from '@vercel/postgres';
 import ExcelJS from 'exceljs';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { GraphService } from '../../../lib/services/graph-service';
 import { buildSystemPrompt, TOOL_DEFINITIONS, TABLE_ANNOTATIONS } from '../../../shared/config/prompts/dynamics-explorer';
 import { getModelForApp, getFallbackModelForApp, loadModelOverrides } from '../../../shared/config/baseConfig';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
@@ -38,6 +39,7 @@ const TOOL_CHAR_LIMITS = {
   get_related: 12000,
   find_reports_due: 12000,
   describe_table: 12000,
+  list_documents: 8000,
   export_csv: 4000,
 };
 
@@ -293,6 +295,7 @@ function summarizeToolResult(content) {
     if (data.records) return `Returned ${data.records.length} records`;
     if (data.emailCount !== undefined) return `Found ${data.emailCount} emails`;
     if (data.reportCount !== undefined) return `Found ${data.reportCount} reports`;
+    if (data.documentCount !== undefined) return `Found ${data.documentCount} documents`;
     if (data.fields) return `Table schema returned`;
     if (data.exportedCount !== undefined) return `Exported ${data.exportedCount} records`;
     if (data.estimatedCount !== undefined) return `Estimate: ${data.estimatedCount} records, ~$${(data.estimatedCostCents / 100).toFixed(2)}`;
@@ -528,6 +531,9 @@ async function executeTool(name, input, sendEvent, userProfileId) {
 
     case 'find_reports_due':
       return await findReportsDue(input);
+
+    case 'list_documents':
+      return await listDocuments(input);
 
     case 'export_csv':
       return await exportCsv(input, sendEvent, userProfileId);
@@ -1358,6 +1364,104 @@ async function handleReviewerRequests(reviewerId, buildDateFilter) {
     header: 'Request# | Status | Submitted | Organization | Program',
     requests: lines.join('\n') || 'No requests found for this reviewer.',
   };
+}
+
+// ─── list_documents ───
+
+/**
+ * List SharePoint documents attached to a Dynamics CRM request.
+ * Resolves request number → GUID → sharepointdocumentlocation → Graph API file listing.
+ */
+async function listDocuments({ request_number, request_id }) {
+  if (!request_number && !request_id) {
+    return { error: 'Either request_number or request_id is required.' };
+  }
+
+  // Step 1: Resolve request number to GUID if needed
+  let requestId = request_id;
+  let requestNum = request_number;
+  if (!requestId) {
+    const result = await getEntity({ type: 'request', identifier: request_number });
+    if (result.error) return { error: result.error };
+    requestId = result.akoya_requestid;
+    requestNum = result.akoya_requestnum || request_number;
+    if (!requestId) {
+      return { error: `Could not resolve request "${request_number}" to a GUID.` };
+    }
+  }
+
+  // Step 2: Query sharepointdocumentlocations for this request
+  const locResult = await DynamicsService.queryRecords('sharepointdocumentlocations', {
+    select: 'name,relativeurl,_parentsiteorlocation_value',
+    filter: `_regardingobjectid_value eq '${requestId}'`,
+    top: 10,
+  });
+
+  if (!locResult.records.length) {
+    return {
+      requestNumber: requestNum,
+      documentCount: 0,
+      documents: 'No document locations found for this request.',
+    };
+  }
+
+  // Step 3: Resolve each document location's parent to determine the library name
+  // The parent location's relativeurl is the document library name (e.g. "akoya_request")
+  const parentIds = [...new Set(
+    locResult.records
+      .map(r => r._parentsiteorlocation_value)
+      .filter(Boolean)
+  )];
+
+  let libraryName = 'akoya_request'; // default
+  if (parentIds.length > 0) {
+    try {
+      const parentResult = await DynamicsService.queryRecords('sharepointdocumentlocations', {
+        select: 'relativeurl',
+        filter: parentIds.map(id => `sharepointdocumentlocationid eq ${id}`).join(' or '),
+        top: 5,
+      });
+      if (parentResult.records.length > 0 && parentResult.records[0].relativeurl) {
+        libraryName = parentResult.records[0].relativeurl;
+      }
+    } catch (e) {
+      // Fall back to default library name
+    }
+  }
+
+  // Step 4: List files from SharePoint via Graph API
+  const folderPath = locResult.records[0].relativeurl;
+  try {
+    const files = await GraphService.listFiles(libraryName, folderPath);
+
+    const formatSize = (bytes) => {
+      if (!bytes) return '?';
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    };
+
+    const lines = files.map(f => {
+      const date = f.lastModified ? new Date(f.lastModified).toLocaleDateString() : '';
+      return `${f.name} | ${formatSize(f.size)} | ${date} | ${f.mimeType || ''}`;
+    });
+
+    return {
+      requestNumber: requestNum,
+      library: libraryName,
+      folder: folderPath,
+      documentCount: files.length,
+      header: 'Filename | Size | Modified | Type',
+      documents: lines.join('\n') || 'Folder exists but contains no files.',
+    };
+  } catch (graphError) {
+    return {
+      requestNumber: requestNum,
+      documentCount: 0,
+      error: `SharePoint access failed: ${graphError.message}`,
+      note: 'The document location was found in Dynamics, but the file listing from SharePoint failed. This may indicate a permissions issue with the Graph API.',
+    };
+  }
 }
 
 // ─── Export to Excel ───
