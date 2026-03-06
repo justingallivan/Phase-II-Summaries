@@ -127,11 +127,10 @@ async function main() {
   // Step 2: Send the email
   console.log('--- Step 2: Send Email (SendEmail action) ---');
 
-  const sendResp = await fetch(`${DYNAMICS_URL}/api/data/v9.2/SendEmail`, {
+  const sendResp = await fetch(`${DYNAMICS_URL}/api/data/v9.2/emails(${emailId})/Microsoft.Dynamics.CRM.SendEmail`, {
     method: 'POST',
     headers: headers(token),
     body: JSON.stringify({
-      EmailId: emailId,
       IssueSend: true,
     }),
   });
