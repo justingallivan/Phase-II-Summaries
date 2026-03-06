@@ -97,6 +97,9 @@ DYNAMICS_TENANT_ID=...
 DYNAMICS_CLIENT_ID=...
 DYNAMICS_CLIENT_SECRET=...
 
+# Optional - SharePoint (uses Dynamics app registration credentials)
+SHAREPOINT_SITE_URL=https://appriver3651007194.sharepoint.com/sites/akoyaGO
+
 # Optional - Cron Jobs & Monitoring
 CRON_SECRET=...               # Vercel cron authentication (required in prod)
 VERCEL_API_TOKEN=...           # Log analysis via Vercel API
@@ -189,7 +192,8 @@ Located in `lib/services/`:
 - `serp-contact-service.js` - Google/Scholar search via SerpAPI
 - `integrity-service.js` - Integrity screening orchestration
 - `integrity-matching-service.js` - Name matching algorithms
-- `dynamics-service.js` - Microsoft Dynamics 365 CRM API (OAuth, OData queries, Dataverse Search)
+- `dynamics-service.js` - Microsoft Dynamics 365 CRM API (OAuth, OData queries, Dataverse Search, Email Activities)
+- `graph-service.js` - Microsoft Graph API (SharePoint document access, file listing/download)
 - `alert-service.js` - CRUD for system_alerts table (deduplication, auto-resolve)
 - `notification-service.js` - Unified notifications (DB alerts + future Graph API email)
 - `maintenance-service.js` - Database/blob cleanup operations with audit trail
@@ -198,7 +202,7 @@ Located in `lib/services/`:
 
 Located in `lib/utils/`:
 - `cron-auth.js` - Vercel cron secret verification
-- `health-checker.js` - Reusable health check logic (6 services)
+- `health-checker.js` - Reusable health check logic (7 services incl. Microsoft Graph)
 
 ---
 
@@ -370,6 +374,7 @@ Located in `lib/utils/`:
 | `docs/SYSTEM_OVERVIEW.md` | One-page system overview for administrators |
 | `docs/SECURITY_ARCHITECTURE.md` | Security architecture and threat model |
 | `docs/TODO_EMAIL_NOTIFICATIONS.md` | Unified notification service (dashboard alerts + future email) |
+| `docs/PENDING_ADMIN_REQUESTS.md` | Azure AD + Dynamics admin permission requests |
 
 ---
 

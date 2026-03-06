@@ -1,110 +1,110 @@
-# Session 76 Prompt: Next Steps
+# Session 77 Prompt: Test Email Client & Permission Verification
 
-## Session 75 Summary
+## Session 76 Summary
 
-Fixed integrity screener URL issues and action type display, renamed proposal-summarizer to phase-ii-writeup with full URL/DB migration, and rewrote the Word export to match the new J27 template from leadership.
+Built the Microsoft Graph service for SharePoint document access and Dynamics Email Activities integration. Both are blocked on admin permissions — created detailed instructions for two separate admins.
 
 ### What Was Completed
 
-1. **Integrity Screener Source URL Fix**
-   - Split semicolon-concatenated Retraction Watch URLs — now uses only the first (article) URL for "View Source" links
-   - Fixed across HTML, markdown export, and PDF export paths
+1. **Microsoft Graph Service (`lib/services/graph-service.js`)**
+   - Client credentials auth with separate token cache (Graph scope vs Dynamics scope)
+   - SharePoint site ID resolution (cached 24h)
+   - Document library/drive resolution (cached 24h)
+   - `listFiles()`, `downloadFile()`, `downloadFileByPath()` methods
+   - Uses same Azure AD app registration as Dynamics (different OAuth scope)
 
-2. **Integrity Screener Action Type Badges**
-   - Promoted `retractionNature` field to a colored badge displayed prominently on each match card
-   - Red badge for retractions, yellow for expressions of concern
-   - Renamed "Retraction Date" to "Date" since not all entries are retractions
-   - Renamed "Nature" to "Action" in markdown and PDF exports, moved earlier in display order
+2. **Dynamics Email Activity Methods (in `dynamics-service.js`)**
+   - `createEmailActivity()` — create email with activity parties (from/to/cc)
+   - `addEmailAttachment()` — attach files via `activitymimeattachments`
+   - `sendEmail()` — invoke Dynamics `SendEmail` action
+   - `createAndSendEmail()` — convenience method combining all three
+   - Supports `regardingobjectid` linking to CRM records
 
-3. **Rename proposal-summarizer to phase-ii-writeup**
-   - Renamed page files: `proposal-summarizer.js` → `phase-ii-writeup.js` (and legacy)
-   - Updated app key from `proposal-summarizer` to `phase-ii-writeup` in appRegistry, all API routes (`process.js`, `process-legacy.js`, `qa.js`, `refine.js`), and backfill script
-   - Added 301 redirect in `next.config.js` from `/proposal-summarizer` to `/phase-ii-writeup`
-   - V22 DB migration in `setup-database.js` renames app key in `user_app_access` (7 rows updated)
+3. **`list_documents` Tool in Dynamics Explorer**
+   - New tool definition in `dynamics-explorer.js` prompt config
+   - Handler resolves request number → GUID → `sharepointdocumentlocation` → Graph file listing
+   - Returns filenames, sizes, dates, MIME types
+   - System prompt updated to mention document access
 
-4. **Word Export: New J27 Template**
-   - Rewrote `shared/utils/word-export.js` to match the new template from leadership
-   - **Page 1 header area**: Borderless two-column table with Keck Foundation logo (left, `public/keck-logo.png`) and right-aligned institution name, city/state, program line
-   - **Metadata fields**: Tab-aligned two-column layout (Meeting Date/Staff Lead/Recommendation on left, Requested Amount/Invited Amount/Project Budget right-aligned on right)
-   - **Project Title**: Right-aligned tab value
-   - **Page header**: Simplified to `Phase II Review` + `Page N` (pages 2+ only, no header on page 1)
-   - **Section headings**: Bold Normal style instead of Heading 1
-   - **Removed**: old table-based layout, short title field, PI name in header, city/state in old position
-   - **New extracted fields**: `meeting_date`, `invited_amount`, `total_project_cost` added to structured data extraction prompt
-   - Export modal simplified — pre-fills from proposal cover page data, Staff Lead shown as read-only (set in main form)
+4. **Health Check Update**
+   - Added Microsoft Graph as 7th service check (verifies Graph token acquisition)
 
-5. **IT Meeting Requirements Document** (from this machine)
-   - Created `docs/IT_MEETING_GRAPH_API_REQUIREMENTS.md` for IT meeting on Microsoft Graph integration
-   - Covers SharePoint document access (`Sites.Read.All`, `Files.Read.All`) and three email sending options
-   - Recommended Option A: Dynamics 365 Email Activities (no new Azure AD permissions, just `prvSendEmail` role)
-   - Option B: Graph Mail API with Application Access Policy instructions
-   - Option C: Customer Insights - Journeys (may require additional licensing)
+5. **Admin Permission Requests (`docs/PENDING_ADMIN_REQUESTS.md`)**
+   - Section 1 (Azure AD Admin): Add `Sites.Read.All`, `Files.Read.All`, `Mail.Send` to "WMK: Research Review App Suite" + grant consent
+   - Section 2 (Dynamics Admin): Assign "Email Sender" role (or `prvCreateActivity` + `prvSendEmail`) to the app's application user
 
-### Key Decisions from IT Meeting
+6. **Test Scripts**
+   - `scripts/test-graph-service.js` — end-to-end SharePoint document listing test
+   - `scripts/test-dynamics-email.js` — email activity creation/sending test
 
-*(Fill in after the meeting — what did IT approve?)*
-- SharePoint approach: _____
-- Email approach (Option A/B/C): _____
-- App registration: extend existing or new? _____
-- Sending mailbox: _____
+### Key Findings
+
+- Graph API permissions were granted on the wrong app registration ("JPG Auth Test" instead of "WMK: Research Review App Suite") — token had no roles
+- Dynamics email creation returned 403: service principal missing `prvCreateActivity` privilege
+- Both require admin action before testing can proceed
 
 ### Commits
-- `2da54ad` - Fix integrity screener: split concatenated URLs, promote action type badges
-- `1451488` - Rename proposal-summarizer to phase-ii-writeup, update Word export to new template
+- `37e53b0` - Add Microsoft Graph service, Dynamics email methods, and list_documents tool
 
 ## Deferred Items (Carried Forward)
 
-- SharePoint document access (blocked on Azure AD admin consent)
-- Dynamics Explorer search heuristics & query optimization
+- SharePoint document access (blocked on Azure AD admin consent for correct app registration)
+- Dynamics email sending (blocked on Dynamics admin granting Email Sender role)
 - Email notifications via Graph API (deferred until `Mail.Send` permission granted)
 - next-auth v5 migration (still in beta)
 
 ## Potential Next Steps
 
-### 1. Implement Microsoft Graph Integration
-Based on IT meeting outcomes (see `docs/IT_MEETING_GRAPH_API_REQUIREMENTS.md`):
-- **SharePoint access**: Add Graph authentication, resolve `sharepointdocumentlocation` entities to drive items, retrieve file content
-- **Email sending**: Replace `.eml` file generation with direct sending (via Dynamics Email Activities or Graph Mail API)
-- New service class needed (e.g., `lib/services/graph-service.js` for SharePoint, or extend `dynamics-service.js` for email activities)
+### 1. Build Skinny Email Test Client
+Create a standalone test page for verifying Dynamics email sending before integrating into Reviewer Finder and Review Manager:
+- Simple form: from (pre-filled from session), to, subject, body, optional attachment
+- Calls `DynamicsService.createAndSendEmail()` directly
+- Shows success/failure with email activity ID
+- No dependency on existing email generation workflow
 
-### 2. Word Export Refinements
-- Test with more proposals to verify field extraction and layout consistency
-- Graphical abstract page (image upload for page 2)
-- Batch Word export (ZIP of .docx files)
+### 2. Integrate Email Sending into Existing Apps
+Once the test client proves the email flow works:
+- Add `sendMode` toggle to `EmailGeneratorModal.js` ("Send directly" vs "Download .eml")
+- Update `generate-emails.js` and `send-emails.js` API endpoints to support `sendMode: 'direct'`
+- Sender defaults to authenticated user's `azure_email`
 
-### 3. Batch Proposal Summaries Q&A
-The batch page (`batch-proposal-summaries.js`) uses the same ResultsDisplay component but may need its own Q&A wiring to pass extractedText through.
+### 3. Verify SharePoint Document Access
+Once Azure AD admin grants consent:
+- Run `node scripts/test-graph-service.js` to verify end-to-end
+- Test `list_documents` tool in Dynamics Explorer chat
+- Consider adding `get_document` tool for downloading/viewing file content
 
-### 4. Phase I Writeup Q&A
-Apply the same streaming Q&A pattern to Phase I writeups (`phase-i-writeup.js`, `batch-phase-i-summaries.js`).
-
-### 5. Prompt Caching for Other Endpoints
-The same `cache_control` pattern could be applied to other endpoints that send large repeated context (e.g., batch processing, concept evaluator).
-
-### 6. Production Deployment
-Push to Vercel and verify all changes work in production (URL rename redirect, DB migration, logo asset).
+### 4. Production Deployment
+Push to Vercel and verify:
+- Health check shows Microsoft Graph as healthy
+- Dynamics Explorer `list_documents` works with real requests
+- Email test client functions correctly
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `docs/IT_MEETING_GRAPH_API_REQUIREMENTS.md` | IT meeting requirements (SharePoint + email) |
-| `docs/SECURITY_ARCHITECTURE.md` | Security architecture and threat model |
-| `pages/phase-ii-writeup.js` | Phase II writeup page with Word export modal |
-| `shared/utils/word-export.js` | Word document generator matching J27 template |
-| `shared/config/appRegistry.js` | App registry (key: `phase-ii-writeup`) |
-| `lib/services/dynamics-service.js` | Dynamics API service (OAuth, OData queries) |
-| `lib/utils/email-generator.js` | Current .eml file generation |
-| `pages/integrity-screener.js` | Integrity screener with URL fix and action badges |
+| `lib/services/graph-service.js` | Microsoft Graph API service (SharePoint access) |
+| `lib/services/dynamics-service.js` | Dynamics API + email activity methods |
+| `lib/utils/health-checker.js` | Health checks (7 services incl. Graph) |
+| `pages/api/dynamics-explorer/chat.js` | Chat handler with `list_documents` tool |
+| `shared/config/prompts/dynamics-explorer.js` | Tool definitions + system prompt |
+| `docs/PENDING_ADMIN_REQUESTS.md` | Admin permission request instructions |
+| `docs/SHAREPOINT_DOCUMENT_ACCESS.md` | SharePoint integration research |
+| `scripts/test-graph-service.js` | Graph API / SharePoint test script |
+| `scripts/test-dynamics-email.js` | Dynamics email activity test script |
 
 ## Testing
 
 ```bash
-npm run dev                    # Start dev server
-npm run build                  # Verify no build errors
-# Phase II Writeup: upload proposal, verify Word export (logo, fields, layout)
-# Test /proposal-summarizer redirects to /phase-ii-writeup
-# Integrity Screener: verify "View Source" links are clean single URLs
-# Verify action type badges (red for retraction, yellow for expression of concern)
-node scripts/setup-database.js # Run V22 migration on new environments
+npm run dev                              # Start dev server
+npm run build                            # Verify no build errors
+
+# SharePoint (after Azure AD admin grants consent)
+node scripts/test-graph-service.js       # Test Graph API document listing
+node scripts/test-graph-service.js 1001289  # Test with specific request
+
+# Email (after Dynamics admin grants Email Sender role)
+node scripts/test-dynamics-email.js      # Create draft email (no send)
+node scripts/test-dynamics-email.js --send  # Create and send test email
 ```
