@@ -212,6 +212,18 @@ The new timeline mentions "finalize decline notes" at triage. Could be AI-assist
 - Sent via Dynamics email, tracked on the CRM record
 - Templates by decline reason, personalized per proposal
 
+### Virtual Review Panel
+Multiple LLMs debating the merits of a proposal in a structured panel format:
+- Panel of 3 AI reviewers with assigned roles: Optimist (steelman), Skeptic (strawman), and Neutral arbiter
+- Could use different models (Claude, Gemini, ChatGPT) for genuine diversity of reasoning, or same model with different system prompts
+- Structured rounds: opening assessments → direct responses to each other's points → final verdicts
+- Neutral arbiter synthesizes where the panel agrees, where they disagree, and what the key tensions are
+- Steelman/strawman framing keeps the debate productive — Optimist must make the strongest possible case, Skeptic must find the real weaknesses (not nitpick)
+- Token-conscious design: focus debate on the big questions (feasibility, significance, innovation) rather than letting models burn tokens on minor methodological details
+- Output: a structured panel report that surfaces genuine tensions in the proposal, not just a list of pros and cons
+- Different from a single-model evaluation — the back-and-forth forces each "reviewer" to defend positions and respond to challenges
+- Could be especially useful for borderline proposals where the interesting question is "should we take this risk?"
+
 ---
 
 ## Open Questions
