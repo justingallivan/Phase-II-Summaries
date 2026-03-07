@@ -1,48 +1,19 @@
-# Session 78 Prompt: Dynamics Integration — Proposal Picker & Reviewer Finder
+# Session 79 Prompt: Dynamics Integration — Proposal Picker & Reviewer Finder
 
-## Session 77 Summary
+## Session 78 Summary
 
-Fixed Dynamics email sending (end-to-end working), addressed IT security concerns about the Azure app registration, and established the strategic direction for evolving the app suite into a workflow engine on the Dynamics data layer.
+Continued brainstorming for the wishlist document, adding the virtual review panel idea.
 
 ### What Was Completed
 
-1. **Dynamics Email Sending — Fixed and Working**
-   - `SendEmail` action must be called as a bound action: `emails({id})/Microsoft.Dynamics.CRM.SendEmail`
-   - Sender party requires `partyid_systemuser@odata.bind` linking to a resolved system user (not just an email string)
-   - Added `resolveSystemUser()` helper to look up `systemuserid` by email address
-   - Test client at `/test-email` confirms draft creation and sending both work
-   - CRM tracking token (`CRM:0309001`) is appended to subjects by Dynamics Server-Side Sync (org-wide setting)
-
-2. **Email Test Client**
-   - Page: `pages/test-email.js` — simple form with from/to/subject/body and draft/send toggle
-   - API: `pages/api/test-email.js` — protected by `requireAppAccess('dynamics-explorer')`
-   - Dev mode: editable sender field (no session); prod: locked to authenticated email
-   - Not in app registry — standalone test page at `/test-email`
-
-3. **IT Security Response (`docs/IT_SECURITY_RESPONSE.md`)**
-   - Explains two-flow token architecture (user SSO vs. server-side client credentials)
-   - Proposes `Sites.Selected` instead of `Sites.Read.All` (scoped to single SharePoint site)
-   - Drops `Mail.Send` entirely (email handled via Dynamics CRM activities)
-   - Proposes audit log sharing (periodic export, API endpoint, or DB read replica)
-   - IT flagged conditional access licensing issue (their side to resolve)
-
-4. **Strategic Direction Document (`docs/STRATEGY.md`)**
-   - Vision: app suite evolves from standalone tools to integrated workflow engine
-   - Dynamics remains the data substrate; AkoyaGO is gradually replaced
-   - Key principle: read from Dynamics, process with AI, write back to Dynamics
-   - Phased approach: connect input → connect output → workflow automation → full independence
-   - Design principles: modular, co-evolve with grant cycle redesign, replace AkoyaGO incrementally
-
-### Key Findings
-
-- Dynamics has 16 licensed Read-Write staff users + ~180 Microsoft service accounts
-- All proposal metadata needed by the app suite exists in Dynamics (`akoya_request` fields: title, abstract, PI contact, institution, program, status, request number)
-- AkoyaGO is a third-party UI layer on Dynamics — all data is accessible via the Dynamics/Graph APIs we already built
-- The grant cycle is being significantly redesigned (concepts changing, Phase I may be eliminated)
+1. **Virtual Review Panel — Added to Wishlist**
+   - Multiple LLMs (Claude, Gemini, ChatGPT) debating proposals in structured panel format
+   - Assigned roles: Optimist (steelman), Skeptic (strawman), Neutral arbiter
+   - Structured rounds with synthesis of agreements and tensions
+   - Token-conscious design focused on big questions, not minor details
 
 ### Commits
-- `53dd397` - Fix Dynamics email sending, add test client and IT security response
-- `61bc4d2` - Add strategic direction document for app suite evolution
+- `2d8a205` - Add virtual review panel idea to wishlist
 
 ## Deferred Items (Carried Forward)
 
@@ -90,6 +61,7 @@ Push current changes to Vercel:
 | File | Purpose |
 |------|---------|
 | `docs/STRATEGY.md` | Strategic direction for app suite evolution |
+| `docs/WISHLIST.md` | Brainstorming ideas and future directions |
 | `docs/IT_SECURITY_RESPONSE.md` | IT security review response (token architecture, permissions) |
 | `docs/PENDING_ADMIN_REQUESTS.md` | Admin permission request instructions |
 | `lib/services/dynamics-service.js` | Dynamics API + email methods + `resolveSystemUser()` |
