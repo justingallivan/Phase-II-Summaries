@@ -1,19 +1,19 @@
-# Session 79 Prompt: Dynamics Integration — Proposal Picker & Reviewer Finder
+# Session 80 Prompt: Dynamics Integration — Proposal Picker & Reviewer Finder
 
-## Session 78 Summary
+## Session 79 Summary
 
-Continued brainstorming for the wishlist document, adding the virtual review panel idea.
+Fixed the Azure AD (SSO) health check that was failing every 15 minutes and dragging system uptime to ~48%.
 
 ### What Was Completed
 
-1. **Virtual Review Panel — Added to Wishlist**
-   - Multiple LLMs (Claude, Gemini, ChatGPT) debating proposals in structured panel format
-   - Assigned roles: Optimist (steelman), Skeptic (strawman), Neutral arbiter
-   - Structured rounds with synthesis of agreements and tensions
-   - Token-conscious design focused on big questions, not minor details
+1. **Azure AD Health Check Fix**
+   - The check was using `client_credentials` grant to request a Graph API token from the SSO app registration
+   - The SSO app only supports authorization code flow (user login), so client credentials always failed
+   - Replaced with a simple GET to the tenant's OpenID Connect discovery endpoint (`/.well-known/openid-configuration`)
+   - No credentials needed — just validates Azure AD is reachable and the tenant is configured correctly
 
 ### Commits
-- `2d8a205` - Add virtual review panel idea to wishlist
+- `d4cf40b` - Fix Azure AD health check to use OpenID discovery instead of client credentials
 
 ## Deferred Items (Carried Forward)
 
@@ -52,6 +52,7 @@ Replace .eml download with direct CRM email sending:
 
 ### 5. Production Deployment
 Push current changes to Vercel:
+- Health check fix (Azure AD now uses OpenID discovery)
 - Email test client functional
 - Health check includes Microsoft Graph
 - Dynamics email sending working
@@ -60,18 +61,12 @@ Push current changes to Vercel:
 
 | File | Purpose |
 |------|---------|
+| `lib/utils/health-checker.js` | Health check logic (7 services) |
 | `docs/STRATEGY.md` | Strategic direction for app suite evolution |
 | `docs/WISHLIST.md` | Brainstorming ideas and future directions |
-| `docs/IT_SECURITY_RESPONSE.md` | IT security review response (token architecture, permissions) |
-| `docs/PENDING_ADMIN_REQUESTS.md` | Admin permission request instructions |
 | `lib/services/dynamics-service.js` | Dynamics API + email methods + `resolveSystemUser()` |
 | `lib/services/graph-service.js` | Microsoft Graph API service (SharePoint access) |
-| `pages/test-email.js` | Email test client page |
-| `pages/api/test-email.js` | Email test API endpoint |
 | `pages/reviewer-finder.js` | Reviewer Finder (first app for Dynamics integration) |
-| `pages/api/reviewer-finder/analyze.js` | Proposal analysis endpoint |
-| `scripts/test-graph-service.js` | Graph API / SharePoint test script |
-| `scripts/test-dynamics-email.js` | Dynamics email activity test script |
 
 ## Testing
 
