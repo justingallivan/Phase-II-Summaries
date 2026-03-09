@@ -1,0 +1,170 @@
+rules:
+  # ─── Rule 1: Access token flows to console logging ───
+  - id: token-leaked-to-console
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $TOKEN = await $CLASS.getAccessToken();
+              ...
+              console.$METHOD(..., $TOKEN, ...);
+          - pattern: |
+              console.log(..., tokenCache, ...);
+          - pattern: |
+              console.log(..., tokenCache.token, ...);
+          - pattern: |
+              console.error(..., tokenCache, ...);
+          - pattern: |
+              console.error(..., tokenCache.token, ...);
+          - pattern: |
+              console.log(..., data.access_token, ...);
+          - pattern: |
+              console.error(..., data.access_token, ...);
+    message: >
+      Service principal access token may be logged to console.
+      Tokens must never appear in log output.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      subcategory: credential-exposure
+      confidence: HIGH
+
+  # ─── Rule 2: Access token flows to API response ───
+  - id: token-leaked-to-response
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $TOKEN = await $CLASS.getAccessToken();
+              ...
+              res.json(..., $TOKEN, ...);
+          - pattern: |
+              $TOKEN = await $CLASS.getAccessToken();
+              ...
+              res.send(..., $TOKEN, ...);
+          - pattern: |
+              $TOKEN = await $CLASS.getAccessToken();
+              ...
+              res.write(..., $TOKEN, ...);
+          - pattern: |
+              res.json({..., access_token: $VAL, ...});
+          - pattern: |
+              res.json({..., token: $EXPR.access_token, ...});
+    message: >
+      Service principal access token may be returned in an API response.
+      Tokens must never be sent to the browser.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      subcategory: credential-exposure
+      confidence: HIGH
+
+  # ─── Rule 3: Access token stored in database ───
+  - id: token-stored-in-database
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $TOKEN = await $CLASS.getAccessToken();
+              ...
+              sql`... ${$TOKEN} ...`;
+          - pattern: |
+              sql`... ${tokenCache.token} ...`;
+          - pattern: |
+              sql`... ${$DATA.access_token} ...`;
+    message: >
+      Service principal access token may be written to the database.
+      Tokens must only exist in server memory.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      subcategory: credential-exposure
+      confidence: HIGH
+
+  # ─── Rule 4: Access token in SSE event ───
+  - id: token-leaked-to-sse
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $TOKEN = await $CLASS.getAccessToken();
+              ...
+              sendEvent(..., $TOKEN, ...);
+          - pattern: |
+              sendEvent(..., {... , token: $VAL, ...});
+          - pattern: |
+              sendEvent(..., {... , access_token: $VAL, ...});
+    message: >
+      Service principal access token may be sent via SSE event.
+      Tokens must never be streamed to the browser.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      subcategory: credential-exposure
+      confidence: HIGH
+
+  # ─── Rule 5: Client secret in logs or responses ───
+  - id: client-secret-exposed
+    patterns:
+      - pattern-either:
+          - pattern: |
+              console.$METHOD(..., process.env.DYNAMICS_CLIENT_SECRET, ...);
+          - pattern: |
+              console.$METHOD(..., $X.DYNAMICS_CLIENT_SECRET, ...);
+          - pattern: |
+              res.json({..., client_secret: $VAL, ...});
+          - pattern: |
+              res.json({..., DYNAMICS_CLIENT_SECRET: $VAL, ...});
+    message: >
+      Client secret may be exposed in logs or API responses.
+      The client secret must never leave environment variables.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      subcategory: credential-exposure
+      confidence: HIGH
+
+  # ─── Rule 6: Token included in error messages ───
+  - id: token-in-error-message
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $TOKEN = await $CLASS.getAccessToken();
+              ...
+              throw new Error(`... ${$TOKEN} ...`);
+          - pattern: |
+              throw new Error(`... ${tokenCache.token} ...`);
+    message: >
+      Service principal access token may be included in an error message.
+      Error messages can propagate to logs and API responses.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      subcategory: credential-exposure
+      confidence: HIGH
+
+  # ─── Rule 7: Token passed to third-party service ───
+  - id: token-sent-to-third-party
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $TOKEN = await $CLASS.getAccessToken();
+              ...
+              fetch("https://api.anthropic.com/...", {... , $TOKEN, ...});
+          - pattern: |
+              $TOKEN = await $CLASS.getAccessToken();
+              ...
+              $BODY = {... , $TOKEN, ...};
+              ...
+              fetch("https://api.anthropic.com/...", ...);
+    message: >
+      Service principal access token may be sent to a third-party API.
+      Microsoft tokens should only be sent to Microsoft endpoints.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      subcategory: credential-exposure
+      confidence: HIGH
