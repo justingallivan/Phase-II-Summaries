@@ -85,10 +85,13 @@ export const authOptions = {
             return true;
           }
 
-          // Check if there are unlinked profiles (existing users who need to choose)
+          // Check if there are unlinked profiles whose email matches the caller.
+          // Only enter the linking flow when at least one profile is actually
+          // linkable (the link-profile API requires email match).
           const unlinkedProfiles = await sql`
             SELECT id FROM user_profiles
             WHERE azure_id IS NULL AND is_active = true
+              AND azure_email = ${azureEmail}
           `;
 
           if (unlinkedProfiles.rows.length > 0) {

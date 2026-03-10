@@ -1,6 +1,6 @@
 # Security Review Response V2: Addressing Reed's Analysis
 
-**Prepared by:** Justin Gallivan
+**Prepared by:** Claude 
 **Date:** March 9, 2026
 **Re:** Response to Reed's security analysis of the Azure AD app registration
 **App Registration:** WMK: Research Review App Suite (`d2e73696-537a-483b-bb63-4a4de6aa5d45`)
@@ -309,4 +309,3 @@ The split-registration proposal doesn't just fix the cosmetics. It makes the sec
 - **Service principal:** Cannot impersonate users. Period.
 - **Stolen session:** Gives access to the app's own endpoints and the service principal's fixed permissions — not the user's enterprise privileges.
 
-We'd like to schedule a 30-minute walkthrough to go through this together, answer any follow-up questions, and agree on session timeout parameters.

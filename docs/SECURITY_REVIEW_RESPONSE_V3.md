@@ -1,6 +1,6 @@
 # Security Review Response V3: Token Trust Boundaries & Access Token Audit
 
-**Prepared by:** Justin Gallivan
+**Prepared by:** Claude
 **Date:** March 9, 2026
 **Re:** Response to Reed's "Token Trust Boundaries and Compromise Paths" analysis
 **Prior documents:** V1 (`IT_SECURITY_RESPONSE.md`), V2 (`SECURITY_REVIEW_RESPONSE_V2.md`)
@@ -22,7 +22,7 @@ He also correctly identifies two compromise classes:
 
 Both are real. The first is inherent to any authenticated application. The second is what this document focuses on: **can the service principal's access token leak outside the server runtime?**
 
-We audited every path. Here are the results.
+We audited these paths. Here are the results.
 
 ---
 
@@ -312,4 +312,3 @@ This V3 document is the result of a manual code audit, not an AI security analys
 
 The broader point about enterprise security awareness is well taken. The split registration proposal, session hardening, and ongoing joint review of service principal permissions are all responses to concerns that required a human understanding of the organizational context — not just the codebase.
 
-We'd like to schedule a walkthrough to go through the registration split, agree on session parameters, and jointly review the service principal's Dynamics security role.

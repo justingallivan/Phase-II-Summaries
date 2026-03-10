@@ -16,16 +16,21 @@ export default function ProfileLinkingDialog({ session, onLinked }) {
   const [isLinking, setIsLinking] = useState(false);
   const [error, setError] = useState(null);
 
-  // Fetch existing unlinked profiles
+  // Fetch linkable profiles (unlinked + email matches the caller)
+  const callerEmail = session.user.azureEmail?.toLowerCase() || session.user.email?.toLowerCase();
+
   useEffect(() => {
     async function fetchProfiles() {
       try {
         const response = await fetch('/api/user-profiles?includeUnlinked=true');
         if (!response.ok) throw new Error('Failed to fetch profiles');
         const data = await response.json();
-        // Filter to only show unlinked profiles
-        const unlinked = (data.profiles || []).filter(p => !p.azureId);
-        setProfiles(unlinked);
+        // Only show profiles the caller can actually link to:
+        // unlinked AND email matches (the API enforces this server-side too)
+        const linkable = (data.profiles || []).filter(
+          p => !p.azureId && p.azureEmail?.toLowerCase() === callerEmail
+        );
+        setProfiles(linkable);
       } catch (err) {
         console.error('Failed to load profiles:', err);
         setError('Failed to load existing profiles');
@@ -34,7 +39,7 @@ export default function ProfileLinkingDialog({ session, onLinked }) {
       }
     }
     fetchProfiles();
-  }, []);
+  }, [callerEmail]);
 
   const handleLinkProfile = async () => {
     if (!selectedProfileId) return;
@@ -48,8 +53,6 @@ export default function ProfileLinkingDialog({ session, onLinked }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           profileId: selectedProfileId,
-          azureId: session.user.azureId,
-          azureEmail: session.user.azureEmail,
         }),
       });
 
@@ -76,9 +79,6 @@ export default function ProfileLinkingDialog({ session, onLinked }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           createNew: true,
-          azureId: session.user.azureId,
-          azureEmail: session.user.azureEmail,
-          displayName: session.user.name,
         }),
       });
 

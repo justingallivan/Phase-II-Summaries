@@ -1,10 +1,26 @@
 rules:
+  # Shared helper patterns:
+  # - Both getAccessToken() and getGraphToken() return service-principal tokens.
+  # - We duplicate both forms explicitly rather than relying on looser regex-only
+  #   matching, so the rules stay readable and less prone to false positives.
+  #
+  # Known limitations (defense-in-depth, not a complete guarantee):
+  # - Semgrep is pattern-based, not full dataflow analysis. Tokens passed
+  #   through helper wrappers, dynamically constructed URLs, or custom logging
+  #   abstractions may not be caught. Code review remains necessary.
+  # - If axios, telemetry SDKs (Sentry, DataDog, etc.), or custom HTTP
+  #   wrappers are added in the future, add explicit sink rules for them.
+
   # ─── Rule 1: Access token flows to console logging ───
   - id: token-leaked-to-console
     patterns:
       - pattern-either:
           - pattern: |
               $TOKEN = await $CLASS.getAccessToken();
+              ...
+              console.$METHOD(..., $TOKEN, ...);
+          - pattern: |
+              $TOKEN = await $CLASS.getGraphToken();
               ...
               console.$METHOD(..., $TOKEN, ...);
           - pattern: |
@@ -38,7 +54,15 @@ rules:
               ...
               res.json(..., $TOKEN, ...);
           - pattern: |
+              $TOKEN = await $CLASS.getGraphToken();
+              ...
+              res.json(..., $TOKEN, ...);
+          - pattern: |
               $TOKEN = await $CLASS.getAccessToken();
+              ...
+              res.send(..., $TOKEN, ...);
+          - pattern: |
+              $TOKEN = await $CLASS.getGraphToken();
               ...
               res.send(..., $TOKEN, ...);
           - pattern: |
@@ -46,9 +70,17 @@ rules:
               ...
               res.write(..., $TOKEN, ...);
           - pattern: |
+              $TOKEN = await $CLASS.getGraphToken();
+              ...
+              res.write(..., $TOKEN, ...);
+          - pattern: |
               res.json({..., access_token: $VAL, ...});
           - pattern: |
               res.json({..., token: $EXPR.access_token, ...});
+          - pattern: |
+              res.send({..., access_token: $VAL, ...});
+          - pattern: |
+              res.write(JSON.stringify({..., access_token: $VAL, ...}));
     message: >
       Service principal access token may be returned in an API response.
       Tokens must never be sent to the browser.
@@ -65,6 +97,10 @@ rules:
       - pattern-either:
           - pattern: |
               $TOKEN = await $CLASS.getAccessToken();
+              ...
+              sql`... ${$TOKEN} ...`;
+          - pattern: |
+              $TOKEN = await $CLASS.getGraphToken();
               ...
               sql`... ${$TOKEN} ...`;
           - pattern: |
@@ -90,6 +126,10 @@ rules:
               ...
               sendEvent(..., $TOKEN, ...);
           - pattern: |
+              $TOKEN = await $CLASS.getGraphToken();
+              ...
+              sendEvent(..., $TOKEN, ...);
+          - pattern: |
               sendEvent(..., {... , token: $VAL, ...});
           - pattern: |
               sendEvent(..., {... , access_token: $VAL, ...});
@@ -103,21 +143,48 @@ rules:
       subcategory: credential-exposure
       confidence: HIGH
 
-  # ─── Rule 5: Client secret in logs or responses ───
+  # ─── Rule 5: Client secret or other high-sensitivity env vars in logs or responses ───
   - id: client-secret-exposed
     patterns:
       - pattern-either:
+          # Azure / Dynamics client secrets
           - pattern: |
               console.$METHOD(..., process.env.DYNAMICS_CLIENT_SECRET, ...);
           - pattern: |
+              console.$METHOD(..., process.env.AZURE_AD_CLIENT_SECRET, ...);
+          - pattern: |
               console.$METHOD(..., $X.DYNAMICS_CLIENT_SECRET, ...);
+          - pattern: |
+              console.$METHOD(..., $X.AZURE_AD_CLIENT_SECRET, ...);
           - pattern: |
               res.json({..., client_secret: $VAL, ...});
           - pattern: |
               res.json({..., DYNAMICS_CLIENT_SECRET: $VAL, ...});
+          - pattern: |
+              res.json({..., AZURE_AD_CLIENT_SECRET: $VAL, ...});
+          # Other high-sensitivity env vars
+          - pattern: |
+              console.$METHOD(..., process.env.CLAUDE_API_KEY, ...);
+          - pattern: |
+              console.$METHOD(..., process.env.NEXTAUTH_SECRET, ...);
+          - pattern: |
+              console.$METHOD(..., process.env.USER_PREFS_ENCRYPTION_KEY, ...);
+          - pattern: |
+              console.$METHOD(..., process.env.CRON_SECRET, ...);
+          - pattern: |
+              console.$METHOD(..., process.env.POSTGRES_URL, ...);
+          - pattern: |
+              res.json({..., CLAUDE_API_KEY: $VAL, ...});
+          - pattern: |
+              res.json({..., NEXTAUTH_SECRET: $VAL, ...});
+          - pattern: |
+              res.json({..., CRON_SECRET: $VAL, ...});
+          - pattern: |
+              res.json({..., POSTGRES_URL: $VAL, ...});
     message: >
-      Client secret may be exposed in logs or API responses.
-      The client secret must never leave environment variables.
+      A high-sensitivity secret (client secret, API key, encryption key,
+      database URL, or session secret) may be exposed in logs or API responses.
+      These values must never leave the server runtime environment.
     languages: [javascript, typescript]
     severity: ERROR
     metadata:
@@ -131,6 +198,10 @@ rules:
       - pattern-either:
           - pattern: |
               $TOKEN = await $CLASS.getAccessToken();
+              ...
+              throw new Error(`... ${$TOKEN} ...`);
+          - pattern: |
+              $TOKEN = await $CLASS.getGraphToken();
               ...
               throw new Error(`... ${$TOKEN} ...`);
           - pattern: |
@@ -154,11 +225,40 @@ rules:
               ...
               fetch("https://api.anthropic.com/...", {... , $TOKEN, ...});
           - pattern: |
+              $TOKEN = await $CLASS.getGraphToken();
+              ...
+              fetch("https://api.anthropic.com/...", {... , $TOKEN, ...});
+          - pattern: |
               $TOKEN = await $CLASS.getAccessToken();
               ...
               $BODY = {... , $TOKEN, ...};
               ...
               fetch("https://api.anthropic.com/...", ...);
+          - pattern: |
+              $TOKEN = await $CLASS.getGraphToken();
+              ...
+              $BODY = {... , $TOKEN, ...};
+              ...
+              fetch("https://api.anthropic.com/...", ...);
+          - pattern: |
+              $TOKEN = await $CLASS.getAccessToken();
+              ...
+              fetch("https://$HOST/...", {
+                ...,
+                headers: {..., Authorization: `Bearer ${$TOKEN}`, ...},
+                ...,
+              });
+          - pattern: |
+              $TOKEN = await $CLASS.getGraphToken();
+              ...
+              fetch("https://$HOST/...", {
+                ...,
+                headers: {..., Authorization: `Bearer ${$TOKEN}`, ...},
+                ...,
+              });
+      - metavariable-regex:
+          metavariable: $HOST
+          regex: ^(?!(graph\.microsoft\.com|login\.microsoftonline\.com|wmkf\.crm\.dynamics\.com)$).+
     message: >
       Service principal access token may be sent to a third-party API.
       Microsoft tokens should only be sent to Microsoft endpoints.
@@ -168,3 +268,65 @@ rules:
       category: security
       subcategory: credential-exposure
       confidence: HIGH
+
+  # ─── Rule 8: Access token copied into generic object (leakage precursor) ───
+  - id: token-copied-into-object
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $TOKEN = await $CLASS.getAccessToken();
+              ...
+              $OBJ = {..., token: $TOKEN, ...};
+          - pattern: |
+              $TOKEN = await $CLASS.getGraphToken();
+              ...
+              $OBJ = {..., token: $TOKEN, ...};
+          - pattern: |
+              $TOKEN = await $CLASS.getAccessToken();
+              ...
+              $OBJ = {..., access_token: $TOKEN, ...};
+          - pattern: |
+              $TOKEN = await $CLASS.getGraphToken();
+              ...
+              $OBJ = {..., access_token: $TOKEN, ...};
+    message: >
+      Service principal access token is being copied into a generic object.
+      This is a common precursor to leaking it via logs, responses, or third-party calls.
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      subcategory: credential-exposure
+      confidence: MEDIUM
+
+  # ─── Rule 9: Authorization header serialized (JSON.stringify on headers object) ───
+  - id: authorization-header-serialized
+    patterns:
+      - pattern-either:
+          # buildHeaders() returns an object with Authorization — serializing or logging it leaks the token
+          - pattern: |
+              $HEADERS = $CLASS.buildHeaders(...);
+              ...
+              JSON.stringify($HEADERS);
+          - pattern: |
+              $HEADERS = $CLASS.buildHeaders(...);
+              ...
+              console.$METHOD(..., $HEADERS, ...);
+          # Objects with an explicit Authorization key — serializing or logging leaks the token
+          - pattern: |
+              $HEADERS = {..., Authorization: $VAL, ...};
+              ...
+              JSON.stringify($HEADERS);
+          - pattern: |
+              $HEADERS = {..., Authorization: $VAL, ...};
+              ...
+              console.$METHOD(..., $HEADERS, ...);
+    message: >
+      An object containing the Authorization header may be serialized or logged.
+      This can expose the service principal access token in logs or responses.
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      subcategory: credential-exposure
+      confidence: MEDIUM

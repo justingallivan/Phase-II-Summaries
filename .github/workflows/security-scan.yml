@@ -1,0 +1,21 @@
+name: Security Scan
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  semgrep-token-audit:
+    name: Token Exposure Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep token audit rules
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: .semgrep/token-audit.yaml
