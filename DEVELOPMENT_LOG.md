@@ -2015,4 +2015,37 @@ Added a new admin dashboard section allowing superusers to change which Claude m
 
 ---
 
-Last Updated: February 17, 2026
+## Session 81 — Security Hardening: Tests, CI, Safe-Fetch (March 10, 2026)
+
+Implemented the "Easy Wins" security hardening roadmap from the independent code review.
+
+**Authorization Regression Tests (73 tests):**
+- Auth mock helper with presets for unauthenticated, authenticated, disabled, no-profile
+- Unit tests for all three auth functions + CSRF validation
+- Route-level auth tests for 8 representative API endpoints
+- Cross-user data isolation tests for email generation routes
+
+**Centralized Fetch Wrapper (`safeFetch`):**
+- `lib/utils/safe-fetch.js` — HTTPS-only host allowlist, manual redirect validation
+- Migrated `fetchAttachment` in `generate-emails.js` and `send-emails.js`
+- Fixed redirect bypass vulnerability found in code review
+
+**CI Security Pipelines (4 new workflows):**
+- Gitleaks (secret scanning), Trivy (CVE), CodeQL (static analysis), Jest (tests)
+- Fixed orphaned test file and disabled aspirational coverage thresholds
+
+**Also committed prior-session P0/P1 fixes:**
+- Profile linking hardened (server-side identity, email match, already-linked guard)
+- Token security comments + Semgrep rules
+
+**Commits:**
+- `c2be638` - Add security hardening: auth tests, safe-fetch, CI pipelines, PR template
+- `f720976` - Add security hardening implementation summary
+- `ea66438` - Fix safeFetch redirect bypass and remaining raw fetch calls
+- `5395836` - Remove orphaned reviewerParser test
+- `3b36957` - Disable aspirational coverage thresholds
+- `c87e2a3` - Commit prior-session security fixes
+
+---
+
+Last Updated: March 10, 2026
