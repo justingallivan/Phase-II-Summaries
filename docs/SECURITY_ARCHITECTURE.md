@@ -638,8 +638,12 @@ Authentication is enforced at three levels — edge middleware, API route middle
 
 **Profile linking:**
 - New Azure AD users auto-create or link to existing `user_profiles` rows
-- `/api/auth/link-profile` endpoint validates Azure ID matches session before linking
-- Prevents cross-user profile linkage via `azureId !== session.user.azureId` check
+- `signIn` callback auto-links profiles whose `azure_email` matches the caller's Azure email
+- The manual linking flow (`/api/auth/link-profile`) is gated by three checks:
+  1. `session.user.needsLinking` must be `true` — only first-login users can use this endpoint
+  2. Identity (`azureId`, `azureEmail`) derived from the server-side session, never from request body
+  3. Target profile's `azure_email` must match the caller's Azure email — prevents claiming another user's profile
+- The `signIn` callback only enters the linking flow when email-matching unlinked profiles exist; otherwise it creates a new profile directly
 - `signIn` callback allows sign-in even if DB profile creation fails (user gets session but 403 on profile-scoped routes)
 
 ### 5.4 App-Level Access Control
@@ -705,6 +709,53 @@ User-provided API keys (Claude, ORCID, NCBI, SerpAPI) are stored encrypted:
 | **Token storage** | Memory only — not persisted to database or disk |
 
 **Important:** This is a service principal (application) authentication, not user-delegated. All CRM queries run under a single application identity regardless of which user initiated the request. User-level access control is enforced at the application layer, not by Dynamics.
+
+#### Token Trust Chain & Exposure Audit
+
+Three files acquire and hold service principal access tokens:
+
+| File | Scope | Token Variable |
+|------|-------|----------------|
+| `lib/services/dynamics-service.js` | `{DYNAMICS_URL}/.default` | `tokenCache` (module-level) |
+| `lib/services/graph-service.js` | `https://graph.microsoft.com/.default` | `tokenCache` (module-level) |
+| `lib/services/notification-service.js` | `https://graph.microsoft.com/.default` | Local variable (no cache) |
+
+**Token lifecycle:**
+
+```
+Azure AD token endpoint
+        |
+        v
+getAccessToken() --> tokenCache (module variable, in-memory only)
+        |
+        v
+buildHeaders() --> { Authorization: 'Bearer <token>' }
+        |
+        v
+fetch() --> HTTPS request to Microsoft API
+        |
+        v
+Response processed --> CRM records / SharePoint files returned
+        |
+Token stays in tokenCache until function instance recycles
+```
+
+**Verified non-exposure paths (audited March 2026):**
+
+| Path | Status |
+|------|--------|
+| Console logging | Clean — zero `console.log/error/warn` calls output token values |
+| API responses | Clean — no endpoint returns the token to the browser |
+| Error messages | Clean — failure paths log status codes and Azure AD error descriptions, never the token |
+| Database storage | Clean — token never written to any table |
+| Session cookie | Clean — JWT contains only identity claims, no Microsoft tokens |
+| Claude API | Clean — only parsed CRM data flows into AI conversations, never the token |
+| Third-party libraries | Clean — no APM/telemetry that captures outbound HTTP headers |
+| Health check | Clean — uses `data.access_token ? 'ok' : 'error'` (truthiness only) |
+
+**Automated enforcement:** `.semgrep/token-audit.yaml` defines 9 rules that detect token leakage patterns: console logging, API responses, database writes, SSE events, secret/credential exposure (both Azure client secrets and other high-sensitivity env vars like `CLAUDE_API_KEY`, `NEXTAUTH_SECRET`, `POSTGRES_URL`, `CRON_SECRET`), error messages, third-party sends, token-into-object copying, and Authorization header serialization. Rules cover both `getAccessToken()` and `getGraphToken()` call sites. These rules run on every PR and push to main via `.github/workflows/security-scan.yml`.
+
+**Code-level guardrails:** All three `getAccessToken()` / `getGraphToken()` methods carry a `SECURITY` JSDoc comment documenting that the token must never be logged, returned, stored, or sent to third parties.
 
 ### 6.2 CRM Data Access
 
@@ -877,7 +928,28 @@ The middleware generates a unique cryptographic nonce for each request via `cryp
 | **CSP frame protection** | `frame-ancestors 'none'` blocks clickjacking |
 | **File upload validation** | Whitelist of allowed types (PDF, TXT, MD, DOCX, PNG, JPG); 50MB limit |
 | **Blob proxy validation** | URL hostname pattern matching prevents SSRF |
+| **SSRF protection** | `safeFetch()` wrapper (`lib/utils/safe-fetch.js`) restricts outbound requests to an allowlisted set of HTTPS hosts |
 | **Request size limit** | Configurable max (100MB body default) |
+
+### 7.5.1 Centralized Fetch Wrapper (`safeFetch`)
+
+All new server-side outbound HTTP requests should use `safeFetch` from `lib/utils/safe-fetch.js` instead of the global `fetch()`. This wrapper:
+
+1. **Requires HTTPS** — rejects `http://` URLs
+2. **Allowlists hosts** — only permits requests to known, trusted hostnames (Microsoft services, research APIs, Vercel platform, Anthropic)
+3. **Blocks SSRF vectors** — cloud metadata endpoints (`169.254.169.254`), localhost, internal IPs, and arbitrary external hosts are rejected
+
+**Allowed hosts** (defined as RegExp patterns in `ALLOWED_HOSTS`):
+
+| Category | Hosts |
+|----------|-------|
+| Microsoft | `graph.microsoft.com`, `login.microsoftonline.com`, `wmkf.crm.dynamics.com`, `appriver3651007194.sharepoint.com` |
+| Vercel | `*.public.blob.vercel-storage.com`, `api.vercel.com` |
+| Anthropic | `api.anthropic.com` |
+| Research | `eutils.ncbi.nlm.nih.gov`, `pub.orcid.org`, `api.openalex.org`, `export.arxiv.org`, `api.biorxiv.org`, `api.semanticscholar.org`, `serpapi.com`, `chemrxiv.org` |
+| Federal | `api.nsf.gov`, `api.reporter.nih.gov` |
+
+**Migration status:** `fetchAttachment()` in `generate-emails.js` and `send-emails.js` migrated. Other services will be migrated incrementally. The companion `isAllowedUrl()` helper enables pre-validation without fetching.
 
 ### 7.6 Rate Limiting
 

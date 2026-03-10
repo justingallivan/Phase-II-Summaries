@@ -26,6 +26,7 @@ import {
 } from '../../../lib/utils/email-generator';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
+import { safeFetch, isAllowedUrl } from '../../../lib/utils/safe-fetch';
 
 const limiter = nextRateLimiter({ max: 10 });
 
@@ -41,6 +42,7 @@ export default async function handler(req, res) {
 
   const access = await requireAppAccess(req, res, 'review-manager');
   if (!access) return;
+  const userProfileId = access.profileId;
 
   const allowed = await limiter(req, res);
   if (allowed !== true) return;
@@ -104,6 +106,7 @@ export default async function handler(req, res) {
       JOIN researchers r ON rs.researcher_id = r.id
       LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
       WHERE rs.id = ANY(${suggestionIds})
+        AND rs.user_profile_id = ${userProfileId}
     `;
 
     if (reviewerData.rows.length === 0) {
@@ -259,6 +262,7 @@ export default async function handler(req, res) {
                 ELSE review_status
               END
           WHERE id = ANY(${generatedIds})
+            AND user_profile_id = ${userProfileId}
         `;
       } else if (templateType === 'followup') {
         await sql`
@@ -271,6 +275,7 @@ export default async function handler(req, res) {
                 ELSE review_status
               END
           WHERE id = ANY(${generatedIds})
+            AND user_profile_id = ${userProfileId}
         `;
       } else if (templateType === 'thankyou') {
         await sql`
@@ -278,6 +283,7 @@ export default async function handler(req, res) {
           SET thankyou_sent_at = ${now},
               review_status = 'complete'
           WHERE id = ANY(${generatedIds})
+            AND user_profile_id = ${userProfileId}
         `;
       }
     }
@@ -312,12 +318,18 @@ export default async function handler(req, res) {
 }
 
 /**
- * Fetch a URL and return as an attachment object
+ * Fetch a URL and return as an attachment object.
+ * Uses safeFetch for SSRF protection (host allowlist).
  */
 async function fetchAttachment(url, cache) {
   if (cache.has(url)) return cache.get(url);
 
-  const response = await fetch(url);
+  if (!isAllowedUrl(url)) {
+    console.warn('fetchAttachment blocked non-allowed URL:', url);
+    return null;
+  }
+
+  const response = await safeFetch(url);
   if (!response.ok) return null;
 
   const buffer = Buffer.from(await response.arrayBuffer());

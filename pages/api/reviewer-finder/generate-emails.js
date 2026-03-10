@@ -31,12 +31,13 @@ import { requireAppAccess } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { logUsage } from '../../../lib/utils/usage-logger';
 import { BASE_CONFIG, getModelForApp } from '../../../shared/config/baseConfig';
+import { safeFetch, isAllowedUrl } from '../../../lib/utils/safe-fetch';
 
 /**
  * Look up proposal info for candidates from the database
  * Returns a map of suggestionId -> proposalInfo
  */
-async function lookupProposalInfoForCandidates(suggestionIds) {
+async function lookupProposalInfoForCandidates(suggestionIds, userProfileId) {
   if (!suggestionIds || suggestionIds.length === 0) {
     return new Map();
   }
@@ -55,6 +56,7 @@ async function lookupProposalInfoForCandidates(suggestionIds) {
         co_investigator_count
       FROM reviewer_suggestions
       WHERE id = ANY(${suggestionIds})
+        AND user_profile_id = ${userProfileId}
     `;
 
     const proposalInfoMap = new Map();
@@ -79,7 +81,8 @@ async function lookupProposalInfoForCandidates(suggestionIds) {
 }
 
 /**
- * Fetch attachment from URL and cache by URL to avoid re-fetching
+ * Fetch attachment from URL and cache by URL to avoid re-fetching.
+ * Uses safeFetch for SSRF protection (host allowlist).
  */
 async function fetchAttachment(url, attachmentCache, filename, contentType) {
   if (!url) return null;
@@ -89,8 +92,13 @@ async function fetchAttachment(url, attachmentCache, filename, contentType) {
     return attachmentCache.get(url);
   }
 
+  if (!isAllowedUrl(url)) {
+    console.warn('fetchAttachment blocked non-allowed URL:', url);
+    return null;
+  }
+
   try {
-    const response = await fetch(url);
+    const response = await safeFetch(url);
     if (response.ok) {
       const buffer = Buffer.from(await response.arrayBuffer());
       const attachment = {
@@ -194,7 +202,7 @@ export default async function handler(req, res) {
         stage: 'lookup',
         message: 'Looking up proposal info for candidates...'
       });
-      proposalInfoMap = await lookupProposalInfoForCandidates(suggestionIds);
+      proposalInfoMap = await lookupProposalInfoForCandidates(suggestionIds, userProfileId);
     }
 
     // Attachment cache to avoid re-fetching the same files
@@ -211,7 +219,7 @@ export default async function handler(req, res) {
       });
 
       // Fetch review template (shared across all emails)
-      if (reviewTemplateBlobUrl) {
+      if (reviewTemplateBlobUrl && isAllowedUrl(reviewTemplateBlobUrl)) {
         try {
           const templateResponse = await fetch(reviewTemplateBlobUrl);
           if (templateResponse.ok) {
@@ -242,7 +250,7 @@ export default async function handler(req, res) {
 
       // Fetch additional attachments (shared across all emails)
       for (const attachment of additionalAttachments) {
-        if (!attachment.blobUrl) continue;
+        if (!attachment.blobUrl || !isAllowedUrl(attachment.blobUrl)) continue;
         try {
           const response = await fetch(attachment.blobUrl);
           if (response.ok) {
@@ -418,6 +426,7 @@ export default async function handler(req, res) {
               UPDATE reviewer_suggestions
               SET email_sent_at = ${now}, invited = true
               WHERE id = ${suggestionId}
+                AND user_profile_id = ${userProfileId}
             `;
             markedAsSentCount++;
           } catch (dbError) {
