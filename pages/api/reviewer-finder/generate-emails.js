@@ -221,7 +221,7 @@ export default async function handler(req, res) {
       // Fetch review template (shared across all emails)
       if (reviewTemplateBlobUrl && isAllowedUrl(reviewTemplateBlobUrl)) {
         try {
-          const templateResponse = await fetch(reviewTemplateBlobUrl);
+          const templateResponse = await safeFetch(reviewTemplateBlobUrl);
           if (templateResponse.ok) {
             const buffer = Buffer.from(await templateResponse.arrayBuffer());
             const urlPath = new URL(reviewTemplateBlobUrl).pathname;
@@ -252,7 +252,7 @@ export default async function handler(req, res) {
       for (const attachment of additionalAttachments) {
         if (!attachment.blobUrl || !isAllowedUrl(attachment.blobUrl)) continue;
         try {
-          const response = await fetch(attachment.blobUrl);
+          const response = await safeFetch(attachment.blobUrl);
           if (response.ok) {
             const buffer = Buffer.from(await response.arrayBuffer());
             sharedAttachments.push({

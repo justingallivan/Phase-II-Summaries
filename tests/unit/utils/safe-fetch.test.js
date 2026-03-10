@@ -11,6 +11,15 @@
 
 import { safeFetch, isAllowedUrl } from '../../../lib/utils/safe-fetch';
 
+// Helper to create a mock redirect response
+function mockRedirect(status, location) {
+  return {
+    ok: false,
+    status,
+    headers: { get: (h) => (h === 'location' ? location : null) },
+  };
+}
+
 // global.fetch is already mocked in jest.setup.js
 beforeEach(() => {
   fetch.mockReset();
@@ -41,7 +50,7 @@ describe('safeFetch', () => {
 
   it.each(allowedUrls)('allows %s', async (url) => {
     await safeFetch(url);
-    expect(fetch).toHaveBeenCalledWith(url, {});
+    expect(fetch).toHaveBeenCalledWith(url, { redirect: 'manual' });
   });
 
   // -- Blocked hosts --
@@ -72,10 +81,71 @@ describe('safeFetch', () => {
   });
 
   // -- Options pass-through --
-  it('passes fetch options through', async () => {
+  it('passes fetch options through with redirect: manual', async () => {
     const opts = { method: 'POST', headers: { 'x-api-key': 'test' }, body: '{}' };
     await safeFetch('https://api.anthropic.com/v1/messages', opts);
-    expect(fetch).toHaveBeenCalledWith('https://api.anthropic.com/v1/messages', opts);
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.anthropic.com/v1/messages',
+      { ...opts, redirect: 'manual' }
+    );
+  });
+
+  // -- Redirect handling --
+  it('follows redirects to allowed hosts', async () => {
+    fetch
+      .mockResolvedValueOnce(mockRedirect(302, 'https://graph.microsoft.com/v2.0/me'))
+      .mockResolvedValueOnce({ ok: true, status: 200 });
+
+    const res = await safeFetch('https://graph.microsoft.com/v1.0/me');
+
+    expect(res.status).toBe(200);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('blocks redirects to non-allowed hosts', async () => {
+    fetch.mockResolvedValueOnce(mockRedirect(302, 'https://evil.com/steal'));
+
+    await expect(
+      safeFetch('https://graph.microsoft.com/v1.0/me')
+    ).rejects.toThrow('host not allowed: evil.com');
+  });
+
+  it('blocks redirects to cloud metadata', async () => {
+    fetch.mockResolvedValueOnce(mockRedirect(301, 'https://169.254.169.254/latest/meta-data/'));
+
+    await expect(
+      safeFetch('https://graph.microsoft.com/v1.0/me')
+    ).rejects.toThrow('host not allowed: 169.254.169.254');
+  });
+
+  it('blocks redirects that downgrade to HTTP', async () => {
+    fetch.mockResolvedValueOnce(mockRedirect(302, 'http://graph.microsoft.com/v1.0/me'));
+
+    await expect(
+      safeFetch('https://graph.microsoft.com/v1.0/me')
+    ).rejects.toThrow('HTTPS required');
+  });
+
+  it('throws on too many redirects', async () => {
+    // 6 redirects exceeds the limit of 5
+    for (let i = 0; i < 6; i++) {
+      fetch.mockResolvedValueOnce(mockRedirect(302, 'https://graph.microsoft.com/loop'));
+    }
+
+    await expect(
+      safeFetch('https://graph.microsoft.com/v1.0/me')
+    ).rejects.toThrow('too many redirects');
+  });
+
+  it('handles redirect with no Location header', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 302,
+      headers: { get: () => null },
+    });
+
+    const res = await safeFetch('https://graph.microsoft.com/v1.0/me');
+    expect(res.status).toBe(302);
   });
 });
 
