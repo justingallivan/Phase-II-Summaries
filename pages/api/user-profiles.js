@@ -13,12 +13,20 @@ import { DatabaseService } from '../../lib/services/database-service';
 import { requireAuth, requireAuthWithProfile } from '../../lib/utils/auth';
 import { BASE_CONFIG } from '../../shared/config/baseConfig';
 
+/**
+ * Strip fields that allow user enumeration (azureId, azureEmail, needsLinking).
+ * These are internal identity fields — no consumer needs them in the list response.
+ */
+function sanitizeProfile({ azureId, azureEmail, needsLinking, ...safe }) {
+  return safe;
+}
+
 export default async function handler(req, res) {
   // GET and POST use basic auth; PATCH and DELETE enforce ownership
   if (req.method === 'GET' || req.method === 'POST') {
     const session = await requireAuth(req, res);
     if (!session) return;
-    return req.method === 'GET' ? handleGet(req, res) : handlePost(req, res);
+    return req.method === 'GET' ? handleGet(req, res, session) : handlePost(req, res);
   }
 
   // PATCH and DELETE require profile ID from session to enforce ownership
@@ -35,25 +43,43 @@ export default async function handler(req, res) {
   }
 }
 
-async function handleGet(req, res) {
+async function handleGet(req, res, session) {
   try {
-    const { includeArchived, id } = req.query;
+    const { includeArchived, id, linkable } = req.query;
 
-    // If ID is provided, get single profile
+    // ?linkable=true — server-side filter for ProfileLinkingDialog.
+    // Returns only unlinked profiles whose azureEmail matches the caller's session email.
+    if (linkable === 'true') {
+      const callerEmail = session.user?.azureEmail?.toLowerCase() || session.user?.email?.toLowerCase();
+      if (!callerEmail) {
+        return res.status(200).json({ success: true, profiles: [], count: 0 });
+      }
+      const allProfiles = await DatabaseService.getUserProfiles(false);
+      const linkableProfiles = allProfiles
+        .filter(p => !p.azureId && p.azureEmail?.toLowerCase() === callerEmail)
+        .map(sanitizeProfile);
+      return res.status(200).json({
+        success: true,
+        profiles: linkableProfiles,
+        count: linkableProfiles.length
+      });
+    }
+
+    // If ID is provided, get single profile (sanitized)
     if (id) {
       const profile = await DatabaseService.getUserProfileById(parseInt(id, 10));
       if (!profile) {
         return res.status(404).json({ error: 'Profile not found' });
       }
-      return res.status(200).json({ success: true, profile });
+      return res.status(200).json({ success: true, profile: sanitizeProfile(profile) });
     }
 
-    // Otherwise, list all profiles
+    // Otherwise, list all profiles (sanitized)
     const profiles = await DatabaseService.getUserProfiles(includeArchived === 'true');
 
     return res.status(200).json({
       success: true,
-      profiles,
+      profiles: profiles.map(sanitizeProfile),
       count: profiles.length
     });
   } catch (error) {

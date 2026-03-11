@@ -1266,7 +1266,7 @@ function RoleManagementSection() {
           >
             <option value="">Select user...</option>
             {availableUsers.map(u => (
-              <option key={u.id} value={u.id}>{u.name}{u.azure_email ? ` (${u.azure_email})` : ''}</option>
+              <option key={u.id} value={u.id}>{u.name}{u.azureEmail ? ` (${u.azureEmail})` : ''}</option>
             ))}
             {/* Also allow re-assigning existing users to change their role */}
             {roles && roles.length > 0 && (
