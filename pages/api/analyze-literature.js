@@ -16,6 +16,7 @@ import {
 import { requireAppAccess } from '../../lib/utils/auth';
 import { logUsage } from '../../lib/utils/usage-logger';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
+import { safeFetch } from '../../lib/utils/safe-fetch';
 
 const limiter = nextRateLimiter({ max: 5 });
 
@@ -72,7 +73,7 @@ export default async function handler(req, res) {
         sendProgress(res, progressPercent, `Analyzing paper ${processedFiles} of ${totalFiles}: ${file.filename}...`);
 
         // Fetch file from blob URL
-        const fileResponse = await fetch(file.url);
+        const fileResponse = await safeFetch(file.url);
         if (!fileResponse.ok) {
           throw new Error(`Failed to fetch file: ${fileResponse.statusText}`);
         }

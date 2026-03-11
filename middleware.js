@@ -42,7 +42,7 @@ export default withAuth(
 
     const connectSrc = isDev
       ? `'self' https://*.public.blob.vercel-storage.com https://vercel.com https://*.vercel-insights.com ws://localhost:3000 ws://127.0.0.1:3000`
-      : `'self' https://*.public.blob.vercel-storage.com https://vercel.com https://*.vercel-insights.com`;
+      : `'self' https://vercel.com https://*.vercel-insights.com`;
 
     const directives = [
       `default-src 'self'`,

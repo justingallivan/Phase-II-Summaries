@@ -32,7 +32,7 @@ export default async function handler(req, res) {
           maximumSizeInBytes: 50 * 1024 * 1024, // 50MB limit
           tokenPayload: JSON.stringify({
             uploadedAt: new Date().toISOString(),
-            userId: 'anonymous' // Could be expanded for user authentication
+            userId: session.user?.email || 'authenticated'
           })
         };
       },

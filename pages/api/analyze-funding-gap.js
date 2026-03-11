@@ -5,6 +5,7 @@ import { createFundingExtractionPrompt, createFundingAnalysisPrompt } from '../.
 import { queryNSFforPI, queryNSFforKeywords, queryNIHforPI, queryNIHforKeywords, queryUSASpending, formatCurrency, formatDate } from '../../lib/fundingApis';
 import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
 import { requireAppAccess } from '../../lib/utils/auth';
+import { safeFetch } from '../../lib/utils/safe-fetch';
 
 export const config = {
   api: {
@@ -89,7 +90,7 @@ export default async function handler(req, res) {
       try {
         // Step 1: Extract text from PDF
         sendProgress(`Extracting text from ${file.filename}...`, baseProgress + 1);
-        const fileResponse = await fetch(file.url);
+        const fileResponse = await safeFetch(file.url);
         if (!fileResponse.ok) {
           throw new Error(`Failed to fetch file from blob storage: ${fileResponse.statusText}`);
         }

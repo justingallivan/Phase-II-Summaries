@@ -16,6 +16,7 @@ import { put } from '@vercel/blob';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
+import { safeFetch } from '../../../lib/utils/safe-fetch';
 
 const limiter = nextRateLimiter({ max: 10 });
 
@@ -73,7 +74,7 @@ export default async function handler(req, res) {
       sendEvent('progress', { stage: 'upload', message: 'Fetching uploaded file...' });
 
       // Fetch from Vercel Blob
-      const blobResponse = await fetch(blobUrl);
+      const blobResponse = await safeFetch(blobUrl);
       if (!blobResponse.ok) {
         throw new Error('Failed to fetch uploaded file');
       }

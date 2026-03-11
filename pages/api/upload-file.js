@@ -9,6 +9,19 @@ import { put } from '@vercel/blob';
 import { requireAuth } from '../../lib/utils/auth';
 import Busboy from 'busboy';
 
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB — matches upload-handler.js
+
+const ALLOWED_CONTENT_TYPES = new Set([
+  'application/pdf',
+  'text/plain',
+  'text/markdown',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/png',
+  'image/jpg',
+  'image/jpeg',
+]);
+
 export const config = {
   api: {
     bodyParser: false, // busboy needs the raw stream
@@ -32,12 +45,28 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'No file provided' });
     }
 
+    // Enforce file size limit
+    if (file.length > MAX_FILE_SIZE) {
+      return res.status(413).json({
+        error: `File too large (${(file.length / 1024 / 1024).toFixed(1)}MB). Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB.`
+      });
+    }
+
+    // Enforce mime-type allowlist
+    if (!ALLOWED_CONTENT_TYPES.has(contentType)) {
+      return res.status(415).json({
+        error: `File type "${contentType}" is not allowed. Accepted types: PDF, Word, plain text, and images.`
+      });
+    }
+
     // Upload to Vercel Blob
     const blob = await put(filename || `upload_${Date.now()}`, file, {
       access: 'public',
       contentType: contentType || 'application/octet-stream',
       addRandomSuffix: true,
     });
+
+    console.log(`File uploaded by ${session.user?.email || 'unknown'}: ${filename} (${file.length} bytes)`);
 
     return res.status(200).json({
       url: blob.url,

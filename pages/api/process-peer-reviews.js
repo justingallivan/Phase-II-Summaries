@@ -5,6 +5,7 @@ import { createPeerReviewAnalysisPrompt, createPeerReviewQuestionsPrompt } from 
 import { requireAppAccess } from '../../lib/utils/auth';
 import { logUsage } from '../../lib/utils/usage-logger';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
+import { safeFetch } from '../../lib/utils/safe-fetch';
 
 const limiter = nextRateLimiter({ max: 5 });
 
@@ -64,7 +65,7 @@ export default async function handler(req, res) {
           buffer = Buffer.from(fileInfo.content, 'base64');
         } else if (fileInfo.url) {
           // File is provided as URL (Vercel Blob)
-          const response = await fetch(fileInfo.url);
+          const response = await safeFetch(fileInfo.url);
           if (!response.ok) {
             throw new Error(`Failed to fetch file: ${response.status}`);
           }

@@ -3,6 +3,7 @@ import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
 import { requireAppAccess } from '../../lib/utils/auth';
+import { safeFetch } from '../../lib/utils/safe-fetch';
 
 export const config = {
   api: {
@@ -188,7 +189,7 @@ export default async function handler(req, res) {
           sendProgress(`Analyzing image: ${file.filename}`);
 
           // Fetch the image from blob storage
-          const imageResponse = await fetch(file.url);
+          const imageResponse = await safeFetch(file.url);
           if (!imageResponse.ok) {
             throw new Error(`Failed to fetch image: ${imageResponse.statusText}`);
           }
@@ -262,7 +263,7 @@ export default async function handler(req, res) {
           // For PDFs, use existing file processor
           sendProgress(`Extracting text from PDF: ${file.filename}`);
 
-          const fileResponse = await fetch(file.url);
+          const fileResponse = await safeFetch(file.url);
           if (!fileResponse.ok) {
             throw new Error(`Failed to fetch file: ${fileResponse.statusText}`);
           }
