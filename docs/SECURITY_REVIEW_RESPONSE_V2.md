@@ -7,15 +7,17 @@
 
 ---
 
+> **Correction (March 11, 2026):** This document's central premise — that SSO and Dynamics share a single app registration — was incorrect. The registrations are **already split**: "Keck Research Tools" handles SSO (delegated `openid email profile User.Read` only), and "Dynamics CRM" is the service principal (application permissions for Dynamics + Graph). The `user_impersonation` concern does not apply because the SSO registration has no Dynamics permissions. Sections 1, 4, and 7 below are superseded by this finding. Session timeout recommendations from Section 6 have been implemented (8-hour max, 2-hour idle).
+
 ## Executive Summary
 
 Reed's analysis is thorough and well-reasoned. However, its central conclusion — that the app acts as a "privilege broker" into Dynamics via delegated `user_impersonation` — is based on a factual misunderstanding of how our code actually authenticates to Microsoft APIs.
 
 **The root cause of the misunderstanding:** Our current Azure AD setup uses a single app registration for both user SSO *and* the service principal. This puts delegated permissions (`User.Read`, `user_impersonation`) alongside application permissions on the same registration page. Reed saw the combined permission list and reasonably concluded the app brokers user privilege into Dynamics. It does not — but the registration makes it look like it does.
 
-**The fix:** Split into two separate app registrations with clean, non-overlapping permission scopes. This eliminates the ambiguity at the architectural level and makes the security posture self-evident from the portal.
+**~~The fix:~~ Correction:** The registrations are already split — "Keck Research Tools" for SSO and "Dynamics CRM" for the service principal. No new registration is needed. The `user_impersonation` permission does not exist on the SSO registration.
 
-**What's independently valid:** Several of Reed's session management concerns stand on their own merits regardless of the auth flow question. We propose mitigations for those and want IT's input on the right parameters.
+**What's independently valid:** Several of Reed's session management concerns stand on their own merits regardless of the auth flow question. These have been implemented — see updated values below.
 
 ---
 
@@ -282,20 +284,20 @@ Reed's session management concerns are independently valid regardless of the aut
 
 | Item | Description | Status |
 |------|-------------|--------|
-| Split env vars | Point `AZURE_AD_*` at new SSO registration, keep `DYNAMICS_*` on service principal | Ready when IT creates SSO app |
-| Shorten session maxAge | Reduce from 7 days to agreed-upon value | Awaiting IT input on value |
-| Add idle timeout | Implement inactivity-based session expiry | Awaiting IT input on value |
-| Update documentation | Revise SECURITY_ARCHITECTURE.md with full trust chain | Will do alongside implementation |
+| ~~Split env vars~~ | ~~Point `AZURE_AD_*` at new SSO registration~~ | **N/A** — registrations already split |
+| Shorten session maxAge | Reduce from 7 days to 8 hours | **Implemented** |
+| Add idle timeout | 2-hour inactivity-based session expiry | **Implemented** |
+| Update documentation | Revise SECURITY_ARCHITECTURE.md with full trust chain | **Implemented** |
 
 ### IT Side
 
-| Item | Description |
-|------|-------------|
-| Create SSO app registration | Delegated only: `openid email profile User.Read`. Zero Dynamics/SharePoint permissions. |
-| Clean up service principal | Remove `user_impersonation` and other delegated permissions (or they go away naturally with split) |
-| Grant `Sites.Selected` | Application permission on the service principal, then authorize for akoyaGO site via Graph API |
-| Assign email role | "Email Sender" security role for the service principal's application user in Dynamics |
-| Apply Conditional Access | Configure policies as desired — we'll test against them |
+| Item | Description | Status |
+|------|-------------|--------|
+| ~~Create SSO app registration~~ | ~~Delegated only~~ | **N/A** — "Keck Research Tools" already exists |
+| ~~Clean up service principal~~ | ~~Remove `user_impersonation`~~ | **N/A** — registrations already split |
+| Grant `Sites.Selected` | Application permission on the service principal, then authorize for akoyaGO site via Graph API | Pending |
+| Assign email role | "Email Sender" security role for the service principal's application user in Dynamics | Pending |
+| Apply Conditional Access | Configure policies as desired — we'll test against them | Pending |
 
 ---
 

@@ -3,7 +3,7 @@
 **Prepared for:** IT Security Review
 **Application:** Document Processing Multi-App System
 **Date:** March 2026
-**Version:** 3.3
+**Version:** 3.5
 
 ---
 
@@ -229,6 +229,23 @@
 
 ### 2.12 Microsoft Azure AD (Entra ID) — see [Section 5](#5-authentication--authorization)
 
+### 2.13 Microsoft Graph API — SharePoint & Email
+
+| Attribute | Detail |
+|-----------|--------|
+| **Endpoint** | `https://graph.microsoft.com/v1.0/` |
+| **Auth** | OAuth 2.0 Client Credentials (reuses Dynamics app registration) |
+| **Scope** | `https://graph.microsoft.com/.default` |
+| **Env Vars** | `DYNAMICS_TENANT_ID`, `DYNAMICS_CLIENT_ID`, `DYNAMICS_CLIENT_SECRET`, `SHAREPOINT_SITE_URL` (optional, has default) |
+| **Execution** | Server-side only |
+| **Data sent** | SharePoint site/library paths, file IDs |
+| **Data received** | Document listings, file content downloads |
+| **Used by** | Dynamics Explorer (`list_documents` tool), Notification Service (email sending — future) |
+| **Token caching** | In-memory module-level cache; separate from Dynamics token cache |
+| **SharePoint library allowlist** | 13 document libraries; requests for unlisted libraries are rejected |
+| **Path validation** | Blocks path traversal (`..`) and absolute paths |
+| **SharePoint permission note** | We requested `Sites.Selected` (scoped to akoyaGO only). IT granted access on March 11, 2026; testing shows all 37 site libraries visible, suggesting a broader permission (possibly `Sites.Read.All`) was granted. Application-layer allowlist enforces the 13-library restriction regardless. |
+
 ### Summary: All External Domains Contacted
 
 | Domain | Purpose | Auth | Protocol |
@@ -244,8 +261,10 @@
 | `api.nsf.gov` | NSF awards | None | HTTPS |
 | `api.reporter.nih.gov` | NIH grants | None | HTTPS |
 | `api.usaspending.gov` | Federal awards | None | HTTPS |
-| `login.microsoftonline.com` | Azure AD / Dynamics OAuth | OAuth 2.0 | HTTPS |
+| `login.microsoftonline.com` | Azure AD / Dynamics / Graph OAuth | OAuth 2.0 | HTTPS |
 | `wmkf.crm.dynamics.com` | Dynamics 365 CRM | OAuth 2.0 Bearer | HTTPS |
+| `graph.microsoft.com` | Microsoft Graph API (SharePoint, email) | OAuth 2.0 Bearer | HTTPS |
+| `appriver3651007194.sharepoint.com` | SharePoint site (redirect target for file downloads) | Via Graph token | HTTPS |
 
 *ArXiv API uses HTTP; responses are public research metadata only.
 
@@ -280,9 +299,10 @@
 
 **Session details:**
 - Strategy: JWT (encrypted, not database-stored)
-- Max age: 7 days
+- Max age: 8 hours
+- Idle timeout: 2 hours (tracked via `lastActivity` JWT claim)
 - Cookie: httpOnly, Secure, SameSite=Lax (set by NextAuth automatically)
-- JWT contains: azureId, azureEmail, profileId, profileName, avatarColor, needsLinking
+- JWT contains: azureId, azureEmail, profileId, profileName, avatarColor, needsLinking, lastActivity
 - Signed/encrypted with: `NEXTAUTH_SECRET`
 
 ### 3.2 Document Processing Flow (Summarizers, Evaluators)
@@ -553,12 +573,13 @@
 | **Purpose** | Uploaded documents (proposals, receipts, images) |
 | **Client library** | `@vercel/blob/client` |
 | **Max file size** | 50 MB |
-| **Allowed types** | PDF, TXT, Markdown, DOCX, PNG, JPG |
+| **Allowed types** | PDF, DOC, DOCX, TXT, Markdown, PNG, JPG |
 | **Naming** | Random suffix appended (prevents URL guessing) |
 | **Retention** | No automatic deletion; files persist until manually removed |
 | **Access control** | Blob URLs accessed via authenticated proxy (`/api/blob-proxy`) |
 | **Proxy validation** | URL hostname verified against pattern `[a-z0-9]+\.public\.blob\.vercel-storage\.com`, HTTPS enforced |
 | **Upload auth** | File uploads require authenticated session via `requireAuth()` |
+| **Upload endpoints** | Primary: `/api/upload-handler` (client-side token flow). Legacy: `/api/upload-file` (server-side multipart via busboy) — same auth and file restrictions, but returns raw blob URLs instead of proxied URLs. Legacy endpoint should be removed once migration is confirmed complete. |
 
 ### Environment Variable Management
 
@@ -589,10 +610,12 @@
 | Attribute | Detail |
 |-----------|--------|
 | **Strategy** | JWT (encrypted, not stored in database) |
-| **Max age** | 7 days |
+| **Max age** | 8 hours |
+| **Idle timeout** | 2 hours — tracked via `lastActivity` JWT claim; enforced in both the `jwt` callback and edge middleware |
 | **Signing secret** | `NEXTAUTH_SECRET` (32-byte random value) |
 | **Cookie flags** | httpOnly, Secure, SameSite=Lax (set by NextAuth automatically) |
-| **JWT payload** | azureId, azureEmail, profileId, profileName, avatarColor, needsLinking |
+| **JWT payload** | azureId, azureEmail, profileId, profileName, avatarColor, needsLinking, lastActivity |
+| **Session refresh** | `SessionProvider` configured with `refetchOnWindowFocus` — refreshes `lastActivity` when the user returns to the tab, but does not poll in the background (which would defeat idle timeout) |
 | **Debug mode** | `debug: process.env.NODE_ENV === 'development'` — disabled in production |
 | **Session revocation** | Setting `user_profiles.is_active = false` blocks requests within 2-minute cache TTL. Checked in `requireAppAccess()` (cached, parallel query) and `requireAuthWithProfile()` (direct query). Disabled accounts are blocked before superuser bypass. |
 
@@ -606,10 +629,10 @@ Authentication is enforced at three levels — edge middleware, API route middle
 |-----------|--------|
 | **Runtime** | Vercel Edge Runtime (not Node.js) |
 | **Library** | `next-auth/middleware` `withAuth` (function form) + `jose` for JWT validation |
-| **Scope** | All routes except `_next/static`, `_next/image`, `favicon.ico`, `/api/auth/*`, `/api/cron/*` |
-| **Behavior** | Validates JWT cookie; redirects unauthenticated users to `/auth/signin`. Generates per-request CSP nonce (see [Section 7.4](#74-security-headers)). |
+| **Scope** | All routes except `_next/static`, `_next/image`, `favicon.ico`, `apple-touch-icon*`, `/api/auth/*`, `/api/cron/*` |
+| **Behavior** | Validates JWT cookie; checks `token.azureId` (rejects empty tokens from idle expiry); checks `lastActivity` for 2-hour idle timeout (defense-in-depth); redirects unauthenticated/idle users to `/auth/signin`. Generates per-request CSP nonce (see [Section 7.4](#74-security-headers)). |
 | **Kill switch** | `AUTH_REQUIRED=false` disables edge auth check entirely |
-| **Stateless** | No database access; crypto-only validation |
+| **Stateless** | No database access; crypto-only validation + timestamp check |
 
 **Layer 2: API Route Auth Functions (`lib/utils/auth.js`)**
 
@@ -638,13 +661,13 @@ Authentication is enforced at three levels — edge middleware, API route middle
 
 **Profile linking:**
 - New Azure AD users auto-create or link to existing `user_profiles` rows
-- `signIn` callback auto-links profiles whose `azure_email` matches the caller's Azure email
+- `signIn` callback detects unlinked profiles whose `azure_email` matches the caller's Azure email and flags them for manual linking (`needs_linking = true`)
 - The manual linking flow (`/api/auth/link-profile`) is gated by three checks:
   1. `session.user.needsLinking` must be `true` — only first-login users can use this endpoint
   2. Identity (`azureId`, `azureEmail`) derived from the server-side session, never from request body
   3. Target profile's `azure_email` must match the caller's Azure email — prevents claiming another user's profile
 - The `signIn` callback only enters the linking flow when email-matching unlinked profiles exist; otherwise it creates a new profile directly
-- `signIn` callback allows sign-in even if DB profile creation fails (user gets session but 403 on profile-scoped routes)
+- `signIn` callback blocks sign-in if DB profile creation fails (fail-closed — returns `false`)
 
 ### 5.4 App-Level Access Control
 
@@ -685,6 +708,7 @@ User-provided API keys (Claude, ORCID, NCBI, SerpAPI) are stored encrypted:
 | `proposal_searches` | Per-user | `WHERE user_profile_id = ?` (SET NULL on profile delete) |
 | `reviewer_suggestions` | Per-user | `WHERE user_profile_id = ?` (SET NULL on profile delete) |
 | `integrity_screenings` | Per-user | `WHERE user_profile_id = ?` |
+| `screening_dismissals` | Indirect per-user | FK to `integrity_screenings`; API does not enforce ownership check on `screeningId` — see note below |
 | `dynamics_query_log` | Per-user | `WHERE user_profile_id = ?` |
 | `api_usage_log` | Per-user | `WHERE user_profile_id = ?` |
 | `researchers` | Shared | All users see same pool |
@@ -692,6 +716,8 @@ User-provided API keys (Claude, ORCID, NCBI, SerpAPI) are stored encrypted:
 | `grant_cycles` | Shared | Organization-wide |
 | `retractions` | Shared | Read-only import |
 | `system_settings` | Global | Superuser-managed model overrides |
+
+**Note on `screening_dismissals`:** This table has no direct `user_profile_id` column — it references `screening_id` (FK to `integrity_screenings`). The `/api/integrity-screener/dismiss` endpoint does not verify that the `screeningId` belongs to the authenticated user before creating or reading dismissals. An authenticated user with `integrity-screener` access could dismiss matches on another user's screening by enumerating `screeningId` values. Low risk (all users share the same dismissal intent for false positives), but should be hardened for defense-in-depth.
 
 ---
 
@@ -772,7 +798,7 @@ Token stays in tokenCache until function instance recycles
 
 **Timeout:** 30 seconds per request.
 
-**Operations:** Read-only. Write operations (`createRecord`, `updateRecord`) are stubbed and throw errors. No CRM data modification is possible through this application.
+**Operations:** Primarily read-only. Generic write operations (`createRecord`, `updateRecord`) are stubbed and throw errors. The exception is email activity operations: `createEmailActivity`, `addEmailAttachment`, `sendEmail`, and `createAndSendEmail` are functional and create/send email records in Dynamics CRM for reviewer invitation workflows. These require the "Email Sender" security role on the service principal (currently pending IT action — see C3).
 
 **Query safety limits:**
 - `$top` capped at 100 records per query
@@ -807,8 +833,8 @@ Roles stored in `dynamics_user_roles` table. Default role (no row) = `read_only`
 | Parameter | Value |
 |-----------|-------|
 | **Max rounds** | 15 tool-use rounds per request |
-| **Tools** | 7: `search`, `get_entity`, `get_related`, `describe_table`, `query_records`, `count_records`, `find_reports_due` |
-| **Result char limits** | 16KB default; 12KB for composite tools (search, get_related, find_reports_due, describe_table) |
+| **Tools** | 9: `search`, `get_entity`, `get_related`, `describe_table`, `query_records`, `count_records`, `find_reports_due`, `list_documents`, `export_csv` |
+| **Result char limits** | 16KB default; 12KB for composite tools (search, get_related, find_reports_due, describe_table); 8KB for list_documents; 4KB for export_csv |
 | **Conversation trimming** | Last 4 messages kept; older rounds compacted to one-line summaries |
 | **Claude model** | Haiku 4.5 (cost-optimized for agentic loops), with fallback model on overload |
 | **Rate limit handling** | 429 → wait up to 60s + retry; 529 → fall back to alternate model |
@@ -904,7 +930,7 @@ The middleware generates a unique cryptographic nonce for each request via `cryp
 | `style-src` | `'self'`, `'unsafe-inline'` |
 | `img-src` | `'self'`, `data:`, `https:` |
 | `font-src` | `'self'` |
-| `connect-src` | `'self'`, `https://*.public.blob.vercel-storage.com`, `https://vercel.com`, `https://*.vercel-insights.com` |
+| `connect-src` | `'self'`, `https://vercel.com`, `https://*.vercel-insights.com` |
 | `frame-ancestors` | `'none'` |
 | `upgrade-insecure-requests` | (enforces HTTPS for all subresources) |
 
@@ -915,9 +941,9 @@ The middleware generates a unique cryptographic nonce for each request via `cryp
 - `'unsafe-inline'` is retained only for `style-src` (standard practice; no script execution vector)
 - `https://va.vercel-scripts.com` is explicitly allowed for Vercel Web Analytics
 
-**Development mode differences:** `script-src` includes `'unsafe-inline'` and `'unsafe-eval'` (required by Turbopack HMR); `connect-src` includes `ws://localhost:3000` for WebSocket hot reload; `upgrade-insecure-requests` is omitted (localhost is HTTP).
+**Development mode differences:** `script-src` includes `'unsafe-inline'` and `'unsafe-eval'` (required by Turbopack HMR); `connect-src` adds `https://*.public.blob.vercel-storage.com`, `ws://localhost:3000`, and `ws://127.0.0.1:3000` for blob access and WebSocket hot reload; `upgrade-insecure-requests` is omitted (localhost is HTTP).
 
-**Note:** Pages are statically generated (SSG) at build time, so `'strict-dynamic'` is not used — it would override `'self'` per the CSP spec and block same-origin script chunks that lack nonce attributes. The `connect-src` allowlist covers Vercel Blob for file downloads and Vercel Analytics; all Claude API calls are server-side and not subject to CSP.
+**Note:** Pages are statically generated (SSG) at build time, so `'strict-dynamic'` is not used — it would override `'self'` per the CSP spec and block same-origin script chunks that lack nonce attributes. The `connect-src` allowlist covers Vercel Analytics; blob access goes through the authenticated proxy (`/api/blob-proxy`) which is same-origin. All Claude API calls are server-side and not subject to CSP.
 
 ### 7.5 Input Validation
 
@@ -1010,7 +1036,7 @@ All new server-side outbound HTTP requests should use `safeFetch` from `lib/util
 | Attribute | Detail |
 |-----------|--------|
 | **Table** | `api_usage_log` |
-| **Fields** | user_profile_id, app_name, model, input_tokens, output_tokens, estimated_cost_cents, latency_ms, request_status, error_message |
+| **Fields** | user_profile_id, app_name, model, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, estimated_cost_cents, latency_ms, request_status, error_message |
 | **Scope** | All Claude API calls across all 14 apps |
 | **Admin dashboard** | `/admin` — aggregated usage stats, per-app breakdowns, cost tracking (superuser only) |
 | **Non-blocking** | Logging failures do not affect API response |
@@ -1269,6 +1295,7 @@ Four Vercel Cron jobs run automated maintenance, monitoring, and analysis:
 | `DYNAMICS_TENANT_ID` | Low | For CRM | Azure tenant for Dynamics | N/A |
 | `DYNAMICS_CLIENT_ID` | Medium | For CRM | Dynamics app registration ID | N/A |
 | `DYNAMICS_CLIENT_SECRET` | **High** | For CRM | Dynamics OAuth secret | Every 90 days |
+| `SHAREPOINT_SITE_URL` | Low | Optional | SharePoint site URL for document access (has hardcoded default) | N/A |
 | `USER_PREFS_ENCRYPTION_KEY` | **High** | Yes (prod) | AES-256 key for API key storage (64-char hex) | With re-encryption |
 | `SERP_API_KEY` | Medium | Optional | SerpAPI Google search | Annually |
 | `NCBI_API_KEY` | Low | Optional | PubMed higher rate limits | Annually |
@@ -1310,7 +1337,7 @@ openssl rand -hex 32
 | `search_cache` | Low | Shared | Variable | Cached literature search results (6-month expiry) |
 | `retractions` | Low | Shared | ~63,000 | Retraction Watch public data |
 | `integrity_screenings` | Medium | Per-user | ~100s | Screening results |
-| `screening_dismissals` | Low | Per-user | ~10s | False positive dismissals |
+| `screening_dismissals` | Low | Indirect per-user (via screening FK) | ~10s | False positive dismissals |
 | `dynamics_user_roles` | Medium | Per-user | ~10s | CRM access roles |
 | `dynamics_restrictions` | Medium | Global | ~10s | Table/field access blocks |
 | `dynamics_query_log` | Medium | Per-user | Growing | CRM query audit trail |

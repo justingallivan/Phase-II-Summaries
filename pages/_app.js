@@ -9,7 +9,7 @@ import WelcomeModal from '../shared/components/WelcomeModal'
 
 export default function App({ Component, pageProps: { session, ...pageProps } }) {
   return (
-    <SessionProvider session={session}>
+    <SessionProvider session={session} refetchOnWindowFocus={true}>
       <Head>
         <meta name="robots" content="noindex, nofollow" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

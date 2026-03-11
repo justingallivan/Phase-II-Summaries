@@ -79,8 +79,13 @@ export default withAuth(
       authorized({ token }) {
         // Kill switch: allow all when auth is not required
         if (process.env.AUTH_REQUIRED !== 'true') return true;
-        // Require a valid JWT token (cryptographic validation via jose)
-        return !!token;
+        // Require a valid JWT with azureId (empty token from idle timeout returns {})
+        if (!token?.azureId) return false;
+        // Defense-in-depth idle check: reject if lastActivity is stale (2 hours)
+        if (token.lastActivity && Date.now() - token.lastActivity > 2 * 60 * 60 * 1000) {
+          return false;
+        }
+        return true;
       },
     },
     pages: {

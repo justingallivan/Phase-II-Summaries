@@ -128,11 +128,27 @@ export const authOptions = {
 
     /**
      * jwt callback - adds profile info to JWT token
+     *
+     * Idle timeout: tracks lastActivity timestamp. If more than 2 hours have
+     * elapsed since the last request, returns {} to clear the JWT — middleware
+     * sees no azureId and redirects to sign-in.
      */
     async jwt({ token, user, account, profile }) {
+      const IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours
+
       if (account?.provider === 'azure-ad') {
+        // Fresh sign-in — set identity claims and initial activity timestamp
         token.azureId = profile?.oid || user?.id;
         token.azureEmail = user?.email?.toLowerCase();
+        token.lastActivity = Date.now();
+      } else if (token.lastActivity) {
+        // Subsequent request — check idle timeout
+        if (Date.now() - token.lastActivity > IDLE_TIMEOUT_MS) {
+          // Session idle too long — return empty token to force re-auth
+          return {};
+        }
+        // Still active — update timestamp
+        token.lastActivity = Date.now();
       }
 
       // Look up the linked profile ID
@@ -184,7 +200,7 @@ export const authOptions = {
 
   session: {
     strategy: 'jwt',
-    maxAge: 7 * 24 * 60 * 60, // 7 days
+    maxAge: 8 * 60 * 60, // 8 hours
   },
 
   // Debug mode in development
