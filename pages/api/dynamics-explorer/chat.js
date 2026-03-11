@@ -6,8 +6,8 @@
  * → Dynamics API execution → Claude response → SSE stream to client.
  *
  * Architecture: Search-first discovery with server-side relationship traversal.
- * 9 tools: search, get_entity, get_related, describe_table, query_records,
- * count_records, find_reports_due, list_documents, export_csv.
+ * 10 tools: search, get_entity, get_related, describe_table, query_records,
+ * count_records, find_reports_due, list_documents, search_documents, export_csv.
  */
 
 import crypto from 'crypto';
@@ -41,6 +41,7 @@ const TOOL_CHAR_LIMITS = {
   find_reports_due: 12000,
   describe_table: 12000,
   list_documents: 8000,
+  search_documents: 10000,
   export_csv: 4000,
 };
 
@@ -168,7 +169,7 @@ export default async function handler(req, res) {
         }
         const executionTime = Date.now() - startTime;
 
-        const recordCount = result?.records?.length || result?.count || (result?.error ? -1 : 0);
+        const recordCount = result?.records?.length || result?.count || result?.searchCount || (result?.error ? -1 : 0);
         console.log(`[DynExp] Round ${round} ${name} → ${recordCount} records, ${executionTime}ms`);
 
         logQuery({ userProfileId, sessionId, queryType: name, tableName: input.table_name || null, queryParams: input, recordCount, executionTime, wasDenied: false });
@@ -298,6 +299,7 @@ function summarizeToolResult(content) {
     if (data.emailCount !== undefined) return `Found ${data.emailCount} emails`;
     if (data.reportCount !== undefined) return `Found ${data.reportCount} reports`;
     if (data.documentCount !== undefined) return `Found ${data.documentCount} documents`;
+    if (data.searchCount !== undefined) return `Found ${data.searchCount} matching documents`;
     if (data.fields) return `Table schema returned`;
     if (data.exportedCount !== undefined) return `Exported ${data.exportedCount} records`;
     if (data.estimatedCount !== undefined) return `Estimate: ${data.estimatedCount} records, ~$${(data.estimatedCostCents / 100).toFixed(2)}`;
@@ -534,8 +536,26 @@ async function executeTool(name, input, sendEvent, userProfileId) {
     case 'find_reports_due':
       return await findReportsDue(input);
 
-    case 'list_documents':
-      return await listDocuments(input);
+    case 'list_documents': {
+      const docResult = await listDocuments(input);
+      if (docResult._files?.length > 0) {
+        sendEvent('document_links', {
+          requestNumber: docResult.requestNumber,
+          files: docResult._files,
+        });
+        delete docResult._files; // Don't send structured data to Claude
+      }
+      return docResult;
+    }
+
+    case 'search_documents': {
+      const searchResult = await searchDocuments(input);
+      if (searchResult._files?.length > 0) {
+        sendEvent('document_links', { files: searchResult._files });
+        delete searchResult._files;
+      }
+      return searchResult;
+    }
 
     case 'export_csv':
       return await exportCsv(input, sendEvent, userProfileId);
@@ -1455,6 +1475,14 @@ async function listDocuments({ request_number, request_id }) {
       documentCount: files.length,
       header: 'Filename | Size | Modified | Type',
       documents: lines.join('\n') || 'Folder exists but contains no files.',
+      // Structured file data for frontend download links (not sent to Claude)
+      _files: files.map(f => ({
+        name: f.name,
+        size: f.size,
+        mimeType: f.mimeType,
+        lastModified: f.lastModified,
+        downloadUrl: `/api/dynamics-explorer/download-document?library=${encodeURIComponent(libraryName)}&folder=${encodeURIComponent(folderPath)}&filename=${encodeURIComponent(f.name)}`,
+      })),
     };
   } catch (graphError) {
     return {
@@ -1462,6 +1490,113 @@ async function listDocuments({ request_number, request_id }) {
       documentCount: 0,
       error: `SharePoint access failed: ${graphError.message}`,
       note: 'The document location was found in Dynamics, but the file listing from SharePoint failed. This may indicate a permissions issue with the Graph API.',
+    };
+  }
+}
+
+// ─── search_documents ───
+
+/**
+ * Search within SharePoint document contents for keywords or phrases.
+ * Optionally scoped to a specific library or request folder.
+ */
+async function searchDocuments({ query, library, request_number }) {
+  if (!query) {
+    return { error: 'A search query is required.' };
+  }
+
+  let libraryName = library || null;
+  let folderPath = null;
+
+  // If request_number provided, resolve to library + folder path
+  if (request_number) {
+    const reqResult = await getEntity({ type: 'request', identifier: request_number });
+    if (reqResult.error) return { error: reqResult.error };
+    const requestId = reqResult.akoya_requestid;
+    if (!requestId) {
+      return { error: `Could not resolve request "${request_number}" to a GUID.` };
+    }
+
+    // Query sharepointdocumentlocations for this request
+    const locResult = await DynamicsService.queryRecords('sharepointdocumentlocations', {
+      select: 'name,relativeurl,_parentsiteorlocation_value',
+      filter: `_regardingobjectid_value eq '${requestId}'`,
+      top: 10,
+    });
+
+    if (locResult.records.length > 0) {
+      folderPath = locResult.records[0].relativeurl;
+
+      // Resolve parent to get library name
+      const parentIds = [...new Set(
+        locResult.records.map(r => r._parentsiteorlocation_value).filter(Boolean)
+      )];
+      if (parentIds.length > 0) {
+        try {
+          const parentResult = await DynamicsService.queryRecords('sharepointdocumentlocations', {
+            select: 'relativeurl',
+            filter: parentIds.map(id => `sharepointdocumentlocationid eq ${id}`).join(' or '),
+            top: 5,
+          });
+          if (parentResult.records.length > 0 && parentResult.records[0].relativeurl) {
+            libraryName = parentResult.records[0].relativeurl;
+          }
+        } catch (e) {
+          // Fall back to default
+        }
+      }
+      if (!libraryName) libraryName = 'akoya_request';
+    }
+  }
+
+  try {
+    const results = await GraphService.searchFiles(query, { libraryName, folderPath });
+
+    if (!results.length) {
+      return {
+        searchCount: 0,
+        query,
+        scope: libraryName ? (folderPath ? `${libraryName}/${folderPath}` : libraryName) : 'all libraries',
+        message: 'No documents found matching the search query.',
+      };
+    }
+
+    const formatSize = (bytes) => {
+      if (!bytes) return '?';
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    };
+
+    // Build text summary for Claude
+    const lines = results.map(f => {
+      const size = formatSize(f.size);
+      const date = f.lastModified ? new Date(f.lastModified).toLocaleDateString() : '';
+      const snippet = f.summary ? `\n  Snippet: ${f.summary}` : '';
+      return `${f.name} | ${size} | ${date} | ${f.library}/${f.folder}${snippet}`;
+    });
+
+    return {
+      searchCount: results.length,
+      query,
+      scope: libraryName ? (folderPath ? `${libraryName}/${folderPath}` : libraryName) : 'all libraries',
+      header: 'Filename | Size | Modified | Location',
+      documents: lines.join('\n'),
+      // Structured file data for frontend download links (not sent to Claude)
+      _files: results
+        .filter(f => f.folder) // Only include files with a resolvable folder path
+        .map(f => ({
+          name: f.name,
+          size: f.size,
+          mimeType: null,
+          lastModified: f.lastModified,
+          downloadUrl: `/api/dynamics-explorer/download-document?library=${encodeURIComponent(f.library)}&folder=${encodeURIComponent(f.folder)}&filename=${encodeURIComponent(f.name)}`,
+        })),
+    };
+  } catch (err) {
+    return {
+      searchCount: 0,
+      error: `SharePoint search failed: ${err.message}`,
     };
   }
 }
@@ -2066,6 +2201,8 @@ function getThinkingMessage(toolName, input) {
     case 'query_records': return `Querying ${input.table_name}...`;
     case 'count_records': return `Counting ${input.table_name}...`;
     case 'find_reports_due': return `Finding reports due ${input.date_from ? 'from ' + input.date_from.substring(0, 10) : ''}...`;
+    case 'list_documents': return `Listing documents for request ${input.request_number || input.request_id || ''}...`;
+    case 'search_documents': return `Searching documents for "${input.query}"...`;
     case 'export_csv':
       if (input.process_instruction && input.confirmed) return `Processing and exporting ${input.table_name || 'data'} with AI analysis...`;
       if (input.process_instruction) return `Estimating AI processing for ${input.table_name || 'data'} export...`;

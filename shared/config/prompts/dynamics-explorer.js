@@ -444,7 +444,10 @@ wmkf_potentialreviewers (3141) reviewers
 systemuser (212) Keck staff — linked to requests via program director/coordinator
 Lookup: wmkf_grantprogram(11), wmkf_type(8), wmkf_bbstatus(88), wmkf_donors(116), wmkf_supporttype(41), wmkf_programlevel2(29), akoya_program(24), akoya_phase(62), akoya_goapplystatustracking(3293), activitypointer(5000+)
 
-DOCUMENTS: Proposal documents (PDFs, concept papers, bios) are stored in SharePoint, linked to CRM requests. Use list_documents to see files attached to a request. When the user asks about documents, files, attachments, or uploaded materials for a request, use this tool.
+DOCUMENTS: Proposal documents (PDFs, concept papers, bios) are stored in SharePoint, linked to CRM requests.
+- list_documents: see files attached to a specific request
+- search_documents: search within document contents for keywords or phrases (e.g. "budget justification", "gene therapy"). Can scope to a library or request.
+When the user asks about documents, files, attachments, or uploaded materials for a request, use list_documents. When the user wants to find which documents mention a term, use search_documents.
 
 FIELD NAMING: "akoya_" = vendor fields. "wmkf_" = Keck Foundation custom fields.
 
@@ -453,7 +456,7 @@ ${inlineSchemas}`;
 }
 
 /**
- * Claude tool definitions — 9 tools for the search-first architecture.
+ * Claude tool definitions — 10 tools for the search-first architecture.
  */
 export const TOOL_DEFINITIONS = [
   {
@@ -574,6 +577,19 @@ export const TOOL_DEFINITIONS = [
         request_id: { type: 'string', description: 'Request GUID (alternative to request_number)' },
       },
       required: [],
+    },
+  },
+  {
+    name: 'search_documents',
+    description: 'Search within SharePoint document contents (PDFs, Word docs, etc.) for keywords or phrases. Searches full text of files, not just filenames. Use quotes for exact phrase match. Can scope to a specific library or request.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search keywords or quoted phrase (e.g. "budget justification")' },
+        library: { type: 'string', description: 'Library to scope search (e.g. "akoya_request"). Omit to search all.' },
+        request_number: { type: 'string', description: 'Scope to a specific request folder (e.g. "1002386")' },
+      },
+      required: ['query'],
     },
   },
   {

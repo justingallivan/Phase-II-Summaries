@@ -130,6 +130,7 @@ function DynamicsExplorer() {
   const textareaRef = useRef(null);
   const messageIdRef = useRef(0);
   const pendingFileExportsRef = useRef([]);
+  const pendingDocumentLinksRef = useRef([]);
 
   let profileContext = null;
   try {
@@ -230,6 +231,9 @@ function DynamicsExplorer() {
               case 'file_ready':
                 pendingFileExportsRef.current.push(parsed);
                 break;
+              case 'document_links':
+                pendingDocumentLinksRef.current.push(parsed);
+                break;
               case 'export_progress':
                 setThinkingStatus(`Processing records ${parsed.processed} of ${parsed.total}...${parsed.failed ? ` (${parsed.failed} failed)` : ''}`);
                 break;
@@ -264,12 +268,16 @@ function DynamicsExplorer() {
                   ? [...pendingFileExportsRef.current]
                   : undefined;
                 pendingFileExportsRef.current = [];
+                const documentLinks = pendingDocumentLinksRef.current.length > 0
+                  ? [...pendingDocumentLinksRef.current]
+                  : undefined;
+                pendingDocumentLinksRef.current = [];
 
                 if (streamingMsgId) {
                   // Finalize streaming message
                   setMessages(prev => prev.map(m =>
                     m.id === streamingMsgId
-                      ? { ...m, content: assistantContent, isStreaming: false, rounds: parsed.rounds, fileExports }
+                      ? { ...m, content: assistantContent, isStreaming: false, rounds: parsed.rounds, fileExports, documentLinks }
                       : m
                   ));
                 } else {
@@ -281,6 +289,7 @@ function DynamicsExplorer() {
                     timestamp: Date.now(),
                     rounds: parsed.rounds,
                     fileExports,
+                    documentLinks,
                   }]);
                 }
                 setIsProcessing(false);
@@ -549,6 +558,11 @@ const MessageBubble = React.memo(function MessageBubble({ message, onCopy }) {
           <FileDownloadButton key={i} fileExport={fe} />
         ))}
 
+        {/* Document download links */}
+        {message.documentLinks?.map((dl, i) => (
+          <DocumentLinks key={i} data={dl} />
+        ))}
+
         {/* Actions */}
         {!isUser && (
           <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
@@ -599,6 +613,51 @@ function FileDownloadButton({ fileExport }) {
       >
         Download
       </button>
+    </div>
+  );
+}
+
+// ─── Document Links ───
+
+function DocumentLinks({ data }) {
+  const formatSize = (bytes) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  if (!data?.files?.length) return null;
+
+  return (
+    <div className="my-3 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+      <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+        <span className="text-lg">📄</span>
+        <span className="text-sm font-medium text-gray-700">
+          {data.files.length} document{data.files.length !== 1 ? 's' : ''}
+          {data.requestNumber ? ` — Request ${data.requestNumber}` : ''}
+        </span>
+      </div>
+      <div className="divide-y divide-gray-100">
+        {data.files.map((file, i) => (
+          <div key={i} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50">
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-gray-900 truncate">{file.name}</div>
+              <div className="text-xs text-gray-500">
+                {formatSize(file.size)}
+                {file.lastModified && ` · ${new Date(file.lastModified).toLocaleDateString()}`}
+              </div>
+            </div>
+            <a
+              href={file.downloadUrl}
+              className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors flex-shrink-0"
+              download
+            >
+              Download
+            </a>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
