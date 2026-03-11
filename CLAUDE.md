@@ -193,7 +193,7 @@ Located in `lib/services/`:
 - `integrity-service.js` - Integrity screening orchestration
 - `integrity-matching-service.js` - Name matching algorithms
 - `dynamics-service.js` - Microsoft Dynamics 365 CRM API (OAuth, OData queries, Dataverse Search, Email Activities)
-- `graph-service.js` - Microsoft Graph API (SharePoint document access, file listing/download)
+- `graph-service.js` - Microsoft Graph API (SharePoint document access, file listing/download, content search)
 - `alert-service.js` - CRUD for system_alerts table (deduplication, auto-resolve)
 - `notification-service.js` - Unified notifications (DB alerts + future Graph API email)
 - `maintenance-service.js` - Database/blob cleanup operations with audit trail
@@ -311,7 +311,8 @@ Located in `lib/utils/`:
 - `POST/GET /api/integrity-screener/dismiss` - Manage dismissals
 
 ### Dynamics Explorer
-- `POST /api/dynamics-explorer/chat` - Agentic chat with Dynamics 365 CRM (SSE streaming)
+- `POST /api/dynamics-explorer/chat` - Agentic chat with Dynamics 365 CRM (SSE streaming, 10 tools)
+- `GET /api/dynamics-explorer/download-document` - Authenticated proxy for SharePoint file download
 - `GET/POST/DELETE /api/dynamics-explorer/roles` - User role management (superuser only)
 - `GET/POST/DELETE /api/dynamics-explorer/restrictions` - Table/field restrictions (superuser only)
 

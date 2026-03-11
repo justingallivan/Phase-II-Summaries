@@ -1,55 +1,40 @@
-# Session 83 Prompt: Continue Dynamics Integration or Remaining Hardening
+# Session 84 Prompt: Dynamics Explorer Refinements or Next Feature
 
-## Session 82 Summary
+## Session 83 Summary
 
-Closed the profile directory enumeration vulnerability identified across multiple security audits. Used multi-tool audit process (Gemini, Codex, Claude Code) with human review catching gaps all three AI tools missed. Produced a comprehensive hardening summary for IT review.
+Added SharePoint document content search to Dynamics Explorer. Users can now search within PDFs, Word docs, and other files stored in SharePoint for keywords or exact phrases. Also committed the previously-uncommitted document download proxy and frontend DocumentLinks component.
 
 ### What Was Completed
 
-1. **Profile Directory Enumeration — Fully Closed**
-   - `GET /api/user-profiles` now returns only the caller's own profile by default
-   - `?all=true` returns full directory, superuser-only (403 for non-superusers)
-   - `?id=X` restricted to caller's own profile (403 for cross-user lookups)
-   - `?linkable=true` refactored to use DB email lookup instead of session object
-   - All methods upgraded from split `requireAuth`/`requireAuthWithProfile` to unified `requireAuthWithProfile`
-   - Dev mode (AUTH_REQUIRED=false) falls back to returning all profiles for compatibility
-   - `checkSuperuser()` helper added (same pattern as `app-access.js`)
+1. **`search_documents` Tool (10th Dynamics Explorer tool)**
+   - `GraphService.searchFiles()`: Full-text search via `POST /search/query` with KQL
+   - `region: 'US'` required for application (client_credentials) permissions — discovered through testing (NAM is wrong, US is correct for this tenant)
+   - Path scoping via KQL `path:` operator to akoyaGO site, optionally narrowed to library/folder
+   - Post-filters results to `ALLOWED_LIBRARIES` allowlist
+   - Returns hit highlight snippets showing matching text
 
-2. **Admin Dashboard Updated**
-   - `pages/admin.js` role management fetch changed to `?all=true` so it still gets the full user list
+2. **`search_documents` Chat Handler**
+   - Resolves `request_number` to library+folder via sharepointdocumentlocations (same pattern as `list_documents`)
+   - Sends `document_links` SSE events for download links on matching files
+   - 10,000 char limit, thinking message, compaction summary
 
-3. **Security Audit Response Docs Updated**
-   - `SECURITY_AUDIT_RESPONSE_GEMINI.md` — directory enumeration status updated to "closed"
-   - `SECURITY_AUDIT_RESPONSE_CODEX.md` — directory enumeration status updated to "closed"
+3. **Document Download Proxy (previously uncommitted)**
+   - `GET /api/dynamics-explorer/download-document?library=...&folder=...&filename=...`
+   - Authenticated via `requireAppAccess`, streams file from SharePoint to browser
 
-4. **Security Hardening Summary Created**
-   - `docs/SECURITY_HARDENING_SUMMARY_2026-03-10.md` — comprehensive document for IT review
-   - Covers all code changes shipped, audit process, remaining organizational decisions, and proposed path forward with three tracks (IT admin actions, dev hardening, policy decisions)
-   - Anthropic data policy item removed (settled)
-
-5. **All Security Audit Docs Committed to Git**
-   - 12 previously untracked docs now tracked (audit reports, responses, proposals, findings)
-   - Critical for multi-Mac migration
+4. **Frontend DocumentLinks Component (previously uncommitted)**
+   - Renders clickable download links from `document_links` SSE events
+   - Used by both `list_documents` and `search_documents` tools
 
 ### Commits
-- `6cb160d` - Close profile directory enumeration, add security audit docs and hardening summary
-- `3eaffe0` - Remove settled Anthropic data policy item from hardening summary
+- `e8ed314` - Add SharePoint document download and content search to Dynamics Explorer
 
-### Key Files Modified
-
-| File | Change |
-|------|--------|
-| `pages/api/user-profiles.js` | Endpoint scoping, superuser gate, cross-user lookup prevention |
-| `pages/admin.js` | `?all=true` param for role management dropdown |
-| `docs/SECURITY_HARDENING_SUMMARY_2026-03-10.md` | New — comprehensive hardening summary for IT |
-| `docs/SECURITY_AUDIT_RESPONSE_GEMINI.md` | New — response to Gemini audit |
-| `docs/SECURITY_AUDIT_RESPONSE_CODEX.md` | New — response to Codex annotations |
-| `docs/COMPREHENSIVE_SECURITY_AUDIT_2026.md` | New — original Gemini audit |
-| `docs/COMPREHENSIVE_SECURITY_AUDIT_2026_ANNOTATED.md` | New — Codex-annotated audit |
+### Key Gotchas
+- Microsoft Graph Search API requires `region: 'US'` in request body when using application permissions (client_credentials flow). Without it, returns 400 "Region is required". The value is tenant-specific — this tenant uses 'US', not 'NAM'.
+- The `size` parameter in the search request controls max results (set to 100, Graph allows up to 500).
 
 ## Deferred Items (Carried Forward)
 
-- SharePoint document access (blocked on IT granting `Sites.Selected`)
 - Integrate email sending into Reviewer Finder / Review Manager
 - Build Proposal Picker component for Dynamics integration
 - next-auth v5 migration (still in beta)
@@ -57,29 +42,41 @@ Closed the profile directory enumeration vulnerability identified across multipl
 
 ## Potential Next Steps
 
-### 1. Remaining Code Hardening (Track 2 from Hardening Summary)
-- Upload attribution — replace `'anonymous'` with `session.profileId` in `upload-handler.js`
-- CSRF allowlist for non-browser callers (if IT requests it)
-- Integration tests for the new profile scoping paths
-- Legacy `upload-file.js` cleanup
+### 1. Remove Debug Logging from search_documents
+The `console.log` for first hit JSON and hit counts in `GraphService.searchFiles()` should be removed or gated behind a flag before production deployment.
 
-### 2. Build Proposal Picker Component
+### 2. Verify search_documents on Vercel
+Deploy and test in production — the Graph Search API may behave differently with production token/permissions.
+
+### 3. Build Proposal Picker Component
 Shared component for browsing/searching Dynamics proposals. First app to use the integrated Dynamics flow would be Reviewer Finder.
 
-### 3. Wire Proposal Picker into Reviewer Finder
+### 4. Wire Proposal Picker into Reviewer Finder
 Replace manual PDF upload with Dynamics proposal selection.
 
-### 4. Verify SharePoint Access (When Permission Granted)
-Once IT grants `Sites.Selected`, test `list_documents` tool in Dynamics Explorer.
+### 5. Remaining Code Hardening
+- Upload attribution — replace `'anonymous'` with `session.profileId` in `upload-handler.js`
+- Legacy `upload-file.js` cleanup
 
-### 5. IT Walkthrough Prep
-Prepare for 30-minute walkthrough with IT covering `Sites.Selected` authorization, audit log delivery preference, and remaining questions.
+## Key Files Reference
+
+| File | Purpose |
+|------|---------|
+| `lib/services/graph-service.js` | GraphService — SharePoint auth, file listing, download, content search |
+| `pages/api/dynamics-explorer/chat.js` | Agentic chat handler — 10 tools including search_documents |
+| `pages/api/dynamics-explorer/download-document.js` | Authenticated download proxy for SharePoint files |
+| `pages/dynamics-explorer.js` | Frontend — DocumentLinks component, document_links SSE handler |
+| `shared/config/prompts/dynamics-explorer.js` | Tool definitions and system prompt |
 
 ## Testing
 
 ```bash
 npm run dev                              # Start dev server
 npm run build                            # Verify no build errors
-npm test                                 # Run all tests (144 pass)
-npm run test:ci                          # Run with coverage (CI mode)
+npm test                                 # Run all tests
 ```
+
+Manual testing in Dynamics Explorer:
+- "Search all documents for 'gene therapy'" — cross-library search
+- "Search request 1002386's documents for 'budget'" — folder-scoped search
+- Verify download links appear and work for search results

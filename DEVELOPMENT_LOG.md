@@ -4,6 +4,19 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## March 2026 — SharePoint Document Content Search (Session 83)
+
+Added `search_documents` tool to Dynamics Explorer (10th tool). Full-text search within SharePoint document contents (PDFs, Word docs, etc.) via Microsoft Graph Search API with KQL.
+
+- **GraphService.searchFiles()**: `POST /search/query` with KQL path scoping to akoyaGO site. Requires `region: 'US'` for app permissions. Post-filters to ALLOWED_LIBRARIES. Returns hit highlights with matching text snippets.
+- **search_documents handler**: Resolves request_number to folder path via sharepointdocumentlocations. Sends `document_links` SSE events for download links.
+- **download-document.js**: Authenticated proxy for streaming SharePoint files to browser (committed from prior session).
+- **DocumentLinks component**: Frontend component rendering download links from SSE events (committed from prior session).
+
+**Files:** `lib/services/graph-service.js`, `pages/api/dynamics-explorer/chat.js`, `pages/api/dynamics-explorer/download-document.js`, `pages/dynamics-explorer.js`, `shared/config/prompts/dynamics-explorer.js`
+
+---
+
 ## March 2026 — Close Profile Directory Enumeration & Security Audit Docs (Session 82)
 
 Closed the profile directory enumeration vulnerability using a multi-tool audit process (Gemini, Codex, Claude Code, human review). Produced comprehensive hardening summary for IT.
