@@ -1135,7 +1135,7 @@ function RoleManagementSection() {
 
   useEffect(() => {
     fetchRoles();
-    fetch('/api/user-profiles')
+    fetch('/api/user-profiles?all=true')
       .then(r => r.json())
       .then(data => setUsers(data.profiles || []))
       .catch(() => {});

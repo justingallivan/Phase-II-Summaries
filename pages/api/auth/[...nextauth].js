@@ -2,7 +2,7 @@
  * NextAuth.js API Route - Microsoft Azure AD Authentication
  *
  * Handles OAuth flow with Azure AD (Entra ID) for organization single sign-on.
- * Auto-links or creates user profiles based on Azure email.
+ * Links or creates user profiles based on Azure email.
  *
  * Environment variables required:
  * - NEXTAUTH_URL: Base URL of the app (http://localhost:3000 for dev)
@@ -67,24 +67,6 @@ export const authOptions = {
             return true;
           }
 
-          // Check if any profile needs linking (first login scenario)
-          const existingByEmail = await sql`
-            SELECT id, name, display_name, azure_id
-            FROM user_profiles
-            WHERE azure_email = ${azureEmail} AND is_active = true
-          `;
-
-          if (existingByEmail.rows.length > 0 && !existingByEmail.rows[0].azure_id) {
-            // Profile exists with this email but not linked - link it now
-            await sql`
-              UPDATE user_profiles
-              SET azure_id = ${azureId}, last_login_at = CURRENT_TIMESTAMP,
-                  last_used_at = CURRENT_TIMESTAMP, needs_linking = false
-              WHERE id = ${existingByEmail.rows[0].id}
-            `;
-            return true;
-          }
-
           // Check if there are unlinked profiles whose email matches the caller.
           // Only enter the linking flow when at least one profile is actually
           // linkable (the link-profile API requires email match).
@@ -134,9 +116,11 @@ export const authOptions = {
           return true;
         } catch (error) {
           console.error('Error in signIn callback:', error);
-          // Allow sign in even if database operation fails
-          // Profile linking can happen later
-          return true;
+          // Fail closed: if we can't verify identity against the DB, block sign-in.
+          // The DB being down already breaks all app functionality, and /auth/error
+          // gives the user a clear message. Profile linking cannot happen safely
+          // without a working database.
+          return false;
         }
       }
       return true;

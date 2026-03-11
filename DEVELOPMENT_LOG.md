@@ -4,6 +4,19 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## March 2026 — Close Profile Directory Enumeration & Security Audit Docs (Session 82)
+
+Closed the profile directory enumeration vulnerability using a multi-tool audit process (Gemini, Codex, Claude Code, human review). Produced comprehensive hardening summary for IT.
+
+- **Profile endpoint scoping**: `GET /api/user-profiles` returns only caller's own profile by default. Full directory via `?all=true` (superuser only). Cross-user `?id=X` lookups return 403. All methods use `requireAuthWithProfile`. Dev mode falls back to all profiles for compatibility.
+- **Admin dashboard**: Role management fetch updated to `?all=true`.
+- **Security hardening summary**: `docs/SECURITY_HARDENING_SUMMARY_2026-03-10.md` — covers all code changes, audit process, remaining organizational decisions, and three-track path forward for IT.
+- **Security audit docs committed**: 12 previously untracked audit/response documents now in git for multi-Mac migration.
+
+**Files:** `pages/api/user-profiles.js`, `pages/admin.js`, `docs/SECURITY_HARDENING_SUMMARY_2026-03-10.md`, `docs/SECURITY_AUDIT_RESPONSE_GEMINI.md`, `docs/SECURITY_AUDIT_RESPONSE_CODEX.md`
+
+---
+
 ## March 2026 — Q&A Prompt Caching & Output Fixes (Session 73)
 
 Implemented prompt caching, fixed truncated writeups, and improved Q&A UX.

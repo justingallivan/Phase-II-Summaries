@@ -1,59 +1,51 @@
-# Session 82 Prompt: Continue Security Hardening or Dynamics Integration
+# Session 83 Prompt: Continue Dynamics Integration or Remaining Hardening
 
-## Session 81 Summary
+## Session 82 Summary
 
-Implemented the "Easy Wins" security hardening roadmap from the independent code review (`docs/Easy_Wins.md`). Also committed prior-session P0/P1 security fixes that were applied but never committed, and fixed CI issues on first run.
+Closed the profile directory enumeration vulnerability identified across multiple security audits. Used multi-tool audit process (Gemini, Codex, Claude Code) with human review catching gaps all three AI tools missed. Produced a comprehensive hardening summary for IT review.
 
 ### What Was Completed
 
-1. **Authorization Regression Tests (73 new tests)**
-   - Auth mock helper (`tests/helpers/auth-mock.js`) with presets for unauthenticated, authenticated, disabled, no-profile
-   - Unit tests for `requireAuth`, `requireAuthWithProfile`, `requireAppAccess`, CSRF validation
-   - Route-level auth tests for 8 API endpoints (401/403 gating)
-   - Cross-user data isolation tests for email generation routes
+1. **Profile Directory Enumeration — Fully Closed**
+   - `GET /api/user-profiles` now returns only the caller's own profile by default
+   - `?all=true` returns full directory, superuser-only (403 for non-superusers)
+   - `?id=X` restricted to caller's own profile (403 for cross-user lookups)
+   - `?linkable=true` refactored to use DB email lookup instead of session object
+   - All methods upgraded from split `requireAuth`/`requireAuthWithProfile` to unified `requireAuthWithProfile`
+   - Dev mode (AUTH_REQUIRED=false) falls back to returning all profiles for compatibility
+   - `checkSuperuser()` helper added (same pattern as `app-access.js`)
 
-2. **Centralized Fetch Wrapper — `safeFetch` (SSRF protection)**
-   - `lib/utils/safe-fetch.js` with HTTPS-only host allowlist (17 trusted hosts)
-   - Manual redirect handling — validates every hop against allowlist (code review fix)
-   - Migrated all `fetchAttachment` calls in `generate-emails.js` and `send-emails.js`
-   - 37 tests including redirect bypass, metadata blocking, HTTP downgrade
+2. **Admin Dashboard Updated**
+   - `pages/admin.js` role management fetch changed to `?all=true` so it still gets the full user list
 
-3. **CI Security Pipelines (4 new GitHub Actions workflows)**
-   - Gitleaks secret scanning, Trivy dependency CVE scanning, CodeQL static analysis, Jest test runner
-   - Fixed orphaned test file and disabled aspirational coverage thresholds for CI to pass
+3. **Security Audit Response Docs Updated**
+   - `SECURITY_AUDIT_RESPONSE_GEMINI.md` — directory enumeration status updated to "closed"
+   - `SECURITY_AUDIT_RESPONSE_CODEX.md` — directory enumeration status updated to "closed"
 
-4. **PR Security Checklist** — `.github/pull_request_template.md`
+4. **Security Hardening Summary Created**
+   - `docs/SECURITY_HARDENING_SUMMARY_2026-03-10.md` — comprehensive document for IT review
+   - Covers all code changes shipped, audit process, remaining organizational decisions, and proposed path forward with three tracks (IT admin actions, dev hardening, policy decisions)
+   - Anthropic data policy item removed (settled)
 
-5. **Prior-Session Fixes Committed**
-   - Profile linking: derive identity from session, require email match, block already-linked users
-   - Token security comments on `getAccessToken` methods
-   - Semgrep token-audit rules + security-scan workflow
-   - Code review findings docs
+5. **All Security Audit Docs Committed to Git**
+   - 12 previously untracked docs now tracked (audit reports, responses, proposals, findings)
+   - Critical for multi-Mac migration
 
 ### Commits
-- `c2be638` - Add security hardening: auth tests, safe-fetch, CI pipelines, PR template
-- `f720976` - Add security hardening implementation summary
-- `ea66438` - Fix safeFetch redirect bypass and remaining raw fetch calls
-- `5395836` - Remove orphaned reviewerParser test (module was already deleted)
-- `3b36957` - Disable aspirational coverage thresholds until test coverage catches up
-- `c87e2a3` - Commit prior-session security fixes: profile linking, token docs, Semgrep rules
+- `6cb160d` - Close profile directory enumeration, add security audit docs and hardening summary
+- `3eaffe0` - Remove settled Anthropic data policy item from hardening summary
 
-### Key New Files
+### Key Files Modified
 
-| File | Purpose |
-|------|---------|
-| `tests/helpers/auth-mock.js` | Shared auth mocking infrastructure for tests |
-| `tests/unit/utils/auth.test.js` | Auth utility unit tests (17 tests) |
-| `tests/unit/utils/safe-fetch.test.js` | Safe-fetch unit tests (37 tests) |
-| `tests/integration/auth-routes.test.js` | Route-level auth regression (23 tests) |
-| `tests/integration/cross-user-isolation.test.js` | Cross-user isolation (2 tests) |
-| `lib/utils/safe-fetch.js` | Centralized fetch wrapper with host allowlist |
-| `.github/workflows/gitleaks.yml` | Secret scanning CI |
-| `.github/workflows/trivy.yml` | Dependency CVE scanning CI |
-| `.github/workflows/codeql.yml` | Static analysis CI |
-| `.github/workflows/test.yml` | Jest test runner CI |
-| `.github/pull_request_template.md` | PR security checklist |
-| `docs/SECURITY_HARDENING_SUMMARY.md` | Full implementation summary |
+| File | Change |
+|------|--------|
+| `pages/api/user-profiles.js` | Endpoint scoping, superuser gate, cross-user lookup prevention |
+| `pages/admin.js` | `?all=true` param for role management dropdown |
+| `docs/SECURITY_HARDENING_SUMMARY_2026-03-10.md` | New — comprehensive hardening summary for IT |
+| `docs/SECURITY_AUDIT_RESPONSE_GEMINI.md` | New — response to Gemini audit |
+| `docs/SECURITY_AUDIT_RESPONSE_CODEX.md` | New — response to Codex annotations |
+| `docs/COMPREHENSIVE_SECURITY_AUDIT_2026.md` | New — original Gemini audit |
+| `docs/COMPREHENSIVE_SECURITY_AUDIT_2026_ANNOTATED.md` | New — Codex-annotated audit |
 
 ## Deferred Items (Carried Forward)
 
@@ -61,25 +53,27 @@ Implemented the "Easy Wins" security hardening roadmap from the independent code
 - Integrate email sending into Reviewer Finder / Review Manager
 - Build Proposal Picker component for Dynamics integration
 - next-auth v5 migration (still in beta)
-- Migrate remaining `fetch()` calls to `safeFetch` incrementally
 - Re-enable coverage thresholds when test coverage reaches 70%/80%
 
 ## Potential Next Steps
 
-### 1. Verify CI Workflows Are Green
-All 4 workflows should now pass. Check GitHub Actions tab. If CodeQL or Trivy report findings, triage and fix.
+### 1. Remaining Code Hardening (Track 2 from Hardening Summary)
+- Upload attribution — replace `'anonymous'` with `session.profileId` in `upload-handler.js`
+- CSRF allowlist for non-browser callers (if IT requests it)
+- Integration tests for the new profile scoping paths
+- Legacy `upload-file.js` cleanup
 
-### 2. Incremental `safeFetch` Migration
-~44 raw `fetch()` calls remain in service files. Prioritize user-input-adjacent paths. The two email routes are done.
+### 2. Build Proposal Picker Component
+Shared component for browsing/searching Dynamics proposals. First app to use the integrated Dynamics flow would be Reviewer Finder.
 
-### 3. Build Proposal Picker Component
-Shared component for browsing/searching Dynamics proposals — see Session 80 prompt for details.
+### 3. Wire Proposal Picker into Reviewer Finder
+Replace manual PDF upload with Dynamics proposal selection.
 
-### 4. Wire Proposal Picker into Reviewer Finder
-First app to use the integrated Dynamics flow.
+### 4. Verify SharePoint Access (When Permission Granted)
+Once IT grants `Sites.Selected`, test `list_documents` tool in Dynamics Explorer.
 
-### 5. Verify SharePoint Access (When Permission Granted)
-Once IT grants `Sites.Selected`, test `list_documents` tool.
+### 5. IT Walkthrough Prep
+Prepare for 30-minute walkthrough with IT covering `Sites.Selected` authorization, audit log delivery preference, and remaining questions.
 
 ## Testing
 

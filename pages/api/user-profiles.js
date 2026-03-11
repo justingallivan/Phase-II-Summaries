@@ -3,14 +3,15 @@
  *
  * Manages user profiles for the multi-user system.
  *
- * GET: List all user profiles
+ * GET: Return caller's own profile (default), or all profiles (?all=true, superuser only)
  * POST: Create a new profile
- * PATCH: Update a profile
- * DELETE: Archive (soft delete) a profile
+ * PATCH: Update a profile (own only)
+ * DELETE: Archive (soft delete) a profile (own only)
  */
 
+import { sql } from '@vercel/postgres';
 import { DatabaseService } from '../../lib/services/database-service';
-import { requireAuth, requireAuthWithProfile } from '../../lib/utils/auth';
+import { requireAuthWithProfile, clearAppAccessCache } from '../../lib/utils/auth';
 import { BASE_CONFIG } from '../../shared/config/baseConfig';
 
 /**
@@ -22,35 +23,41 @@ function sanitizeProfile({ azureId, azureEmail, needsLinking, ...safe }) {
 }
 
 export default async function handler(req, res) {
-  // GET and POST use basic auth; PATCH and DELETE enforce ownership
-  if (req.method === 'GET' || req.method === 'POST') {
-    const session = await requireAuth(req, res);
-    if (!session) return;
-    return req.method === 'GET' ? handleGet(req, res, session) : handlePost(req, res);
+  // All methods use requireAuthWithProfile so we have the caller's profileId
+  const profileId = await requireAuthWithProfile(req, res);
+  if (profileId === null) {
+    // If response was already sent (auth failure), stop
+    if (res.headersSent) return;
+    // Dev mode (AUTH_REQUIRED=false) with no userProfileId param —
+    // allow GET/POST through without scoping for dev compatibility
+    if (req.method === 'GET') return handleGet(req, res, null);
+    if (req.method === 'POST') return handlePost(req, res);
+    return res.status(401).json({ error: 'Profile ID required' });
   }
 
-  // PATCH and DELETE require profile ID from session to enforce ownership
-  const sessionProfileId = await requireAuthWithProfile(req, res);
-  if (sessionProfileId === null) return;
-
   switch (req.method) {
+    case 'GET':
+      return handleGet(req, res, profileId);
+    case 'POST':
+      return handlePost(req, res);
     case 'PATCH':
-      return handlePatch(req, res, sessionProfileId);
+      return handlePatch(req, res, profileId);
     case 'DELETE':
-      return handleDelete(req, res, sessionProfileId);
+      return handleDelete(req, res, profileId);
     default:
       return res.status(405).json({ error: 'Method not allowed' });
   }
 }
 
-async function handleGet(req, res, session) {
+async function handleGet(req, res, profileId) {
   try {
     const { includeArchived, id, linkable } = req.query;
 
     // ?linkable=true — server-side filter for ProfileLinkingDialog.
-    // Returns only unlinked profiles whose azureEmail matches the caller's session email.
+    // Returns only unlinked profiles whose azureEmail matches the caller's email.
     if (linkable === 'true') {
-      const callerEmail = session.user?.azureEmail?.toLowerCase() || session.user?.email?.toLowerCase();
+      const callerProfile = await DatabaseService.getUserProfileById(profileId);
+      const callerEmail = callerProfile?.azureEmail?.toLowerCase();
       if (!callerEmail) {
         return res.status(200).json({ success: true, profiles: [], count: 0 });
       }
@@ -65,22 +72,51 @@ async function handleGet(req, res, session) {
       });
     }
 
-    // If ID is provided, get single profile (sanitized)
+    // ?id=X — single profile lookup, restricted to caller's own profile
     if (id) {
-      const profile = await DatabaseService.getUserProfileById(parseInt(id, 10));
+      const requestedId = parseInt(id, 10);
+      if (requestedId !== profileId) {
+        return res.status(403).json({ error: 'Cannot view another user\'s profile' });
+      }
+      const profile = await DatabaseService.getUserProfileById(requestedId);
       if (!profile) {
         return res.status(404).json({ error: 'Profile not found' });
       }
       return res.status(200).json({ success: true, profile: sanitizeProfile(profile) });
     }
 
-    // Otherwise, list all profiles (sanitized)
-    const profiles = await DatabaseService.getUserProfiles(includeArchived === 'true');
+    // ?all=true — full list, superuser only (used by admin dashboard)
+    if (req.query.all === 'true') {
+      const isSuperuser = await checkSuperuser(profileId);
+      if (!isSuperuser) {
+        return res.status(403).json({ error: 'Superuser access required' });
+      }
+      const profiles = await DatabaseService.getUserProfiles(includeArchived === 'true');
+      return res.status(200).json({
+        success: true,
+        profiles: profiles.map(sanitizeProfile),
+        count: profiles.length
+      });
+    }
 
+    // Default — return only the caller's own profile
+    // (profileId is null in dev mode — fall back to all profiles)
+    if (!profileId) {
+      const profiles = await DatabaseService.getUserProfiles(includeArchived === 'true');
+      return res.status(200).json({
+        success: true,
+        profiles: profiles.map(sanitizeProfile),
+        count: profiles.length
+      });
+    }
+    const profile = await DatabaseService.getUserProfileById(profileId);
+    if (!profile) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
     return res.status(200).json({
       success: true,
-      profiles: profiles.map(sanitizeProfile),
-      count: profiles.length
+      profiles: [sanitizeProfile(profile)],
+      count: 1
     });
   } catch (error) {
     console.error('Get user profiles error:', error);
@@ -205,6 +241,10 @@ async function handleDelete(req, res, sessionProfileId) {
       return res.status(500).json({ error: 'Failed to archive profile' });
     }
 
+    // Immediately invalidate cached app access so deactivated user
+    // cannot use remaining cache TTL to make authenticated requests
+    clearAppAccessCache(parseInt(id, 10));
+
     return res.status(200).json({
       success: true,
       message: 'Profile archived'
@@ -216,5 +256,17 @@ async function handleDelete(req, res, sessionProfileId) {
       details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       timestamp: new Date().toISOString()
     });
+  }
+}
+
+async function checkSuperuser(profileId) {
+  try {
+    const result = await sql`
+      SELECT role FROM dynamics_user_roles
+      WHERE user_profile_id = ${profileId}
+    `;
+    return result.rows[0]?.role === 'superuser';
+  } catch {
+    return false;
   }
 }
