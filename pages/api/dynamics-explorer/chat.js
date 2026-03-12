@@ -6,8 +6,8 @@
  * → Dynamics API execution → Claude response → SSE stream to client.
  *
  * Architecture: Search-first discovery with server-side relationship traversal.
- * 10 tools: search, get_entity, get_related, describe_table, query_records,
- * count_records, find_reports_due, list_documents, search_documents, export_csv.
+ * 11 tools: search, get_entity, get_related, describe_table, query_records,
+ * count_records, aggregate, find_reports_due, list_documents, search_documents, export_csv.
  */
 
 import crypto from 'crypto';
@@ -169,7 +169,7 @@ export default async function handler(req, res) {
         }
         const executionTime = Date.now() - startTime;
 
-        const recordCount = result?.records?.length || result?.count || result?.searchCount || (result?.error ? -1 : 0);
+        const recordCount = result?.records?.length || result?.results?.length || result?.count || result?.searchCount || (result?.error ? -1 : 0);
         console.log(`[DynExp] Round ${round} ${name} → ${recordCount} records, ${executionTime}ms`);
 
         logQuery({ userProfileId, sessionId, queryType: name, tableName: input.table_name || null, queryParams: input, recordCount, executionTime, wasDenied: false });
@@ -295,6 +295,10 @@ function summarizeToolResult(content) {
     if (data.totalCount !== undefined && data.results) return `Search: ${data.totalCount} results`;
     if (data.count !== undefined && data.tables) return `Found ${data.count} tables`;
     if (data.count !== undefined && !data.records) return `Count: ${data.count}`;
+    if (data.results && data.operation) {
+      if (data.results.length === 1) return `${data.operation}: ${data.results[0]?.value ?? 'null'}`;
+      return `${data.operation}: ${data.results.length} groups`;
+    }
     if (data.records) return `Returned ${data.records.length} records`;
     if (data.emailCount !== undefined) return `Found ${data.emailCount} emails`;
     if (data.reportCount !== undefined) return `Found ${data.reportCount} reports`;
@@ -531,6 +535,18 @@ async function executeTool(name, input, sendEvent, userProfileId) {
       const entitySet = await DynamicsService.resolveEntitySetName(input.table_name);
       const count = await DynamicsService.countRecords(entitySet, input.filter);
       return { count };
+    }
+
+    case 'aggregate': {
+      const entitySet = await DynamicsService.resolveEntitySetName(input.table_name);
+      const result = await DynamicsService.aggregateRecords(entitySet, {
+        field: input.field,
+        operation: input.operation,
+        filter: input.filter,
+        groupBy: input.group_by,
+      });
+      if (result.results) result.results = result.results.map(stripEmpty);
+      return result;
     }
 
     case 'find_reports_due':
@@ -2142,6 +2158,13 @@ function checkRestriction(toolName, input, restrictions) {
         const fields = input.select.split(',').map(f => f.trim());
         if (fields.includes(r.field_name)) return `Field "${r.field_name}" is restricted`;
       }
+      if (input.field) {
+        const aggFields = [input.field];
+        if (input.group_by) aggFields.push(input.group_by);
+        for (const f of aggFields) {
+          if (f === r.field_name) return `Field "${r.field_name}" is restricted`;
+        }
+      }
     }
 
     // Check $expand for restricted tables/fields via navigation properties
@@ -2200,6 +2223,7 @@ function getThinkingMessage(toolName, input) {
     case 'describe_table': return input.table_name ? `Describing ${input.table_name}...` : 'Listing available tables...';
     case 'query_records': return `Querying ${input.table_name}...`;
     case 'count_records': return `Counting ${input.table_name}...`;
+    case 'aggregate': return `Calculating ${input.operation} of ${input.field}...`;
     case 'find_reports_due': return `Finding reports due ${input.date_from ? 'from ' + input.date_from.substring(0, 10) : ''}...`;
     case 'list_documents': return `Listing documents for request ${input.request_number || input.request_id || ''}...`;
     case 'search_documents': return `Searching documents for "${input.query}"...`;

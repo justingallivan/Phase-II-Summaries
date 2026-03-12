@@ -2,7 +2,7 @@
  * Prompt templates and tool definitions for Dynamics Explorer
  *
  * Architecture: Search-first discovery with server-side relationship traversal.
- * The system prompt is lean (~800-1000 tokens). Detailed field semantics and
+ * The system prompt is lean (~800-1100 tokens). Detailed field semantics and
  * rules live in TABLE_ANNOTATIONS and are returned on-demand via describe_table.
  */
 
@@ -507,8 +507,9 @@ TOOLS — choose the right one:
 - get_entity: fetch one record by name, number, or GUID ("tell me about request 1001585", "look up Stanford")
 - get_related: follow relationships — use for ANY "show me X for Y" query ("requests from Stanford", "emails for Stanford", "payments for request 1001585", "reviewers for request 1001585")
 - describe_table: understand field names/types/meanings BEFORE building OData queries. Call ONLY for tables NOT listed in INLINE SCHEMAS below.
-- query_records: structured OData queries (date ranges, exact filters, aggregation). For tables in INLINE SCHEMAS, you already know the fields — query directly.
+- query_records: structured OData queries (date ranges, exact filters). For tables in INLINE SCHEMAS, you already know the fields — query directly.
 - count_records: count records with optional filter
+- aggregate: server-side sum/average/min/max/countdistinct. Use for "total", "average", "how much" questions. Optional group_by for breakdowns.
 - find_reports_due: all reporting requirements in a date range
 - export_csv: generate a downloadable Excel file for large result sets. Requires $filter. Use when user asks to export, download, or wants the full dataset. Supports AI processing via process_instruction — adds AI-generated columns to each record.
 
@@ -522,6 +523,7 @@ RULES:
 - When the user asks to "export", "download", "spreadsheet", or wants the full dataset, use export_csv. It fetches ALL matching records (up to 5000) and generates a downloadable Excel file.
 - AI-processed exports: when the user wants AI analysis on exported data (e.g., "export with keywords extracted"), use export_csv with process_instruction. The tool returns a cost/time estimate and sample output. Present the estimate to the user (count, sample, cost, time) and ask for confirmation. Only after the user confirms, call export_csv again with the SAME parameters plus confirmed: true.
 - OData syntax: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z
+- MATH: For totals, sums, averages, or "how much" questions, ALWAYS use aggregate — not query_records. Never fetch records and sum them yourself. The aggregate tool computes exact results server-side.
 - VOCABULARY FIRST: When the user's query matches a term in the VOCABULARY section (especially program names with hardcoded GUIDs), use those mappings directly — do NOT query lookup tables to re-derive GUIDs you already have. Only fall back to querying the lookup table if the hardcoded GUID returns no results or the user asks about a program not listed in VOCABULARY.
 - Lookup tables (like akoya_program, wmkf_grantprogram): to filter requests by program name, first query the lookup table to get the GUID, then filter requests by the _value lookup field. Example: "Bridge Funding" → query akoya_programs for GUID → filter akoya_requests by _akoya_programid_value eq {guid}.
 
@@ -719,6 +721,21 @@ export const TOOL_DEFINITIONS = [
         filter: { type: 'string', description: 'OData $filter' },
       },
       required: ['table_name'],
+    },
+  },
+  {
+    name: 'aggregate',
+    description: 'Server-side aggregation (sum, average, min, max, countdistinct). Use for totals, averages, and grouped summaries — do NOT manually sum query_records results.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        table_name: { type: 'string', description: 'Table to aggregate (e.g. "akoya_request")' },
+        field: { type: 'string', description: 'Field to aggregate (e.g. "akoya_grant")' },
+        operation: { type: 'string', enum: ['sum', 'average', 'min', 'max', 'countdistinct'], description: 'Aggregation operation' },
+        filter: { type: 'string', description: 'OData $filter to scope the aggregation' },
+        group_by: { type: 'string', description: 'Field to group by (e.g. "akoya_fiscalyear"). Returns one result per group.' },
+      },
+      required: ['table_name', 'field', 'operation'],
     },
   },
   {
