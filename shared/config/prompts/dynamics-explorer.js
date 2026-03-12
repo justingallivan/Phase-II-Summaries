@@ -390,6 +390,66 @@ export const TABLE_ANNOTATIONS = {
 };
 
 /**
+ * Lexicon: domain jargon, abbreviations, and conversational phrases
+ * that staff use, mapped to CRM fields and filters. Supplements the
+ * hardcoded VOCABULARY in the system prompt with phrases that need
+ * more context or disambiguation.
+ */
+export const LEXICON = {
+  'Grant lifecycle': [
+    { triggers: ['GAL', 'award letter', 'grant award letter'], meaning: 'Signed award letter requirement (legacy "Returned Postcard")', field: 'wmkf_reporttype eq 682090006 (akoya_requestpayment, akoya_type eq true)' },
+    { triggers: ['NCE', 'no-cost extension'], meaning: 'Request to extend grant end date without additional funding', field: 'wmkf_reporttype eq 682090004' },
+    { triggers: ['budget reallocation'], meaning: 'Request to reallocate grant funds between budget categories', field: 'wmkf_reporttype eq 682090005' },
+    { triggers: ['deferral update'], meaning: 'Update on a deferred Phase II decision', field: 'wmkf_reporttype eq 682090007' },
+    { triggers: ['contingency update'], meaning: 'Update on meeting contingent award conditions', field: 'wmkf_reporttype eq 682090003' },
+    { triggers: ['cost share', 'matching funds', 'institutional match'], meaning: 'Institution\'s share of total project cost beyond the Keck grant', field: 'akoya_expenses minus akoya_grant (computed from two fields)' },
+    { triggers: ['LOI', 'letter of inquiry'], meaning: 'Phase I proposal submission', field: 'akoya_loireceived (date) or wmkf_request_type eq 100000001 with Phase I fields' },
+  ],
+  'Outcome / status phrases': [
+    { triggers: ['was it funded?', 'did they get the grant?', 'awarded'], meaning: 'Grant was approved and funded', field: 'akoya_requeststatus in (\'Approved\', \'Active\', \'Closed\')' },
+    { triggers: ['were they invited?', 'invited to apply'], meaning: 'Passed Phase I, invited to submit full Phase II proposal', field: 'wmkf_phaseistatus eq \'Invited\'' },
+    { triggers: ['was it declined?', 'turned down', 'rejected'], meaning: 'Not selected — check which phase', field: 'wmkf_phaseiistatus contains \'Declined\' or wmkf_phaseistatus eq \'Not Invited\'' },
+    { triggers: ['is it active?', 'currently active'], meaning: 'Grant is in its active funding period', field: 'akoya_requeststatus eq \'Active\'' },
+    { triggers: ['pending', 'under review', 'being reviewed'], meaning: 'Awaiting committee decision (context-dependent by phase)', field: 'akoya_requeststatus contains \'Pending\' — or check phase-specific status fields' },
+    { triggers: ['deferred'], meaning: 'Phase II board decision postponed to future meeting', field: 'wmkf_phaseiistatus eq \'Phase II Deferred\'' },
+    { triggers: ['withdrawn', 'pulled out', 'withdrew'], meaning: 'Applicant withdrew from the process', field: 'wmkf_phaseistatus eq \'Request Withdrawn\' or wmkf_phaseiistatus eq \'Phase II Withdrawn\'' },
+    { triggers: ['rescinded'], meaning: 'Grant approval reversed after awarding', field: 'akoya_requeststatus eq \'Rescinded\'' },
+  ],
+  'Money phrases': [
+    { triggers: ['how much did we give them?', 'how much was the award?'], meaning: 'Keck grant amount', field: 'akoya_grant (per request) or akoya_totalgrants (on account for all-time total)' },
+    { triggers: ['how much did they ask for?', 'what was the ask?'], meaning: 'Amount requested from Keck', field: 'akoya_request (currency field — not the table name)' },
+    { triggers: ['total funding', 'total grants', 'lifetime giving'], meaning: 'All-time Keck funding to an organization', field: 'akoya_totalgrants (on account)' },
+    { triggers: ['how much have we paid?', 'total disbursed', 'total paid'], meaning: 'Cumulative payments made on a grant', field: 'akoya_paid (on akoya_request)' },
+    { triggers: ['original amount', 'originally approved'], meaning: 'Initial approved grant before modifications', field: 'akoya_originalgrantamount' },
+  ],
+  'People disambiguation': [
+    { triggers: ['who\'s in charge?', 'who leads this?'], meaning: 'Ambiguous — could be PI (researcher) or PD (Keck staff)', field: 'clarify: _wmkf_projectleader_value (PI) vs _wmkf_programdirector_value (PD)' },
+    { triggers: ['who runs the project?', 'lead researcher', 'project leader'], meaning: 'Principal investigator at the institution', field: '_wmkf_projectleader_value' },
+    { triggers: ['who manages this grant?', 'Keck contact', 'staff contact', 'our contact'], meaning: 'Keck program director assigned to the grant', field: '_wmkf_programdirector_value' },
+    { triggers: ['org leader', 'university president', 'chancellor'], meaning: 'Top leader at the applicant organization', field: '_wmkf_organizationleader_value (on account)' },
+  ],
+  'Organization terms': [
+    { triggers: ['applicant', 'grantee', 'institution'], meaning: 'The applying/receiving organization', field: '_akoya_applicantid_value (lookup → account)' },
+    { triggers: ['legal name', 'incorporated name'], meaning: 'Official legal entity name', field: 'wmkf_legalname (on account)' },
+    { triggers: ['AKA', 'also known as', 'short name', 'abbreviation'], meaning: 'Common or abbreviated organization name', field: 'akoya_aka or wmkf_dc_aka (on account)' },
+    { triggers: ['formerly known as', 'old name', 'previous name'], meaning: 'Historical name after rebranding', field: 'wmkf_formerlyknownas (on account)' },
+    { triggers: ['fundraising org', 'foundation arm'], meaning: 'Separate entity receiving payment on behalf of applicant', field: '_akoya_payee_value with wmkf_usingpayee eq true' },
+  ],
+  'Payment status': [
+    { triggers: ['scheduled payment', 'upcoming payment'], meaning: 'Payment with a known future disbursement date', field: 'akoya_folio eq \'Scheduled\' (on akoya_requestpayment)' },
+    { triggers: ['contingent payment', 'conditional payment'], meaning: 'Payment awaiting a condition to be met', field: 'contains(akoya_folio,\'Contingent\')' },
+    { triggers: ['has it been paid?', 'was it paid?', 'payment made'], meaning: 'Check whether disbursement occurred', field: 'contains(akoya_folio,\'Paid\') or akoya_paid gt 0 on request' },
+    { triggers: ['voided', 'voided payment', 'cancelled payment'], meaning: 'Payment that was cancelled', field: 'akoya_folio eq \'Void\'' },
+    { triggers: ['ready to pay'], meaning: 'Payment approved and awaiting disbursement', field: 'akoya_folio eq \'Ready To Pay\'' },
+  ],
+  'Tax / compliance': [
+    { triggers: ['nonprofit', 'tax-exempt', 'tax exempt'], meaning: 'Organization\'s nonprofit verification status', field: 'akoya_taxstatus (on account)' },
+    { triggers: ['public charity'], meaning: 'GuideStar public charity classification', field: 'akoya_guidestarcode eq \'PC\' (on account)' },
+    { triggers: ['verified', 'GOverify', 'payment verified'], meaning: 'Applicant payment info verified via GOverify system', field: 'wmkf_vendorverified (boolean on akoya_request)' },
+  ],
+};
+
+/**
  * Tables whose schemas are inlined in the system prompt to save a
  * describe_table round-trip. Covers ~80% of queries.
  */
@@ -410,6 +470,20 @@ function buildInlineSchemas() {
       : '';
     return `${name} (${t.entitySet}) — ${t.description}\n${fields}${rules}`;
   }).join('\n\n');
+}
+
+/**
+ * Format LEXICON entries as compact prompt text grouped by category.
+ * Output style matches the existing VOCABULARY section.
+ */
+function buildLexiconSection() {
+  return Object.entries(LEXICON).map(([category, entries]) => {
+    const lines = entries.map(e => {
+      const triggers = e.triggers.map(t => `"${t}"`).join(' / ');
+      return `- ${triggers} → ${e.field} — ${e.meaning}`;
+    });
+    return `${category}:\n${lines.join('\n')}`;
+  }).join('\n');
 }
 
 /**
@@ -521,6 +595,9 @@ Tax & compliance (on account):
 - "501(c)(3)" → wmkf_bmfsubsectiondescription
 - "GuideStar" → akoya_guidestarorganizationname, akoya_guidestarcode
 - "Pub78"/"IRS address" → akoya_pub78city, akoya_pub78state, akoya_pub78street1
+
+LEXICON — domain jargon and conversational phrases → CRM mappings:
+${buildLexiconSection()}
 
 TABLES:
 akoya_request (25,000+) universal record table — grants (16K), concepts (3K), site/office visits (4.3K), phone calls (914)
