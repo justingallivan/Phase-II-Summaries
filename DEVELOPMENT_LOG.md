@@ -2074,4 +2074,20 @@ Implemented the "Easy Wins" security hardening roadmap from the independent code
 
 ---
 
-Last Updated: March 10, 2026
+### Session 84 — March 12, 2026
+
+**Server-side aggregate tool for Dynamics Explorer**
+
+Added an `aggregate` tool (11th tool) that uses OData `$apply` for exact server-side computation of sums, averages, min, max, and countdistinct. Previously Claude fetched records via `query_records` (capped at 100) and tried to sum them — producing wrong results. Now the CRM computes exact totals in a single API call with minimal token cost. Supports optional `group_by` for breakdowns (e.g., "total funding by program").
+
+Changes across 3 files:
+- `DynamicsService.aggregateRecords()` — builds `$apply` with filter/groupby/aggregate composition, restriction checks on field and groupBy
+- Chat handler — 5 integration points: executeTool, summarizeToolResult, getThinkingMessage, checkRestriction (defense-in-depth for field/group_by), recordCount logging
+- System prompt — added aggregate to TOOLS, added MATH rule, removed false "aggregation" claim from query_records
+
+**Commits:**
+- `f42cf99` - Add server-side aggregate tool to Dynamics Explorer for exact totals/averages
+
+---
+
+Last Updated: March 12, 2026

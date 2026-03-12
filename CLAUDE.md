@@ -311,7 +311,7 @@ Located in `lib/utils/`:
 - `POST/GET /api/integrity-screener/dismiss` - Manage dismissals
 
 ### Dynamics Explorer
-- `POST /api/dynamics-explorer/chat` - Agentic chat with Dynamics 365 CRM (SSE streaming, 10 tools)
+- `POST /api/dynamics-explorer/chat` - Agentic chat with Dynamics 365 CRM (SSE streaming, 11 tools)
 - `GET /api/dynamics-explorer/download-document` - Authenticated proxy for SharePoint file download
 - `GET/POST/DELETE /api/dynamics-explorer/roles` - User role management (superuser only)
 - `GET/POST/DELETE /api/dynamics-explorer/restrictions` - Table/field restrictions (superuser only)
