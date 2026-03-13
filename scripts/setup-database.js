@@ -558,6 +558,30 @@ const v22Updates = [
   `UPDATE user_app_access SET app_key = 'phase-ii-writeup' WHERE app_key = 'proposal-summarizer'`,
 ];
 
+// V23: Dynamics Explorer feedback logging
+const v23Statements = [
+  `CREATE TABLE IF NOT EXISTS dynamics_feedback (
+    id SERIAL PRIMARY KEY,
+    user_profile_id INTEGER REFERENCES user_profiles(id),
+    session_id VARCHAR(100),
+    feedback_type VARCHAR(20) NOT NULL,
+    category VARCHAR(50),
+    user_note TEXT,
+    query_text TEXT,
+    conversation_context JSONB,
+    auto_detected BOOLEAN DEFAULT false,
+    status VARCHAR(20) DEFAULT 'new',
+    reviewed_by INTEGER REFERENCES user_profiles(id),
+    reviewed_at TIMESTAMP,
+    admin_note TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_dynamics_feedback_user ON dynamics_feedback(user_profile_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_dynamics_feedback_created ON dynamics_feedback(created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_dynamics_feedback_status ON dynamics_feedback(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_dynamics_feedback_session ON dynamics_feedback(session_id)`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -1059,6 +1083,25 @@ async function runMigration() {
         console.log(`[v22-${i + 1}/${v22Updates.length}] ✓ ${preview}... (${result.rowCount} rows updated)`);
       } catch (error) {
         console.error(`[v22-${i + 1}/${v22Updates.length}] ✗ Error: ${error.message}`);
+      }
+    }
+
+    // Run V23 table creation (Dynamics feedback)
+    console.log(`\nApplying v23 schema updates - Dynamics feedback (${v23Statements.length} statements)...`);
+    for (let i = 0; i < v23Statements.length; i++) {
+      const statement = v23Statements[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v23-${i + 1}/${v23Statements.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v23-${i + 1}/${v23Statements.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v23-${i + 1}/${v23Statements.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
       }
     }
 

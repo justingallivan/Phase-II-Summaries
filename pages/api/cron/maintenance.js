@@ -18,6 +18,7 @@
 import { verifyCronSecret } from '../../../lib/utils/cron-auth';
 import MaintenanceService from '../../../lib/services/maintenance-service';
 import AlertService from '../../../lib/services/alert-service';
+import FeedbackService from '../../../lib/services/feedback-service';
 import NotificationService from '../../../lib/services/notification-service';
 
 export default async function handler(req, res) {
@@ -81,6 +82,14 @@ export default async function handler(req, res) {
       totalDeleted += results.blobs.deleted;
     } catch (error) {
       results.blobs = { error: error.message };
+    }
+
+    // 7. Dynamics feedback cleanup (resolved entries older than 180 days)
+    try {
+      results.feedback = await FeedbackService.cleanupOldFeedback(180);
+      totalDeleted += results.feedback;
+    } catch (error) {
+      results.feedback = { error: error.message };
     }
 
     // Record successful run

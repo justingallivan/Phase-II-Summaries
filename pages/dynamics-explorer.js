@@ -125,6 +125,9 @@ function DynamicsExplorer() {
   const [userRole, setUserRole] = useState('read_only');
   const [sessionId] = useState(() => `de-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [feedbackMap, setFeedbackMap] = useState({});       // { messageId: 'positive'|'negative' }
+  const [suggestFeedbackId, setSuggestFeedbackId] = useState(null);
+  const [feedbackModalFor, setFeedbackModalFor] = useState(null); // messageId or null
 
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
@@ -273,7 +276,9 @@ function DynamicsExplorer() {
                   : undefined;
                 pendingDocumentLinksRef.current = [];
 
+                let finalMsgId;
                 if (streamingMsgId) {
+                  finalMsgId = streamingMsgId;
                   // Finalize streaming message
                   setMessages(prev => prev.map(m =>
                     m.id === streamingMsgId
@@ -281,9 +286,10 @@ function DynamicsExplorer() {
                       : m
                   ));
                 } else {
+                  finalMsgId = ++messageIdRef.current;
                   // Add complete assistant message (non-streamed)
                   setMessages(prev => [...prev, {
-                    id: ++messageIdRef.current,
+                    id: finalMsgId,
                     role: 'assistant',
                     content: assistantContent,
                     timestamp: Date.now(),
@@ -291,6 +297,10 @@ function DynamicsExplorer() {
                     fileExports,
                     documentLinks,
                   }]);
+                }
+                // If server suggests feedback, mark this message
+                if (parsed.suggestFeedback) {
+                  setSuggestFeedbackId(finalMsgId);
                 }
                 setIsProcessing(false);
                 setThinkingStatus('');
@@ -359,6 +369,70 @@ function DynamicsExplorer() {
     navigator.clipboard.writeText(content);
   }, []);
 
+  // Build conversation context: target message + up to 3 previous turns
+  const buildFeedbackContext = useCallback((targetMsgId) => {
+    const idx = messages.findIndex(m => m.id === targetMsgId);
+    if (idx === -1) return [];
+
+    // Find the user message that preceded this assistant message
+    let startIdx = idx;
+    let turnsBack = 0;
+    for (let i = idx - 1; i >= 0 && turnsBack < 3; i--) {
+      startIdx = i;
+      if (messages[i].role === 'user') turnsBack++;
+    }
+
+    return messages.slice(startIdx, idx + 1).map(m => ({
+      role: m.role,
+      content: m.content,
+      ...(m.rounds && { rounds: m.rounds }),
+    }));
+  }, [messages]);
+
+  const submitFeedback = useCallback(async (messageId, feedbackType, category, userNote) => {
+    const targetMsg = messages.find(m => m.id === messageId);
+    // Find the user query that prompted this response
+    const idx = messages.findIndex(m => m.id === messageId);
+    const userMsg = idx > 0 ? messages.slice(0, idx).reverse().find(m => m.role === 'user') : null;
+
+    try {
+      await fetch('/api/dynamics-explorer/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          feedbackType,
+          category,
+          userNote,
+          queryText: userMsg?.content || '',
+          conversationContext: buildFeedbackContext(messageId),
+          sessionId,
+          autoDetected: messageId === suggestFeedbackId,
+        }),
+      });
+    } catch (err) {
+      console.error('Failed to submit feedback:', err);
+    }
+
+    setFeedbackMap(prev => ({ ...prev, [messageId]: feedbackType }));
+    if (messageId === suggestFeedbackId) setSuggestFeedbackId(null);
+  }, [messages, sessionId, suggestFeedbackId, buildFeedbackContext]);
+
+  const handleFeedback = useCallback((messageId, type) => {
+    if (feedbackMap[messageId]) return; // already submitted
+    if (type === 'positive') {
+      submitFeedback(messageId, 'positive');
+    } else {
+      setFeedbackModalFor(messageId);
+    }
+  }, [feedbackMap, submitFeedback]);
+
+  const handleFeedbackModalSubmit = useCallback((category, note) => {
+    if (feedbackModalFor) {
+      submitFeedback(feedbackModalFor, 'negative', category, note);
+    }
+    setFeedbackModalFor(null);
+  }, [feedbackModalFor, submitFeedback]);
+
   const exportChat = () => {
     const md = messages.map(m => {
       const role = m.role === 'user' ? 'User' : 'Assistant';
@@ -419,7 +493,14 @@ function DynamicsExplorer() {
             )}
 
             {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} onCopy={copyMessage} />
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                onCopy={copyMessage}
+                onFeedback={handleFeedback}
+                feedbackGiven={feedbackMap[msg.id]}
+                suggestFeedback={msg.id === suggestFeedbackId}
+              />
             ))}
 
             {/* Thinking indicator */}
@@ -486,6 +567,14 @@ function DynamicsExplorer() {
           </Card>
         )}
       </div>
+
+      {/* Feedback modal */}
+      {feedbackModalFor && (
+        <FeedbackModal
+          onSubmit={handleFeedbackModalSubmit}
+          onCancel={() => setFeedbackModalFor(null)}
+        />
+      )}
     </Layout>
   );
 }
@@ -517,7 +606,7 @@ function WelcomeMessage({ onExampleClick }) {
 
 // ─── Message Bubble ───
 
-const MessageBubble = React.memo(function MessageBubble({ message, onCopy }) {
+const MessageBubble = React.memo(function MessageBubble({ message, onCopy, onFeedback, feedbackGiven, suggestFeedback }) {
   const isUser = message.role === 'user';
   const segments = useMemo(
     () => isUser ? [{ type: 'text', content: message.content }] : parseMarkdownTables(message.content),
@@ -564,13 +653,38 @@ const MessageBubble = React.memo(function MessageBubble({ message, onCopy }) {
         ))}
 
         {/* Actions */}
-        {!isUser && (
-          <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
-            <button onClick={() => onCopy(message.content)} className="hover:text-gray-600">
-              Copy
-            </button>
-            {message.rounds && (
-              <span>{message.rounds} query round{message.rounds > 1 ? 's' : ''}</span>
+        {!isUser && !message.isStreaming && (
+          <div className="mt-1">
+            <div className="flex items-center gap-3 text-xs text-gray-400">
+              <button onClick={() => onCopy(message.content)} className="hover:text-gray-600">
+                Copy
+              </button>
+              {!message.isError && (
+                <>
+                  <button
+                    onClick={() => onFeedback(message.id, 'positive')}
+                    className={`hover:text-gray-600 ${feedbackGiven === 'positive' ? 'text-green-600' : ''}`}
+                    title="Helpful"
+                  >
+                    {feedbackGiven === 'positive' ? '\u25B2' : '\u25B3'}
+                  </button>
+                  <button
+                    onClick={() => onFeedback(message.id, 'negative')}
+                    className={`hover:text-gray-600 ${feedbackGiven === 'negative' ? 'text-red-600' : ''}`}
+                    title="Not helpful"
+                  >
+                    {feedbackGiven === 'negative' ? '\u25BC' : '\u25BD'}
+                  </button>
+                </>
+              )}
+              {message.rounds && (
+                <span>{message.rounds} query round{message.rounds > 1 ? 's' : ''}</span>
+              )}
+            </div>
+            {suggestFeedback && !feedbackGiven && (
+              <div className="mt-1 text-xs text-amber-600">
+                Was this response helpful? Use the arrows above to let us know.
+              </div>
             )}
           </div>
         )}
@@ -785,6 +899,63 @@ function AdminPanel({ userProfileId }) {
           className="border border-gray-300 rounded px-2 py-1 text-sm w-48"
         />
         <button onClick={addRestriction} className="px-3 py-1 bg-gray-900 text-white text-sm rounded hover:bg-gray-800">Add</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Feedback Modal ───
+
+function FeedbackModal({ onSubmit, onCancel }) {
+  const [category, setCategory] = useState('');
+  const [note, setNote] = useState('');
+
+  const categories = [
+    { value: 'wrong_answer', label: 'Wrong answer' },
+    { value: 'no_results', label: 'No results found' },
+    { value: 'incomplete', label: 'Incomplete response' },
+    { value: 'other', label: 'Other' },
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onCancel}>
+      <div className="bg-white rounded-lg shadow-xl p-5 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+        <h3 className="text-sm font-semibold text-gray-900 mb-3">What went wrong?</h3>
+        <div className="space-y-2 mb-3">
+          {categories.map(c => (
+            <label key={c.value} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input
+                type="radio"
+                name="feedback-category"
+                value={c.value}
+                checked={category === c.value}
+                onChange={() => setCategory(c.value)}
+                className="text-blue-600"
+              />
+              {c.label}
+            </label>
+          ))}
+        </div>
+        <textarea
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="Additional details (optional)"
+          maxLength={500}
+          rows={2}
+          className="w-full border border-gray-300 rounded px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-gray-900 mb-3"
+        />
+        <div className="flex justify-end gap-2">
+          <button onClick={onCancel} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800">
+            Cancel
+          </button>
+          <button
+            onClick={() => onSubmit(category, note)}
+            disabled={!category}
+            className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded hover:bg-gray-800 disabled:opacity-40"
+          >
+            Submit
+          </button>
+        </div>
       </div>
     </div>
   );

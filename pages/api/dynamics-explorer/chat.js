@@ -130,7 +130,10 @@ export default async function handler(req, res) {
           const finalText = textBlocks.map(b => b.text).join('\n');
           sendEvent('response', { content: finalText });
         }
-        sendEvent('complete', { rounds: round });
+        // Check if response suggests failure — prompt user for feedback
+        const finalText = textBlocks.map(b => b.text).join('\n');
+        const suggestFeedback = detectPossibleFailure(finalText);
+        sendEvent('complete', { rounds: round, suggestFeedback });
         res.end();
         return;
       }
@@ -205,7 +208,7 @@ export default async function handler(req, res) {
 
     console.log(`[DynExp] Hit max rounds (${MAX_TOOL_ROUNDS}) without final answer`);
     sendEvent('response', { content: 'Reached maximum query steps. Please refine your question.' });
-    sendEvent('complete', { rounds: round, maxRoundsReached: true });
+    sendEvent('complete', { rounds: round, maxRoundsReached: true, suggestFeedback: true });
   } catch (error) {
     console.error('Dynamics Explorer chat error:', error);
     sendEvent('error', {
@@ -215,6 +218,35 @@ export default async function handler(req, res) {
   } finally {
     res.end();
   }
+}
+
+// ─── Auto-detection ───
+
+/**
+ * Check if Claude's final response text suggests a failure to find or answer.
+ * Returns true if the response contains patterns indicating no results or inability to answer.
+ */
+function detectPossibleFailure(text) {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  const failurePatterns = [
+    'i couldn\'t find',
+    'i could not find',
+    'i wasn\'t able to',
+    'i was not able to',
+    'no results',
+    'no records found',
+    'no matching',
+    'unable to locate',
+    'unable to find',
+    'doesn\'t appear to',
+    'does not appear to',
+    'i don\'t have enough',
+    'i do not have enough',
+    'unfortunately',
+    'i\'m not sure how to',
+  ];
+  return failurePatterns.some(pattern => lower.includes(pattern));
 }
 
 // ─── Conversation management ───

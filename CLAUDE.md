@@ -194,6 +194,7 @@ Located in `lib/services/`:
 - `integrity-matching-service.js` - Name matching algorithms
 - `dynamics-service.js` - Microsoft Dynamics 365 CRM API (OAuth, OData queries, Dataverse Search, Email Activities)
 - `graph-service.js` - Microsoft Graph API (SharePoint document access, file listing/download, content search)
+- `feedback-service.js` - CRUD for dynamics_feedback table (user feedback + auto-detection)
 - `alert-service.js` - CRUD for system_alerts table (deduplication, auto-resolve)
 - `notification-service.js` - Unified notifications (DB alerts + future Graph API email)
 - `maintenance-service.js` - Database/blob cleanup operations with audit trail
@@ -270,6 +271,10 @@ Located in `lib/utils/`:
 - `integrity_screenings` - Screening history per user
 - `screening_dismissals` - False positive dismissals
 
+### Dynamics Explorer Feedback
+
+- `dynamics_feedback` - User feedback (thumbs up/down) and auto-detected failures (feedback_type, category, user_note, query_text, conversation_context JSONB, auto_detected, status, admin_note)
+
 ### Monitoring & Maintenance Tables
 
 - `system_alerts` - Central alert store (type, severity, title, message, metadata, status, auto_resolve_key)
@@ -313,6 +318,8 @@ Located in `lib/utils/`:
 ### Dynamics Explorer
 - `POST /api/dynamics-explorer/chat` - Agentic chat with Dynamics 365 CRM (SSE streaming, 11 tools)
 - `GET /api/dynamics-explorer/download-document` - Authenticated proxy for SharePoint file download
+- `POST /api/dynamics-explorer/feedback` - Submit feedback (thumbs up/down)
+- `GET/PATCH /api/dynamics-explorer/feedback` - Admin feedback review (superuser only)
 - `GET/POST/DELETE /api/dynamics-explorer/roles` - User role management (superuser only)
 - `GET/POST/DELETE /api/dynamics-explorer/restrictions` - Table/field restrictions (superuser only)
 
