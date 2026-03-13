@@ -100,7 +100,7 @@ function PeerReviewSummarizer() {
 
     let content, filename;
     const timestamp = new Date().toISOString().split('T')[0];
-    
+
     if (type === 'summary') {
       content = results.formatted || 'No summary generated';
       filename = `${timestamp}_peer_review_summary.md`;
@@ -116,6 +116,41 @@ function PeerReviewSummarizer() {
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const [isGeneratingWord, setIsGeneratingWord] = useState(false);
+
+  const exportWord = async () => {
+    if (!results) return;
+    setIsGeneratingWord(true);
+    try {
+      const { generateMarkdownDocument } = await import('../shared/utils/word-export');
+      const sections = [];
+      if (results.formatted) {
+        sections.push({ title: '', content: results.formatted });
+      }
+      if (results.structured?.questions) {
+        sections.push({ title: '', content: results.structured.questions });
+      }
+      const timestamp = new Date().toISOString().split('T')[0];
+      const reviewCount = results.metadata?.reviewCount;
+      const subtitle = reviewCount ? `${reviewCount} review${reviewCount !== 1 ? 's' : ''} analyzed — ${timestamp}` : timestamp;
+      const blob = await generateMarkdownDocument(sections, {
+        title: 'Peer Review Analysis',
+        subtitle,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${timestamp}_peer_review_analysis.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Word export failed:', err);
+      setError('Failed to generate Word document');
+    } finally {
+      setIsGeneratingWord(false);
+    }
   };
 
   const convertMarkdownToHTML = (markdown) => {
@@ -218,6 +253,9 @@ function PeerReviewSummarizer() {
               </Button>
               <Button variant="secondary" onClick={() => exportData('questions')}>
                 Export Questions
+              </Button>
+              <Button variant="secondary" onClick={exportWord} disabled={isGeneratingWord}>
+                {isGeneratingWord ? 'Generating...' : 'Export Word'}
               </Button>
             </div>
           </div>

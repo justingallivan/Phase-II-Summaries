@@ -445,3 +445,234 @@ export async function generatePhaseIIDocument(sections, metadata, internalFields
 
   return Packer.toBlob(doc);
 }
+
+/**
+ * Generate a Word document from markdown content sections.
+ *
+ * General-purpose converter for any app that produces markdown output.
+ * Supports: ## / ### headings, **bold**, *italic*, <u>underline</u>,
+ * bullet lists (- or *), horizontal rules (---), and plain paragraphs.
+ *
+ * @param {Array<{title: string, content: string}>} sections - Named content blocks
+ * @param {Object} [options]
+ * @param {string} [options.title] - Document title (rendered as heading on page 1)
+ * @param {string} [options.subtitle] - Optional subtitle below title
+ * @param {string} [options.font='Calibri'] - Font family
+ * @returns {Promise<Blob>}
+ */
+export async function generateMarkdownDocument(sections, options = {}) {
+  const {
+    Document, Packer, Paragraph, TextRun,
+    AlignmentType, NumberFormat, BorderStyle, UnderlineType,
+  } = await import('docx');
+
+  const fontName = options.font || 'Calibri';
+  const BODY_SIZE = 22;      // 11pt
+  const HEADING2_SIZE = 28;  // 14pt
+  const HEADING3_SIZE = 24;  // 12pt
+  const TITLE_SIZE = 36;     // 18pt
+  const SUBTITLE_SIZE = 24;  // 12pt
+  const MARGIN = 1440;       // 1"
+  const AFTER_NORMAL = 120;
+  const AFTER_HEADING = 80;
+  const BEFORE_HEADING = 240;
+  const INDENT_BULLET = 547;
+  const HANGING_BULLET = 360;
+
+  /** Parse inline formatting: **bold**, *italic*, <u>underline</u> */
+  function inlineRuns(text, baseOpts = {}) {
+    if (!text) return [new TextRun({ text: '', size: BODY_SIZE, font: fontName, ...baseOpts })];
+    const runs = [];
+    // Split on underline tags first
+    const uParts = text.split(/(<u>.*?<\/u>)/g);
+    for (const uPart of uParts) {
+      const uMatch = uPart.match(/^<u>(.*?)<\/u>$/);
+      if (uMatch) {
+        runs.push(new TextRun({ text: uMatch[1], size: BODY_SIZE, font: fontName, underline: { type: UnderlineType.SINGLE }, ...baseOpts }));
+        continue;
+      }
+      // Split on bold
+      const bParts = uPart.split(/(\*\*.*?\*\*)/g);
+      for (const bPart of bParts) {
+        const bMatch = bPart.match(/^\*\*(.*?)\*\*$/);
+        if (bMatch) {
+          runs.push(new TextRun({ text: bMatch[1], size: BODY_SIZE, font: fontName, bold: true, ...baseOpts }));
+          continue;
+        }
+        // Split on italic
+        const iParts = bPart.split(/(\*[^*]+?\*)/g);
+        for (const iPart of iParts) {
+          const iMatch = iPart.match(/^\*(.*?)\*$/);
+          if (iMatch) {
+            runs.push(new TextRun({ text: iMatch[1], size: BODY_SIZE, font: fontName, italics: true, ...baseOpts }));
+          } else if (iPart) {
+            runs.push(new TextRun({ text: iPart, size: BODY_SIZE, font: fontName, ...baseOpts }));
+          }
+        }
+      }
+    }
+    return runs.length > 0 ? runs : [new TextRun({ text: '', size: BODY_SIZE, font: fontName, ...baseOpts })];
+  }
+
+  /** Convert a markdown string into an array of Paragraph objects */
+  function markdownToParagraphs(md) {
+    if (!md) return [];
+    const paragraphs = [];
+    const lines = md.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // Blank line — skip (spacing handled by paragraph after-spacing)
+      if (line.trim() === '') continue;
+
+      // Horizontal rule
+      if (/^---+$/.test(line.trim())) {
+        paragraphs.push(new Paragraph({
+          spacing: { after: AFTER_NORMAL },
+          border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: '999999', space: 1 } },
+          children: [],
+        }));
+        continue;
+      }
+
+      // Heading 2
+      const h2Match = line.match(/^## (.+)$/);
+      if (h2Match) {
+        paragraphs.push(new Paragraph({
+          spacing: { before: BEFORE_HEADING, after: AFTER_HEADING },
+          children: [new TextRun({ text: h2Match[1], size: HEADING2_SIZE, font: fontName, bold: true })],
+        }));
+        continue;
+      }
+
+      // Heading 3
+      const h3Match = line.match(/^### (.+)$/);
+      if (h3Match) {
+        paragraphs.push(new Paragraph({
+          spacing: { before: BEFORE_HEADING, after: AFTER_HEADING },
+          children: [new TextRun({ text: h3Match[1], size: HEADING3_SIZE, font: fontName, bold: true })],
+        }));
+        continue;
+      }
+
+      // Heading 1 (rare in output, but handle it)
+      const h1Match = line.match(/^# (.+)$/);
+      if (h1Match) {
+        paragraphs.push(new Paragraph({
+          spacing: { before: BEFORE_HEADING, after: AFTER_HEADING },
+          children: [new TextRun({ text: h1Match[1], size: HEADING2_SIZE, font: fontName, bold: true })],
+        }));
+        continue;
+      }
+
+      // Bullet list item
+      const bulletMatch = line.match(/^[\-\*] (.+)$/);
+      if (bulletMatch) {
+        paragraphs.push(new Paragraph({
+          numbering: { reference: 'md-bullets', level: 0 },
+          indent: { left: INDENT_BULLET, hanging: HANGING_BULLET },
+          spacing: { after: AFTER_NORMAL },
+          children: inlineRuns(bulletMatch[1]),
+        }));
+        continue;
+      }
+
+      // Numbered list item
+      const numMatch = line.match(/^\d+\.\s+(.+)$/);
+      if (numMatch) {
+        paragraphs.push(new Paragraph({
+          numbering: { reference: 'md-numbered', level: 0 },
+          indent: { left: INDENT_BULLET, hanging: HANGING_BULLET },
+          spacing: { after: AFTER_NORMAL },
+          children: inlineRuns(numMatch[1]),
+        }));
+        continue;
+      }
+
+      // Plain paragraph
+      paragraphs.push(new Paragraph({
+        spacing: { after: AFTER_NORMAL },
+        children: inlineRuns(line),
+      }));
+    }
+    return paragraphs;
+  }
+
+  // Build document children
+  const children = [];
+
+  // Optional title
+  if (options.title) {
+    children.push(new Paragraph({
+      spacing: { after: options.subtitle ? 40 : AFTER_NORMAL },
+      children: [new TextRun({ text: options.title, size: TITLE_SIZE, font: fontName, bold: true })],
+    }));
+  }
+  if (options.subtitle) {
+    children.push(new Paragraph({
+      spacing: { after: AFTER_NORMAL * 2 },
+      children: [new TextRun({ text: options.subtitle, size: SUBTITLE_SIZE, font: fontName, color: '666666' })],
+    }));
+  }
+
+  // Render each section
+  for (let idx = 0; idx < sections.length; idx++) {
+    const section = sections[idx];
+    // Section title as heading
+    if (section.title) {
+      children.push(new Paragraph({
+        spacing: { before: idx > 0 ? BEFORE_HEADING * 2 : 0, after: AFTER_HEADING },
+        children: [new TextRun({ text: section.title, size: HEADING2_SIZE, font: fontName, bold: true })],
+      }));
+    }
+    // Section content
+    children.push(...markdownToParagraphs(section.content));
+  }
+
+  const doc = new Document({
+    styles: {
+      default: {
+        document: {
+          run: { size: BODY_SIZE, font: fontName },
+          paragraph: { spacing: { after: AFTER_NORMAL, line: 276 } }, // 1.15 line spacing
+        },
+      },
+    },
+    numbering: {
+      config: [
+        {
+          reference: 'md-bullets',
+          levels: [{
+            level: 0,
+            format: NumberFormat.BULLET,
+            text: '\u2022',
+            alignment: AlignmentType.LEFT,
+            style: { paragraph: { indent: { left: INDENT_BULLET, hanging: HANGING_BULLET } } },
+          }],
+        },
+        {
+          reference: 'md-numbered',
+          levels: [{
+            level: 0,
+            format: NumberFormat.DECIMAL,
+            text: '%1.',
+            alignment: AlignmentType.LEFT,
+            style: { paragraph: { indent: { left: INDENT_BULLET, hanging: HANGING_BULLET } } },
+          }],
+        },
+      ],
+    },
+    sections: [{
+      properties: {
+        page: {
+          margin: { top: MARGIN, right: MARGIN, bottom: MARGIN, left: MARGIN },
+          size: { width: 12240, height: 15840 },
+        },
+      },
+      children,
+    }],
+  });
+
+  return Packer.toBlob(doc);
+}
