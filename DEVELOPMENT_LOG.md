@@ -4,6 +4,18 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## March 2026 — Feedback Logging, Query Fixes, Request Number Backfill (Session 85)
+
+Built a feedback logging system for Dynamics Explorer (thumbs up/down + auto-detection of failures), fixed export_csv and status field query failures, and backfilled Dynamics request numbers into the Postgres database.
+
+- **Feedback system**: `dynamics_feedback` table, `FeedbackService`, `POST/GET/PATCH /api/dynamics-explorer/feedback`, thumbs up/down UI on chat messages, admin review section on dashboard, auto-detection of failure patterns, maintenance cleanup
+- **Query fixes**: EXPORT rule (reuse prior query params), error passthrough to Claude (actual error instead of generic), STATUS FIELD DISAMBIGUATION (Phase II Pending → akoya_requeststatus not wmkf_phaseiistatus)
+- **Request numbers**: V23a migration adds `request_number` column to `reviewer_suggestions` and `proposal_searches`. Backfill script matched 23 proposals (332 candidate rows) to Dynamics request numbers. Numbers now visible in Reviewer Finder My Candidates and Review Manager table.
+
+**Files:** `lib/services/feedback-service.js`, `pages/api/dynamics-explorer/feedback.js`, `pages/api/dynamics-explorer/chat.js`, `shared/config/prompts/dynamics-explorer.js`, `scripts/backfill-request-numbers.js`, `pages/reviewer-finder.js`, `pages/review-manager.js`
+
+---
+
 ## March 2026 — SharePoint Document Content Search (Session 83)
 
 Added `search_documents` tool to Dynamics Explorer (10th tool). Full-text search within SharePoint document contents (PDFs, Word docs, etc.) via Microsoft Graph Search API with KQL.
