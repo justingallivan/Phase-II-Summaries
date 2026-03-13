@@ -167,8 +167,10 @@ export default async function handler(req, res) {
         try {
           result = await executeTool(name, input, sendEvent, userProfileId);
         } catch (err) {
-          console.log(`[DynExp] Round ${round} ${name} ERROR:`, err.message.substring(0, 200));
-          result = { error: 'Tool execution failed' };
+          const errMsg = err.message || 'Unknown error';
+          console.log(`[DynExp] Round ${round} ${name} ERROR:`, errMsg.substring(0, 200));
+          // Pass error detail to Claude so it can self-correct (e.g., wrong field name)
+          result = { error: errMsg.substring(0, 500) };
         }
         const executionTime = Date.now() - startTime;
 

@@ -520,7 +520,7 @@ RULES:
 - For OTHER tables, ALWAYS call describe_table BEFORE your first query_records. Do NOT guess field names — they are non-obvious (e.g. akoya_requestnum NOT akoya_requestnumber, akoya_program NOT akoya_name).
 - For org name lookups, review ALL results and pick the exact match.
 - Present results as markdown tables. Show totalCount if results are truncated.
-- When the user asks to "export", "download", "spreadsheet", or wants the full dataset, use export_csv. It fetches ALL matching records (up to 5000) and generates a downloadable Excel file.
+- EXPORT: When the user asks to "export", "download", "spreadsheet", or wants the full dataset, use export_csv. It fetches ALL matching records (up to 5000) and generates a downloadable Excel file. CRITICAL: If you already queried this data with query_records earlier in the conversation, reuse the EXACT same table_name, filter, and select values — do NOT guess new field names. Copy them verbatim from your earlier successful tool call.
 - AI-processed exports: when the user wants AI analysis on exported data (e.g., "export with keywords extracted"), use export_csv with process_instruction. The tool returns a cost/time estimate and sample output. Present the estimate to the user (count, sample, cost, time) and ask for confirmation. Only after the user confirms, call export_csv again with the SAME parameters plus confirmed: true.
 - OData syntax: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z
 - MATH: For totals, sums, averages, or "how much" questions, ALWAYS use aggregate — not query_records. Never fetch records and sum them yourself. The aggregate tool computes exact results server-side.
