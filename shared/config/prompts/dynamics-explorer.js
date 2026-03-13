@@ -542,6 +542,7 @@ Status:
 - "concept status" (SoCal) → wmkf_socalconceptstatus (Completed, Phone Call, Unlikely to be Competitive, Competitive Apply, Scheduled Call, Ineligible, Fit but Wait, Pending)
 - "contingency"/"contingent" → wmkf_contingencystatus on request (Not Met, Met, Paid)
 - Lifecycle: Concept → Phase I → Phase II → Active → Closed. akoya_requeststatus = pipeline position; phase statuses = detailed outcomes per stage.
+- STATUS FIELD DISAMBIGUATION: "Phase II Pending" is a pipeline position (akoya_requeststatus eq 'Phase II Pending'), NOT a wmkf_phaseiistatus value. wmkf_phaseiistatus has different values: "Phase II Pending Committee Review", "Approved", "Phase II Declined", "Phase II Withdrawn", "Phase II Deferred". When users say "Phase II Pending" or "pending Phase II", ALWAYS use akoya_requeststatus. Only use wmkf_phaseiistatus for specific outcomes like "approved", "declined", "deferred", "withdrawn".
 Programs:
 - "program" usually means S&E, MR, or SoCal
 - "S&E"/"SE"/"science and engineering" → _akoya_programid_value eq '8dcab30b-958f-ee11-8179-000d3a341e8f'
