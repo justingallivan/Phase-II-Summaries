@@ -743,6 +743,9 @@ function CycleOverviewTab({ proposals, cycles, selectedCycleId, onCycleChange, o
               {filteredProposals.map(p => (
                 <tr key={p.proposalId} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3">
+                    {p.requestNumber && (
+                      <p className="text-xs font-mono text-gray-400">#{p.requestNumber}</p>
+                    )}
                     <p className="text-sm font-medium text-gray-900 line-clamp-2">{p.proposalTitle}</p>
                     {p.proposalInstitution && (
                       <p className="text-xs text-gray-500 mt-0.5">{p.proposalInstitution}</p>

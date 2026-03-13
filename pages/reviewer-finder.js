@@ -3607,6 +3607,12 @@ function ProposalMetadataRow({ proposal, onUpdate }) {
 
   return (
     <p className="text-sm text-gray-600 flex items-center flex-wrap gap-x-1" onClick={e => e.stopPropagation()}>
+      {proposal.requestNumber && (
+        <>
+          <span className="font-mono text-xs text-gray-500">#{proposal.requestNumber}</span>
+          <span className="text-gray-300">&middot;</span>
+        </>
+      )}
       {editing === 'pi' ? (
         <span className="inline-flex items-center gap-1">
           <span className="text-gray-400">PI:</span>
