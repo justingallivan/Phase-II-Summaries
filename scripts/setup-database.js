@@ -558,8 +558,15 @@ const v22Updates = [
   `UPDATE user_app_access SET app_key = 'phase-ii-writeup' WHERE app_key = 'proposal-summarizer'`,
 ];
 
-// V23: Dynamics Explorer feedback logging
-const v23Statements = [
+// V23a: Add request_number to proposal_searches and reviewer_suggestions
+const v23aAlterations = [
+  `ALTER TABLE proposal_searches ADD COLUMN IF NOT EXISTS request_number VARCHAR(20)`,
+  `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS request_number VARCHAR(20)`,
+  `CREATE INDEX IF NOT EXISTS idx_reviewer_suggestions_request ON reviewer_suggestions(request_number)`,
+];
+
+// V23b: Dynamics Explorer feedback logging
+const v23bStatements = [
   `CREATE TABLE IF NOT EXISTS dynamics_feedback (
     id SERIAL PRIMARY KEY,
     user_profile_id INTEGER REFERENCES user_profiles(id),
@@ -1086,20 +1093,38 @@ async function runMigration() {
       }
     }
 
-    // Run V23 table creation (Dynamics feedback)
-    console.log(`\nApplying v23 schema updates - Dynamics feedback (${v23Statements.length} statements)...`);
-    for (let i = 0; i < v23Statements.length; i++) {
-      const statement = v23Statements[i];
+    // Run V23a alterations (request_number columns)
+    console.log(`\nApplying v23a schema updates - Request number columns (${v23aAlterations.length} statements)...`);
+    for (let i = 0; i < v23aAlterations.length; i++) {
+      const statement = v23aAlterations[i];
       const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
 
       try {
         await sql.query(statement);
-        console.log(`[v23-${i + 1}/${v23Statements.length}] ✓ ${preview}...`);
+        console.log(`[v23a-${i + 1}/${v23aAlterations.length}] ✓ ${preview}...`);
       } catch (error) {
         if (error.message.includes('already exists')) {
-          console.log(`[v23-${i + 1}/${v23Statements.length}] ○ Already exists: ${preview}...`);
+          console.log(`[v23a-${i + 1}/${v23aAlterations.length}] ○ Already exists: ${preview}...`);
         } else {
-          console.error(`[v23-${i + 1}/${v23Statements.length}] ✗ Error: ${error.message}`);
+          console.error(`[v23a-${i + 1}/${v23aAlterations.length}] ✗ Error: ${error.message}`);
+        }
+      }
+    }
+
+    // Run V23b table creation (Dynamics feedback)
+    console.log(`\nApplying v23b schema updates - Dynamics feedback (${v23bStatements.length} statements)...`);
+    for (let i = 0; i < v23bStatements.length; i++) {
+      const statement = v23bStatements[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v23b-${i + 1}/${v23bStatements.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v23b-${i + 1}/${v23bStatements.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v23b-${i + 1}/${v23bStatements.length}] ✗ Error: ${error.message}`);
           throw error;
         }
       }
