@@ -666,14 +666,18 @@ const MessageBubble = React.memo(function MessageBubble({ message, onCopy, onFee
                     className={`hover:text-gray-600 ${feedbackGiven === 'positive' ? 'text-green-600' : ''}`}
                     title="Helpful"
                   >
-                    {feedbackGiven === 'positive' ? '\u25B2' : '\u25B3'}
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill={feedbackGiven === 'positive' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M7 10v12" /><path d="M15 5.88L14 10h5.83a2 2 0 011.92 2.56l-2.33 8A2 2 0 0117.5 22H4a2 2 0 01-2-2v-8a2 2 0 012-2h2.76a2 2 0 001.79-1.11L12 2a3.13 3.13 0 013 3.88z" />
+                    </svg>
                   </button>
                   <button
                     onClick={() => onFeedback(message.id, 'negative')}
                     className={`hover:text-gray-600 ${feedbackGiven === 'negative' ? 'text-red-600' : ''}`}
                     title="Not helpful"
                   >
-                    {feedbackGiven === 'negative' ? '\u25BC' : '\u25BD'}
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill={feedbackGiven === 'negative' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17 14V2" /><path d="M9 18.12L10 14H4.17a2 2 0 01-1.92-2.56l2.33-8A2 2 0 016.5 2H20a2 2 0 012 2v8a2 2 0 01-2 2h-2.76a2 2 0 00-1.79 1.11L12 22a3.13 3.13 0 01-3-3.88z" />
+                    </svg>
                   </button>
                 </>
               )}
@@ -683,7 +687,7 @@ const MessageBubble = React.memo(function MessageBubble({ message, onCopy, onFee
             </div>
             {suggestFeedback && !feedbackGiven && (
               <div className="mt-1 text-xs text-amber-600">
-                Was this response helpful? Use the arrows above to let us know.
+                Was this response helpful? Use the thumbs above to let us know.
               </div>
             )}
           </div>
