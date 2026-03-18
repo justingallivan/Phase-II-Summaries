@@ -1,37 +1,30 @@
-# Session 87 Prompt: Proposal Data Model & Next Integration Steps
+# Session 88 Prompt: CRM Email Send Implementation
 
-## Session 86 Summary
+## Session 87 Summary
 
-Strategy document revision session. Reconciled `docs/STRATEGY.md` with a draft from Connor (Foundation colleague who knows AkoyaGO/Dynamics best). The conversation established shared direction for the project's relationship to AkoyaGO and Dynamics.
+Light session focused on reviewing the CRM email send plan (`docs/CRM_EMAIL_SEND_PLAN.md`) and diagnosing a recurring Safari redirect loop.
 
 ### What Was Completed
 
-1. **Strategy Document Overhaul (`docs/STRATEGY.md`)**
-   - Adopted Connor's six-system taxonomy: Dataverse, Dynamics 365, AkoyaGO, GOapply, SharePoint, Vercel App Suite
-   - Reframed from "replace AkoyaGO" to "minimize reliance" — build things that work if AkoyaGO goes away, but don't plan around removing it
-   - Added vendor/licensing considerations section (AkoyaGO vendor provides Dynamics license; dependency on their workflows/business logic not fully understood)
-   - Acknowledged PowerAutomate flows (built by vendor and Connor) as significant backend logic
-   - Added "unified view of data and documents" as an explicit principle — something AkoyaGO can't do natively
-   - Clarified Postgres role: development substrate + operational store until Dynamics write access is established; researcher/reviewer data belongs in CRM long-term
-   - Updated all status tables: SharePoint read → Working, request linking → Done, added feedback logging and monitoring rows
-   - Added future concept: freshness metadata on records to enable automated refresh of stale data
-   - Described workflow inversion: backend triggers will initiate processing instead of user uploads
+1. **CRM Email Send Plan Review**
+   - Reviewed the full implementation plan for Phase A of reviewer lifecycle automation
+   - Read all affected files (generate-emails.js, send-emails.js, EmailGeneratorModal.js, review-manager.js EmailModal, dynamics-service.js, email-generator.js)
+   - Confirmed `session.user.azureEmail` is the correct field for sender identity
+   - Confirmed `DynamicsService.createAndSendEmail()` API shape and how `resolveSystemUser` works
+   - Plan is awaiting feedback before implementation — tracked as a pending task
 
-### Key Decisions Made
-
-- **AkoyaGO**: Minimize reliance, don't plan to replace. Vendor/licensing dependency is unresolved.
-- **Dynamics is ground truth**: All organizational data (proposals, researchers, reviewers) belongs there long-term.
-- **Postgres stays for now**: No Dynamics write access yet. Postgres for app-operational data (logs, alerts) and as development staging.
-- **Researcher data belongs in CRM**: Reviewer candidates represent paid API calls and reusable expertise — not just app-operational data.
-- **Backend triggers are the future**: Same API calls, but initiated by status changes rather than user uploads. Requires collaboration with Connor on PowerAutomate flows.
-- **Connor partnership**: Will flesh out backend vision together in coming weeks.
+2. **Safari Redirect Loop Fix (Recurring)**
+   - Same "too many redirects" issue from Session 86 (commit `fe1d588`) reappeared
+   - Root cause: stale auth cookies in Safari's regular session (works in private browsing)
+   - Fix: Safari Settings > Privacy > Manage Website Data > delete `wmkfresearch.vercel.app`
+   - Note: Safari's "clear cache" does NOT clear cookies — must use domain-specific data deletion
 
 ### Commits
-- `8b36bcc` - Update strategy doc: incorporate Connor's systems taxonomy and revised direction
+- No code commits this session (plan review only)
 
 ## Deferred Items (Carried Forward)
 
-- Integrate email sending into Reviewer Finder / Review Manager
+- **CRM Email Send (Phase A)** — pending feedback on plan (docs/CRM_EMAIL_SEND_PLAN.md)
 - Build Proposal Picker component for Dynamics integration
 - next-auth v5 migration (still in beta)
 - Re-enable coverage thresholds when test coverage reaches 70%/80%
@@ -39,30 +32,34 @@ Strategy document revision session. Reconciled `docs/STRATEGY.md` with a draft f
 
 ## Potential Next Steps
 
-### 1. Architecture Discussion: Proposal Data Model
-Still not resolved from Session 85. Plan the data flow where proposals come from Dynamics first. Key questions: sync strategy, `proposal_searches` as canonical join point, FK linkage from `reviewer_suggestions`. Now informed by the strategy discussion — Dynamics is ground truth, Postgres is staging.
+### 1. Implement CRM Email Send (Phase A)
+Once feedback is received on the plan, implement:
+- Create `lib/utils/crm-email-helpers.js` (textToHtml, resolveRequestGuids, sendEmailViaCrm)
+- Add `deliveryMethod` option to both generate-emails.js and send-emails.js APIs
+- Add delivery method toggle + CRM results view to both EmailGeneratorModal and Review Manager EmailModal
+- See `docs/CRM_EMAIL_SEND_PLAN.md` for full plan
 
-### 2. Build Proposal Picker Component
-Shared component for browsing/searching Dynamics proposals. First consumer: Reviewer Finder — replace manual PDF upload with "pick a proposal from CRM."
+### 2. Architecture Discussion: Proposal Data Model
+Plan the data flow where proposals come from Dynamics first. Key questions: sync strategy, `proposal_searches` as canonical join point, FK linkage from `reviewer_suggestions`.
 
-### 3. Populate `proposal_searches` Table
-Create canonical proposal records from the 23 existing proposals in `reviewer_suggestions`. Add FK linkage. Stepping stone toward the new architecture.
+### 3. Build Proposal Picker Component
+Shared component for browsing/searching Dynamics proposals. First consumer: Reviewer Finder.
 
-### 4. Wire Request Numbers into Email Templates
-Reviewer Finder and Review Manager email templates could include request numbers for staff reference.
-
-### 5. Plan Researcher Data Migration to Dynamics
-Now that the strategy says researcher/reviewer data belongs in the CRM, scope what Dataverse fields would be needed and how to sync. Blocked on write access but can plan the schema.
+### 4. Plan Researcher Data Migration to Dynamics
+Scope Dataverse fields needed for researcher/reviewer data. Blocked on write access but can plan schema.
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `docs/STRATEGY.md` | Project strategy — six systems, direction, principles, status |
-| `lib/services/dynamics-service.js` | Dynamics 365 CRM API (OData queries, email, Dataverse Search) |
-| `lib/services/graph-service.js` | Microsoft Graph API (SharePoint file listing, download, search) |
-| `shared/config/appRegistry.js` | Single source of truth for all 14 app definitions |
-| `scripts/setup-database.js` | All database migrations (V1–V23b) |
+| `docs/CRM_EMAIL_SEND_PLAN.md` | Full plan for Phase A CRM email send |
+| `docs/REVIEWER_LIFECYCLE_PROPOSAL.md` | Broader lifecycle automation vision (Phases A-F) |
+| `pages/api/reviewer-finder/generate-emails.js` | Reviewer invitation email generation (SSE) |
+| `pages/api/review-manager/send-emails.js` | Review Manager email generation (SSE) |
+| `shared/components/EmailGeneratorModal.js` | Reviewer Finder email modal |
+| `pages/review-manager.js` | Review Manager page (includes EmailModal component) |
+| `lib/services/dynamics-service.js` | CRM API — createAndSendEmail, resolveSystemUser |
+| `lib/utils/email-generator.js` | Shared email utilities (templates, placeholders, EML) |
 
 ## Testing
 
