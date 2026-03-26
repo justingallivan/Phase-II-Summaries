@@ -1,11 +1,24 @@
-# Session 89 Prompt: CRM Email Send Implementation
+# Session 90 Prompt
 
-## Session 88 Summary
+## Session 89 Summary
 
-No-op session — synced repo (pulled 12 commits from Sessions 85-87) and reviewed context, but no work was done.
+Created plain-language documentation of all AI prompts for sharing with non-technical team members. Two new docs added to `docs/`:
+
+### What Was Completed
+
+1. **AI Prompts Overview** (`docs/AI_PROMPTS_OVERVIEW.md`)
+   - High-level summary of what each of the 12 apps asks Claude to do
+   - Written for non-technical colleagues
+   - Includes shared rules, per-app descriptions, and a prompt-to-app reference table
+
+2. **AI Prompts Detailed Reference** (`docs/AI_PROMPTS_DETAILED.md`)
+   - Full prompt text for all 14 prompt files across 12 apps, with code stripped out
+   - Shows the actual questions asked, instructions given, and rules enforced
+   - Dynamic values (document text, database results) described in brackets
+   - Includes the Dynamics Explorer vocabulary/lexicon mappings
 
 ### Commits
-- No commits this session
+- `8dc0742` - Add plain-language AI prompt documentation for non-technical staff
 
 ## Deferred Items (Carried Forward)
 
@@ -37,14 +50,11 @@ Scope Dataverse fields needed for researcher/reviewer data. Blocked on write acc
 
 | File | Purpose |
 |------|---------|
+| `docs/AI_PROMPTS_OVERVIEW.md` | Plain-language summary of all AI prompts |
+| `docs/AI_PROMPTS_DETAILED.md` | Full prompt text reference (code-free) |
 | `docs/CRM_EMAIL_SEND_PLAN.md` | Full plan for Phase A CRM email send |
 | `docs/REVIEWER_LIFECYCLE_PROPOSAL.md` | Broader lifecycle automation vision (Phases A-F) |
-| `pages/api/reviewer-finder/generate-emails.js` | Reviewer invitation email generation (SSE) |
-| `pages/api/review-manager/send-emails.js` | Review Manager email generation (SSE) |
-| `shared/components/EmailGeneratorModal.js` | Reviewer Finder email modal |
-| `pages/review-manager.js` | Review Manager page (includes EmailModal component) |
-| `lib/services/dynamics-service.js` | CRM API — createAndSendEmail, resolveSystemUser |
-| `lib/utils/email-generator.js` | Shared email utilities (templates, placeholders, EML) |
+| `shared/config/prompts/` | Source prompt files (14 files) |
 
 ## Testing
 
