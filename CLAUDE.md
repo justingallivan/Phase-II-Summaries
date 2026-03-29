@@ -383,7 +383,8 @@ Located in `lib/utils/`:
 | `docs/SECURITY_ARCHITECTURE.md` | Security architecture and threat model |
 | `docs/TODO_EMAIL_NOTIFICATIONS.md` | Unified notification service (dashboard alerts + future email) |
 | `docs/PENDING_ADMIN_REQUESTS.md` | Azure AD + Dynamics admin permission requests |
+| `docs/BACKEND_AUTOMATION_PLAN.md` | PowerAutomate backend automation roadmap (Phases 0-6 + new AI capabilities) |
 
 ---
 
-Last Updated: February 2026
+Last Updated: March 2026
