@@ -132,6 +132,15 @@ export const APP_REGISTRY = [
     categories: ['phase-i', 'phase-ii'],
     features: ['Retraction Watch DB', 'PubPeer Search', 'News Analysis', 'AI Summarization'],
   },
+  {
+    key: 'virtual-review-panel',
+    name: 'Virtual Review Panel',
+    href: '/virtual-review-panel',
+    icon: '🧑‍⚖️',
+    description: 'Multi-LLM review panel that evaluates grant proposals against WMKF reviewer criteria with claim verification and structured review synthesis',
+    categories: ['phase-ii'],
+    features: ['Multi-LLM Panel', 'Claim Verification', 'Structured Review', 'Panel Synthesis', 'Cost Tracking'],
+  },
 ];
 
 /** All app keys for convenience */

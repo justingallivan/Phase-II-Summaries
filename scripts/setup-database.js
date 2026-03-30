@@ -589,6 +589,48 @@ const v23bStatements = [
   `CREATE INDEX IF NOT EXISTS idx_dynamics_feedback_session ON dynamics_feedback(session_id)`,
 ];
 
+// V24: Virtual Review Panel tables
+const v24Statements = [
+  `CREATE TABLE IF NOT EXISTS panel_reviews (
+    id SERIAL PRIMARY KEY,
+    user_profile_id INTEGER REFERENCES user_profiles(id),
+    proposal_title TEXT,
+    proposal_filename VARCHAR(255),
+    proposal_text_hash VARCHAR(64),
+    status VARCHAR(50) DEFAULT 'pending',
+    current_stage VARCHAR(50),
+    config JSONB,
+    panel_summary JSONB,
+    total_cost_cents NUMERIC(10,4),
+    cost_breakdown JSONB,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS panel_review_items (
+    id SERIAL PRIMARY KEY,
+    panel_review_id INTEGER REFERENCES panel_reviews(id) ON DELETE CASCADE,
+    llm_provider VARCHAR(50) NOT NULL,
+    llm_model VARCHAR(100) NOT NULL,
+    stage VARCHAR(50) NOT NULL,
+    status VARCHAR(50) DEFAULT 'pending',
+    raw_response TEXT,
+    parsed_response JSONB,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    estimated_cost_cents NUMERIC(10,4),
+    latency_ms INTEGER,
+    error_message TEXT,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_panel_reviews_user ON panel_reviews(user_profile_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_panel_reviews_status ON panel_reviews(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_panel_review_items_panel ON panel_review_items(panel_review_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_panel_review_items_provider ON panel_review_items(llm_provider, stage)`,
+];
+
 // V6 column additions for proposal summary attachments and Co-PI tracking
 const v6Alterations = [
   // Summary page extraction - store extracted page(s) in Vercel Blob
@@ -1130,6 +1172,25 @@ async function runMigration() {
       }
     }
 
+    // Run V24 table creation (Virtual Review Panel)
+    console.log(`\nApplying v24 schema updates - Virtual Review Panel (${v24Statements.length} statements)...`);
+    for (let i = 0; i < v24Statements.length; i++) {
+      const statement = v24Statements[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v24-${i + 1}/${v24Statements.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v24-${i + 1}/${v24Statements.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v24-${i + 1}/${v24Statements.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -1225,7 +1286,10 @@ async function runMigration() {
     console.log('  • api_usage_log.cache_read_tokens');
     console.log('\nV22 data updates (App key rename):');
     console.log('  • user_app_access: proposal-summarizer → phase-ii-writeup');
-    console.log('\nIndexes created: 55');
+    console.log('\nV24 new tables (Virtual Review Panel):');
+    console.log('  • panel_reviews (multi-LLM review sessions)');
+    console.log('  • panel_review_items (individual LLM reviews per stage)');
+    console.log('\nIndexes created: 59');
 
   } catch (error) {
     console.error('\n✗ Migration failed:', error.message);
