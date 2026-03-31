@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
@@ -9,13 +9,13 @@ import {
 } from 'docx';
 
 /**
- * Provider definitions
+ * Provider definitions with default model names for display
  */
 const PROVIDER_INFO = {
-  claude: { name: 'Claude', icon: '🟣', color: 'purple' },
-  openai: { name: 'GPT', icon: '🟢', color: 'green' },
-  gemini: { name: 'Gemini', icon: '🔵', color: 'blue' },
-  perplexity: { name: 'Perplexity', icon: '🟠', color: 'orange' },
+  claude: { name: 'Claude', icon: '🟣', color: 'purple', defaultModel: 'claude-sonnet-4' },
+  openai: { name: 'GPT', icon: '🟢', color: 'green', defaultModel: 'gpt-4o' },
+  gemini: { name: 'Gemini', icon: '🔵', color: 'blue', defaultModel: 'gemini-2.5-flash' },
+  perplexity: { name: 'Perplexity', icon: '🟠', color: 'orange', defaultModel: 'sonar-pro' },
 };
 
 /**
@@ -37,17 +37,18 @@ function getRatingColor(rating) {
 /**
  * Provider selector checkboxes
  */
-function ProviderSelector({ selected, available, onChange, disabled }) {
+function ProviderSelector({ selected, available, providerModels, onChange, disabled }) {
   return (
-    <div className="flex flex-wrap gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       {Object.entries(PROVIDER_INFO).map(([key, info]) => {
         const isAvailable = available.includes(key);
         const isSelected = selected.includes(key);
+        const modelName = providerModels?.[key] || info.defaultModel;
         return (
           <label
             key={key}
             className={`
-              flex items-center gap-2 px-4 py-2 rounded-lg border-2 cursor-pointer transition-all
+              flex items-center gap-3 px-4 py-3 rounded-lg border-2 cursor-pointer transition-all
               ${!isAvailable ? 'opacity-40 cursor-not-allowed border-gray-200 bg-gray-50' : ''}
               ${isSelected && isAvailable ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'}
               ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
@@ -66,9 +67,13 @@ function ProviderSelector({ selected, available, onChange, disabled }) {
               }}
               className="sr-only"
             />
-            <span className="text-lg">{info.icon}</span>
-            <span className="font-medium text-gray-900">{info.name}</span>
-            {!isAvailable && <span className="text-xs text-gray-400">(no API key)</span>}
+            <span className="text-xl">{info.icon}</span>
+            <div className="flex flex-col">
+              <span className="font-medium text-gray-900">{info.name}</span>
+              <span className="text-xs text-gray-500">{modelName}</span>
+            </div>
+            {!isAvailable && <span className="text-xs text-gray-400 ml-auto">(no API key)</span>}
+            {isSelected && isAvailable && <span className="text-blue-500 ml-auto">✓</span>}
           </label>
         );
       })}
@@ -79,7 +84,7 @@ function ProviderSelector({ selected, available, onChange, disabled }) {
 /**
  * Per-provider status card during processing
  */
-function ProviderStatusCard({ provider, status, stage, latencyMs }) {
+function ProviderStatusCard({ provider, status, stage, latencyMs, model }) {
   const info = PROVIDER_INFO[provider] || { name: provider, icon: '⚪' };
 
   const statusColors = {
@@ -105,13 +110,14 @@ function ProviderStatusCard({ provider, status, stage, latencyMs }) {
         </div>
         <span>{statusIcons[status] || '⏳'}</span>
       </div>
+      <div className="text-xs text-gray-400 mt-1">{model || info.defaultModel}</div>
       {stage && (
-        <div className="text-xs text-gray-500 mt-1">
+        <div className="text-xs text-gray-500 mt-0.5">
           {stage.replace(/_/g, ' ')}
         </div>
       )}
       {latencyMs && status === 'completed' && (
-        <div className="text-xs text-gray-400 mt-1">
+        <div className="text-xs text-gray-400 mt-0.5">
           {(latencyMs / 1000).toFixed(1)}s
         </div>
       )}
@@ -639,7 +645,28 @@ function VirtualReviewPanelContent() {
   const [costBreakdown, setCostBreakdown] = useState(null);
   const [totalCostCents, setTotalCostCents] = useState(null);
   const [availableProviders, setAvailableProviders] = useState(Object.keys(PROVIDER_INFO));
+  const [providerModels, setProviderModels] = useState({});
   const eventSourceRef = useRef(null);
+
+  // Fetch available providers and models from server on mount
+  useEffect(() => {
+    fetch('/api/virtual-review-panel')
+      .then(res => res.json())
+      .then(data => {
+        if (data.providers) {
+          setAvailableProviders(data.providers.map(p => p.key));
+          const models = {};
+          data.providers.forEach(p => { models[p.key] = p.model; });
+          setProviderModels(models);
+          // Auto-select all available providers
+          setSelectedProviders(prev => {
+            const available = data.providers.map(p => p.key);
+            return prev.filter(p => available.includes(p));
+          });
+        }
+      })
+      .catch(() => { /* use defaults */ });
+  }, []);
 
   const handleSubmit = useCallback(async () => {
     if (files.length === 0) return;
@@ -737,6 +764,7 @@ function VirtualReviewPanelContent() {
           status: 'completed',
           stage: data.stage,
           latencyMs: data.latencyMs,
+          model: data.model,
         },
       }));
 
@@ -820,6 +848,7 @@ function VirtualReviewPanelContent() {
               <ProviderSelector
                 selected={selectedProviders}
                 available={availableProviders}
+                providerModels={providerModels}
                 onChange={setSelectedProviders}
                 disabled={processing}
               />
@@ -880,6 +909,7 @@ function VirtualReviewPanelContent() {
                           status={s.status}
                           stage="claim verification"
                           latencyMs={s.latencyMs}
+                          model={s.model || providerModels[p]}
                         />
                       );
                     })}
@@ -901,6 +931,7 @@ function VirtualReviewPanelContent() {
                         status={s.status}
                         stage="structured review"
                         latencyMs={s.latencyMs}
+                        model={s.model || providerModels[p]}
                       />
                     );
                   })}

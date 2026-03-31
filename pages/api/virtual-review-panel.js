@@ -29,6 +29,20 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  // GET: return available providers and their models
+  if (req.method === 'GET') {
+    const access = await requireAppAccess(req, res, 'virtual-review-panel');
+    if (!access) return;
+
+    const available = MultiLLMService.getAvailableProviders();
+    const providers = available.map(key => ({
+      key,
+      name: MultiLLMService.getProviderName(key),
+      model: MultiLLMService.getDefaultModel(key),
+    }));
+    return res.json({ providers });
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
