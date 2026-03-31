@@ -71,7 +71,7 @@ export default function FileUploaderSimple({
       }
       
       setUploadedFiles(uploadedBlobs);
-      onFilesUploaded(uploadedBlobs);
+      if (onFilesUploaded) onFilesUploaded(uploadedBlobs);
       
     } catch (uploadError) {
       console.error('Upload error:', uploadError);

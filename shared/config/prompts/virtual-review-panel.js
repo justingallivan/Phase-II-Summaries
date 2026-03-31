@@ -250,6 +250,7 @@ Important:
 
 /**
  * Parse a JSON response from an LLM, handling markdown code blocks
+ * and truncated responses (e.g., when output hits token limit)
  */
 export function parseJSONResponse(text) {
   if (!text) return null;
@@ -258,7 +259,7 @@ export function parseJSONResponse(text) {
   try {
     return JSON.parse(text);
   } catch {
-    // Try extracting from markdown code block
+    // Try extracting from markdown code block (with closing fence)
     const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (match) {
       try {
@@ -268,12 +269,54 @@ export function parseJSONResponse(text) {
       }
     }
 
+    // Extract JSON content — strip code fences if present (handles missing closing fence)
+    let jsonStr = text;
+    const fenceStart = text.match(/```(?:json)?\s*\n?/);
+    if (fenceStart) {
+      jsonStr = text.substring(fenceStart.index + fenceStart[0].length);
+      // Remove closing fence if present
+      jsonStr = jsonStr.replace(/\n?```\s*$/, '');
+    }
+
     // Try finding first { to last }
-    const firstBrace = text.indexOf('{');
-    const lastBrace = text.lastIndexOf('}');
+    const firstBrace = jsonStr.indexOf('{');
+    const lastBrace = jsonStr.lastIndexOf('}');
     if (firstBrace !== -1 && lastBrace > firstBrace) {
       try {
-        return JSON.parse(text.substring(firstBrace, lastBrace + 1));
+        return JSON.parse(jsonStr.substring(firstBrace, lastBrace + 1));
+      } catch {
+        // Fall through to truncation repair
+      }
+    }
+
+    // Attempt to repair truncated JSON by closing open brackets/braces
+    if (firstBrace !== -1) {
+      let truncated = jsonStr.substring(firstBrace).trim();
+      // Remove trailing incomplete key-value (after last comma or opening bracket)
+      truncated = truncated.replace(/,\s*"[^"]*"?\s*:?\s*(?:"[^"]*)?$/, '');
+      truncated = truncated.replace(/,\s*\{[^}]*$/, '');
+      truncated = truncated.replace(/,\s*"[^"]*$/, '');
+      // Count open brackets and close them
+      let openBraces = 0, openBrackets = 0;
+      let inString = false, escape = false;
+      for (const ch of truncated) {
+        if (escape) { escape = false; continue; }
+        if (ch === '\\') { escape = true; continue; }
+        if (ch === '"') { inString = !inString; continue; }
+        if (inString) continue;
+        if (ch === '{') openBraces++;
+        if (ch === '}') openBraces--;
+        if (ch === '[') openBrackets++;
+        if (ch === ']') openBrackets--;
+      }
+      // Close any open strings, arrays, and objects
+      if (inString) truncated += '"';
+      for (let i = 0; i < openBrackets; i++) truncated += ']';
+      for (let i = 0; i < openBraces; i++) truncated += '}';
+      try {
+        const parsed = JSON.parse(truncated);
+        parsed._truncated = true;
+        return parsed;
       } catch {
         // Fall through
       }

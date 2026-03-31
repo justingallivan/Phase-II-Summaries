@@ -3,6 +3,10 @@ import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
 import ErrorAlert from '../shared/components/ErrorAlert';
+import {
+  Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell,
+  WidthType, AlignmentType, BorderStyle
+} from 'docx';
 
 /**
  * Provider definitions
@@ -363,6 +367,261 @@ function CostBreakdown({ costBreakdown, totalCostCents }) {
 }
 
 /**
+ * Build markdown export content from panel results
+ */
+function buildMarkdownExport(proposalFilename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents) {
+  const lines = [];
+  lines.push(`# Virtual Review Panel Report`);
+  lines.push(`**Proposal:** ${proposalFilename}`);
+  lines.push(`**Date:** ${new Date().toLocaleDateString()}`);
+  lines.push(`**Reviewers:** ${structuredReviews.map(r => `${r.providerName} (${r.model})`).join(', ')}`);
+  lines.push('');
+
+  if (panelSummary?.panelRecommendation) {
+    lines.push('## Panel Recommendation');
+    lines.push(panelSummary.panelRecommendation);
+    if (panelSummary.confidenceNote) {
+      lines.push('');
+      lines.push(`*${panelSummary.confidenceNote}*`);
+    }
+    lines.push('');
+  }
+
+  // Rating matrix
+  if (panelSummary?.ratingMatrix) {
+    lines.push('## Rating Comparison');
+    const reviewerNames = Object.keys(panelSummary.ratingMatrix.overallRating || panelSummary.ratingMatrix.impactRating || {});
+    lines.push(`| Criterion | ${reviewerNames.join(' | ')} |`);
+    lines.push(`| --- | ${reviewerNames.map(() => '---').join(' | ')} |`);
+    for (const [key, label] of [['impactRating', 'Impact'], ['riskRating', 'Risk'], ['overallRating', 'Overall']]) {
+      const ratings = panelSummary.ratingMatrix[key];
+      if (ratings) {
+        lines.push(`| ${label} | ${reviewerNames.map(r => ratings[r] || 'N/A').join(' | ')} |`);
+      }
+    }
+    lines.push('');
+  }
+
+  if (panelSummary?.consensus?.length > 0) {
+    lines.push('## Consensus Points');
+    panelSummary.consensus.forEach(p => lines.push(`- ${p}`));
+    lines.push('');
+  }
+
+  if (panelSummary?.disagreements?.length > 0) {
+    lines.push('## Disagreements');
+    panelSummary.disagreements.forEach(d => {
+      lines.push(`### ${d.topic}`);
+      if (d.positions) {
+        Object.entries(d.positions).forEach(([reviewer, position]) => {
+          lines.push(`- **${reviewer}:** ${position}`);
+        });
+      }
+      if (d.significance) lines.push(`\n*${d.significance}*`);
+      lines.push('');
+    });
+  }
+
+  if (panelSummary?.questionsForPI?.length > 0) {
+    lines.push('## Questions for the PI');
+    panelSummary.questionsForPI.forEach((q, i) => lines.push(`${i + 1}. ${q}`));
+    lines.push('');
+  }
+
+  if (panelSummary?.claimVerificationHighlights?.length > 0) {
+    lines.push('## Claim Verification Highlights');
+    panelSummary.claimVerificationHighlights.forEach(h => lines.push(`- ⚠ ${h}`));
+    lines.push('');
+  }
+
+  // Individual reviews
+  lines.push('---');
+  lines.push('## Individual Reviews');
+  for (const review of structuredReviews) {
+    const p = review.parsedResponse;
+    if (!p) continue;
+    lines.push(`### ${review.providerName} (${review.model})`);
+    lines.push(`- **Impact:** ${p.impactRating || 'N/A'}`);
+    if (p.impactNarrative) lines.push(`  ${p.impactNarrative}`);
+    lines.push(`- **Risk:** ${p.riskRating || 'N/A'}`);
+    if (p.riskNarrative) lines.push(`  ${p.riskNarrative}`);
+    if (p.methodsAssessment) lines.push(`- **Methods:** ${p.methodsAssessment}`);
+    if (p.questionsForPI) lines.push(`- **Questions for PI:** ${p.questionsForPI}`);
+    if (p.teamAssessment) lines.push(`- **Team:** ${p.teamAssessment}`);
+    if (p.fundingAlternatives) lines.push(`- **Funding Alternatives:** ${p.fundingAlternatives}`);
+    if (p.budgetIssues) lines.push(`- **Budget:** ${p.budgetIssues}`);
+    lines.push(`- **Overall:** ${p.overallRating || 'N/A'}`);
+    if (p.additionalComments) lines.push(`- **Additional:** ${p.additionalComments}`);
+    lines.push('');
+  }
+
+  // Cost
+  if (costBreakdown) {
+    lines.push('## Cost Breakdown');
+    lines.push('| Provider | Cost |');
+    lines.push('| --- | --- |');
+    Object.entries(costBreakdown).forEach(([provider, cost]) => {
+      const name = PROVIDER_INFO[provider]?.name || provider;
+      lines.push(`| ${name} | $${(cost / 100).toFixed(4)} |`);
+    });
+    lines.push(`| **Total** | **$${((totalCostCents || 0) / 100).toFixed(4)}** |`);
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+function downloadFile(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Build and download DOCX export
+ */
+async function downloadDocx(proposalFilename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents) {
+  const children = [];
+  const baseName = proposalFilename?.replace(/\.pdf$/i, '') || 'proposal';
+
+  children.push(new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun('Virtual Review Panel Report')] }));
+  children.push(new Paragraph({ children: [new TextRun({ text: `Proposal: ${proposalFilename}`, bold: true })] }));
+  children.push(new Paragraph({ children: [new TextRun(`Date: ${new Date().toLocaleDateString()}`)] }));
+  children.push(new Paragraph({ children: [new TextRun(`Reviewers: ${structuredReviews.map(r => `${r.providerName} (${r.model})`).join(', ')}`)] }));
+  children.push(new Paragraph({ text: '' }));
+
+  if (panelSummary?.panelRecommendation) {
+    children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Panel Recommendation')] }));
+    children.push(new Paragraph({ children: [new TextRun(panelSummary.panelRecommendation)] }));
+    if (panelSummary.confidenceNote) {
+      children.push(new Paragraph({ children: [new TextRun({ text: panelSummary.confidenceNote, italics: true })] }));
+    }
+    children.push(new Paragraph({ text: '' }));
+  }
+
+  // Rating matrix as table
+  if (panelSummary?.ratingMatrix) {
+    children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Rating Comparison')] }));
+    const reviewerNames = Object.keys(panelSummary.ratingMatrix.overallRating || panelSummary.ratingMatrix.impactRating || {});
+    const headerRow = new TableRow({
+      children: [
+        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Criterion', bold: true })] })], width: { size: 20, type: WidthType.PERCENTAGE } }),
+        ...reviewerNames.map(name => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: name, bold: true })], alignment: AlignmentType.CENTER })], width: { size: Math.floor(80 / reviewerNames.length), type: WidthType.PERCENTAGE } })),
+      ],
+    });
+    const dataRows = [['impactRating', 'Impact'], ['riskRating', 'Risk'], ['overallRating', 'Overall']]
+      .filter(([key]) => panelSummary.ratingMatrix[key])
+      .map(([key, label]) => new TableRow({
+        children: [
+          new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: label, bold: true })] })] }),
+          ...reviewerNames.map(name => new TableCell({ children: [new Paragraph({ children: [new TextRun(panelSummary.ratingMatrix[key][name] || 'N/A')], alignment: AlignmentType.CENTER })] })),
+        ],
+      }));
+    children.push(new Table({ rows: [headerRow, ...dataRows], width: { size: 100, type: WidthType.PERCENTAGE } }));
+    children.push(new Paragraph({ text: '' }));
+  }
+
+  if (panelSummary?.consensus?.length > 0) {
+    children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Consensus Points')] }));
+    panelSummary.consensus.forEach(p => children.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun(p)] })));
+    children.push(new Paragraph({ text: '' }));
+  }
+
+  if (panelSummary?.disagreements?.length > 0) {
+    children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Disagreements')] }));
+    panelSummary.disagreements.forEach(d => {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(d.topic)] }));
+      if (d.positions) {
+        Object.entries(d.positions).forEach(([reviewer, position]) => {
+          children.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: `${reviewer}: `, bold: true }), new TextRun(position)] }));
+        });
+      }
+      if (d.significance) {
+        children.push(new Paragraph({ children: [new TextRun({ text: d.significance, italics: true })] }));
+      }
+    });
+    children.push(new Paragraph({ text: '' }));
+  }
+
+  if (panelSummary?.questionsForPI?.length > 0) {
+    children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Questions for the PI')] }));
+    panelSummary.questionsForPI.forEach((q, i) => children.push(new Paragraph({ children: [new TextRun(`${i + 1}. ${q}`)] })));
+    children.push(new Paragraph({ text: '' }));
+  }
+
+  // Individual reviews
+  children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Individual Reviews')] }));
+  for (const review of structuredReviews) {
+    const p = review.parsedResponse;
+    if (!p) continue;
+    children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(`${review.providerName} (${review.model})`)] }));
+    const fields = [
+      ['Impact', p.impactRating, p.impactNarrative],
+      ['Risk', p.riskRating, p.riskNarrative],
+      ['Methods', null, p.methodsAssessment],
+      ['Questions for PI', null, p.questionsForPI],
+      ['Team', null, p.teamAssessment],
+      ['Funding Alternatives', null, p.fundingAlternatives],
+      ['Budget', null, p.budgetIssues],
+      ['Overall', p.overallRating, null],
+      ['Additional Comments', null, p.additionalComments],
+    ];
+    for (const [label, rating, narrative] of fields) {
+      const runs = [new TextRun({ text: `${label}: `, bold: true })];
+      if (rating) runs.push(new TextRun({ text: rating, bold: true }));
+      if (rating && narrative) runs.push(new TextRun(' — '));
+      if (narrative) runs.push(new TextRun(narrative));
+      if (rating || narrative) children.push(new Paragraph({ children: runs }));
+    }
+    children.push(new Paragraph({ text: '' }));
+  }
+
+  // Cost
+  if (costBreakdown) {
+    children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Cost Breakdown')] }));
+    const costRows = Object.entries(costBreakdown).map(([provider, cost]) =>
+      new TableRow({
+        children: [
+          new TableCell({ children: [new Paragraph({ children: [new TextRun(PROVIDER_INFO[provider]?.name || provider)] })] }),
+          new TableCell({ children: [new Paragraph({ children: [new TextRun(`$${(cost / 100).toFixed(4)}`)], alignment: AlignmentType.RIGHT })] }),
+        ],
+      })
+    );
+    costRows.push(new TableRow({
+      children: [
+        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Total', bold: true })] })] }),
+        new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: `$${((totalCostCents || 0) / 100).toFixed(4)}`, bold: true })], alignment: AlignmentType.RIGHT })] }),
+      ],
+    }));
+    children.push(new Table({
+      rows: [
+        new TableRow({
+          children: [
+            new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Provider', bold: true })] })] }),
+            new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: 'Cost', bold: true })], alignment: AlignmentType.RIGHT })] }),
+          ],
+        }),
+        ...costRows,
+      ],
+      width: { size: 50, type: WidthType.PERCENTAGE },
+    }));
+  }
+
+  const doc = new Document({ sections: [{ children }] });
+  const buffer = await Packer.toBlob(doc);
+  const url = URL.createObjectURL(buffer);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${baseName}_panel_review.docx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
  * Main Virtual Review Panel component
  */
 function VirtualReviewPanelContent() {
@@ -540,12 +799,15 @@ function VirtualReviewPanelContent() {
         {/* Upload Section */}
         <Card title="Upload Proposal">
           <FileUploaderSimple
-            files={files}
-            setFiles={setFiles}
-            maxFiles={1}
+            onFilesUploaded={setFiles}
+            multiple={false}
             accept=".pdf"
-            disabled={processing}
           />
+          {files.length > 0 && (
+            <p className="text-sm text-green-600 mt-2">
+              Uploaded: {files[0].filename}
+            </p>
+          )}
         </Card>
 
         {/* Configuration */}
@@ -661,6 +923,26 @@ function VirtualReviewPanelContent() {
         {/* Results Section */}
         {hasResults && (
           <div className="space-y-6">
+            {/* Export Buttons */}
+            <div className="flex gap-3 justify-end">
+              <Button
+                onClick={() => {
+                  const md = buildMarkdownExport(files[0]?.filename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents);
+                  const baseName = (files[0]?.filename || 'proposal').replace(/\.pdf$/i, '');
+                  downloadFile(md, `${baseName}_panel_review.md`, 'text/markdown');
+                }}
+                className="text-sm px-4 py-2"
+              >
+                Export Markdown
+              </Button>
+              <Button
+                onClick={() => downloadDocx(files[0]?.filename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents)}
+                className="text-sm px-4 py-2"
+              >
+                Export DOCX
+              </Button>
+            </div>
+
             {/* Rating Matrix */}
             {panelSummary?.ratingMatrix && (
               <RatingMatrix
