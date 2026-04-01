@@ -4,6 +4,20 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## March 2026 — Virtual Review Panel: Stage 0 Intelligence + Prompt Rebalancing (Session 91)
+
+Major iteration on Virtual Review Panel based on CSO feedback and new architecture for literature-grounded reviews.
+
+- **Prompt rebalancing**: Rewrote all prompts to balance critique with upside evaluation per Keck's risk-tolerant philosophy. Added rating calibration (use full range), proposal classifier (5 types), `keyUncertaintyResolution` field. Renamed `keyWeaknesses` → `keyConcerns`, added `keyStrengths` and `resolvableVsFundamental` to synthesis.
+- **Stage 0 pre-review intelligence**: Optional pipeline — Haiku extracts search queries → parallel searches across PubMed/arXiv/bioRxiv/ChemRxiv/Google Scholar → Haiku collates → Perplexity synthesizes field landscape. Intelligence block injected into Stage 1/2 prompts. Gracefully degradable at each substage.
+- **New service**: `LiteratureSearchService` wrapping existing academic database services with deduplication and normalization.
+- **Bug fixes**: OpenAI silent timeouts (3-min Promise.race), event log disappearing after completion, JSON parse failures silently passing null, `resolvableVsFundamental` objects crashing React render.
+- **Frontend**: Stage 0 toggle, intelligence progress display, all new/renamed fields in UI + Markdown + DOCX exports.
+
+**Files:** `lib/services/literature-search-service.js` (new), `lib/services/panel-review-service.js`, `lib/services/multi-llm-service.js`, `shared/config/prompts/virtual-review-panel.js`, `pages/virtual-review-panel.js`, `pages/api/virtual-review-panel.js`
+
+---
+
 ## March 2026 — Feedback Logging, Query Fixes, Request Number Backfill (Session 85)
 
 Built a feedback logging system for Dynamics Explorer (thumbs up/down + auto-detection of failures), fixed export_csv and status field query failures, and backfilled Dynamics request numbers into the Postgres database.
