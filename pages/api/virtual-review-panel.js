@@ -74,6 +74,7 @@ export default async function handler(req, res) {
       files,
       providers: requestedProviders = ['claude', 'openai'],
       includeClaimVerification = true,
+      includeIntelligencePass = false,
     } = req.body;
 
     const userProfileId = access.profileId;
@@ -136,6 +137,7 @@ export default async function handler(req, res) {
       config: {
         providers,
         includeClaimVerification,
+        includeIntelligencePass,
         availableProviders,
       },
     });
@@ -147,6 +149,7 @@ export default async function handler(req, res) {
 
     await PanelReviewService.runFullPanel(panelReviewId, proposalText, providers, {
       includeClaimVerification,
+      includeIntelligencePass,
       loggingContext,
       sendEvent,
     });

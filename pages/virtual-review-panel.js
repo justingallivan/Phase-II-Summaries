@@ -190,6 +190,7 @@ function ReviewerCard({ review }) {
     { key: 'impactNarrative', label: 'Significant Impacts', type: 'text' },
     { key: 'riskRating', label: 'Risk Rating', type: 'rating' },
     { key: 'riskNarrative', label: 'Risk Analysis', type: 'text' },
+    { key: 'keyUncertaintyResolution', label: 'Key Uncertainty', type: 'text' },
     { key: 'methodsAssessment', label: 'Methods Assessment', type: 'text' },
     { key: 'questionsForPI', label: 'Questions for PI', type: 'text' },
     { key: 'teamAssessment', label: 'Team Assessment', type: 'text' },
@@ -276,6 +277,31 @@ function PanelSummary({ summary }) {
         </Card>
       )}
 
+      {/* Key Strengths */}
+      {summary.keyStrengths?.length > 0 && (
+        <Card title="Key Strengths">
+          <ul className="space-y-2">
+            {summary.keyStrengths.map((s, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                <span className="text-green-500 mt-0.5 flex-shrink-0">+</span>
+                {s}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {/* Key Concerns */}
+      {summary.keyConcerns?.length > 0 && (
+        <Card title="Key Concerns">
+          <ol className="list-decimal list-inside space-y-2">
+            {summary.keyConcerns.map((c, i) => (
+              <li key={i} className="text-sm text-gray-700">{c}</li>
+            ))}
+          </ol>
+        </Card>
+      )}
+
       {/* Disagreements */}
       {summary.disagreements?.length > 0 && (
         <Card title="Disagreements">
@@ -310,6 +336,37 @@ function PanelSummary({ summary }) {
               <li key={i} className="text-sm text-gray-700">{q}</li>
             ))}
           </ol>
+        </Card>
+      )}
+
+      {/* Resolvable vs Fundamental Concerns */}
+      {summary.resolvableVsFundamental?.length > 0 && (
+        <Card title="Resolvable vs. Fundamental Concerns">
+          <div className="space-y-3">
+            {summary.resolvableVsFundamental.map((item, i) => {
+              if (typeof item === 'string') {
+                return (
+                  <div key={i} className="text-sm text-gray-700 pl-4 border-l-2 border-gray-300">
+                    {item}
+                  </div>
+                );
+              }
+              // Object form: {concern, classification, resolution}
+              const label = item.concern || item.issue || item.description || JSON.stringify(item);
+              const cls = item.classification || item.type || '';
+              return (
+                <div key={i} className="text-sm text-gray-700 pl-4 border-l-2 border-gray-300">
+                  {cls && (
+                    <><span className={`font-medium ${cls.toLowerCase().includes('fundamental') ? 'text-red-600' : 'text-amber-600'}`}>
+                      [{cls}]
+                    </span>{' '}</>
+                  )}
+                  <span className="font-medium">{label}</span>
+                  {item.resolution && <span className="text-gray-500"> — {item.resolution}</span>}
+                </div>
+              );
+            })}
+          </div>
         </Card>
       )}
 
@@ -414,6 +471,18 @@ function buildMarkdownExport(proposalFilename, panelSummary, structuredReviews, 
     lines.push('');
   }
 
+  if (panelSummary?.keyStrengths?.length > 0) {
+    lines.push('## Key Strengths');
+    panelSummary.keyStrengths.forEach(s => lines.push(`- ${s}`));
+    lines.push('');
+  }
+
+  if (panelSummary?.keyConcerns?.length > 0) {
+    lines.push('## Key Concerns');
+    panelSummary.keyConcerns.forEach((c, i) => lines.push(`${i + 1}. ${c}`));
+    lines.push('');
+  }
+
   if (panelSummary?.disagreements?.length > 0) {
     lines.push('## Disagreements');
     panelSummary.disagreements.forEach(d => {
@@ -434,6 +503,15 @@ function buildMarkdownExport(proposalFilename, panelSummary, structuredReviews, 
     lines.push('');
   }
 
+  if (panelSummary?.resolvableVsFundamental?.length > 0) {
+    lines.push('## Resolvable vs. Fundamental Concerns');
+    panelSummary.resolvableVsFundamental.forEach(item => {
+      const text = typeof item === 'string' ? item : `${item.classification || item.type ? `[${item.classification || item.type}] ` : ''}${item.concern || item.issue || item.description || JSON.stringify(item)}${item.resolution ? ` — ${item.resolution}` : ''}`;
+      lines.push(`- ${text}`);
+    });
+    lines.push('');
+  }
+
   if (panelSummary?.claimVerificationHighlights?.length > 0) {
     lines.push('## Claim Verification Highlights');
     panelSummary.claimVerificationHighlights.forEach(h => lines.push(`- ⚠ ${h}`));
@@ -451,6 +529,7 @@ function buildMarkdownExport(proposalFilename, panelSummary, structuredReviews, 
     if (p.impactNarrative) lines.push(`  ${p.impactNarrative}`);
     lines.push(`- **Risk:** ${p.riskRating || 'N/A'}`);
     if (p.riskNarrative) lines.push(`  ${p.riskNarrative}`);
+    if (p.keyUncertaintyResolution) lines.push(`- **Key Uncertainty:** ${p.keyUncertaintyResolution}`);
     if (p.methodsAssessment) lines.push(`- **Methods:** ${p.methodsAssessment}`);
     if (p.questionsForPI) lines.push(`- **Questions for PI:** ${p.questionsForPI}`);
     if (p.teamAssessment) lines.push(`- **Team:** ${p.teamAssessment}`);
@@ -537,6 +616,18 @@ async function downloadDocx(proposalFilename, panelSummary, structuredReviews, c
     children.push(new Paragraph({ text: '' }));
   }
 
+  if (panelSummary?.keyStrengths?.length > 0) {
+    children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Key Strengths')] }));
+    panelSummary.keyStrengths.forEach(s => children.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun(s)] })));
+    children.push(new Paragraph({ text: '' }));
+  }
+
+  if (panelSummary?.keyConcerns?.length > 0) {
+    children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Key Concerns')] }));
+    panelSummary.keyConcerns.forEach((c, i) => children.push(new Paragraph({ children: [new TextRun(`${i + 1}. ${c}`)] })));
+    children.push(new Paragraph({ text: '' }));
+  }
+
   if (panelSummary?.disagreements?.length > 0) {
     children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Disagreements')] }));
     panelSummary.disagreements.forEach(d => {
@@ -559,6 +650,15 @@ async function downloadDocx(proposalFilename, panelSummary, structuredReviews, c
     children.push(new Paragraph({ text: '' }));
   }
 
+  if (panelSummary?.resolvableVsFundamental?.length > 0) {
+    children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Resolvable vs. Fundamental Concerns')] }));
+    panelSummary.resolvableVsFundamental.forEach(item => {
+      const text = typeof item === 'string' ? item : `${item.classification || item.type ? `[${item.classification || item.type}] ` : ''}${item.concern || item.issue || item.description || JSON.stringify(item)}${item.resolution ? ` — ${item.resolution}` : ''}`;
+      children.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun(text)] }));
+    });
+    children.push(new Paragraph({ text: '' }));
+  }
+
   // Individual reviews
   children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Individual Reviews')] }));
   for (const review of structuredReviews) {
@@ -568,6 +668,7 @@ async function downloadDocx(proposalFilename, panelSummary, structuredReviews, c
     const fields = [
       ['Impact', p.impactRating, p.impactNarrative],
       ['Risk', p.riskRating, p.riskNarrative],
+      ['Key Uncertainty', null, p.keyUncertaintyResolution],
       ['Methods', null, p.methodsAssessment],
       ['Questions for PI', null, p.questionsForPI],
       ['Team', null, p.teamAssessment],
@@ -634,6 +735,7 @@ function VirtualReviewPanelContent() {
   const [files, setFiles] = useState([]);
   const [selectedProviders, setSelectedProviders] = useState(['claude', 'openai']);
   const [includeClaimVerification, setIncludeClaimVerification] = useState(true);
+  const [includeIntelligencePass, setIncludeIntelligencePass] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState(null);
   const [events, setEvents] = useState([]);
@@ -694,6 +796,7 @@ function VirtualReviewPanelContent() {
           files: files.map(f => ({ url: f.url, filename: f.filename })),
           providers: selectedProviders,
           includeClaimVerification,
+          includeIntelligencePass,
         }),
       });
 
@@ -734,7 +837,7 @@ function VirtualReviewPanelContent() {
     } finally {
       setProcessing(false);
     }
-  }, [files, selectedProviders, includeClaimVerification]);
+  }, [files, selectedProviders, includeClaimVerification, includeIntelligencePass]);
 
   const handleEvent = useCallback((data) => {
     setEvents(prev => [...prev, data]);
@@ -854,7 +957,19 @@ function VirtualReviewPanelContent() {
               />
             </div>
 
-            <div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeIntelligencePass}
+                  onChange={(e) => setIncludeIntelligencePass(e.target.checked)}
+                  disabled={processing}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">
+                  Include pre-review intelligence pass (Stage 0) — searches academic databases to ground reviews in real literature
+                </span>
+              </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -884,18 +999,39 @@ function VirtualReviewPanelContent() {
 
         {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
 
-        {/* Progress Section */}
-        {processing && (
-          <Card title="Panel Progress">
+        {/* Progress Section — visible during processing AND after completion */}
+        {(processing || events.length > 0) && (
+          <Card title={processing ? 'Panel Progress' : 'Panel Progress (Complete)'}>
             <div className="space-y-4">
               {currentStage && (
-                <div className="text-sm font-medium text-blue-600 mb-2">
-                  Current stage: {currentStage.replace(/_/g, ' ')}
+                <div className={`text-sm font-medium mb-2 ${processing ? 'text-blue-600' : 'text-green-600'}`}>
+                  {processing ? `Current stage: ${currentStage.replace(/_/g, ' ')}` : 'All stages complete'}
+                </div>
+              )}
+
+              {/* Intelligence Pass status */}
+              {includeIntelligencePass && events.some(e => e.message?.startsWith('Stage 0')) && (
+                <div>
+                  <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">Pre-Review Intelligence (Stage 0)</h4>
+                  <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+                    {events
+                      .filter(e => e.message?.startsWith('Stage 0') || e.message?.includes('Intelligence pass'))
+                      .map((e, i) => (
+                        <div key={i} className="text-sm text-gray-600 flex items-center gap-2">
+                          {e.message.includes('complete') || e.message.includes('Complete')
+                            ? <span className="text-green-500">&#10003;</span>
+                            : e.message.includes('failed') || e.message.includes('Failed')
+                            ? <span className="text-red-500">&#10007;</span>
+                            : <span className="text-blue-500 animate-pulse">&#9679;</span>}
+                          <span>{e.message}</span>
+                        </div>
+                      ))}
+                  </div>
                 </div>
               )}
 
               {/* Claim Verification status */}
-              {includeClaimVerification && (
+              {includeClaimVerification && Object.keys(providerStatuses).some(k => k.includes('claim_verification')) && (
                 <div>
                   <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">Claim Verification</h4>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -918,32 +1054,34 @@ function VirtualReviewPanelContent() {
               )}
 
               {/* Structured Review status */}
-              <div>
-                <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">Structured Review</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  {selectedProviders.map(p => {
-                    const key = `${p}_structured_review`;
-                    const s = providerStatuses[key] || { status: 'pending' };
-                    return (
-                      <ProviderStatusCard
-                        key={key}
-                        provider={p}
-                        status={s.status}
-                        stage="structured review"
-                        latencyMs={s.latencyMs}
-                        model={s.model || providerModels[p]}
-                      />
-                    );
-                  })}
+              {Object.keys(providerStatuses).some(k => k.includes('structured_review')) && (
+                <div>
+                  <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">Structured Review</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {selectedProviders.map(p => {
+                      const key = `${p}_structured_review`;
+                      const s = providerStatuses[key] || { status: 'pending' };
+                      return (
+                        <ProviderStatusCard
+                          key={key}
+                          provider={p}
+                          status={s.status}
+                          stage="structured review"
+                          latencyMs={s.latencyMs}
+                          model={s.model || providerModels[p]}
+                        />
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Event log */}
               <details className="text-xs text-gray-400">
                 <summary className="cursor-pointer">Event log ({events.length} events)</summary>
                 <pre className="mt-2 max-h-40 overflow-y-auto bg-gray-50 p-2 rounded">
                   {events.map((e, i) => (
-                    <div key={i}>{e.event}: {e.message || e.provider || ''}</div>
+                    <div key={i}>{e.event}: {e.message || e.provider || e.error || ''}</div>
                   ))}
                 </pre>
               </details>

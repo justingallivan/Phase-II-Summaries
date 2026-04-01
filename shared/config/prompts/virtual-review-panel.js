@@ -1,10 +1,11 @@
 /**
  * Prompt templates for Virtual Review Panel
  *
- * Two-stage review process per LLM:
- * - Stage 1 (Claim Verification): Verify novelty claims, check for precedent in literature
- * - Stage 2 (Structured Review): Answer the WMKF reviewer form questions
- * - Synthesis: Claude summarizes consensus, disagreements, and questions across all reviewers
+ * Pipeline stages:
+ * - Stage 0 (optional): Pre-review intelligence — extract claims, search real databases, synthesize landscape
+ * - Stage 1 (optional): Claim verification across all selected LLMs
+ * - Stage 2: Structured review (WMKF reviewer form) across all selected LLMs
+ * - Synthesis: Claude panel summary with consensus, disagreements, questions
  */
 
 /**
@@ -73,43 +74,254 @@ export const REVIEWER_FORM_QUESTIONS = [
   },
 ];
 
+// ============================================
+// STAGE 0: PRE-REVIEW INTELLIGENCE
+// ============================================
+
+/**
+ * Stage 0a: Claim Extraction prompt (Haiku)
+ *
+ * Cheap preliminary step — extracts searchable claims and metadata
+ * from the proposal. Output drives database searches in Stage 0b.
+ */
+export function createClaimExtractionPrompt(proposalText) {
+  return `You are extracting search queries from a research proposal for use in academic literature databases. Do not evaluate the proposal — just extract searchable terms.
+
+From the proposal text below, extract:
+1. All novelty claims — phrases where the proposers claim something is "first," "novel," "unprecedented," "new," or "unique." For each, write a short (3-6 word) search string that captures the core claim in terms a database would match.
+2. The core experimental or computational techniques being proposed. Write 2-3 search strings that would find prior work using these techniques.
+3. The names of the PI and any co-PIs (full names as they appear in the proposal).
+4. The primary research field or subfield (1-2 words, e.g., "synthetic biology", "stellar astrophysics", "quantum sensing").
+
+Return as JSON:
+{
+  "noveltySearchStrings": ["string1", "string2", ...],
+  "techniqueSearchStrings": ["string1", "string2", ...],
+  "piNames": ["Name1", "Name2", ...],
+  "field": "field name"
+}
+
+Return only JSON. No preamble or explanation.
+
+PROPOSAL TEXT:
+${proposalText}`;
+}
+
+/**
+ * Stage 0c: Search Result Collation prompt (Haiku)
+ *
+ * Takes raw search results from academic databases and collates them
+ * into a structured summary for downstream use.
+ */
+export function createSearchCollationPrompt(proposalText, claimData, rawSearchResults) {
+  return `You are collating academic database search results for grant reviewers. You have raw results from PubMed, arXiv, bioRxiv, ChemRxiv, and Google Scholar. Organize them into a structured briefing.
+
+PROPOSAL CONTEXT:
+Field: ${claimData.field}
+PIs: ${claimData.piNames?.join(', ')}
+Novelty claims searched: ${JSON.stringify(claimData.noveltySearchStrings)}
+Technique searches: ${JSON.stringify(claimData.techniqueSearchStrings)}
+
+RAW SEARCH RESULTS:
+${JSON.stringify(rawSearchResults, null, 2)}
+
+From these results, produce a structured summary. For each item, assess how directly relevant it is to the proposal.
+
+Return as JSON:
+{
+  "mostRelevantPapers": [
+    {
+      "citation": "Authors, Title, Journal/Source, Year",
+      "source": "pubmed | arxiv | biorxiv | chemrxiv | google_scholar",
+      "relevanceToProposal": "One sentence — how does this relate to what is proposed?",
+      "comparability": "direct | partial | tangential",
+      "matchedClaim": "Which novelty or technique claim this relates to"
+    }
+  ],
+  "piPublicationSummary": [
+    {
+      "piName": "Name",
+      "recentTopics": ["topic1", "topic2"],
+      "apparentExpertise": ["expertise1", "expertise2"],
+      "notableGaps": "Techniques or areas proposed but not evident in publication record (or 'none identified')"
+    }
+  ],
+  "recentPreprints": [
+    {
+      "citation": "Authors, Title, Source, Year",
+      "significance": "competing | prior_demonstration | complementary | negative_result",
+      "explanation": "One sentence"
+    }
+  ],
+  "landscapeSummary": "2-3 sentences: How active is this area? Are there many groups working on similar problems, or is it relatively unexplored? What do the search results suggest about the novelty of the proposed work?",
+  "searchGaps": "Note any searches that returned no results or very few results — this can indicate either genuine novelty or poorly chosen search terms."
+}
+
+Be precise. Only include papers that are actually relevant — do not pad the list. If a database returned no relevant results, say so.`;
+}
+
+/**
+ * Stage 0d: Intelligence Synthesis prompt (Perplexity)
+ *
+ * Takes the collated search results and uses Perplexity's web search
+ * to fill gaps, identify active groups, and provide broader context.
+ */
+export function createIntelligenceSynthesisPrompt(proposalText, claimData, collatedResults) {
+  return `You are a research intelligence analyst preparing a briefing for grant reviewers at the W. M. Keck Foundation. You have access to web search AND the results of database searches already completed. Your job is to FILL GAPS in the existing search results, not repeat what's already been found.
+
+PROPOSAL FIELD: ${claimData.field}
+PIs: ${claimData.piNames?.join(', ')}
+
+DATABASE SEARCH RESULTS (already completed — do not re-search for these):
+${JSON.stringify(collatedResults, null, 2)}
+
+Using your search capabilities, SUPPLEMENT the existing results by finding:
+
+1. **Active groups** — Who are the 5-8 most active research groups working on directly related problems? The database search found some papers, but search specifically for lab websites, group pages, and recent news that identifies who is leading this field right now. Note their institution and specific focus.
+
+2. **Competing approaches** — Are there approaches to the same scientific problem that the database searches may have missed? Look for conference proceedings, industry efforts, or work in adjacent fields.
+
+3. **Open problems** — What are the acknowledged unsolved challenges in this specific area? Search for recent review articles or perspective pieces that identify open questions.
+
+4. **Gap filling** — The database search noted these gaps: ${collatedResults.searchGaps || 'none noted'}. Search specifically for information that fills these gaps.
+
+5. **PI context** — Search for the PIs beyond their publications — lab websites, recent talks, grants, press coverage. This helps assess their current capacity and direction.
+
+Do NOT repeat papers already found in the database search. Focus only on new information.
+
+Return as JSON:
+{
+  "activeGroups": [
+    {
+      "pi": "Name",
+      "institution": "Institution",
+      "focus": "One sentence",
+      "recentActivity": "Most recent relevant output (paper, talk, grant) with year"
+    }
+  ],
+  "competingApproaches": [
+    "Approach and recent progress — one sentence each"
+  ],
+  "openProblems": [
+    "Problem statement — one sentence each"
+  ],
+  "additionalContext": "2-3 sentences of context the database searches missed — broader field trends, recent developments, or important nuances.",
+  "piContext": [
+    {
+      "name": "PI Name",
+      "labUrl": "URL if found",
+      "recentActivity": "Notable recent grants, talks, or lab developments"
+    }
+  ],
+  "gapResolution": "What did you find (or not find) for the gaps identified in the database search?"
+}
+
+PROPOSAL TEXT (for reference):
+${proposalText}`;
+}
+
+/**
+ * Assembles Stage 0 outputs into a single intelligence block
+ * for injection into Stage 1 and Stage 2 prompts.
+ */
+export function assembleIntelligenceBlock(collatedResults, perplexitySynthesis) {
+  return {
+    // From database search collation (Haiku)
+    mostRelevantPapers: collatedResults?.mostRelevantPapers ?? [],
+    piPublicationSummary: collatedResults?.piPublicationSummary ?? [],
+    recentPreprints: collatedResults?.recentPreprints ?? [],
+    landscapeSummary: collatedResults?.landscapeSummary ?? '',
+    searchGaps: collatedResults?.searchGaps ?? '',
+    // From Perplexity synthesis
+    activeGroups: perplexitySynthesis?.activeGroups ?? [],
+    competingApproaches: perplexitySynthesis?.competingApproaches ?? [],
+    openProblems: perplexitySynthesis?.openProblems ?? [],
+    additionalContext: perplexitySynthesis?.additionalContext ?? '',
+    piContext: perplexitySynthesis?.piContext ?? [],
+  };
+}
+
+// ============================================
+// STAGE 1: CLAIM VERIFICATION
+// ============================================
+
 /**
  * Stage 1: Claim Verification prompt (general — for Claude, GPT, Gemini)
  *
  * Asks the LLM to identify and verify key claims in the proposal,
  * especially novelty claims, and flag any precedent or concerns.
  */
-export function createClaimVerificationPrompt(proposalText) {
-  return `You are an expert scientific reviewer conducting due diligence on a research grant proposal submitted to the W. M. Keck Foundation. Your task is to identify and verify the key claims made in this proposal.
+export function createClaimVerificationPrompt(proposalText, intelligenceBlock = null) {
+  const intelligenceSection = intelligenceBlock ? `
+PRE-SEARCH INTELLIGENCE (completed before this review):
+The following literature search was conducted prior to your review using academic databases (PubMed, arXiv, bioRxiv, ChemRxiv, Google Scholar) and web search. Use it to inform your assessment — do not repeat searches already completed. Focus your analysis on interpreting these findings and identifying what they mean for the proposal's claims.
 
-Focus especially on:
-1. **Novelty claims** — Does the proposer claim something is "first," "novel," "unprecedented," or "new"? Is there precedent in the literature?
-2. **Feasibility claims** — Are the proposed methods proven? Are there technical barriers the authors don't acknowledge?
-3. **Impact claims** — Are the stated impacts realistic given the scope and budget?
-4. **Team credentials** — Do the described qualifications match what's needed for the proposed work?
+Most relevant papers found: ${JSON.stringify(intelligenceBlock.mostRelevantPapers, null, 2)}
 
-For each significant claim you identify, assess whether it is:
-- **Supported**: Consistent with established knowledge
-- **Partially supported**: Some merit but overstated or missing context
-- **Unsupported**: No clear basis or contradicted by known evidence
-- **Needs verification**: Cannot determine without additional sources
+Active groups in this area: ${JSON.stringify(intelligenceBlock.activeGroups, null, 2)}
+
+Competing approaches: ${JSON.stringify(intelligenceBlock.competingApproaches, null, 2)}
+
+Open problems in the field: ${JSON.stringify(intelligenceBlock.openProblems, null, 2)}
+
+PI publication summary: ${JSON.stringify(intelligenceBlock.piPublicationSummary, null, 2)}
+
+Recent preprints: ${JSON.stringify(intelligenceBlock.recentPreprints, null, 2)}
+
+Landscape summary: ${intelligenceBlock.landscapeSummary}
+
+Additional context: ${intelligenceBlock.additionalContext}
+` : '';
+
+  return `You are a senior scientist conducting due diligence on a research grant proposal submitted to the W. M. Keck Foundation. The Foundation funds high-risk, high-reward science — projects that push boundaries and may not have extensive preliminary data. Your job is to contextualize the claims in this proposal fairly, identifying both what is genuinely novel and where claims may be overstated.
+
+Before evaluating any claims, classify this proposal by its primary nature. Choose the best fit from:
+- experimental/empirical — tests hypotheses by measuring physical, biological, or chemical systems
+- instrument/platform-building — creates new tools, robots, sensors, or observational infrastructure
+- theoretical/computational — develops mathematical frameworks, models, or simulations without a primary experimental component
+- AI/data-driven — applies machine learning or large-scale data analysis as the primary scientific method
+- hybrid — combines two or more of the above in roughly equal measure (specify which)
+
+Based on the classification, apply the scrutiny lenses most appropriate to this proposal type:
+- For experimental/empirical: assess whether proposed effects are likely to be in a detectable or accessible regime given known properties of the system
+- For instrument/platform-building: assess engineering feasibility, deployment logistics, failure modes, and whether the scientific yield justifies the construction effort
+- For theoretical/computational: assess mathematical tractability, whether outputs are falsifiable or experimentally testable, and whether the framework advances beyond existing models
+- For AI/data-driven: assess data availability and quality, model validation strategy, interpretability of outputs, and whether the scientific conclusions depend on the AI performing reliably out-of-distribution
+- For hybrid proposals: apply the relevant lenses to each component separately, then assess whether the components are genuinely integrated or could succeed/fail independently
+
+Your task is to identify the significant claims and evaluate them:
+
+1. **Novelty claims** — When the proposers claim novelty ("first," "novel," "unprecedented," "new"), search your knowledge for prior work. Be precise about what constitutes actual precedent:
+   - Work in a different organism, system, or context is NOT the same as precedent for this specific application. A technique proven in mice does not mean it has been done in coral, even if the underlying method is similar.
+   - Combining known techniques in a new way or applying them to an unstudied system IS a form of novelty. Do not dismiss it as "merely incremental."
+   - If you identify prior work, explain specifically how close it is to what is proposed — same system? Same scale? Same question?
+
+2. **Feasibility claims** — What are the hardest technical steps? Note both what could go wrong AND what mitigating factors exist (team expertise, preliminary data, alternative approaches mentioned). Distinguish between "risky" and "fatally flawed" — Keck explicitly funds risky work.
+
+3. **Impact claims** — Evaluate the upside: if this works, how significant would it be? Then separately assess how realistic the path to that impact is. Do not conflate "uncertain" with "unlikely."
+
+4. **Team credentials** — Do the PIs have relevant expertise? Note both direct experience with the proposed techniques and adjacent expertise that could transfer. A strong team tackling a new direction is a positive signal for Keck, not a concern.
+
+IMPORTANT: Use "needs_verification" honestly — it means you lack information, not that something is suspect. Do not default to skepticism as a substitute for knowledge. If prior work you cite is in a substantially different system or context, note that distinction explicitly.
 
 Return your analysis as JSON:
 {
+  "proposalClassification": "Your chosen category and a one-sentence justification",
+  "scrutinyLensesApplied": ["List of the specific lenses you applied and why each is relevant to this proposal"],
   "claims": [
     {
       "claim": "The exact or paraphrased claim from the proposal",
       "category": "novelty | feasibility | impact | credentials",
       "assessment": "supported | partially_supported | unsupported | needs_verification",
-      "reasoning": "Your detailed reasoning, citing any known precedent or evidence",
+      "reasoning": "Your detailed reasoning. For novelty claims, name specific prior work AND explain how directly comparable it is. For feasibility claims, note both risks and mitigating factors.",
       "confidence": "high | medium | low"
     }
   ],
-  "overallNoveltyAssessment": "A 2-3 sentence summary of whether this proposal is genuinely novel",
-  "redFlags": ["List any serious concerns that should be investigated further"],
-  "backgroundContext": "A brief summary of the relevant research landscape that provides context for the Stage 2 review"
+  "overallNoveltyAssessment": "A 2-3 sentence assessment. Where does this fall on the spectrum from truly unprecedented to incremental extension? Be specific about what is new and what builds on existing work. Applying known methods to genuinely new questions or systems counts as meaningful novelty.",
+  "redFlags": ["Concerns that warrant further investigation. Focus on fundamental issues (logical flaws, missing key expertise, physically impossible claims) rather than lack of preliminary data or ambitious scope, which are expected for Keck proposals."],
+  "backgroundContext": "A summary of the relevant research landscape, including competing approaches, key groups, and — importantly — what has NOT been done that this proposal aims to do. This context will inform the Stage 2 review."
 }
-
+${intelligenceSection}
 PROPOSAL TEXT:
 ${proposalText}`;
 }
@@ -119,34 +331,71 @@ ${proposalText}`;
  *
  * Leverages Perplexity's built-in web search to verify claims with citations.
  */
-export function createPerplexityClaimVerificationPrompt(proposalText) {
-  return `You are an expert scientific reviewer verifying the claims in a research grant proposal submitted to the W. M. Keck Foundation. Use your web search capabilities to check each claim against current literature and recent publications.
+export function createPerplexityClaimVerificationPrompt(proposalText, intelligenceBlock = null) {
+  const intelligenceSection = intelligenceBlock ? `
+PRE-SEARCH INTELLIGENCE (completed before this review using PubMed, arXiv, bioRxiv, ChemRxiv, Google Scholar):
+${JSON.stringify({
+    mostRelevantPapers: intelligenceBlock.mostRelevantPapers,
+    piPublicationSummary: intelligenceBlock.piPublicationSummary,
+    recentPreprints: intelligenceBlock.recentPreprints,
+    landscapeSummary: intelligenceBlock.landscapeSummary,
+    activeGroups: intelligenceBlock.activeGroups,
+    competingApproaches: intelligenceBlock.competingApproaches,
+  }, null, 2)}
 
-Focus especially on:
-1. **Novelty claims** — Search for existing work that may already address what the proposers claim is new. Look for recent papers, preprints, and conference proceedings.
-2. **Feasibility claims** — Search for evidence that the proposed methods have been demonstrated or have known limitations.
-3. **Impact claims** — Search for the current state of the field to assess whether the claimed impacts are realistic.
-4. **Team credentials** — Search for the PI and co-PIs to verify their relevant expertise and publication record.
+Do not re-search for information already provided above. Use your search capabilities only to fill gaps, follow up on specific uncertainties, or verify claims not covered by the pre-search.
+` : '';
 
-For each significant claim, provide specific citations and URLs where possible.
+  return `You are a senior scientist with web search capabilities, conducting due diligence on a research grant proposal submitted to the W. M. Keck Foundation. The Foundation funds high-risk, high-reward science. Your job is to map the research landscape around this proposal — both to verify claims and to understand what makes this work distinctive.
+
+Before evaluating any claims, classify this proposal by its primary nature. Choose the best fit from:
+- experimental/empirical — tests hypotheses by measuring physical, biological, or chemical systems
+- instrument/platform-building — creates new tools, robots, sensors, or observational infrastructure
+- theoretical/computational — develops mathematical frameworks, models, or simulations without a primary experimental component
+- AI/data-driven — applies machine learning or large-scale data analysis as the primary scientific method
+- hybrid — combines two or more of the above in roughly equal measure (specify which)
+
+Based on the classification, apply the scrutiny lenses most appropriate to this proposal type:
+- For experimental/empirical: assess whether proposed effects are likely to be in a detectable or accessible regime given known properties of the system
+- For instrument/platform-building: assess engineering feasibility, deployment logistics, failure modes, and whether the scientific yield justifies the construction effort
+- For theoretical/computational: assess mathematical tractability, whether outputs are falsifiable or experimentally testable, and whether the framework advances beyond existing models
+- For AI/data-driven: assess data availability and quality, model validation strategy, interpretability of outputs, and whether the scientific conclusions depend on the AI performing reliably out-of-distribution
+- For hybrid proposals: apply the relevant lenses to each component separately, then assess whether the components are genuinely integrated or could succeed/fail independently
+
+Search for evidence relevant to evaluating these claims:
+
+1. **Novelty claims** — Search for existing work related to what the proposers claim is new. When you find prior work, be precise about the degree of overlap:
+   - Is it the same technique in the same system, or a similar technique in a different system/context?
+   - Has the specific combination of approach + system + question been published, or only individual components?
+   - Note what has NOT been done — gaps in the literature that this proposal would fill are as important as precedent.
+
+2. **Feasibility claims** — Search for evidence about the proposed methods — both successes and limitations. Look for whether the methods have been used at the proposed scale and in comparable systems. Note both cautionary examples and successful applications.
+
+3. **Impact claims** — Search for the current state of the field. How active is this area? What are the open questions this proposal addresses? If successful, would this work fill an important gap?
+
+4. **Team credentials** — Search for the PI and co-PIs. Look at their publication record for relevant expertise. Note both direct experience and transferable expertise from adjacent areas. For Keck proposals, a strong team moving into a new direction is a positive signal.
+
+IMPORTANT: Provide specific citations and URLs. When citing prior work as precedent, explain exactly how comparable it is to the current proposal — same system? Same scale? Same question? Work in a different organism or context should not be presented as if it directly undermines novelty claims.
 
 Return your analysis as JSON:
 {
+  "proposalClassification": "Your chosen category and a one-sentence justification",
+  "scrutinyLensesApplied": ["List of the specific lenses you applied and why each is relevant to this proposal"],
   "claims": [
     {
       "claim": "The exact or paraphrased claim from the proposal",
       "category": "novelty | feasibility | impact | credentials",
       "assessment": "supported | partially_supported | unsupported | needs_verification",
-      "reasoning": "Your detailed reasoning with specific citations",
+      "reasoning": "Your detailed reasoning with specific citations. Name authors, years, and journals. Explain specifically how comparable the prior work is to what is proposed here.",
       "sources": ["URLs or citation strings for evidence found"],
       "confidence": "high | medium | low"
     }
   ],
-  "overallNoveltyAssessment": "A 2-3 sentence summary of whether this proposal is genuinely novel, with key citations",
-  "redFlags": ["List any serious concerns with supporting evidence"],
-  "backgroundContext": "A brief summary of the relevant research landscape that provides context for the Stage 2 review"
+  "overallNoveltyAssessment": "A 2-3 sentence assessment with key citations. What is genuinely new here? What builds on existing work? What gaps in the literature would this fill?",
+  "redFlags": ["Concerns warranting further investigation — focus on fundamental issues, not on ambitious scope or limited preliminary data."],
+  "backgroundContext": "A summary of the relevant research landscape: competing groups, recent developments, open questions, and what has NOT yet been done that this proposal aims to address."
 }
-
+${intelligenceSection}
 PROPOSAL TEXT:
 ${proposalText}`;
 }
@@ -157,36 +406,68 @@ ${proposalText}`;
  * Asks the LLM to complete the WMKF reviewer form, optionally incorporating
  * claim verification results from Stage 1.
  */
-export function createStructuredReviewPrompt(proposalText, claimVerificationResults = null) {
+export function createStructuredReviewPrompt(proposalText, claimVerificationResults = null, intelligenceBlock = null) {
   const claimContext = claimVerificationResults
-    ? `\n\nPRIOR CLAIM VERIFICATION ANALYSIS:\nThe following claim verification was performed before this review. Use this context to inform your assessments, especially regarding novelty and feasibility:\n${JSON.stringify(claimVerificationResults, null, 2)}\n`
+    ? `\n\nPRIOR CLAIM VERIFICATION ANALYSIS:\nThe following claim verification was performed before this review. Use these findings to inform your assessment, but apply your own judgment — a claim marked "needs_verification" may still be reasonable, and prior work in a different system does not automatically undermine novelty.\n${JSON.stringify(claimVerificationResults, null, 2)}\n`
     : '';
 
-  return `You are an expert peer reviewer evaluating a research grant proposal for the W. M. Keck Foundation. The Foundation strives to fund research projects that may open new scientific directions, produce breakthrough discoveries, or lead to new technologies.
+  const stage0Section = intelligenceBlock ? `
+PRE-SEARCH FINDINGS (for reference):
+PI capability assessment — techniques proposed vs. publication record:
+${JSON.stringify(intelligenceBlock.piPublicationSummary, null, 2)}
 
-Please evaluate this proposal by answering the following questions, which are the same questions asked of human reviewers. Be thorough, specific, and candid in your assessment. Ground your evaluation in the specific details of the proposal.
+Recent preprint landscape:
+${intelligenceBlock.recentPreprints?.length > 0 ? JSON.stringify(intelligenceBlock.recentPreprints, null, 2) : 'No directly relevant preprints found.'}
+
+Field context: ${intelligenceBlock.landscapeSummary}
+${intelligenceBlock.additionalContext ? `Additional context: ${intelligenceBlock.additionalContext}` : ''}
+` : '';
+
+  return `You are a seasoned peer reviewer evaluating a research grant proposal for the W. M. Keck Foundation. The Foundation funds high-risk, high-reward research that opens new scientific directions — roughly $1M grants for work that would NOT be funded by traditional agencies like NSF or NIH.
+
+You are answering the same questions asked of human expert reviewers. Your review will be read by Foundation staff making funding decisions, so it must be substantive, specific, and balanced.
+
+ABOUT THE KECK FOUNDATION'S APPROACH:
+- Keck deliberately funds risky projects. "High risk" is not a negative — it is expected. The question is whether the potential payoff justifies the risk.
+- Proposals often arrive without extensive preliminary data for every aim. This is acceptable and even expected for the kind of early-stage, boundary-pushing work Keck funds. Do not penalize proposals for lacking preliminary data if the scientific rationale is sound.
+- Applying known methods to genuinely new systems, questions, or combinations IS meaningful novelty. Do not dismiss a proposal as "incremental" because individual components exist elsewhere — the question is whether the specific integration or application is new.
+- The Foundation values projects that established funders would reject as too speculative. Evaluate accordingly.
+
+REVIEW STANDARDS:
+- Evaluate BOTH the upside potential (what happens if this works?) AND the genuine concerns (what could prevent it from working?). A review that only finds problems is as incomplete as one that only finds praise.
+- Reference specific parts of the proposal (methods, aims, figures, budget items) to support your judgments.
+- When you identify a risk, also note whether the proposers have acknowledged it and whether mitigating strategies exist.
+- For each major concern you raise, consider what specific information, data, or clarification from the PI would most change your assessment. A concern that cannot be resolved through any conceivable PI response is a fundamental flaw; a concern that could be resolved with the right answer is a conditional risk. Distinguish between these.
+- Do not summarize what the proposal says — the reader has already read it. Evaluate and assess.
+
+RATING CALIBRATION:
+- These proposals have been prescreened and represent a competitive pool. Use the FULL range of ratings to differentiate between them. Some proposals genuinely deserve "Excellent" and some deserve "Fair" — do not compress ratings toward the middle.
+- The overall rating should reflect the risk-reward tradeoff as Keck would see it: a high-risk proposal with transformative potential can warrant "Excellent" even with significant uncertainties. A technically safe proposal with modest impact might be "Good" or "Fair" for Keck's purposes.
+- Your job is to give the Foundation a clear signal. A review where every dimension is rated in the same middle tier is not useful for ranking proposals against each other. Differentiate — what specifically makes this proposal stronger or weaker than a typical competitive submission?
 ${claimContext}
-Answer each question carefully and return your review as JSON with exactly these keys:
+Return your review as JSON with exactly these keys:
 
 {
   "impactRating": "One of: Little to no impact | Will result in publications of disciplinary interest | Will result in publications of broad interest | Will rewrite textbooks",
-  "impactNarrative": "What specific significant impacts do you foresee? (2-4 sentences)",
+  "impactNarrative": "What specific impacts do you foresee if the project succeeds — in full and in part? Consider both the direct scientific contribution and any downstream implications (new tools, methods, or understanding that would enable other work). (4-6 sentences)",
   "riskRating": "One of: Low risk | Medium risk | High risk | Impossible",
-  "riskNarrative": "What are the risks? Are they technical, hypothesis-related, or scope-related? (2-4 sentences)",
-  "methodsAssessment": "Are the methods, data gathering, and/or analysis appropriate? (2-4 sentences)",
-  "questionsForPI": "Questions or issues the Foundation should raise with the PI before making an award (bulleted list as a string)",
-  "teamAssessment": "Does the team have the necessary personnel and infrastructure? (2-3 sentences)",
-  "fundingAlternatives": "Could this project be supported by a traditional funding agency like NSF or NIH? Why or why not? (2-3 sentences)",
-  "budgetIssues": "Are there any issues with the budget? (1-3 sentences, or 'No significant budget concerns identified')",
+  "riskNarrative": "Identify the 2-3 biggest risks. For each: classify it (technical, conceptual, or scope-related) and assess what happens if it materializes — does the whole project fail, or do other aims still produce value? Note any mitigation strategies the proposers have included. Remember: for Keck, 'High risk' is acceptable if the potential reward is proportionate. 'Impossible' should be reserved for fatal flaws, not ambitious goals. (4-6 sentences)",
+  "keyUncertaintyResolution": "What single piece of information, data, or PI clarification would most change your overall assessment of this proposal — either upward or downward? Be concrete: name the specific experiment, result, calculation, or question-and-answer that would be most diagnostic. This should reflect your most important remaining uncertainty after reading the proposal. (2-3 sentences)",
+  "methodsAssessment": "Are the methods appropriate for the proposed work? Note both strengths (validated techniques, clever approaches, good controls) and gaps (missing controls, unvalidated techniques at this scale, statistical concerns). If a method is unproven in this specific context but established elsewhere, note that distinction. (4-6 sentences)",
+  "questionsForPI": "List 3-5 questions the Foundation should ask the PI. These should probe genuine uncertainties that would help the Foundation assess feasibility and potential — e.g., contingency plans, prioritization if not all aims succeed, key assumptions that could be tested early. (bulleted list as a string)",
+  "teamAssessment": "Does the team have the right expertise for this project? Consider both direct experience and transferable skills from adjacent areas. Note particular strengths (e.g., complementary expertise across co-PIs, unique infrastructure access) as well as any gaps. A team stretching into new territory can be a strength if their foundation is solid. (3-5 sentences)",
+  "fundingAlternatives": "Could this project be funded by NSF, NIH, DOE, or another agency? Be realistic about the CURRENT federal funding landscape — success rates at major agencies are very low (often 10-20%), and both NSF and NIH are conservative about high-risk projects with limited preliminary data. Do not cite specific programs unless you are confident they currently exist and are accepting proposals. Many programs that once existed have been discontinued or restructured. The key question: is this the kind of work that traditional funders would likely decline as too speculative? (3-5 sentences)",
+  "budgetIssues": "Is the budget appropriate for the scope of work? Note any items that seem over- or under-budgeted, or costs that appear to be missing. (2-4 sentences)",
   "overallRating": "One of: Excellent | Very Good | Good | Fair | Poor",
-  "additionalComments": "Any other observations about the proposal (optional, 1-3 sentences or null)"
+  "additionalComments": "What is the single strongest aspect of this proposal and the single most important concern? If you could tell the Foundation only one thing about this proposal, what would it be? (2-4 sentences)"
 }
 
-Important:
-- For rating fields, use EXACTLY one of the specified options
-- Be specific — reference actual proposal content, not generic statements
-- If you lack information to answer a question fully, say so explicitly
-
+CRITICAL INSTRUCTIONS:
+- For rating fields, use EXACTLY one of the specified options.
+- Be specific in all assessments — reference particular aims, methods, or claims rather than making general statements.
+- If you lack information to assess something, say what is missing and why it matters.
+- Do NOT adopt a conservative NIH/NSF study-section posture. You are reviewing for a private foundation that embraces risk. Evaluate whether the risk-reward tradeoff is favorable, not whether the project is guaranteed to succeed.
+${stage0Section}
 PROPOSAL TEXT:
 ${proposalText}`;
 }
@@ -208,7 +489,11 @@ export function createPanelSynthesisPrompt(reviews, claimVerifications = null) {
     ).join('\n\n')}\n`
     : '';
 
-  return `You are the chair of a review panel for the W. M. Keck Foundation. Multiple independent reviewers have evaluated a grant proposal. Your job is to synthesize their reviews into a panel summary.
+  return `You are the chair of a review panel for the W. M. Keck Foundation. Multiple independent reviewers have evaluated a grant proposal. Your job is to synthesize their reviews into an honest, actionable panel summary that helps the Foundation make a funding decision.
+
+The Keck Foundation funds high-risk, high-reward science. Your synthesis should reflect this philosophy — concerns about risk should be contextualized by potential payoff, and the panel summary should help the Foundation assess whether the risk-reward tradeoff is favorable, not simply whether risks exist.
+
+Each reviewer has also provided a classification of the proposal type and identified a key uncertainty that would most change their assessment. Use these to focus the panel summary on the concerns that are actually resolvable through PI conversation versus those that are fundamental.
 ${claimSection}
 INDIVIDUAL REVIEWS:
 ${reviewSections}
@@ -222,30 +507,40 @@ Produce a panel summary as JSON:
     "overallRating": { "reviewer1_name": "rating", "reviewer2_name": "rating", ... }
   },
   "consensus": [
-    "Points where all or most reviewers agree (be specific, 3-6 points)"
+    "Points where all or most reviewers agree — both strengths and concerns. Be specific about WHAT they agree on, not just that they agree. (3-6 points)"
   ],
   "disagreements": [
     {
       "topic": "What they disagree about",
       "positions": { "reviewer_name": "their position", ... },
-      "significance": "Why this disagreement matters for the funding decision"
+      "significance": "Why this disagreement matters for the funding decision. Would resolving it change the recommendation?"
     }
   ],
+  "keyStrengths": [
+    "The 3-5 most compelling strengths identified across reviews. What makes this proposal worth considering? What is the upside if it works?"
+  ],
+  "keyConcerns": [
+    "The 3-5 most significant concerns, ranked by severity. For each, note which reviewer(s) flagged it, whether it is addressable (e.g., through PI conversation) or fundamental, and whether it would be a concern specifically for Keck or is more of a traditional study-section objection."
+  ],
   "questionsForPI": [
-    "Consolidated unique questions from all reviewers that the Foundation should raise with the PI (deduplicated and prioritized)"
+    "Consolidated questions from all reviewers, deduplicated and ranked by importance. Include questions that would help the Foundation assess both feasibility and potential upside."
+  ],
+  "resolvableVsFundamental": [
+    "For each major concern identified across reviews, classify it as: (a) resolvable — could be addressed through PI conversation, additional preliminary data, or revised scope; or (b) fundamental — would require the project to succeed experimentally to resolve, meaning the Foundation must decide whether to accept the uncertainty. Draw on reviewers' keyUncertaintyResolution fields to populate this. List 3-5 concerns with their classification and what resolution would look like for the resolvable ones."
   ],
   "claimVerificationHighlights": [
-    "Key findings from claim verification that the panel should be aware of (if claim verification was performed)"
+    "Notable findings from claim verification — focus on claims where the literature search revealed important context (prior work, gaps, or competing approaches). If claim verification was not performed, return an empty array."
   ],
-  "panelRecommendation": "A 3-5 sentence overall panel assessment synthesizing the reviews. Note the overall consensus rating trend, key strengths, key concerns, and whether the panel leans toward funding or not.",
-  "confidenceNote": "A 1-2 sentence note about the confidence level of this virtual review — what aspects are well-suited to AI review vs. what would benefit from human expert judgment"
+  "panelRecommendation": "A 4-6 sentence overall panel assessment. Address: (1) Is the potential payoff significant enough to justify the risks? (2) What is the strongest reason to fund this? (3) What is the most important concern? (4) End with a clear lean: fund, decline, or fund-with-conditions — and if conditional, state what the Foundation would need to learn from the PI.",
+  "confidenceNote": "A 2-3 sentence note about what this virtual panel can and cannot assess. Be specific: which aspects of this particular proposal are well-suited to AI review (e.g., literature coverage, methodological rigor, budget analysis) and which require human judgment (e.g., lab visit, team dynamics, domain-specific feasibility that may be outside training data)?"
 }
 
-Important:
-- Use actual reviewer names (provider names) in the rating matrix and disagreements
-- Deduplicate questions — combine similar questions from different reviewers
-- Be balanced — represent all viewpoints fairly
-- The confidenceNote should be honest about AI limitations (e.g., inability to verify lab capabilities, assess team dynamics, or evaluate truly novel approaches outside training data)`;
+IMPORTANT:
+- Use actual reviewer names (provider names) in the rating matrix and disagreements.
+- Represent reviewer assessments faithfully — do not soften concerns, but also do not strip out enthusiasm or positive assessments.
+- If reviewers flagged risk, contextualize it: is this the kind of risk Keck is designed to fund, or is it a fundamental flaw?
+- The panel recommendation must take a position, framed around the risk-reward tradeoff.
+- Deduplicate questions but preserve the most useful framing of each.`;
 }
 
 /**
