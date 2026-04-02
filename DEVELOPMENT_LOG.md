@@ -4,6 +4,17 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## April 2026 — Virtual Review Panel: Devil's Advocate Pass + Progress Timers (Session 93)
+
+Added adversarial "devil's advocate" review stage and improved progress feedback for long-running LLM calls.
+
+- **Devil's Advocate pass**: Optional pipeline stage after structured review, before synthesis. One randomly-selected provider produces an adversarial review (primary concern, failure scenario, challenged assumptions, competitive weaknesses, skeptical verdict). Output labeled separately in synthesis — not averaged with balanced reviews. Red-tinted UI card, full sections in MD/DOCX exports.
+- **Progress timers**: Per-provider elapsed timer (ticks every second on in-progress cards), overall elapsed timer in progress header, 15-second server-side heartbeat events during all LLM calls to keep SSE alive and populate event log.
+
+**Files:** `shared/config/prompts/virtual-review-panel.js`, `lib/services/panel-review-service.js`, `pages/virtual-review-panel.js`, `pages/api/virtual-review-panel.js`
+
+---
+
 ## March 2026 — Virtual Review Panel: Stage 0 Intelligence + Prompt Rebalancing (Session 91)
 
 Major iteration on Virtual Review Panel based on CSO feedback and new architecture for literature-grounded reviews.

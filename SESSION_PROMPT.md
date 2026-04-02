@@ -1,31 +1,27 @@
-# Session 93 Prompt
+# Session 94 Prompt
 
-## Session 92 Summary
+## Session 93 Summary
 
-Focused session on Virtual Review Panel export improvements, PI name disambiguation in the Stage 0 intelligence pass, and strategic planning for the staged proposal review pipeline.
+Added a Devil's Advocate pass to the Virtual Review Panel and improved progress feedback with elapsed timers and server-side heartbeats.
 
 ### What Was Completed
 
-1. **Stage 0 Intelligence Block in Exports**
-   - Added `intelligenceBlock` state capture from SSE `complete` event
-   - Added "Pre-Review Intelligence (Stage 0)" section to Markdown export with subsections: landscape summary, most relevant papers, active research groups, competing approaches, open problems, PI publication summary, additional context
-   - Added matching section to DOCX export with proper formatting (bold citations, italic annotations, bulleted lists)
-   - Fixed field mapping — data uses `citation` (not `title`), `pi` (not `name`), `piName` (not `name`) — initial version showed "Untitled" and "Unknown" for all entries
+1. **Devil's Advocate Pass**
+   - New `createDevilsAdvocatePrompt` — adversarial prompt that asks one model to find the strongest reasons NOT to fund. Structured JSON output: primaryConcern, failureScenario, challengedAssumptions, competitiveWeaknesses, budgetAndTimeline, bestCounterargument, verdictIfSkeptical
+   - New `_runDevilsAdvocate` method in `PanelReviewService` — runs after structured review, before synthesis. Picks a random provider from the selected panel to avoid systematic bias
+   - Updated `createPanelSynthesisPrompt` to accept DA result as a labeled "skeptical review" with `devilsAdvocateSummary` in synthesis output. Explicitly instructs synthesis not to average DA into panel ratings
+   - Frontend: checkbox toggle ("Include devil's advocate"), red-tinted results card with all DA fields, DA summary in PanelSummary component
+   - Both Markdown and DOCX exports include DA summary from synthesis + full DA review details
+   - API route passes `includeDevilsAdvocate` through to service
 
-2. **PI Name Disambiguation**
-   - Problem: Stage 0 PI publication lookup used bare `author:"Bo Li"` queries, surfacing papers by wrong researchers with the same name
-   - Stage 0a prompt now extracts `piDetails` with institution and department alongside flat `piNames`
-   - Google Scholar PI pub search now includes institution (or field as fallback): `author:"Bo Li" "MIT"`
-   - Collation prompt (Stage 0c) includes PI Details and explicit disambiguation instructions
-   - Perplexity synthesis prompt (Stage 0d) includes PI Details with emphasis on verifying correct person
-
-3. **Staged Review Pipeline Planning**
-   - Saved pipeline spec from external session to `docs/STAGED_REVIEW_PIPELINE.md` — 3-stage pipeline (fit screening → intelligence brief → virtual panel review)
-   - Created implementation plan at `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` — two new apps (Fit Screener + Proposal Pipeline), 5 implementation phases, designed for future PowerAutomate migration
-   - Key insight: Stage 2 ≈ existing Stage 0 intelligence pass, Stage 3 ≈ existing Virtual Review Panel — most infrastructure already exists
+2. **Progress Timers & Heartbeats**
+   - Per-provider elapsed timer: `useElapsedTimer` hook ticks every second on in-progress provider cards, showing `Xs elapsed...`
+   - Overall elapsed timer: `OverallTimer` component in progress section header shows `Xm XXs elapsed` during processing, `Total: Xm XXs` when done
+   - Server-side heartbeats: 15-second `provider_heartbeat` events during all LLM calls (`_runStage`, `_runDevilsAdvocate`, `_runSynthesis`) to keep SSE connection alive and populate event log
+   - Removed `animate-pulse` from in-progress cards since ticking timer is clearer
 
 ### Commits
-- `00c930c` Add Stage 0 intelligence to exports, fix PI disambiguation, save pipeline plan
+- `50875e1` Add Devil's Advocate pass and progress timers to Virtual Review Panel
 
 ## Deferred Items (Carried Forward)
 
@@ -39,38 +35,38 @@ Focused session on Virtual Review Panel export improvements, PI name disambiguat
 
 ## Potential Next Steps
 
-### 1. Begin Staged Pipeline Implementation (Phase 1)
+### 1. Test Devil's Advocate End-to-End
+Run several panel reviews with DA enabled and verify:
+- DA provider is chosen randomly across runs
+- DA output is substantive and specific (not generic skepticism)
+- Synthesis integrates DA concerns appropriately without over-weighting them
+- Exports render DA sections correctly in both MD and DOCX
+
+### 2. Begin Staged Pipeline Implementation (Phase 1)
 Start with the Fit Screener app — the simplest new app:
 - V25 database migration for `pipeline_proposals` table
 - Fit screening prompt with 6-item checklist
 - `PipelineService` with CRUD + `runFitScreening`
 - Page + API route following existing app patterns
 
-### 2. Test Stage 0 Intelligence + Exports End-to-End
-Run several panel reviews with Stage 0 enabled and export results. Verify:
-- PI disambiguation produces correct results across different name commonality levels
-- Intelligence block renders properly in both Markdown and DOCX exports
-- All subsections populate correctly (no more "Untitled"/"Unknown")
-
 ### 3. Evaluate Review Quality with Stakeholders
-Share updated panel reviews (with intelligence sections in exports) with CSO and colleagues for feedback on:
-- Whether the intelligence brief adds decision-relevant context
-- Whether the rebalanced prompts are appropriately nuanced
-- Whether the rating spread is useful for ranking
+Share updated panel reviews (with intelligence sections + devil's advocate in exports) with CSO and colleagues for feedback on:
+- Whether the DA pass adds useful adversarial pressure
+- Whether the progress timers improve the experience
+- Whether the overall review output is actionable for funding decisions
 
-### 4. Devil's Advocate Pass
-Add an adversarial single-model review to the Virtual Review Panel pipeline (described in pipeline spec). One model prompted to find strongest reasons NOT to fund, labeled separately in synthesis.
+### 4. Streaming LLM Responses
+Currently all LLM calls are non-streaming (wait for full response). Could switch to streaming APIs for real-time token output — more complex but would give true real-time progress instead of heartbeat approximation.
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `pages/virtual-review-panel.js` | Frontend — panel config, progress, results display, exports (updated: intelligence block in MD/DOCX) |
-| `lib/services/panel-review-service.js` | Orchestration — Stage 0/1/2/synthesis pipeline |
-| `lib/services/literature-search-service.js` | Academic database searches (updated: PI disambiguation) |
-| `shared/config/prompts/virtual-review-panel.js` | All prompts (updated: piDetails extraction, disambiguation guidance) |
-| `docs/STAGED_REVIEW_PIPELINE.md` | Pipeline spec — 3-stage automated triage design |
-| `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` | Implementation plan — two apps, 5 phases |
+| `pages/virtual-review-panel.js` | Frontend — config, progress timers, DA display, exports |
+| `lib/services/panel-review-service.js` | Orchestration — Stage 0/1/2/DA/synthesis pipeline, heartbeats |
+| `shared/config/prompts/virtual-review-panel.js` | All prompts — DA prompt, updated synthesis prompt |
+| `pages/api/virtual-review-panel.js` | API route — passes includeDevilsAdvocate option |
+| `docs/STAGED_REVIEW_PIPELINE.md` | Pipeline spec — DA pass described in Stage 3 section |
 
 ## Testing
 
