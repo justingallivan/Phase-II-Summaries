@@ -84,12 +84,62 @@ function ProviderSelector({ selected, available, providerModels, onChange, disab
 /**
  * Per-provider status card during processing
  */
+/**
+ * Elapsed timer hook — ticks every second while active
+ */
+function useElapsedTimer(active) {
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(null);
+
+  useEffect(() => {
+    if (active) {
+      startRef.current = Date.now();
+      setElapsed(0);
+      const interval = setInterval(() => {
+        setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+    startRef.current = null;
+  }, [active]);
+
+  return elapsed;
+}
+
+/**
+ * Overall elapsed timer — shows mm:ss while running, final time when done
+ */
+function OverallTimer({ startedAt, running }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!startedAt) return;
+    setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    if (!running) return;
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [startedAt, running]);
+
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  const formatted = mins > 0 ? `${mins}m ${secs.toString().padStart(2, '0')}s` : `${secs}s`;
+
+  return (
+    <span className="font-mono tabular-nums text-xs">
+      {running ? `${formatted} elapsed` : `Total: ${formatted}`}
+    </span>
+  );
+}
+
 function ProviderStatusCard({ provider, status, stage, latencyMs, model }) {
   const info = PROVIDER_INFO[provider] || { name: provider, icon: '⚪' };
+  const elapsed = useElapsedTimer(status === 'in_progress');
 
   const statusColors = {
     pending: 'bg-gray-50 border-gray-200',
-    in_progress: 'bg-blue-50 border-blue-300 animate-pulse',
+    in_progress: 'bg-blue-50 border-blue-300',
     completed: 'bg-green-50 border-green-300',
     failed: 'bg-red-50 border-red-300',
   };
@@ -114,6 +164,11 @@ function ProviderStatusCard({ provider, status, stage, latencyMs, model }) {
       {stage && (
         <div className="text-xs text-gray-500 mt-0.5">
           {stage.replace(/_/g, ' ')}
+        </div>
+      )}
+      {status === 'in_progress' && (
+        <div className="text-xs text-blue-500 mt-0.5 font-mono tabular-nums">
+          {elapsed}s elapsed...
         </div>
       )}
       {latencyMs && status === 'completed' && (
@@ -383,6 +438,13 @@ function PanelSummary({ summary }) {
           </ul>
         </Card>
       )}
+
+      {/* Devil's Advocate Summary */}
+      {summary.devilsAdvocateSummary && (
+        <Card title="Devil's Advocate Summary">
+          <p className="text-sm text-gray-700">{summary.devilsAdvocateSummary}</p>
+        </Card>
+      )}
     </div>
   );
 }
@@ -432,7 +494,7 @@ function CostBreakdown({ costBreakdown, totalCostCents }) {
 /**
  * Build markdown export content from panel results
  */
-function buildMarkdownExport(proposalFilename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents, intelligenceBlock) {
+function buildMarkdownExport(proposalFilename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents, intelligenceBlock, devilsAdvocate) {
   const lines = [];
   lines.push(`# Virtual Review Panel Report`);
   lines.push(`**Proposal:** ${proposalFilename}`);
@@ -589,6 +651,32 @@ function buildMarkdownExport(proposalFilename, panelSummary, structuredReviews, 
     lines.push('');
   }
 
+  // Devil's Advocate summary from synthesis
+  if (panelSummary?.devilsAdvocateSummary) {
+    lines.push('## Devil\'s Advocate Summary');
+    lines.push(panelSummary.devilsAdvocateSummary);
+    lines.push('');
+  }
+
+  // Devil's Advocate full review
+  if (devilsAdvocate?.parsedResponse) {
+    const da = devilsAdvocate.parsedResponse;
+    lines.push('## Devil\'s Advocate Review');
+    lines.push(`*Adversarial review by ${devilsAdvocate.providerName} (${devilsAdvocate.model}) — intentionally one-sided*`);
+    lines.push('');
+    if (da.primaryConcern) { lines.push('### Primary Concern'); lines.push(da.primaryConcern); lines.push(''); }
+    if (da.failureScenario) { lines.push('### Most Likely Failure Scenario'); lines.push(da.failureScenario); lines.push(''); }
+    if (da.challengedAssumptions?.length > 0) {
+      lines.push('### Challenged Assumptions');
+      da.challengedAssumptions.forEach(a => lines.push(`- ${a}`));
+      lines.push('');
+    }
+    if (da.competitiveWeaknesses) { lines.push('### Competitive Weaknesses'); lines.push(da.competitiveWeaknesses); lines.push(''); }
+    if (da.budgetAndTimeline) { lines.push('### Budget & Timeline'); lines.push(da.budgetAndTimeline); lines.push(''); }
+    if (da.bestCounterargument) { lines.push('### Best Counterargument'); lines.push(da.bestCounterargument); lines.push(''); }
+    if (da.verdictIfSkeptical) { lines.push('### Skeptical Verdict'); lines.push(da.verdictIfSkeptical); lines.push(''); }
+  }
+
   // Individual reviews
   lines.push('---');
   lines.push('## Individual Reviews');
@@ -640,7 +728,7 @@ function downloadFile(content, filename, mimeType) {
 /**
  * Build and download DOCX export
  */
-async function downloadDocx(proposalFilename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents, intelligenceBlock) {
+async function downloadDocx(proposalFilename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents, intelligenceBlock, devilsAdvocate) {
   const children = [];
   const baseName = proposalFilename?.replace(/\.pdf$/i, '') || 'proposal';
 
@@ -798,6 +886,50 @@ async function downloadDocx(proposalFilename, panelSummary, structuredReviews, c
     children.push(new Paragraph({ text: '' }));
   }
 
+  // Devil's Advocate summary from synthesis
+  if (panelSummary?.devilsAdvocateSummary) {
+    children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Devil\'s Advocate Summary')] }));
+    children.push(new Paragraph({ children: [new TextRun(panelSummary.devilsAdvocateSummary)] }));
+    children.push(new Paragraph({ text: '' }));
+  }
+
+  // Devil's Advocate full review
+  if (devilsAdvocate?.parsedResponse) {
+    const da = devilsAdvocate.parsedResponse;
+    children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Devil\'s Advocate Review')] }));
+    children.push(new Paragraph({ children: [new TextRun({ text: `Adversarial review by ${devilsAdvocate.providerName} (${devilsAdvocate.model}) — intentionally one-sided`, italics: true })] }));
+    children.push(new Paragraph({ text: '' }));
+    if (da.primaryConcern) {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun('Primary Concern')] }));
+      children.push(new Paragraph({ children: [new TextRun(da.primaryConcern)] }));
+    }
+    if (da.failureScenario) {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun('Most Likely Failure Scenario')] }));
+      children.push(new Paragraph({ children: [new TextRun(da.failureScenario)] }));
+    }
+    if (da.challengedAssumptions?.length > 0) {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun('Challenged Assumptions')] }));
+      da.challengedAssumptions.forEach(a => children.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun(a)] })));
+    }
+    if (da.competitiveWeaknesses) {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun('Competitive Weaknesses')] }));
+      children.push(new Paragraph({ children: [new TextRun(da.competitiveWeaknesses)] }));
+    }
+    if (da.budgetAndTimeline) {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun('Budget & Timeline')] }));
+      children.push(new Paragraph({ children: [new TextRun(da.budgetAndTimeline)] }));
+    }
+    if (da.bestCounterargument) {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun('Best Counterargument')] }));
+      children.push(new Paragraph({ children: [new TextRun(da.bestCounterargument)] }));
+    }
+    if (da.verdictIfSkeptical) {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun('Skeptical Verdict')] }));
+      children.push(new Paragraph({ children: [new TextRun(da.verdictIfSkeptical)] }));
+    }
+    children.push(new Paragraph({ text: '' }));
+  }
+
   // Individual reviews
   children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Individual Reviews')] }));
   for (const review of structuredReviews) {
@@ -875,6 +1007,7 @@ function VirtualReviewPanelContent() {
   const [selectedProviders, setSelectedProviders] = useState(['claude', 'openai']);
   const [includeClaimVerification, setIncludeClaimVerification] = useState(true);
   const [includeIntelligencePass, setIncludeIntelligencePass] = useState(false);
+  const [includeDevilsAdvocate, setIncludeDevilsAdvocate] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState(null);
   const [events, setEvents] = useState([]);
@@ -883,11 +1016,13 @@ function VirtualReviewPanelContent() {
   const [panelSummary, setPanelSummary] = useState(null);
   const [structuredReviews, setStructuredReviews] = useState([]);
   const [claimVerifications, setClaimVerifications] = useState([]);
+  const [devilsAdvocate, setDevilsAdvocate] = useState(null);
   const [costBreakdown, setCostBreakdown] = useState(null);
   const [totalCostCents, setTotalCostCents] = useState(null);
   const [intelligenceBlock, setIntelligenceBlock] = useState(null);
   const [availableProviders, setAvailableProviders] = useState(Object.keys(PROVIDER_INFO));
   const [providerModels, setProviderModels] = useState({});
+  const [processingStartedAt, setProcessingStartedAt] = useState(null);
   const eventSourceRef = useRef(null);
 
   // Fetch available providers and models from server on mount
@@ -918,6 +1053,7 @@ function VirtualReviewPanelContent() {
     }
 
     setProcessing(true);
+    setProcessingStartedAt(Date.now());
     setError(null);
     setEvents([]);
     setProviderStatuses({});
@@ -925,6 +1061,7 @@ function VirtualReviewPanelContent() {
     setPanelSummary(null);
     setStructuredReviews([]);
     setClaimVerifications([]);
+    setDevilsAdvocate(null);
     setCostBreakdown(null);
     setTotalCostCents(null);
     setIntelligenceBlock(null);
@@ -938,6 +1075,7 @@ function VirtualReviewPanelContent() {
           providers: selectedProviders,
           includeClaimVerification,
           includeIntelligencePass,
+          includeDevilsAdvocate,
         }),
       });
 
@@ -978,7 +1116,7 @@ function VirtualReviewPanelContent() {
     } finally {
       setProcessing(false);
     }
-  }, [files, selectedProviders, includeClaimVerification, includeIntelligencePass]);
+  }, [files, selectedProviders, includeClaimVerification, includeIntelligencePass, includeDevilsAdvocate]);
 
   const handleEvent = useCallback((data) => {
     setEvents(prev => [...prev, data]);
@@ -1048,6 +1186,7 @@ function VirtualReviewPanelContent() {
       setCostBreakdown(data.costBreakdown);
       setTotalCostCents(data.totalCostCents);
       if (data.intelligenceBlock) setIntelligenceBlock(data.intelligenceBlock);
+      if (data.devilsAdvocate) setDevilsAdvocate(data.devilsAdvocate);
       break;
 
     case 'error':
@@ -1124,6 +1263,18 @@ function VirtualReviewPanelContent() {
                   Include claim verification (Stage 1) — verifies novelty claims and checks for precedent
                 </span>
               </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeDevilsAdvocate}
+                  onChange={(e) => setIncludeDevilsAdvocate(e.target.checked)}
+                  disabled={processing}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">
+                  Include devil&apos;s advocate — one model finds strongest reasons NOT to fund (labeled separately)
+                </span>
+              </label>
             </div>
           </div>
         </Card>
@@ -1146,8 +1297,9 @@ function VirtualReviewPanelContent() {
           <Card title={processing ? 'Panel Progress' : 'Panel Progress (Complete)'}>
             <div className="space-y-4">
               {currentStage && (
-                <div className={`text-sm font-medium mb-2 ${processing ? 'text-blue-600' : 'text-green-600'}`}>
-                  {processing ? `Current stage: ${currentStage.replace(/_/g, ' ')}` : 'All stages complete'}
+                <div className={`flex items-center justify-between text-sm font-medium mb-2 ${processing ? 'text-blue-600' : 'text-green-600'}`}>
+                  <span>{processing ? `Current stage: ${currentStage.replace(/_/g, ' ')}` : 'All stages complete'}</span>
+                  {processingStartedAt && <OverallTimer startedAt={processingStartedAt} running={processing} />}
                 </div>
               )}
 
@@ -1218,6 +1370,30 @@ function VirtualReviewPanelContent() {
                 </div>
               )}
 
+              {/* Devil's Advocate status */}
+              {includeDevilsAdvocate && Object.keys(providerStatuses).some(k => k.includes('devils_advocate')) && (
+                <div>
+                  <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">Devil&apos;s Advocate</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {Object.entries(providerStatuses)
+                      .filter(([k]) => k.includes('devils_advocate'))
+                      .map(([key, s]) => {
+                        const provider = key.replace('_devils_advocate', '');
+                        return (
+                          <ProviderStatusCard
+                            key={key}
+                            provider={provider}
+                            status={s.status}
+                            stage="devil's advocate"
+                            latencyMs={s.latencyMs}
+                            model={s.model || providerModels[provider]}
+                          />
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
               {/* Event log */}
               <details className="text-xs text-gray-400">
                 <summary className="cursor-pointer">Event log ({events.length} events)</summary>
@@ -1238,7 +1414,7 @@ function VirtualReviewPanelContent() {
             <div className="flex gap-3 justify-end">
               <Button
                 onClick={() => {
-                  const md = buildMarkdownExport(files[0]?.filename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents, intelligenceBlock);
+                  const md = buildMarkdownExport(files[0]?.filename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents, intelligenceBlock, devilsAdvocate);
                   const baseName = (files[0]?.filename || 'proposal').replace(/\.pdf$/i, '');
                   downloadFile(md, `${baseName}_panel_review.md`, 'text/markdown');
                 }}
@@ -1247,7 +1423,7 @@ function VirtualReviewPanelContent() {
                 Export Markdown
               </Button>
               <Button
-                onClick={() => downloadDocx(files[0]?.filename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents, intelligenceBlock)}
+                onClick={() => downloadDocx(files[0]?.filename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents, intelligenceBlock, devilsAdvocate)}
                 className="text-sm px-4 py-2"
               >
                 Export DOCX
@@ -1264,6 +1440,63 @@ function VirtualReviewPanelContent() {
 
             {/* Panel Summary */}
             <PanelSummary summary={panelSummary} />
+
+            {/* Devil's Advocate Review */}
+            {devilsAdvocate?.parsedResponse && (
+              <Card title="Devil's Advocate Review">
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <p className="text-xs text-red-600 italic mb-3">
+                    Adversarial review by {devilsAdvocate.providerName} ({devilsAdvocate.model}) — intentionally one-sided to stress-test the proposal
+                  </p>
+                  {devilsAdvocate.parsedResponse.primaryConcern && (
+                    <div className="mb-3">
+                      <h5 className="text-sm font-medium text-gray-800 mb-1">Primary Concern</h5>
+                      <p className="text-sm text-gray-700">{devilsAdvocate.parsedResponse.primaryConcern}</p>
+                    </div>
+                  )}
+                  {devilsAdvocate.parsedResponse.failureScenario && (
+                    <div className="mb-3">
+                      <h5 className="text-sm font-medium text-gray-800 mb-1">Most Likely Failure Scenario</h5>
+                      <p className="text-sm text-gray-700">{devilsAdvocate.parsedResponse.failureScenario}</p>
+                    </div>
+                  )}
+                  {devilsAdvocate.parsedResponse.challengedAssumptions?.length > 0 && (
+                    <div className="mb-3">
+                      <h5 className="text-sm font-medium text-gray-800 mb-1">Challenged Assumptions</h5>
+                      <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
+                        {devilsAdvocate.parsedResponse.challengedAssumptions.map((a, i) => (
+                          <li key={i}>{a}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {devilsAdvocate.parsedResponse.competitiveWeaknesses && (
+                    <div className="mb-3">
+                      <h5 className="text-sm font-medium text-gray-800 mb-1">Competitive Weaknesses</h5>
+                      <p className="text-sm text-gray-700">{devilsAdvocate.parsedResponse.competitiveWeaknesses}</p>
+                    </div>
+                  )}
+                  {devilsAdvocate.parsedResponse.budgetAndTimeline && (
+                    <div className="mb-3">
+                      <h5 className="text-sm font-medium text-gray-800 mb-1">Budget & Timeline</h5>
+                      <p className="text-sm text-gray-700">{devilsAdvocate.parsedResponse.budgetAndTimeline}</p>
+                    </div>
+                  )}
+                  {devilsAdvocate.parsedResponse.bestCounterargument && (
+                    <div className="mb-3">
+                      <h5 className="text-sm font-medium text-gray-800 mb-1">Best Counterargument</h5>
+                      <p className="text-sm text-gray-700">{devilsAdvocate.parsedResponse.bestCounterargument}</p>
+                    </div>
+                  )}
+                  {devilsAdvocate.parsedResponse.verdictIfSkeptical && (
+                    <div>
+                      <h5 className="text-sm font-medium text-gray-800 mb-1">Skeptical Verdict</h5>
+                      <p className="text-sm text-gray-700">{devilsAdvocate.parsedResponse.verdictIfSkeptical}</p>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
 
             {/* Individual Reviews */}
             <Card title="Individual Reviewer Assessments">

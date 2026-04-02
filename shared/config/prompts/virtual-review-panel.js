@@ -479,13 +479,71 @@ PROPOSAL TEXT:
 ${proposalText}`;
 }
 
+// ============================================
+// DEVIL'S ADVOCATE PASS
+// ============================================
+
+/**
+ * Devil's Advocate prompt — adversarial single-model review
+ *
+ * One model prompted to find the strongest reasons NOT to fund.
+ * Output is labeled separately in the synthesis, not averaged with the panel.
+ */
+export function createDevilsAdvocatePrompt(proposalText, structuredReviewSummary = null, intelligenceBlock = null) {
+  const reviewContext = structuredReviewSummary
+    ? `\n\nPANEL REVIEWS SO FAR (for context — your job is NOT to repeat these, but to go deeper on weaknesses they may have been too generous about):\n${structuredReviewSummary}\n`
+    : '';
+
+  const intelligenceContext = intelligenceBlock ? `
+PRE-SEARCH INTELLIGENCE (use to ground your critique in evidence):
+Most relevant prior work: ${JSON.stringify(intelligenceBlock.mostRelevantPapers?.slice(0, 5), null, 2)}
+Competing approaches: ${JSON.stringify(intelligenceBlock.competingApproaches, null, 2)}
+PI publication record: ${JSON.stringify(intelligenceBlock.piPublicationSummary, null, 2)}
+Field landscape: ${intelligenceBlock.landscapeSummary}
+` : '';
+
+  return `Your sole job is to identify the strongest reasons this proposal should NOT be funded. Do not balance concerns with praise. Assume the Foundation has a limited budget and this proposal is competing against stronger alternatives. What would a skeptical domain expert say? Be specific — name the experiment, assumption, or claim that is most vulnerable.
+
+You are playing devil's advocate for a grant review panel at the W. M. Keck Foundation. The panel has already produced balanced reviews. Your role is different: you are the dedicated skeptic. Your critique will be presented as a labeled "skeptical review" alongside the balanced reviews — it will NOT be averaged in or treated as a typical review.
+
+This means you should:
+- Push harder on weaknesses than a balanced reviewer would
+- Identify the single most likely failure mode and explain exactly why it would derail the project
+- Challenge assumptions the other reviewers may have accepted too readily
+- Consider what a competitor or rival lab would say about this proposal
+- Ask whether the budget and timeline are realistic for the ambition level
+- Identify any "emperor has no clothes" problems — things that sound impressive but may not withstand scrutiny
+
+Do NOT:
+- Repeat generic concerns about "risk" — Keck funds risky work deliberately
+- Criticize lack of preliminary data as a standalone concern
+- Object to ambitious scope — that is expected
+- Manufacture concerns where none exist — if the proposal is genuinely strong, say so and explain what a skeptic would still worry about
+${reviewContext}${intelligenceContext}
+Return your analysis as JSON:
+{
+  "primaryConcern": "The single most important reason a skeptic would argue against funding this proposal. Be specific: name the experiment, assumption, methodology, or claim that is most vulnerable. (3-5 sentences)",
+  "failureScenario": "Describe the most likely failure mode in concrete terms. What specifically goes wrong, at what stage, and what is the consequence? Does partial failure salvage any value, or does the whole project collapse? (3-5 sentences)",
+  "challengedAssumptions": [
+    "List 3-5 assumptions the proposal makes that a skeptic would challenge. For each, explain what evidence would be needed to resolve the concern and whether the proposal provides it."
+  ],
+  "competitiveWeaknesses": "How does this proposal compare to alternative approaches or competing groups? Is there a reason another group might solve this problem first, or a reason the proposed approach is suboptimal compared to alternatives? (2-4 sentences)",
+  "budgetAndTimeline": "Is the budget realistic for the proposed scope? Is the timeline achievable? Identify any specific items that seem under-resourced or over-ambitious. (2-3 sentences)",
+  "bestCounterargument": "Steel-man the proposal: what is the strongest argument in its favor that a skeptic must acknowledge? Then explain why, even granting this strength, the concerns above still warrant caution. (2-3 sentences)",
+  "verdictIfSkeptical": "If you were advising a foundation with limited funds and stronger alternatives in the pipeline, what would you recommend? Fund, decline, or fund-with-conditions — and what specific condition would most change your assessment? (2-3 sentences)"
+}
+
+PROPOSAL TEXT:
+${proposalText}`;
+}
+
 /**
  * Synthesis: Panel Summary prompt
  *
  * Claude synthesizes all individual reviews into a panel summary with
  * consensus, disagreements, rating matrix, and questions for the PI.
  */
-export function createPanelSynthesisPrompt(reviews, claimVerifications = null) {
+export function createPanelSynthesisPrompt(reviews, claimVerifications = null, devilsAdvocate = null) {
   const reviewSections = reviews
     .map(r => `### ${r.providerName} (${r.model})\n${JSON.stringify(r.parsedResponse, null, 2)}`)
     .join('\n\n');
@@ -496,12 +554,16 @@ export function createPanelSynthesisPrompt(reviews, claimVerifications = null) {
     ).join('\n\n')}\n`
     : '';
 
+  const devilsAdvocateSection = devilsAdvocate
+    ? `\n\nDEVIL'S ADVOCATE REVIEW (adversarial — labeled separately, do NOT average into panel ratings):\nProvider: ${devilsAdvocate.providerName} (${devilsAdvocate.model})\n${JSON.stringify(devilsAdvocate.parsedResponse, null, 2)}\n\nIMPORTANT: The devil's advocate review is intentionally one-sided. Incorporate its strongest points into keyConcerns and questionsForPI where warranted, but represent it separately in the devilsAdvocateSummary field. Do not let it skew the overall panel tone — it is one perspective among several.\n`
+    : '';
+
   return `You are the chair of a review panel for the W. M. Keck Foundation. Multiple independent reviewers have evaluated a grant proposal. Your job is to synthesize their reviews into an honest, actionable panel summary that helps the Foundation make a funding decision.
 
 The Keck Foundation funds high-risk, high-reward science. Your synthesis should reflect this philosophy — concerns about risk should be contextualized by potential payoff, and the panel summary should help the Foundation assess whether the risk-reward tradeoff is favorable, not simply whether risks exist.
 
 Each reviewer has also provided a classification of the proposal type and identified a key uncertainty that would most change their assessment. Use these to focus the panel summary on the concerns that are actually resolvable through PI conversation versus those that are fundamental.
-${claimSection}
+${claimSection}${devilsAdvocateSection}
 INDIVIDUAL REVIEWS:
 ${reviewSections}
 
@@ -538,6 +600,7 @@ Produce a panel summary as JSON:
   "claimVerificationHighlights": [
     "Notable findings from claim verification — focus on claims where the literature search revealed important context (prior work, gaps, or competing approaches). If claim verification was not performed, return an empty array."
   ],
+  "devilsAdvocateSummary": "If a devil's advocate review was provided: summarize its strongest points in 3-5 sentences. What did the skeptical review surface that the balanced reviews underweighted or missed? Note which of its concerns are already reflected in keyConcerns vs. which are new. If no devil's advocate review was provided, return null.",
   "panelRecommendation": "A 4-6 sentence overall panel assessment. Address: (1) Is the potential payoff significant enough to justify the risks? (2) What is the strongest reason to fund this? (3) What is the most important concern? (4) End with a clear lean: fund, decline, or fund-with-conditions — and if conditional, state what the Foundation would need to learn from the PI.",
   "confidenceNote": "A 2-3 sentence note about what this virtual panel can and cannot assess. Be specific: which aspects of this particular proposal are well-suited to AI review (e.g., literature coverage, methodological rigor, budget analysis) and which require human judgment (e.g., lab visit, team dynamics, domain-specific feasibility that may be outside training data)?"
 }
