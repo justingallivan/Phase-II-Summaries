@@ -90,7 +90,7 @@ export function createClaimExtractionPrompt(proposalText) {
 From the proposal text below, extract:
 1. All novelty claims — phrases where the proposers claim something is "first," "novel," "unprecedented," "new," or "unique." For each, write a short (3-6 word) search string that captures the core claim in terms a database would match.
 2. The core experimental or computational techniques being proposed. Write 2-3 search strings that would find prior work using these techniques.
-3. The names of the PI and any co-PIs (full names as they appear in the proposal).
+3. The names of the PI and any co-PIs (full names as they appear in the proposal), along with their institutional affiliation and department/field. This is critical for disambiguation — common names like "Li Wang" or "Bo Li" appear across many unrelated fields.
 4. The primary research field or subfield (1-2 words, e.g., "synthetic biology", "stellar astrophysics", "quantum sensing").
 
 Return as JSON:
@@ -98,6 +98,9 @@ Return as JSON:
   "noveltySearchStrings": ["string1", "string2", ...],
   "techniqueSearchStrings": ["string1", "string2", ...],
   "piNames": ["Name1", "Name2", ...],
+  "piDetails": [
+    { "name": "Full Name", "institution": "University/Institute", "department": "Department or field if stated" }
+  ],
   "field": "field name"
 }
 
@@ -119,6 +122,7 @@ export function createSearchCollationPrompt(proposalText, claimData, rawSearchRe
 PROPOSAL CONTEXT:
 Field: ${claimData.field}
 PIs: ${claimData.piNames?.join(', ')}
+PI Details (for disambiguation): ${JSON.stringify(claimData.piDetails || claimData.piNames)}
 Novelty claims searched: ${JSON.stringify(claimData.noveltySearchStrings)}
 Technique searches: ${JSON.stringify(claimData.techniqueSearchStrings)}
 
@@ -126,6 +130,8 @@ RAW SEARCH RESULTS:
 ${JSON.stringify(rawSearchResults, null, 2)}
 
 From these results, produce a structured summary. For each item, assess how directly relevant it is to the proposal.
+
+IMPORTANT — PI name disambiguation: Common names (e.g., "Bo Li", "Wei Wang", "Li Zhang") may match publications by DIFFERENT researchers at different institutions in different fields. When building the piPublicationSummary, only include publications that are plausibly by the PI named in this proposal (match institution, department, and research field). If in doubt, exclude the paper rather than attribute it to the wrong person. Flag any ambiguity in notableGaps.
 
 Return as JSON:
 {
@@ -171,6 +177,7 @@ export function createIntelligenceSynthesisPrompt(proposalText, claimData, colla
 
 PROPOSAL FIELD: ${claimData.field}
 PIs: ${claimData.piNames?.join(', ')}
+PI Details (use for disambiguation — search for the correct person): ${JSON.stringify(claimData.piDetails || claimData.piNames)}
 
 DATABASE SEARCH RESULTS (already completed — do not re-search for these):
 ${JSON.stringify(collatedResults, null, 2)}
@@ -185,7 +192,7 @@ Using your search capabilities, SUPPLEMENT the existing results by finding:
 
 4. **Gap filling** — The database search noted these gaps: ${collatedResults.searchGaps || 'none noted'}. Search specifically for information that fills these gaps.
 
-5. **PI context** — Search for the PIs beyond their publications — lab websites, recent talks, grants, press coverage. This helps assess their current capacity and direction.
+5. **PI context** — Search for the PIs beyond their publications — lab websites, recent talks, grants, press coverage. This helps assess their current capacity and direction. IMPORTANT: Use the PI Details above (institution, department) to find the CORRECT person. Common names like "Bo Li" or "Wei Wang" have many researchers across different fields — verify you are looking at the right one by cross-referencing institution and research area.
 
 Do NOT repeat papers already found in the database search. Focus only on new information.
 

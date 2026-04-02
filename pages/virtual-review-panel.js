@@ -432,13 +432,84 @@ function CostBreakdown({ costBreakdown, totalCostCents }) {
 /**
  * Build markdown export content from panel results
  */
-function buildMarkdownExport(proposalFilename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents) {
+function buildMarkdownExport(proposalFilename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents, intelligenceBlock) {
   const lines = [];
   lines.push(`# Virtual Review Panel Report`);
   lines.push(`**Proposal:** ${proposalFilename}`);
   lines.push(`**Date:** ${new Date().toLocaleDateString()}`);
   lines.push(`**Reviewers:** ${structuredReviews.map(r => `${r.providerName} (${r.model})`).join(', ')}`);
   lines.push('');
+
+  // Stage 0: Pre-Review Intelligence
+  if (intelligenceBlock) {
+    lines.push('## Pre-Review Intelligence (Stage 0)');
+    if (intelligenceBlock.landscapeSummary) {
+      lines.push(intelligenceBlock.landscapeSummary);
+      lines.push('');
+    }
+    if (intelligenceBlock.mostRelevantPapers?.length > 0) {
+      lines.push('### Most Relevant Papers');
+      intelligenceBlock.mostRelevantPapers.forEach(p => {
+        if (typeof p === 'string') { lines.push(`- ${p}`); return; }
+        const citation = p.citation || p.title || p.name || 'Unknown';
+        const parts = [citation];
+        if (p.relevanceToProposal) parts.push(p.relevanceToProposal);
+        else if (p.relevance) parts.push(p.relevance);
+        if (p.comparability) parts.push(`[${p.comparability}]`);
+        lines.push(`- ${parts.join(' — ')}`);
+      });
+      lines.push('');
+    }
+    if (intelligenceBlock.activeGroups?.length > 0) {
+      lines.push('### Active Research Groups');
+      intelligenceBlock.activeGroups.forEach(g => {
+        if (typeof g === 'string') { lines.push(`- ${g}`); return; }
+        const name = g.pi || g.name || g.group || 'Unknown';
+        const parts = [name];
+        if (g.institution) parts[0] = `${name} (${g.institution})`;
+        if (g.focus) parts.push(g.focus);
+        if (g.recentActivity) parts.push(g.recentActivity);
+        lines.push(`- ${parts.join(' — ')}`);
+      });
+      lines.push('');
+    }
+    if (intelligenceBlock.competingApproaches?.length > 0) {
+      lines.push('### Competing Approaches');
+      intelligenceBlock.competingApproaches.forEach(a => {
+        const approach = typeof a === 'string' ? a : (a.approach || a.name || a.description || JSON.stringify(a));
+        lines.push(`- ${approach}`);
+      });
+      lines.push('');
+    }
+    if (intelligenceBlock.openProblems?.length > 0) {
+      lines.push('### Open Problems');
+      intelligenceBlock.openProblems.forEach(p => {
+        const problem = typeof p === 'string' ? p : (p.problem || p.description || JSON.stringify(p));
+        lines.push(`- ${problem}`);
+      });
+      lines.push('');
+    }
+    if (intelligenceBlock.piPublicationSummary?.length > 0) {
+      lines.push('### PI Publication Summary');
+      intelligenceBlock.piPublicationSummary.forEach(p => {
+        if (typeof p === 'string') { lines.push(`- ${p}`); return; }
+        const name = p.piName || p.name || p.pi || 'PI';
+        const parts = [`**${name}**`];
+        if (p.recentTopics?.length) parts.push(`Recent topics: ${p.recentTopics.join(', ')}`);
+        if (p.apparentExpertise?.length) parts.push(`Expertise: ${p.apparentExpertise.join(', ')}`);
+        if (p.notableGaps) parts.push(`Gaps: ${p.notableGaps}`);
+        lines.push(`- ${parts.join('. ')}`);
+      });
+      lines.push('');
+    }
+    if (intelligenceBlock.additionalContext) {
+      lines.push('### Additional Context');
+      lines.push(intelligenceBlock.additionalContext);
+      lines.push('');
+    }
+    lines.push('---');
+    lines.push('');
+  }
 
   if (panelSummary?.panelRecommendation) {
     lines.push('## Panel Recommendation');
@@ -569,7 +640,7 @@ function downloadFile(content, filename, mimeType) {
 /**
  * Build and download DOCX export
  */
-async function downloadDocx(proposalFilename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents) {
+async function downloadDocx(proposalFilename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents, intelligenceBlock) {
   const children = [];
   const baseName = proposalFilename?.replace(/\.pdf$/i, '') || 'proposal';
 
@@ -578,6 +649,74 @@ async function downloadDocx(proposalFilename, panelSummary, structuredReviews, c
   children.push(new Paragraph({ children: [new TextRun(`Date: ${new Date().toLocaleDateString()}`)] }));
   children.push(new Paragraph({ children: [new TextRun(`Reviewers: ${structuredReviews.map(r => `${r.providerName} (${r.model})`).join(', ')}`)] }));
   children.push(new Paragraph({ text: '' }));
+
+  // Stage 0: Pre-Review Intelligence
+  if (intelligenceBlock) {
+    children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Pre-Review Intelligence (Stage 0)')] }));
+    if (intelligenceBlock.landscapeSummary) {
+      children.push(new Paragraph({ children: [new TextRun(intelligenceBlock.landscapeSummary)] }));
+      children.push(new Paragraph({ text: '' }));
+    }
+    if (intelligenceBlock.mostRelevantPapers?.length > 0) {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun('Most Relevant Papers')] }));
+      intelligenceBlock.mostRelevantPapers.forEach(p => {
+        if (typeof p === 'string') { children.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun(p)] })); return; }
+        const citation = p.citation || p.title || p.name || 'Unknown';
+        const runs = [new TextRun({ text: citation, bold: true })];
+        const detail = p.relevanceToProposal || p.relevance;
+        if (detail) runs.push(new TextRun(` — ${detail}`));
+        if (p.comparability) runs.push(new TextRun({ text: ` [${p.comparability}]`, italics: true }));
+        children.push(new Paragraph({ bullet: { level: 0 }, children: runs }));
+      });
+      children.push(new Paragraph({ text: '' }));
+    }
+    if (intelligenceBlock.activeGroups?.length > 0) {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun('Active Research Groups')] }));
+      intelligenceBlock.activeGroups.forEach(g => {
+        if (typeof g === 'string') { children.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun(g)] })); return; }
+        const name = g.pi || g.name || g.group || 'Unknown';
+        const runs = [new TextRun({ text: g.institution ? `${name} (${g.institution})` : name, bold: true })];
+        if (g.focus) runs.push(new TextRun(` — ${g.focus}`));
+        if (g.recentActivity) runs.push(new TextRun({ text: `. ${g.recentActivity}`, italics: true }));
+        children.push(new Paragraph({ bullet: { level: 0 }, children: runs }));
+      });
+      children.push(new Paragraph({ text: '' }));
+    }
+    if (intelligenceBlock.competingApproaches?.length > 0) {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun('Competing Approaches')] }));
+      intelligenceBlock.competingApproaches.forEach(a => {
+        const approach = typeof a === 'string' ? a : (a.approach || a.name || a.description || JSON.stringify(a));
+        children.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun(approach)] }));
+      });
+      children.push(new Paragraph({ text: '' }));
+    }
+    if (intelligenceBlock.openProblems?.length > 0) {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun('Open Problems')] }));
+      intelligenceBlock.openProblems.forEach(p => {
+        const problem = typeof p === 'string' ? p : (p.problem || p.description || JSON.stringify(p));
+        children.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun(problem)] }));
+      });
+      children.push(new Paragraph({ text: '' }));
+    }
+    if (intelligenceBlock.piPublicationSummary?.length > 0) {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun('PI Publication Summary')] }));
+      intelligenceBlock.piPublicationSummary.forEach(p => {
+        if (typeof p === 'string') { children.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun(p)] })); return; }
+        const name = p.piName || p.name || p.pi || 'PI';
+        const runs = [new TextRun({ text: name, bold: true })];
+        if (p.recentTopics?.length) runs.push(new TextRun(`. Recent topics: ${p.recentTopics.join(', ')}`));
+        if (p.apparentExpertise?.length) runs.push(new TextRun(`. Expertise: ${p.apparentExpertise.join(', ')}`));
+        if (p.notableGaps) runs.push(new TextRun({ text: `. Gaps: ${p.notableGaps}`, italics: true }));
+        children.push(new Paragraph({ bullet: { level: 0 }, children: runs }));
+      });
+      children.push(new Paragraph({ text: '' }));
+    }
+    if (intelligenceBlock.additionalContext) {
+      children.push(new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun('Additional Context')] }));
+      children.push(new Paragraph({ children: [new TextRun(intelligenceBlock.additionalContext)] }));
+      children.push(new Paragraph({ text: '' }));
+    }
+  }
 
   if (panelSummary?.panelRecommendation) {
     children.push(new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Panel Recommendation')] }));
@@ -746,6 +885,7 @@ function VirtualReviewPanelContent() {
   const [claimVerifications, setClaimVerifications] = useState([]);
   const [costBreakdown, setCostBreakdown] = useState(null);
   const [totalCostCents, setTotalCostCents] = useState(null);
+  const [intelligenceBlock, setIntelligenceBlock] = useState(null);
   const [availableProviders, setAvailableProviders] = useState(Object.keys(PROVIDER_INFO));
   const [providerModels, setProviderModels] = useState({});
   const eventSourceRef = useRef(null);
@@ -787,6 +927,7 @@ function VirtualReviewPanelContent() {
     setClaimVerifications([]);
     setCostBreakdown(null);
     setTotalCostCents(null);
+    setIntelligenceBlock(null);
 
     try {
       const response = await fetch('/api/virtual-review-panel', {
@@ -906,6 +1047,7 @@ function VirtualReviewPanelContent() {
       setPanelSummary(data.panelSummary);
       setCostBreakdown(data.costBreakdown);
       setTotalCostCents(data.totalCostCents);
+      if (data.intelligenceBlock) setIntelligenceBlock(data.intelligenceBlock);
       break;
 
     case 'error':
@@ -1096,7 +1238,7 @@ function VirtualReviewPanelContent() {
             <div className="flex gap-3 justify-end">
               <Button
                 onClick={() => {
-                  const md = buildMarkdownExport(files[0]?.filename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents);
+                  const md = buildMarkdownExport(files[0]?.filename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents, intelligenceBlock);
                   const baseName = (files[0]?.filename || 'proposal').replace(/\.pdf$/i, '');
                   downloadFile(md, `${baseName}_panel_review.md`, 'text/markdown');
                 }}
@@ -1105,7 +1247,7 @@ function VirtualReviewPanelContent() {
                 Export Markdown
               </Button>
               <Button
-                onClick={() => downloadDocx(files[0]?.filename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents)}
+                onClick={() => downloadDocx(files[0]?.filename, panelSummary, structuredReviews, claimVerifications, costBreakdown, totalCostCents, intelligenceBlock)}
                 className="text-sm px-4 py-2"
               >
                 Export DOCX
