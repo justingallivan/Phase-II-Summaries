@@ -384,7 +384,9 @@ Located in `lib/utils/`:
 | `docs/TODO_EMAIL_NOTIFICATIONS.md` | Unified notification service (dashboard alerts + future email) |
 | `docs/PENDING_ADMIN_REQUESTS.md` | Azure AD + Dynamics admin permission requests |
 | `docs/BACKEND_AUTOMATION_PLAN.md` | PowerAutomate backend automation roadmap (Phases 0-6 + new AI capabilities) |
+| `docs/STAGED_REVIEW_PIPELINE.md` | 3-stage automated proposal triage pipeline design (fit screening → intelligence brief → virtual panel) |
+| `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` | Implementation plan for pipeline apps (Fit Screener + Proposal Pipeline) |
 
 ---
 
-Last Updated: March 2026
+Last Updated: April 2026

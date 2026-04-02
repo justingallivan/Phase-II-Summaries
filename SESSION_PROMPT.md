@@ -1,51 +1,35 @@
-# Session 92 Prompt
+# Session 93 Prompt
 
-## Session 91 Summary
+## Session 92 Summary
 
-Major feature session for Virtual Review Panel — implemented Stage 0 pre-review intelligence pass, rebalanced all review prompts per CSO feedback, fixed several bugs, and added frontend UI for new features.
+Focused session on Virtual Review Panel export improvements, PI name disambiguation in the Stage 0 intelligence pass, and strategic planning for the staged proposal review pipeline.
 
 ### What Was Completed
 
-1. **Prompt Rebalancing (CSO Feedback)**
-   - Rewrote Stage 1 and Stage 2 prompts to balance critique with upside evaluation
-   - Added "ABOUT THE KECK FOUNDATION'S APPROACH" section embracing risk-tolerant philosophy
-   - Added RATING CALIBRATION section — use full range, prescreened proposals can be "Excellent"
-   - Stopped penalizing lack of preliminary data and over-extrapolating prior art from different systems
-   - Updated funding alternatives guidance for current federal funding climate
+1. **Stage 0 Intelligence Block in Exports**
+   - Added `intelligenceBlock` state capture from SSE `complete` event
+   - Added "Pre-Review Intelligence (Stage 0)" section to Markdown export with subsections: landscape summary, most relevant papers, active research groups, competing approaches, open problems, PI publication summary, additional context
+   - Added matching section to DOCX export with proper formatting (bold citations, italic annotations, bulleted lists)
+   - Fixed field mapping — data uses `citation` (not `title`), `pi` (not `name`), `piName` (not `name`) — initial version showed "Untitled" and "Unknown" for all entries
 
-2. **Proposal Classifier + New Fields**
-   - Added proposal classification (experimental, instrument-building, theoretical, AI/data-driven, hybrid) to Stage 1 and Stage 2 prompts
-   - Added `keyUncertaintyResolution` field between `riskNarrative` and `methodsAssessment` in Stage 2
-   - Synthesis: renamed `keyWeaknesses` to `keyConcerns`, added `keyStrengths`, added `resolvableVsFundamental`
+2. **PI Name Disambiguation**
+   - Problem: Stage 0 PI publication lookup used bare `author:"Bo Li"` queries, surfacing papers by wrong researchers with the same name
+   - Stage 0a prompt now extracts `piDetails` with institution and department alongside flat `piNames`
+   - Google Scholar PI pub search now includes institution (or field as fallback): `author:"Bo Li" "MIT"`
+   - Collation prompt (Stage 0c) includes PI Details and explicit disambiguation instructions
+   - Perplexity synthesis prompt (Stage 0d) includes PI Details with emphasis on verifying correct person
 
-3. **Stage 0: Pre-Review Intelligence Pass**
-   - New `lib/services/literature-search-service.js` — wraps PubMed, arXiv, bioRxiv, ChemRxiv, Google Scholar (SerpAPI)
-   - Pipeline: Haiku extracts queries (0a) → parallel database searches (0b) → Haiku collates (0c) → Perplexity synthesizes (0d)
-   - Intelligence block injected into Stage 1 and Stage 2 prompts to ground reviews in real literature
-   - Gracefully degradable — each substage can fail without killing the pipeline
-   - Optional via frontend toggle
-
-4. **Bug Fixes**
-   - OpenAI silent failures: added 3-minute timeout via `Promise.race` in multi-llm-service.js
-   - Event log disappearing: changed progress condition from `processing &&` to `(processing || events.length > 0) &&`
-   - JSON parse failures: now send `provider_error` event instead of silently passing null
-   - `resolvableVsFundamental` rendering: items can be strings or objects — handled both formats
-
-5. **Frontend Updates**
-   - Stage 0 toggle checkbox in Panel Configuration card
-   - Stage 0 progress display with per-substage indicators (checkmark/X/pulse)
-   - `keyStrengths` rendering (green icons), `keyConcerns` renamed from `keyWeaknesses`
-   - `keyUncertaintyResolution` in ReviewerCard, `resolvableVsFundamental` in PanelSummary
-   - All three exports (UI, Markdown, DOCX) updated for all new/renamed fields
+3. **Staged Review Pipeline Planning**
+   - Saved pipeline spec from external session to `docs/STAGED_REVIEW_PIPELINE.md` — 3-stage pipeline (fit screening → intelligence brief → virtual panel review)
+   - Created implementation plan at `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` — two new apps (Fit Screener + Proposal Pipeline), 5 implementation phases, designed for future PowerAutomate migration
+   - Key insight: Stage 2 ≈ existing Stage 0 intelligence pass, Stage 3 ≈ existing Virtual Review Panel — most infrastructure already exists
 
 ### Commits
-- `8f69af3` Add Virtual Review Panel app — multi-LLM proposal evaluation
-- `54c2b35` Fix Gemini truncation, add export buttons, harden JSON parser
-- `43f7472` Show model names in provider selector and progress cards
-- `2cf4050` Add Stage 0 intelligence pass, rebalance review prompts per CSO feedback
+- `00c930c` Add Stage 0 intelligence to exports, fix PI disambiguation, save pipeline plan
 
 ## Deferred Items (Carried Forward)
 
+- **Staged Pipeline Implementation** — plan saved at `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md`, not yet scheduled
 - **CRM Email Send (Phase A)** — pending feedback on plan (docs/CRM_EMAIL_SEND_PLAN.md)
 - **Backend Automation Plan** — requires multi-stakeholder input before implementation (docs/BACKEND_AUTOMATION_PLAN.md)
 - Build Proposal Picker component for Dynamics integration
@@ -55,38 +39,38 @@ Major feature session for Virtual Review Panel — implemented Stage 0 pre-revie
 
 ## Potential Next Steps
 
-### 1. Test Stage 0 Intelligence Pass End-to-End
-Run a full panel review with Stage 0 enabled. Verify:
-- All database searches return results
-- Haiku extraction/collation produces valid JSON
-- Perplexity synthesis adds value beyond raw search results
-- Intelligence block meaningfully changes review quality vs. without it
+### 1. Begin Staged Pipeline Implementation (Phase 1)
+Start with the Fit Screener app — the simplest new app:
+- V25 database migration for `pipeline_proposals` table
+- Fit screening prompt with 6-item checklist
+- `PipelineService` with CRUD + `runFitScreening`
+- Page + API route following existing app patterns
 
-### 2. Evaluate Review Quality with Stakeholders
-Share updated panel reviews with CSO and colleagues. Key questions:
-- Are the rebalanced prompts appropriately nuanced? Still too harsh? Too generous?
-- Is the rating spread useful for ranking?
-- Does Stage 0 intelligence noticeably improve review grounding?
+### 2. Test Stage 0 Intelligence + Exports End-to-End
+Run several panel reviews with Stage 0 enabled and export results. Verify:
+- PI disambiguation produces correct results across different name commonality levels
+- Intelligence block renders properly in both Markdown and DOCX exports
+- All subsections populate correctly (no more "Untitled"/"Unknown")
 
-### 3. Tune Stage 0 Parameters
-Based on testing, may need to adjust:
-- Number of search queries extracted (currently up to 10 novelty + 5 technique)
-- Max results per database (currently 20)
-- Whether to always run Stage 0 or make it default-on
+### 3. Evaluate Review Quality with Stakeholders
+Share updated panel reviews (with intelligence sections in exports) with CSO and colleagues for feedback on:
+- Whether the intelligence brief adds decision-relevant context
+- Whether the rebalanced prompts are appropriately nuanced
+- Whether the rating spread is useful for ranking
 
-### 4. Begin Backend Automation (Phase 0/1)
-If stakeholder discussions have progressed, Phase 0 (service auth) and Phase 1 (configurable prompts) have no external dependencies.
+### 4. Devil's Advocate Pass
+Add an adversarial single-model review to the Virtual Review Panel pipeline (described in pipeline spec). One model prompted to find strongest reasons NOT to fund, labeled separately in synthesis.
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `pages/virtual-review-panel.js` | Frontend — panel config, progress, results display, exports |
-| `pages/api/virtual-review-panel.js` | API route — streams SSE events |
+| `pages/virtual-review-panel.js` | Frontend — panel config, progress, results display, exports (updated: intelligence block in MD/DOCX) |
 | `lib/services/panel-review-service.js` | Orchestration — Stage 0/1/2/synthesis pipeline |
-| `lib/services/literature-search-service.js` | NEW — wraps academic database APIs for Stage 0 |
-| `lib/services/multi-llm-service.js` | Multi-LLM fan-out with timeout/retry |
-| `shared/config/prompts/virtual-review-panel.js` | All prompts — Stage 0 extraction/collation/synthesis, Stage 1/2, synthesis |
+| `lib/services/literature-search-service.js` | Academic database searches (updated: PI disambiguation) |
+| `shared/config/prompts/virtual-review-panel.js` | All prompts (updated: piDetails extraction, disambiguation guidance) |
+| `docs/STAGED_REVIEW_PIPELINE.md` | Pipeline spec — 3-stage automated triage design |
+| `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` | Implementation plan — two apps, 5 phases |
 
 ## Testing
 
