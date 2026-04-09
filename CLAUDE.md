@@ -383,7 +383,8 @@ Located in `lib/utils/`:
 | `docs/SECURITY_ARCHITECTURE.md` | Security architecture and threat model |
 | `docs/TODO_EMAIL_NOTIFICATIONS.md` | Unified notification service (dashboard alerts + future email) |
 | `docs/PENDING_ADMIN_REQUESTS.md` | Azure AD + Dynamics admin permission requests |
-| `docs/BACKEND_AUTOMATION_PLAN.md` | PowerAutomate backend automation roadmap (Phases 0-6 + new AI capabilities) |
+| `docs/BACKEND_AUTOMATION_PLAN.md` | PowerAutomate backend automation roadmap (prompt development, data migration, Dynamics integration) |
+| `docs/GRANT_CYCLE_LIFECYCLE.md` | Full grant proposal lifecycle with stages, status values, triggers, and AI tasks |
 | `docs/STAGED_REVIEW_PIPELINE.md` | 3-stage automated proposal triage pipeline design (fit screening → intelligence brief → virtual panel) |
 | `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` | Implementation plan for pipeline apps (Fit Screener + Proposal Pipeline) |
 
