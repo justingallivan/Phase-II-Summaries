@@ -1,33 +1,51 @@
-# Session 94 Prompt
+# Session 95 Prompt
 
-## Session 93 Summary
+## Session 94 Summary
 
-Added a Devil's Advocate pass to the Virtual Review Panel and improved progress feedback with elapsed timers and server-side heartbeats.
+Revised the backend automation architecture with Connor (Dynamics/PowerAutomate admin). Major shift: PowerAutomate calls Claude API directly instead of routing through our Vercel app. Created a grant cycle lifecycle document and rewrote the automation plan.
 
 ### What Was Completed
 
-1. **Devil's Advocate Pass**
-   - New `createDevilsAdvocatePrompt` — adversarial prompt that asks one model to find the strongest reasons NOT to fund. Structured JSON output: primaryConcern, failureScenario, challengedAssumptions, competitiveWeaknesses, budgetAndTimeline, bestCounterargument, verdictIfSkeptical
-   - New `_runDevilsAdvocate` method in `PanelReviewService` — runs after structured review, before synthesis. Picks a random provider from the selected panel to avoid systematic bias
-   - Updated `createPanelSynthesisPrompt` to accept DA result as a labeled "skeptical review" with `devilsAdvocateSummary` in synthesis output. Explicitly instructs synthesis not to average DA into panel ratings
-   - Frontend: checkbox toggle ("Include devil's advocate"), red-tinted results card with all DA fields, DA summary in PanelSummary component
-   - Both Markdown and DOCX exports include DA summary from synthesis + full DA review details
-   - API route passes `includeDevilsAdvocate` through to service
+1. **Architecture Decision: PA Calls Claude Directly**
+   - Original plan assumed PowerAutomate → Vercel API → Claude → PA → Dynamics
+   - New architecture: PowerAutomate → Claude API directly → Dynamics
+   - Removes need for service auth layer (old Phase 0) and service processing endpoints (old Phase 2)
+   - Our Vercel app role: human-initiated tools + prompt development/testing
 
-2. **Progress Timers & Heartbeats**
-   - Per-provider elapsed timer: `useElapsedTimer` hook ticks every second on in-progress provider cards, showing `Xs elapsed...`
-   - Overall elapsed timer: `OverallTimer` component in progress section header shows `Xm XXs elapsed` during processing, `Total: Xm XXs` when done
-   - Server-side heartbeats: 15-second `provider_heartbeat` events during all LLM calls (`_runStage`, `_runDevilsAdvocate`, `_runSynthesis`) to keep SSE connection alive and populate event log
-   - Removed `animate-pulse` from in-progress cards since ticking timer is clearer
+2. **Grant Cycle Lifecycle Document** (`docs/GRANT_CYCLE_LIFECYCLE.md`)
+   - 17-stage proposal lifecycle from application submission through board decision
+   - Each stage mapped to Dynamics status values, triggers, actors, and AI tasks
+   - AI task summary: automated (PA → Claude) vs. human-initiated (Vercel app)
+   - PowerAutomate flow inventory with trigger conditions
+   - Prompt development priority order
+   - Data migration scope (operational data → Dynamics, system data stays in Vercel)
+
+3. **Backend Automation Plan Rewrite** (`docs/BACKEND_AUTOMATION_PLAN.md`)
+   - Restructured around: Phase 1 (prompt development & batch evaluation), Phase 2 (Dynamics write-back for human tools), Phase 3 (data migration), Phase 4 (PA flow configuration), Phase 5 (operational maturity)
+   - All external blockers resolved: Connor can create Dynamics fields and grant permissions
+   - Documented Connor's parallel work items
+
+4. **Stakeholder Answers Captured**
+   - Connor can create custom fields on `akoya_request` (no vendor dependency)
+   - Connor can grant write permissions (no IT dependency)
+   - SharePoint folder pattern `{RequestNumber}_{GUIDNoHyphens}` confirmed
+   - PA trigger conditions TBD during flow construction (process is evolving)
+   - Premium connectors available (no licensing blocker)
+   - Staff-proposal matching rules need to be built from scratch
+   - Foundation criteria documents already digitized for compliance prompts
+
+5. **Off-Session Research (from home, no code changes)**
+   - `Sites.ReadWrite.Selected` confirmed as right approach for SharePoint write access
+   - IT request drafted for akoyaGO site (app registration: `d2e73696-537a-483b-bb63-4a4de6aa5d45`)
+   - Dynamics CRM write permissions are self-service via Power Platform Admin Center
 
 ### Commits
-- `50875e1` Add Devil's Advocate pass and progress timers to Virtual Review Panel
+- `b952951` Revise backend automation plan and add grant cycle lifecycle doc
 
 ## Deferred Items (Carried Forward)
 
 - **Staged Pipeline Implementation** — plan saved at `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md`, not yet scheduled
 - **CRM Email Send (Phase A)** — pending feedback on plan (docs/CRM_EMAIL_SEND_PLAN.md)
-- **Backend Automation Plan** — requires multi-stakeholder input before implementation (docs/BACKEND_AUTOMATION_PLAN.md)
 - Build Proposal Picker component for Dynamics integration
 - next-auth v5 migration (still in beta)
 - Re-enable coverage thresholds when test coverage reaches 70%/80%
@@ -35,38 +53,39 @@ Added a Devil's Advocate pass to the Virtual Review Panel and improved progress 
 
 ## Potential Next Steps
 
-### 1. Test Devil's Advocate End-to-End
-Run several panel reviews with DA enabled and verify:
-- DA provider is chosen randomly across runs
-- DA output is substantive and specific (not generic skepticism)
-- Synthesis integrates DA concerns appropriately without over-weighting them
-- Exports render DA sections correctly in both MD and DOCX
+### 1. Build Batch Evaluation Tool (Phase 1 Priority)
+The primary development work is now prompt engineering at scale:
+- New page + API endpoint for batch evaluation
+- Query Dynamics for historical proposals, fetch PDFs from SharePoint
+- Run prompt against each, generate CSV with AI assessment vs. actual outcome
+- Start with compliance checking (earliest AI task in lifecycle, step 4)
 
-### 2. Begin Staged Pipeline Implementation (Phase 1)
-Start with the Fit Screener app — the simplest new app:
-- V25 database migration for `pipeline_proposals` table
-- Fit screening prompt with 6-item checklist
-- `PipelineService` with CRUD + `runFitScreening`
-- Page + API route following existing app patterns
+### 2. Develop Compliance Screening Prompt
+First prompt to develop — gates everything downstream in the lifecycle:
+- Foundation criteria documents available as prompt context
+- Test against historical Phase I proposals
+- Iterate with staff feedback until accuracy is acceptable
+- Hand proven prompt to Connor for PowerAutomate deployment
 
-### 3. Evaluate Review Quality with Stakeholders
-Share updated panel reviews (with intelligence sections + devil's advocate in exports) with CSO and colleagues for feedback on:
-- Whether the DA pass adds useful adversarial pressure
-- Whether the progress timers improve the experience
-- Whether the overall review output is actionable for funding decisions
+### 3. Update PENDING_ADMIN_REQUESTS.md
+Add the SharePoint `Sites.ReadWrite.Selected` IT request drafted in off-session research.
 
-### 4. Streaming LLM Responses
-Currently all LLM calls are non-streaming (wait for full response). Could switch to streaming APIs for real-time token output — more complex but would give true real-time progress instead of heartbeat approximation.
+### 4. Test Devil's Advocate End-to-End (carried from Session 93)
+Run several panel reviews with DA enabled and verify output quality, synthesis integration, and export rendering.
+
+### 5. Begin Data Migration Planning
+Map Vercel Postgres operational tables to Dynamics entities. Connor needs to create corresponding entities/fields. Strategy (dual-write vs. bulk migration) still TBD.
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `pages/virtual-review-panel.js` | Frontend — config, progress timers, DA display, exports |
-| `lib/services/panel-review-service.js` | Orchestration — Stage 0/1/2/DA/synthesis pipeline, heartbeats |
-| `shared/config/prompts/virtual-review-panel.js` | All prompts — DA prompt, updated synthesis prompt |
-| `pages/api/virtual-review-panel.js` | API route — passes includeDevilsAdvocate option |
-| `docs/STAGED_REVIEW_PIPELINE.md` | Pipeline spec — DA pass described in Stage 3 section |
+| `docs/GRANT_CYCLE_LIFECYCLE.md` | Full 17-stage proposal lifecycle with AI task mapping |
+| `docs/BACKEND_AUTOMATION_PLAN.md` | Revised automation plan (PA calls Claude directly) |
+| `lib/services/dynamics-service.js` | Dynamics read access (working), write stubs (Phase 2) |
+| `lib/services/graph-service.js` | SharePoint document access (working) |
+| `shared/config/prompts/*.js` | Existing prompt patterns for new prompt development |
+| `docs/PENDING_ADMIN_REQUESTS.md` | Permission requests tracker |
 
 ## Testing
 
