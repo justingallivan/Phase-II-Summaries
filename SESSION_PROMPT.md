@@ -1,51 +1,46 @@
-# Session 95 Prompt
+# Session 96 Prompt
 
-## Session 94 Summary
+## Session 95 Summary
 
-Revised the backend automation architecture with Connor (Dynamics/PowerAutomate admin). Major shift: PowerAutomate calls Claude API directly instead of routing through our Vercel app. Created a grant cycle lifecycle document and rewrote the automation plan.
+Integrated a colleague's expertise matching module as a full new app (#15) — "WMKF Expertise Finder." Also clarified SharePoint write permissions with Connor (Dynamics admin) and drafted an IT request.
 
 ### What Was Completed
 
-1. **Architecture Decision: PA Calls Claude Directly**
-   - Original plan assumed PowerAutomate → Vercel API → Claude → PA → Dynamics
-   - New architecture: PowerAutomate → Claude API directly → Dynamics
-   - Removes need for service auth layer (old Phase 0) and service processing endpoints (old Phase 2)
-   - Our Vercel app role: human-initiated tools + prompt development/testing
+1. **Expertise Finder App — Full Integration**
+   - New page (`pages/expertise-finder.js`) with three tabs: Match Proposal, Roster, History
+   - API endpoints: `/api/expertise-finder/match` (AI matching), `/api/expertise-finder/roster` (CRUD), `/api/expertise-finder/history`
+   - Database tables: `expertise_roster` (38 members seeded from CSV), `expertise_matches` (AI match history)
+   - Prompt template (`shared/config/prompts/expertise-finder.js`) with three-output matching logic:
+     - **Staff Assignment** — primary and secondary PD recommendation
+     - **Consultant Overlap** — flag consultants whose expertise overlaps (may be none)
+     - **Board Interest** — flag proposals of personal interest to board members
+   - App registry entry, Sonnet model config (admin-configurable), seed script
+   - Source module at `modules/expertise_matching/` with colleague's CSV, docs, and React component (kept as reference)
 
-2. **Grant Cycle Lifecycle Document** (`docs/GRANT_CYCLE_LIFECYCLE.md`)
-   - 17-stage proposal lifecycle from application submission through board decision
-   - Each stage mapped to Dynamics status values, triggers, actors, and AI tasks
-   - AI task summary: automated (PA → Claude) vs. human-initiated (Vercel app)
-   - PowerAutomate flow inventory with trigger conditions
-   - Prompt development priority order
-   - Data migration scope (operational data → Dynamics, system data stays in Vercel)
+2. **Planning Doc Updates**
+   - `docs/BACKEND_AUTOMATION_PLAN.md` — Updated Phase 1 item #5 (staff-proposal matching now powered by Expertise Finder), added `expertise_roster` and `expertise_matches` to Phase 3 migration tables
+   - `docs/GRANT_CYCLE_LIFECYCLE.md` — Updated PD assignment prompt status to "built," added Expertise Finder to human-initiated tools
+   - `CLAUDE.md` — Added app, model config, DB tables, API endpoints, module docs references
 
-3. **Backend Automation Plan Rewrite** (`docs/BACKEND_AUTOMATION_PLAN.md`)
-   - Restructured around: Phase 1 (prompt development & batch evaluation), Phase 2 (Dynamics write-back for human tools), Phase 3 (data migration), Phase 4 (PA flow configuration), Phase 5 (operational maturity)
-   - All external blockers resolved: Connor can create Dynamics fields and grant permissions
-   - Documented Connor's parallel work items
-
-4. **Stakeholder Answers Captured**
-   - Connor can create custom fields on `akoya_request` (no vendor dependency)
-   - Connor can grant write permissions (no IT dependency)
-   - SharePoint folder pattern `{RequestNumber}_{GUIDNoHyphens}` confirmed
-   - PA trigger conditions TBD during flow construction (process is evolving)
-   - Premium connectors available (no licensing blocker)
-   - Staff-proposal matching rules need to be built from scratch
-   - Foundation criteria documents already digitized for compliance prompts
-
-5. **Off-Session Research (from home, no code changes)**
-   - `Sites.ReadWrite.Selected` confirmed as right approach for SharePoint write access
-   - IT request drafted for akoyaGO site (app registration: `d2e73696-537a-483b-bb63-4a4de6aa5d45`)
-   - Dynamics CRM write permissions are self-service via Power Platform Admin Center
+3. **SharePoint Write Permissions Clarified**
+   - Confirmed with Connor that `Sites.Selected` is already granted in Azure Portal with admin consent
+   - Read access was granted by IT via a site-scoped Graph API call
+   - Write access requires IT to run the same type of call with `"roles": ["write"]`
+   - No Azure Portal changes needed — only the site-scoped write grant
+   - Updated `docs/PENDING_ADMIN_REQUESTS.md` Section 3 to reflect confirmed current state
+   - Drafted email to IT requesting the write grant (not yet sent)
 
 ### Commits
-- `b952951` Revise backend automation plan and add grant cycle lifecycle doc
+- `4a9bc8e` Add SharePoint Sites.ReadWrite.Selected IT request to pending admin requests
+- `92e0c56` Add Expertise Finder app for matching proposals to internal staff, consultants, and board members
+- `79742e6` Fix seed script to load env vars from .env.local
+- `752adf3` Update SharePoint write access request with confirmed current state
 
 ## Deferred Items (Carried Forward)
 
 - **Staged Pipeline Implementation** — plan saved at `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md`, not yet scheduled
 - **CRM Email Send (Phase A)** — pending feedback on plan (docs/CRM_EMAIL_SEND_PLAN.md)
+- **Send SharePoint write permission email to IT** — drafted but not yet sent
 - Build Proposal Picker component for Dynamics integration
 - next-auth v5 migration (still in beta)
 - Re-enable coverage thresholds when test coverage reaches 70%/80%
@@ -53,39 +48,51 @@ Revised the backend automation architecture with Connor (Dynamics/PowerAutomate 
 
 ## Potential Next Steps
 
-### 1. Build Batch Evaluation Tool (Phase 1 Priority)
-The primary development work is now prompt engineering at scale:
+### 1. Test Expertise Finder End-to-End
+Grant app access to users, upload a real proposal PDF, and verify:
+- AI matching produces reasonable staff assignments, consultant overlaps, and board interest flags
+- Roster CRUD works (add, edit, deactivate members)
+- Match history displays correctly
+- Iterate on prompt if matching quality needs improvement
+
+### 2. Build Batch Evaluation Tool (Phase 1 Priority)
+The primary development work remains prompt engineering at scale:
 - New page + API endpoint for batch evaluation
 - Query Dynamics for historical proposals, fetch PDFs from SharePoint
 - Run prompt against each, generate CSV with AI assessment vs. actual outcome
 - Start with compliance checking (earliest AI task in lifecycle, step 4)
 
-### 2. Develop Compliance Screening Prompt
+### 3. Develop Compliance Screening Prompt
 First prompt to develop — gates everything downstream in the lifecycle:
 - Foundation criteria documents available as prompt context
 - Test against historical Phase I proposals
 - Iterate with staff feedback until accuracy is acceptable
 - Hand proven prompt to Connor for PowerAutomate deployment
 
-### 3. Update PENDING_ADMIN_REQUESTS.md
-Add the SharePoint `Sites.ReadWrite.Selected` IT request drafted in off-session research.
-
 ### 4. Test Devil's Advocate End-to-End (carried from Session 93)
 Run several panel reviews with DA enabled and verify output quality, synthesis integration, and export rendering.
 
-### 5. Begin Data Migration Planning
-Map Vercel Postgres operational tables to Dynamics entities. Connor needs to create corresponding entities/fields. Strategy (dual-write vs. bulk migration) still TBD.
+### 5. Send SharePoint Write Permission Email
+Email to IT is drafted — just needs to be sent. Once granted, can begin writing AI outputs back to SharePoint alongside proposals.
+
+### 6. Begin Data Migration Planning
+Map Vercel Postgres operational tables to Dynamics entities (now includes `expertise_roster` and `expertise_matches`). Connor needs to create corresponding entities/fields.
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `docs/GRANT_CYCLE_LIFECYCLE.md` | Full 17-stage proposal lifecycle with AI task mapping |
-| `docs/BACKEND_AUTOMATION_PLAN.md` | Revised automation plan (PA calls Claude directly) |
-| `lib/services/dynamics-service.js` | Dynamics read access (working), write stubs (Phase 2) |
-| `lib/services/graph-service.js` | SharePoint document access (working) |
-| `shared/config/prompts/*.js` | Existing prompt patterns for new prompt development |
-| `docs/PENDING_ADMIN_REQUESTS.md` | Permission requests tracker |
+| `pages/expertise-finder.js` | Expertise Finder page (3 tabs: Match, Roster, History) |
+| `pages/api/expertise-finder/match.js` | AI matching endpoint (PDF → pdf-parse → Claude) |
+| `pages/api/expertise-finder/roster.js` | Roster CRUD endpoint |
+| `pages/api/expertise-finder/history.js` | Match history endpoint |
+| `shared/config/prompts/expertise-finder.js` | Matching prompt template (3-output: staff, consultant, board) |
+| `lib/db/migrations/004_expertise_finder.sql` | Database migration SQL |
+| `scripts/seed-expertise-roster.js` | CSV-to-database seed script (38 members) |
+| `modules/expertise_matching/` | Source module from colleague (CSV, docs, React component) |
+| `docs/PENDING_ADMIN_REQUESTS.md` | IT permission requests (Section 3 updated) |
+| `docs/BACKEND_AUTOMATION_PLAN.md` | Updated with Expertise Finder references |
+| `docs/GRANT_CYCLE_LIFECYCLE.md` | Updated PD assignment status |
 
 ## Testing
 
@@ -93,4 +100,6 @@ Map Vercel Postgres operational tables to Dynamics entities. Connor needs to cre
 npm run dev                              # Start dev server
 npm run build                            # Verify no build errors
 npm test                                 # Run all tests
+node scripts/setup-database.js           # Run database migrations
+node scripts/seed-expertise-roster.js    # Seed roster from CSV (idempotent)
 ```
