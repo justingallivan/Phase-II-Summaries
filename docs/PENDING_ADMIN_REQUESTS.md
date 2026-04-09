@@ -105,13 +105,73 @@ This confirms the service principal needs the activity creation privileges liste
 
 ---
 
+## Section 3: SharePoint Write Access (Azure AD / IT Admin)
+
+**Goal:** Allow the app to write documents back to the akoyaGO SharePoint site (e.g., processed summaries, AI-generated reports stored alongside proposals).
+
+**Date Added:** April 9, 2026
+
+### What's Needed
+
+Grant `Sites.ReadWrite.Selected` permission scoped to the akoyaGO SharePoint site. This is a site-scoped permission (not tenant-wide), so it requires an IT admin to grant via SharePoint or Graph API.
+
+### Context
+
+- The app currently has read-only access to SharePoint via `Sites.Selected` (or `Sites.Read.All` if Section 1 is granted)
+- Write access is needed for Phase 3 (data migration) and potentially for PowerAutomate flows that write processed documents back to SharePoint
+- `Sites.ReadWrite.Selected` is the least-privilege approach — it grants write access only to the specific site, not all sites in the tenant
+
+### Steps
+
+1. An IT admin (Global Admin or SharePoint Admin) runs a Graph API call to grant site-scoped write permission:
+
+```http
+POST https://graph.microsoft.com/v1.0/sites/{site-id}/permissions
+Content-Type: application/json
+
+{
+  "roles": ["write"],
+  "grantedToIdentities": [{
+    "application": {
+      "id": "d2e73696-537a-483b-bb63-4a4de6aa5d45",
+      "displayName": "WMK: Research Review App Suite"
+    }
+  }]
+}
+```
+
+Where `{site-id}` is the site ID for `appriver3651007194.sharepoint.com/sites/akoyaGO`.
+
+2. To find the site ID, run:
+```http
+GET https://graph.microsoft.com/v1.0/sites/appriver3651007194.sharepoint.com:/sites/akoyaGO
+```
+
+3. If the app registration also needs the `Sites.Selected` **application permission** added in Azure Portal (it may already have it from read access setup), add it under **API permissions → Microsoft Graph → Application permissions → Sites.Selected** and grant admin consent.
+
+### How to Verify
+
+After granting, we can verify by running:
+```bash
+node scripts/test-graph-service.js --write
+```
+This will attempt to create and delete a small test file in the SharePoint document library.
+
+### Note
+
+Unlike `Sites.ReadWrite.All` (which grants write access to every SharePoint site in the tenant), `Sites.ReadWrite.Selected` is scoped to only the sites explicitly granted. This is the recommended approach per Microsoft's least-privilege guidance.
+
+---
+
 ## Summary
 
 | Admin | Action | Status |
 |-------|--------|--------|
 | Azure AD Admin | Add `Sites.Read.All`, `Files.Read.All`, `Mail.Send` to "WMK: Research Review App Suite" + grant consent | Pending |
 | Dynamics Admin | Assign "Email Sender" role (or equivalent privileges) to the app's application user | Pending |
+| IT Admin | Grant `Sites.ReadWrite.Selected` on akoyaGO site to "WMK: Research Review App Suite" | Pending |
 
-Once both are complete, we'll have:
+Once all are complete, we'll have:
 - **SharePoint document access** — list and retrieve files attached to CRM requests
+- **SharePoint document write-back** — store processed documents and AI outputs alongside proposals
 - **Direct email sending** — send reviewer invitations and review materials directly from the app, tracked as CRM activities
