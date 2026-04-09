@@ -56,7 +56,7 @@ This document maps the full lifecycle of a grant application from submission thr
 |------|---------------|-------|--------|---------------|
 | Compliance check | 4, 14 | Application/proposal PDF text | Pass/fail + reasons | To be developed |
 | Summary + keywords | 4 | Application PDF text | Summary text, keywords → Dynamics fields | To be developed |
-| PD assignment | 6 | Application text + staff roster + specialty rules | Recommended PD | To be developed (rules need to be built) |
+| PD assignment | 6 | Application text + staff roster + specialty rules | Recommended PD | **Expertise Finder app built** — prompt + roster in Vercel; hand to Connor for PA flow when validated |
 
 ### Human-Initiated (Vercel App)
 
@@ -66,6 +66,7 @@ This document maps the full lifecycle of a grant application from submission thr
 | Reviewer finding | Post-approval | Reviewer Finder app | Built and running |
 | Review management | Post-approval | Review Manager app | Built and running |
 | Panel review | During PD review | Virtual Review Panel app | Built and running |
+| Expertise matching | 6 (PD assignment) | Expertise Finder app | Built and running |
 | Proposal summarization | Ad-hoc | Phase I/II Writeup apps | Built and running |
 
 ---

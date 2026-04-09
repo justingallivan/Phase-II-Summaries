@@ -94,6 +94,11 @@ export const BASE_CONFIG = {
       model: 'claude-haiku-4-5-20251001',
       fallback: 'claude-haiku-4-5-20251001'
     },
+    // Expertise Finder - Sonnet for proposal-to-reviewer matching
+    'expertise-finder': {
+      model: 'claude-sonnet-4-20250514',
+      fallback: 'claude-haiku-4-5-20251001'
+    },
     // Virtual Review Panel - Sonnet for synthesis step (individual LLM models managed by multi-llm-service)
     'virtual-review-panel': {
       model: 'claude-sonnet-4-20250514',

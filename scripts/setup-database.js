@@ -589,6 +589,49 @@ const v23bStatements = [
   `CREATE INDEX IF NOT EXISTS idx_dynamics_feedback_session ON dynamics_feedback(session_id)`,
 ];
 
+// V25: Expertise Finder tables
+const v25Statements = [
+  `CREATE TABLE IF NOT EXISTS expertise_roster (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    role_type VARCHAR(50) NOT NULL,
+    role VARCHAR(255),
+    affiliation VARCHAR(500),
+    orcid VARCHAR(255),
+    primary_fields TEXT,
+    keywords TEXT,
+    subfields_specialties TEXT,
+    methods_techniques TEXT,
+    distinctions TEXT,
+    expertise TEXT,
+    keck_affiliation VARCHAR(255),
+    keck_affiliation_details TEXT,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER REFERENCES user_profiles(id),
+    updated_by INTEGER REFERENCES user_profiles(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS expertise_matches (
+    id SERIAL PRIMARY KEY,
+    user_profile_id INTEGER REFERENCES user_profiles(id),
+    proposal_title TEXT,
+    proposal_filename VARCHAR(255),
+    proposal_text_hash VARCHAR(64),
+    match_results JSONB,
+    model_used VARCHAR(100),
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    estimated_cost_cents NUMERIC(10,4),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_expertise_roster_role_type ON expertise_roster(role_type)`,
+  `CREATE INDEX IF NOT EXISTS idx_expertise_roster_active ON expertise_roster(is_active)`,
+  `CREATE INDEX IF NOT EXISTS idx_expertise_roster_name ON expertise_roster(name)`,
+  `CREATE INDEX IF NOT EXISTS idx_expertise_matches_user ON expertise_matches(user_profile_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_expertise_matches_created ON expertise_matches(created_at DESC)`,
+];
+
 // V24: Virtual Review Panel tables
 const v24Statements = [
   `CREATE TABLE IF NOT EXISTS panel_reviews (
@@ -1191,6 +1234,25 @@ async function runMigration() {
       }
     }
 
+    // Run V25 table creation (Expertise Finder)
+    console.log(`\nApplying v25 schema updates - Expertise Finder (${v25Statements.length} statements)...`);
+    for (let i = 0; i < v25Statements.length; i++) {
+      const statement = v25Statements[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v25-${i + 1}/${v25Statements.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v25-${i + 1}/${v25Statements.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v25-${i + 1}/${v25Statements.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -1289,7 +1351,10 @@ async function runMigration() {
     console.log('\nV24 new tables (Virtual Review Panel):');
     console.log('  • panel_reviews (multi-LLM review sessions)');
     console.log('  • panel_review_items (individual LLM reviews per stage)');
-    console.log('\nIndexes created: 59');
+    console.log('\nV25 new tables (Expertise Finder):');
+    console.log('  • expertise_roster (internal reviewer/consultant/board roster)');
+    console.log('  • expertise_matches (AI matching history)');
+    console.log('\nIndexes created: 64');
 
   } catch (error) {
     console.error('\n✗ Migration failed:', error.message);

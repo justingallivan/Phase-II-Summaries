@@ -133,6 +133,15 @@ export const APP_REGISTRY = [
     features: ['Retraction Watch DB', 'PubPeer Search', 'News Analysis', 'AI Summarization'],
   },
   {
+    key: 'expertise-finder',
+    name: 'WMKF Expertise',
+    href: '/expertise-finder',
+    icon: '🧠',
+    description: 'Match grant proposals to internal staff, consultants, and board members using AI-powered expertise analysis',
+    categories: ['phase-i', 'phase-ii'],
+    features: ['Staff Assignment', 'Consultant Matching', 'Board Interest', 'Roster Management'],
+  },
+  {
     key: 'virtual-review-panel',
     name: 'Virtual Review Panel',
     href: '/virtual-review-panel',

@@ -54,6 +54,7 @@ A multi-application document processing system using Claude AI for grant-related
 | Literature Analyzer | `literature-analyzer.js` | `/api/analyze-literature` | Research paper synthesis |
 | Integrity Screener | `integrity-screener.js` | `/api/integrity-screener/*` | Screen applicants for research integrity |
 | Dynamics Explorer | `dynamics-explorer.js` | `/api/dynamics-explorer/*` | Natural language CRM queries via agentic tool-use |
+| Expertise Finder | `expertise-finder.js` | `/api/expertise-finder/*` | Match proposals to internal staff, consultants, and board members |
 
 ## Tech Stack
 
@@ -123,6 +124,7 @@ Each app uses a model optimized for its task. Configured in `shared/config/baseC
 | Expense Reporter | Haiku 3.5 | `CLAUDE_MODEL_EXPENSE_REPORTER` |
 | Contact Enrichment | Haiku 3.5 | - |
 | Dynamics Explorer | Haiku 4.5 | - |
+| Expertise Finder | Sonnet 4 | `CLAUDE_MODEL_EXPERTISE_FINDER` |
 
 ## Development
 
@@ -275,6 +277,11 @@ Located in `lib/utils/`:
 
 - `dynamics_feedback` - User feedback (thumbs up/down) and auto-detected failures (feedback_type, category, user_note, query_text, conversation_context JSONB, auto_detected, status, admin_note)
 
+### Expertise Finder Tables
+
+- `expertise_roster` - Internal reviewer/consultant/board roster (name, role_type, affiliation, expertise fields, is_active, audit trail)
+- `expertise_matches` - AI proposal-to-reviewer matching history (match_results JSONB, model/token/cost tracking, per-user)
+
 ### Monitoring & Maintenance Tables
 
 - `system_alerts` - Central alert store (type, severity, title, message, metadata, status, auto_resolve_key)
@@ -322,6 +329,11 @@ Located in `lib/utils/`:
 - `GET/PATCH /api/dynamics-explorer/feedback` - Admin feedback review (superuser only)
 - `GET/POST/DELETE /api/dynamics-explorer/roles` - User role management (superuser only)
 - `GET/POST/DELETE /api/dynamics-explorer/restrictions` - Table/field restrictions (superuser only)
+
+### Expertise Finder
+- `POST /api/expertise-finder/match` - Match proposal PDF to internal roster (staff assignment, consultant overlap, board interest)
+- `GET/POST/PATCH/DELETE /api/expertise-finder/roster` - CRUD for expertise roster members
+- `GET /api/expertise-finder/history` - Match history for current user
 
 ### App Access Control
 - `GET /api/app-access` - Get caller's allowed apps (`?all=true` for superuser admin view)
@@ -387,6 +399,8 @@ Located in `lib/utils/`:
 | `docs/GRANT_CYCLE_LIFECYCLE.md` | Full grant proposal lifecycle with stages, status values, triggers, and AI tasks |
 | `docs/STAGED_REVIEW_PIPELINE.md` | 3-stage automated proposal triage pipeline design (fit screening → intelligence brief → virtual panel) |
 | `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` | Implementation plan for pipeline apps (Fit Screener + Proposal Pipeline) |
+| `modules/expertise_matching/CLAUDE.md` | Expertise Finder module: matching rules, expertise boundaries, CSV schema, known gaps |
+| `modules/expertise_matching/docs/SKILL_reviewer_matching.md` | Full operational procedures for Phase I batch and Phase II individual matching |
 
 ---
 
