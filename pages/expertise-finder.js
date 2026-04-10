@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
@@ -614,6 +614,346 @@ function RosterForm({ initialData, onChange, onSubmit, onCancel, saving, roleTyp
   );
 }
 
+// ─── Batch Tab ───
+
+function BatchTab() {
+  const [fiscalYear, setFiscalYear] = useState('December 2025');
+  const [program, setProgram] = useState('SE');
+  const [proposals, setProposals] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [results, setResults] = useState({}); // keyed by requestId
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [error, setError] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+  const abortRef = useRef(false);
+
+  // Generate cycle options (current year back to 2020)
+  const cycleOptions = useMemo(() => {
+    const cycles = [];
+    const currentYear = new Date().getFullYear();
+    for (let year = currentYear; year >= 2020; year--) {
+      cycles.push({ value: `December ${year}`, label: `D${year % 100} - December ${year}` });
+      cycles.push({ value: `June ${year}`, label: `J${year % 100} - June ${year}` });
+    }
+    return cycles;
+  }, []);
+
+  const loadProposals = async () => {
+    setLoading(true);
+    setError(null);
+    setProposals([]);
+    setResults({});
+    setExpandedId(null);
+
+    try {
+      const params = new URLSearchParams({ fiscalYear, program });
+      const response = await fetch(`/api/expertise-finder/proposals?${params}`);
+      const data = await response.json();
+
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      setProposals(data.proposals || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const runBatch = async () => {
+    const unprocessed = proposals.filter(p => !results[p.requestId]);
+    if (unprocessed.length === 0) return;
+
+    setProcessing(true);
+    abortRef.current = false;
+    setProgress({ current: 0, total: unprocessed.length });
+
+    for (let i = 0; i < unprocessed.length; i++) {
+      if (abortRef.current) break;
+
+      const proposal = unprocessed[i];
+      setProgress({ current: i + 1, total: unprocessed.length });
+
+      try {
+        const response = await fetch('/api/expertise-finder/batch-match', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requestId: proposal.requestId,
+            requestNumber: proposal.requestNumber,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          setResults(prev => ({
+            ...prev,
+            [proposal.requestId]: { error: data.error, availableFiles: data.availableFiles },
+          }));
+        } else {
+          setResults(prev => ({
+            ...prev,
+            [proposal.requestId]: { success: true, ...data },
+          }));
+        }
+      } catch (err) {
+        setResults(prev => ({
+          ...prev,
+          [proposal.requestId]: { error: err.message },
+        }));
+      }
+    }
+
+    setProcessing(false);
+  };
+
+  const stopBatch = () => {
+    abortRef.current = true;
+  };
+
+  const exportCsv = () => {
+    const headers = [
+      'Request Number', 'Title', 'PI', 'Institution', 'Phase I Status',
+      'Actual PD', 'AI Primary PD', 'AI Primary PD Rationale',
+      'AI Secondary PD', 'AI Secondary PD Rationale',
+      'Consultant Names', 'Consultant Details',
+      'Board Member Names', 'Board Member Details',
+      'Expertise Gaps', 'Status',
+    ];
+
+    const rows = proposals.map(p => {
+      const r = results[p.requestId];
+      const match = r?.results;
+      const staff = match?.staff_assignment;
+      const consultants = match?.consultant_overlap || [];
+      const board = match?.board_interest || [];
+      const gaps = match?.expertise_gaps?.has_gaps ? match.expertise_gaps.description : '';
+
+      return [
+        p.requestNumber,
+        p.title,
+        p.pi,
+        p.institution,
+        p.phaseIStatus,
+        p.actualPd,
+        staff?.primary?.name || '',
+        staff?.primary?.rationale || '',
+        staff?.secondary?.name || '',
+        staff?.secondary?.rationale || '',
+        consultants.map(c => c.name).join('; '),
+        consultants.map(c => `${c.name} (${c.relevance}): ${c.rationale}`).join('; '),
+        board.map(b => b.name).join('; '),
+        board.map(b => `${b.name}: ${b.rationale}`).join('; '),
+        gaps,
+        r ? (r.success ? 'Matched' : `Error: ${r.error}`) : 'Pending',
+      ];
+    });
+
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `expertise_batch_${program}_${fiscalYear.replace(/\s/g, '_')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const completedCount = Object.values(results).filter(r => r.success).length;
+  const errorCount = Object.values(results).filter(r => r.error).length;
+
+  return (
+    <div className="space-y-6">
+      {/* Filters */}
+      <Card>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Query Dynamics Proposals</h3>
+        <div className="flex flex-col sm:flex-row gap-3 items-end">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Grant Cycle</label>
+            <select
+              value={fiscalYear}
+              onChange={(e) => setFiscalYear(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              {cycleOptions.map(c => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Program</label>
+            <select
+              value={program}
+              onChange={(e) => setProgram(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="SE">SE - Science & Engineering</option>
+              <option value="MR">MR - Medical Research</option>
+            </select>
+          </div>
+          <Button onClick={loadProposals} disabled={loading}>
+            {loading ? 'Loading...' : 'Load Proposals'}
+          </Button>
+        </div>
+      </Card>
+
+      {error && <ErrorAlert message={error} onDismiss={() => setError(null)} />}
+
+      {/* Proposal List */}
+      {proposals.length > 0 && (
+        <>
+          {/* Controls */}
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              {proposals.length} proposal{proposals.length !== 1 ? 's' : ''} found
+              {completedCount > 0 && (
+                <span className="ml-2 text-green-600">&middot; {completedCount} matched</span>
+              )}
+              {errorCount > 0 && (
+                <span className="ml-2 text-red-600">&middot; {errorCount} errors</span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {Object.keys(results).length > 0 && (
+                <Button onClick={exportCsv}>Export CSV</Button>
+              )}
+              {processing ? (
+                <button
+                  onClick={stopBatch}
+                  className="px-4 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100"
+                >
+                  Stop
+                </button>
+              ) : (
+                <Button onClick={runBatch} disabled={completedCount === proposals.length}>
+                  {completedCount > 0 ? `Resume (${proposals.length - completedCount - errorCount} remaining)` : 'Run All'}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Progress Bar */}
+          {processing && (
+            <div className="space-y-1">
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500 text-center">
+                Processing {progress.current} of {progress.total}...
+              </p>
+            </div>
+          )}
+
+          {/* Results Table */}
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium text-gray-600">Request</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-600">Title</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-600">PI</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-600">Phase I Status</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-600">Actual PD</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-600">AI Primary PD</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {proposals.map(p => {
+                    const r = results[p.requestId];
+                    const primaryPd = r?.results?.staff_assignment?.primary?.name;
+                    const isExpanded = expandedId === p.requestId;
+
+                    return (
+                      <tr key={p.requestId} className="group">
+                        <td className="px-4 py-3 text-gray-900 font-medium whitespace-nowrap">{p.requestNumber}</td>
+                        <td className="px-4 py-3 text-gray-700 max-w-xs truncate">{p.title}</td>
+                        <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{p.pi}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-0.5 text-xs rounded-full font-medium ${
+                            p.phaseIStatus === 'Invited' ? 'bg-green-100 text-green-800' :
+                            p.phaseIStatus === 'Not Invited' ? 'bg-red-100 text-red-800' :
+                            p.phaseIStatus?.includes('Recommended') ? 'bg-blue-100 text-blue-800' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {p.phaseIStatus || '—'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{p.actualPd || '—'}</td>
+                        <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
+                          {r?.success ? (
+                            <button
+                              onClick={() => setExpandedId(isExpanded ? null : p.requestId)}
+                              className="text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                              {primaryPd || '—'}
+                            </button>
+                          ) : '—'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {!r && !processing && <span className="text-gray-400">Pending</span>}
+                          {!r && processing && progress.current <= proposals.indexOf(p) && (
+                            <span className="text-gray-400">Waiting</span>
+                          )}
+                          {!r && processing && progress.current > proposals.indexOf(p) && (
+                            <span className="text-blue-600">Processing...</span>
+                          )}
+                          {r?.success && <span className="text-green-600">Done</span>}
+                          {r?.error && (
+                            <span className="text-red-600 cursor-help" title={r.error}>Error</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Expanded Detail */}
+          {expandedId && results[expandedId]?.success && (
+            <Card>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {proposals.find(p => p.requestId === expandedId)?.requestNumber} — Match Details
+                </h3>
+                <button
+                  onClick={() => setExpandedId(null)}
+                  className="text-sm text-gray-400 hover:text-gray-600"
+                >
+                  Close
+                </button>
+              </div>
+              <MatchResults
+                results={results[expandedId].results}
+                metadata={results[expandedId].metadata}
+              />
+            </Card>
+          )}
+        </>
+      )}
+
+      {/* Empty state */}
+      {!loading && proposals.length === 0 && !error && (
+        <Card>
+          <p className="text-sm text-gray-500 text-center py-8">
+            Select a grant cycle and program, then click Load Proposals to query Dynamics.
+          </p>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ─── History Tab ───
 
 function HistoryTab() {
@@ -691,6 +1031,7 @@ function ExpertiseFinderPage() {
 
   const tabs = [
     { id: 'match', label: 'Match Proposal', icon: '🎯' },
+    { id: 'batch', label: 'Batch', icon: '📊' },
     { id: 'roster', label: 'Roster', icon: '👥' },
     { id: 'history', label: 'History', icon: '📋' },
   ];
@@ -725,6 +1066,7 @@ function ExpertiseFinderPage() {
         {/* Tab Content */}
         <div className="min-h-[400px]">
           {activeTab === 'match' && <MatchTab />}
+          {activeTab === 'batch' && <BatchTab />}
           {activeTab === 'roster' && <RosterTab />}
           {activeTab === 'history' && <HistoryTab />}
         </div>
