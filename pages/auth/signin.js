@@ -4,8 +4,8 @@
  * Provides a branded login experience for Microsoft authentication
  */
 
-import { signIn, getSession } from 'next-auth/react';
-import { useEffect, useState } from 'react';
+import { signIn } from 'next-auth/react';
+import { useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 
@@ -13,15 +13,6 @@ export default function SignIn() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const { error, callbackUrl } = router.query;
-
-  // Redirect if already signed in
-  useEffect(() => {
-    getSession().then((session) => {
-      if (session) {
-        router.replace(callbackUrl || '/');
-      }
-    });
-  }, [router, callbackUrl]);
 
   const handleSignIn = () => {
     setIsLoading(true);
@@ -144,11 +135,24 @@ export default function SignIn() {
   );
 }
 
-// Prevent authenticated users from seeing this page
+// Prevent authenticated users from seeing this page.
+//
+// Uses the same strict checks as middleware.js (azureId present + not idle)
+// to avoid a redirect loop: middleware rejects stale tokens, but getSession()
+// treats an empty-but-decodable JWT as a valid session. When the two disagree,
+// the browser bounces between /auth/signin and / until it gives up ("Too many
+// redirects"). Matching middleware's logic here keeps stale-cookie users on
+// the sign-in page so they can re-authenticate.
 export async function getServerSideProps(context) {
-  const session = await getSession(context);
+  const { getToken } = await import('next-auth/jwt');
+  const token = await getToken({ req: context.req });
 
-  if (session) {
+  const IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+  const isValid =
+    token?.azureId &&
+    (!token.lastActivity || Date.now() - token.lastActivity < IDLE_TIMEOUT_MS);
+
+  if (isValid) {
     return {
       redirect: {
         destination: context.query.callbackUrl || '/',
