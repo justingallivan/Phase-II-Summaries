@@ -753,7 +753,7 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: 'list_documents',
-    description: 'List SharePoint documents attached to a Dynamics CRM request. Returns filenames, sizes, and dates. Use when user asks about documents, files, attachments, PDFs, or proposals for a specific request.',
+    description: 'List SharePoint documents attached to a Dynamics CRM request. Searches the active akoya_request library AND the RequestArchive1/2/3 libraries (for grants migrated from the previous grants management system), and recurses into subfolders like "Final Report/" or "Year 1/". Returns each file with its filename, size, date, and location (library + subfolder). Use when user asks about documents, files, attachments, PDFs, or proposals for a specific request — works for both new and migrated grants.',
     input_schema: {
       type: 'object',
       properties: {
@@ -765,7 +765,7 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: 'search_documents',
-    description: 'Search within SharePoint document contents (PDFs, Word docs, etc.) for keywords or phrases. Searches full text of files, not just filenames. Use quotes for exact phrase match. Can scope to a specific library or request.',
+    description: 'Search within SharePoint document contents (PDFs, Word docs, etc.) for keywords or phrases. Searches full text of files, not just filenames. Use quotes for exact phrase match. Can scope to a specific library or request — when scoped to a request, searches both the active library and the RequestArchive1/2/3 libraries that hold migrated content.',
     input_schema: {
       type: 'object',
       properties: {

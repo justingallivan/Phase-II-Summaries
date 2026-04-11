@@ -17,6 +17,7 @@ import { sql } from '@vercel/postgres';
 import ExcelJS from 'exceljs';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
 import { GraphService } from '../../../lib/services/graph-service';
+import { getRequestSharePointBuckets } from '../../../lib/utils/sharepoint-buckets';
 import { buildSystemPrompt, TOOL_DEFINITIONS, TABLE_ANNOTATIONS } from '../../../shared/config/prompts/dynamics-explorer';
 import { getModelForApp, getFallbackModelForApp, loadModelOverrides } from '../../../shared/config/baseConfig';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
@@ -1440,9 +1441,21 @@ async function handleReviewerRequests(reviewerId, buildDateFilter) {
 
 // ─── list_documents ───
 
+const formatDocSize = (bytes) => {
+  if (!bytes) return '?';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
 /**
  * List SharePoint documents attached to a Dynamics CRM request.
- * Resolves request number → GUID → sharepointdocumentlocation → Graph API file listing.
+ *
+ * Walks every plausible (library, folder) bucket — Dynamics-tracked locations
+ * plus the speculative `RequestArchive1/2/3` libraries — and recurses into
+ * subfolders so migrated grants whose files live in `Final Report/`, `Year 1/`,
+ * etc. are still surfaced. Each returned file carries its own library, folder
+ * path, and (relative) subfolder so download URLs route correctly.
  */
 async function listDocuments({ request_number, request_id }) {
   if (!request_number && !request_id) {
@@ -1462,86 +1475,92 @@ async function listDocuments({ request_number, request_id }) {
     }
   }
 
-  // Step 2: Query sharepointdocumentlocations for this request
-  const locResult = await DynamicsService.queryRecords('sharepointdocumentlocations', {
-    select: 'name,relativeurl,_parentsiteorlocation_value',
-    filter: `_regardingobjectid_value eq '${requestId}'`,
-    top: 10,
-  });
+  // Step 2: Discover every plausible bucket (Dynamics-tracked + archive probes)
+  const buckets = await getRequestSharePointBuckets(requestId, requestNum);
 
-  if (!locResult.records.length) {
-    return {
-      requestNumber: requestNum,
-      documentCount: 0,
-      documents: 'No document locations found for this request.',
-    };
-  }
-
-  // Step 3: Resolve each document location's parent to determine the library name
-  // The parent location's relativeurl is the document library name (e.g. "akoya_request")
-  const parentIds = [...new Set(
-    locResult.records
-      .map(r => r._parentsiteorlocation_value)
-      .filter(Boolean)
-  )];
-
-  let libraryName = 'akoya_request'; // default
-  if (parentIds.length > 0) {
-    try {
-      const parentResult = await DynamicsService.queryRecords('sharepointdocumentlocations', {
-        select: 'relativeurl',
-        filter: parentIds.map(id => `sharepointdocumentlocationid eq ${id}`).join(' or '),
-        top: 5,
-      });
-      if (parentResult.records.length > 0 && parentResult.records[0].relativeurl) {
-        libraryName = parentResult.records[0].relativeurl;
+  // Step 3: List each bucket in parallel, tolerating 404s / permission errors
+  const bucketResults = await Promise.all(
+    buckets.map(async b => {
+      try {
+        const files = await GraphService.listFiles(b.library, b.folder, { recursive: true });
+        return { ...b, files, error: null };
+      } catch (err) {
+        return { ...b, files: [], error: err.message };
       }
-    } catch (e) {
-      // Fall back to default library name
-    }
-  }
+    }),
+  );
 
-  // Step 4: List files from SharePoint via Graph API
-  const folderPath = locResult.records[0].relativeurl;
-  try {
-    const files = await GraphService.listFiles(libraryName, folderPath);
-
-    const formatSize = (bytes) => {
-      if (!bytes) return '?';
-      if (bytes < 1024) return `${bytes} B`;
-      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    };
-
-    const lines = files.map(f => {
-      const date = f.lastModified ? new Date(f.lastModified).toLocaleDateString() : '';
-      return `${f.name} | ${formatSize(f.size)} | ${date} | ${f.mimeType || ''}`;
-    });
-
-    return {
-      requestNumber: requestNum,
-      library: libraryName,
-      folder: folderPath,
-      documentCount: files.length,
-      header: 'Filename | Size | Modified | Type',
-      documents: lines.join('\n') || 'Folder exists but contains no files.',
-      // Structured file data for frontend download links (not sent to Claude)
-      _files: files.map(f => ({
+  // Step 4: Flatten + de-dupe by (library, full folder path, filename)
+  const seen = new Set();
+  const allFiles = [];
+  for (const bucket of bucketResults) {
+    for (const f of bucket.files) {
+      const fileFolder = f.folder || bucket.folder;
+      const k = `${bucket.library}::${fileFolder}::${f.name}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const subfolder = fileFolder.startsWith(bucket.folder + '/')
+        ? fileFolder.slice(bucket.folder.length + 1)
+        : '';
+      allFiles.push({
         name: f.name,
         size: f.size,
         mimeType: f.mimeType,
         lastModified: f.lastModified,
-        downloadUrl: `/api/dynamics-explorer/download-document?library=${encodeURIComponent(libraryName)}&folder=${encodeURIComponent(folderPath)}&filename=${encodeURIComponent(f.name)}`,
-      })),
-    };
-  } catch (graphError) {
+        library: bucket.library,
+        folder: fileFolder,
+        subfolder,
+      });
+    }
+  }
+
+  // Per-bucket summary so Claude can describe the layout to the user.
+  // Hide empty archive probes that returned no files and no error — they're
+  // expected misses for non-migrated grants and would just be noise.
+  const libraries = bucketResults
+    .filter(b => b.files.length > 0 || (b.error && b.source !== 'archive'))
+    .map(b => ({
+      library: b.library,
+      folder: b.folder,
+      count: b.files.length,
+      error: b.error,
+    }));
+
+  if (allFiles.length === 0) {
     return {
       requestNumber: requestNum,
       documentCount: 0,
-      error: `SharePoint access failed: ${graphError.message}`,
-      note: 'The document location was found in Dynamics, but the file listing from SharePoint failed. This may indicate a permissions issue with the Graph API.',
+      libraries,
+      documents: 'No files found in any document library for this request.',
     };
   }
+
+  const lines = allFiles.map(f => {
+    const date = f.lastModified ? new Date(f.lastModified).toLocaleDateString() : '';
+    const where = f.subfolder ? `${f.library}/${f.subfolder}` : f.library;
+    return `${f.name} | ${formatDocSize(f.size)} | ${date} | ${f.mimeType || ''} | ${where}`;
+  });
+
+  return {
+    requestNumber: requestNum,
+    documentCount: allFiles.length,
+    libraries,
+    header: 'Filename | Size | Modified | Type | Location',
+    documents: lines.join('\n'),
+    // Structured file data for frontend download links (not sent to Claude).
+    // Each file carries its own library/folder so downloads route correctly
+    // even when files come from multiple libraries or nested subfolders.
+    _files: allFiles.map(f => ({
+      name: f.name,
+      size: f.size,
+      mimeType: f.mimeType,
+      lastModified: f.lastModified,
+      library: f.library,
+      folder: f.folder,
+      subfolder: f.subfolder,
+      downloadUrl: `/api/dynamics-explorer/download-document?library=${encodeURIComponent(f.library)}&folder=${encodeURIComponent(f.folder)}&filename=${encodeURIComponent(f.name)}`,
+    })),
+  };
 }
 
 // ─── search_documents ───
@@ -1555,91 +1574,103 @@ async function searchDocuments({ query, library, request_number }) {
     return { error: 'A search query is required.' };
   }
 
-  let libraryName = library || null;
-  let folderPath = null;
+  // ── Resolve the search scope ─────────────────────────────────────────────
+  // When a request_number is supplied, we can't trust a single (library,
+  // folder) pair — older grants migrated from the previous grants management
+  // system have files in `RequestArchive1/2/3` libraries on top of (or instead
+  // of) the active `akoya_request` library. We discover every plausible bucket
+  // up front and run the KQL search once per bucket in parallel, then merge
+  // results. This fans out 4× per request-scoped search but is bounded and
+  // parallel, and request-scoped searches are rare relative to broad ones.
+  // The simpler alternative — one unscoped search post-filtered by webUrl —
+  // loses too much KQL precision when scoring across the whole site.
+  let scopes = []; // Array<{ libraryName: string|null, folderPath: string|null, label: string }>
+  let scopeLabel;
 
-  // If request_number provided, resolve to library + folder path
   if (request_number) {
     const reqResult = await getEntity({ type: 'request', identifier: request_number });
     if (reqResult.error) return { error: reqResult.error };
     const requestId = reqResult.akoya_requestid;
+    const requestNum = reqResult.akoya_requestnum || request_number;
     if (!requestId) {
       return { error: `Could not resolve request "${request_number}" to a GUID.` };
     }
 
-    // Query sharepointdocumentlocations for this request
-    const locResult = await DynamicsService.queryRecords('sharepointdocumentlocations', {
-      select: 'name,relativeurl,_parentsiteorlocation_value',
-      filter: `_regardingobjectid_value eq '${requestId}'`,
-      top: 10,
-    });
-
-    if (locResult.records.length > 0) {
-      folderPath = locResult.records[0].relativeurl;
-
-      // Resolve parent to get library name
-      const parentIds = [...new Set(
-        locResult.records.map(r => r._parentsiteorlocation_value).filter(Boolean)
-      )];
-      if (parentIds.length > 0) {
-        try {
-          const parentResult = await DynamicsService.queryRecords('sharepointdocumentlocations', {
-            select: 'relativeurl',
-            filter: parentIds.map(id => `sharepointdocumentlocationid eq ${id}`).join(' or '),
-            top: 5,
-          });
-          if (parentResult.records.length > 0 && parentResult.records[0].relativeurl) {
-            libraryName = parentResult.records[0].relativeurl;
-          }
-        } catch (e) {
-          // Fall back to default
-        }
-      }
-      if (!libraryName) libraryName = 'akoya_request';
-    }
+    const buckets = await getRequestSharePointBuckets(requestId, requestNum);
+    scopes = buckets.map(b => ({
+      libraryName: b.library,
+      folderPath: b.folder,
+      label: `${b.library}/${b.folder}`,
+    }));
+    scopeLabel = `request ${requestNum} (${buckets.length} folder${buckets.length !== 1 ? 's' : ''})`;
+  } else {
+    scopes = [{ libraryName: library || null, folderPath: null, label: library || 'all libraries' }];
+    scopeLabel = library || 'all libraries';
   }
 
   try {
-    const results = await GraphService.searchFiles(query, { libraryName, folderPath });
+    // Run all scopes in parallel; tolerate per-scope failures (archive probes
+    // 404 for non-migrated grants, which is expected).
+    const scopeResults = await Promise.all(
+      scopes.map(async s => {
+        try {
+          const found = await GraphService.searchFiles(query, {
+            libraryName: s.libraryName,
+            folderPath: s.folderPath,
+          });
+          return { ...s, found, error: null };
+        } catch (err) {
+          return { ...s, found: [], error: err.message };
+        }
+      }),
+    );
 
-    if (!results.length) {
+    // De-dupe by file id / webUrl / (library + folder + name)
+    const seen = new Set();
+    const merged = [];
+    for (const sr of scopeResults) {
+      for (const f of sr.found) {
+        const k = f.id || f.webUrl || `${f.library}::${f.folder}::${f.name}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        merged.push(f);
+      }
+    }
+
+    if (!merged.length) {
       return {
         searchCount: 0,
         query,
-        scope: libraryName ? (folderPath ? `${libraryName}/${folderPath}` : libraryName) : 'all libraries',
+        scope: scopeLabel,
         message: 'No documents found matching the search query.',
       };
     }
 
-    const formatSize = (bytes) => {
-      if (!bytes) return '?';
-      if (bytes < 1024) return `${bytes} B`;
-      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    };
-
     // Build text summary for Claude
-    const lines = results.map(f => {
-      const size = formatSize(f.size);
+    const lines = merged.map(f => {
+      const size = formatDocSize(f.size);
       const date = f.lastModified ? new Date(f.lastModified).toLocaleDateString() : '';
+      const where = f.library && f.folder ? `${f.library}/${f.folder}` : (f.library || '');
       const snippet = f.summary ? `\n  Snippet: ${f.summary}` : '';
-      return `${f.name} | ${size} | ${date} | ${f.library}/${f.folder}${snippet}`;
+      return `${f.name} | ${size} | ${date} | ${where}${snippet}`;
     });
 
     return {
-      searchCount: results.length,
+      searchCount: merged.length,
       query,
-      scope: libraryName ? (folderPath ? `${libraryName}/${folderPath}` : libraryName) : 'all libraries',
+      scope: scopeLabel,
       header: 'Filename | Size | Modified | Location',
       documents: lines.join('\n'),
       // Structured file data for frontend download links (not sent to Claude)
-      _files: results
-        .filter(f => f.folder) // Only include files with a resolvable folder path
+      _files: merged
+        .filter(f => f.folder && f.library)
         .map(f => ({
           name: f.name,
           size: f.size,
-          mimeType: null,
+          mimeType: f.mimeType || null,
           lastModified: f.lastModified,
+          library: f.library,
+          folder: f.folder,
           downloadUrl: `/api/dynamics-explorer/download-document?library=${encodeURIComponent(f.library)}&folder=${encodeURIComponent(f.folder)}&filename=${encodeURIComponent(f.name)}`,
         })),
     };

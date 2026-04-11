@@ -35,6 +35,7 @@
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
 import { GraphService } from '../../../lib/services/graph-service';
+import { getRequestSharePointBuckets } from '../../../lib/utils/sharepoint-buckets';
 
 const APP_KEY = 'grant-reporting';
 
@@ -191,73 +192,20 @@ function formatMonthYear(dateStr) {
 }
 
 /**
- * Archive libraries that hold migrated content from a previous grants
- * management system. Older grants (e.g. 2023-vintage) often have their full
- * file set — proposal, biosketches, budget, referee reviews, interim reports,
- * award letters — in one of these libraries instead of `akoya_request`.
- *
- * The folder name convention is identical to `akoya_request`:
- *   {requestNumber}_{guidNoHyphensUpper}
- * so we can probe each archive speculatively without a separate Dynamics
- * lookup. 404s are expected and silently ignored.
- */
-const ARCHIVE_LIBRARIES = ['RequestArchive1', 'RequestArchive2', 'RequestArchive3'];
-
-/**
  * List files attached to a request across every SharePoint library that
- * could plausibly hold its documents. Combines the Dynamics-tracked
- * `sharepointdocumentlocations` (akoya_request, possibly multiple rows) with
- * speculative probes against the legacy archive libraries.
+ * could plausibly hold its documents. Bucket discovery (Dynamics-tracked
+ * locations + speculative archive probes) lives in
+ * `lib/utils/sharepoint-buckets.js` so the Dynamics Explorer chat tool can
+ * share the same logic.
  */
 async function listSharePointDocuments(requestId, requestNumber) {
-  // ── Step A: gather Dynamics-tracked (library, folder) buckets ──────────
-  const locResult = await DynamicsService.queryRecords('sharepointdocumentlocations', {
-    select: 'name,relativeurl,_parentsiteorlocation_value',
-    filter: `_regardingobjectid_value eq '${requestId}'`,
-    top: 10,
-  });
-
-  // Resolve each parent location → library name. Multiple sharepointdocumentlocation
-  // rows on the same request can point to the same library/folder pair, so we
-  // de-dupe by composite key below.
-  const parentIds = [
-    ...new Set(locResult.records.map(r => r._parentsiteorlocation_value).filter(Boolean)),
-  ];
-  const parentToLibrary = new Map();
-  if (parentIds.length > 0) {
-    try {
-      const parentResult = await DynamicsService.queryRecords('sharepointdocumentlocations', {
-        select: 'sharepointdocumentlocationid,relativeurl',
-        filter: parentIds.map(id => `sharepointdocumentlocationid eq ${id}`).join(' or '),
-        top: 10,
-      });
-      for (const p of parentResult.records) {
-        if (p.relativeurl) parentToLibrary.set(p.sharepointdocumentlocationid, p.relativeurl);
-      }
-    } catch (e) {
-      // Non-fatal — fall back to assuming akoya_request below
-    }
-  }
-
-  const dynamicsBuckets = new Map();
-  for (const loc of locResult.records) {
-    if (!loc.relativeurl) continue;
-    const lib = parentToLibrary.get(loc._parentsiteorlocation_value) || 'akoya_request';
-    const key = `${lib}::${loc.relativeurl}`;
-    if (!dynamicsBuckets.has(key)) {
-      dynamicsBuckets.set(key, { library: lib, folder: loc.relativeurl });
-    }
-  }
-
-  // ── Step B: speculative archive-library probes ─────────────────────────
-  const archiveFolder = `${requestNumber}_${requestId.replace(/-/g, '').toUpperCase()}`;
-  const archiveBuckets = ARCHIVE_LIBRARIES.map(library => ({ library, folder: archiveFolder }));
+  // ── Step A+B: discover all plausible buckets ───────────────────────────
+  const allBuckets = await getRequestSharePointBuckets(requestId, requestNumber);
 
   // ── Step C: list every bucket in parallel; tolerate 404 / permission errors
   // Recursive listing handles migrated grants where files live in subfolders
   // like `Final Report/`, `Year 1/`, etc. Each returned file carries its actual
   // folder path, so the download still resolves correctly.
-  const allBuckets = [...dynamicsBuckets.values(), ...archiveBuckets];
   const bucketResults = await Promise.all(
     allBuckets.map(async bucket => {
       try {
