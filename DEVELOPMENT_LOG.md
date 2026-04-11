@@ -4,6 +4,19 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## April 2026 — Grant Reporting App + Multi-Library SharePoint Document Layer (Session 96)
+
+Built the Grant Reporting app end-to-end and hardened the SharePoint document layer for both Grant Reporting and Dynamics Explorer.
+
+- **Grant Reporting app**: Three-step wizard (Dynamics lookup → SharePoint document picker / upload fallback → editable form + Word export). Parallel `Promise.all` extraction calls — `createGrantReportExtractionPrompt` (report only, temp 0.1) and `createGoalsAssessmentPrompt` (proposal vs report, temp 0.2). `compareProposalToReport()` factored as a pure helper for future PowerAutomate-triggered backend use. New `requireAppAccess` route guards on both endpoints; staff-only (not in `DEFAULT_APP_GRANTS`).
+- **SharePoint multi-library + subfolder discovery**: Older grants migrated from a previous grants management system store files in `RequestArchive1/2/3` libraries that Dynamics doesn't track, often inside subfolders like `Final Report/` or `Year 1/`. Built `lib/utils/sharepoint-buckets.js` `getRequestSharePointBuckets()` to discover all plausible buckets via Dynamics-tracked locations + speculative archive probes. Added recursive listing to `GraphService.listFiles({ recursive: true })` with depth/breadth caps; filters out folders. Fixed a token-leak/404 in `downloadFile()` by preferring `@microsoft.graph.downloadUrl` over `redirect: 'follow'` against the bound endpoint.
+- **`classifyFile()` heuristic**: Custom separator class `[\s_\-]` (since `\b` fails between alphanumerics and underscores); proposal signals win when both fire so "Project Narrative ... FINAL.docx" stays a proposal; Phase I files explicitly excluded.
+- **Dynamics Explorer document tools**: `listDocuments` and `searchDocuments` rewritten to use the shared helper. Result shape now carries per-file `library`/`folder`/`subfolder` and a `libraries[]` summary; top-level `library`/`folder` removed. `searchDocuments` fans out KQL searches across all buckets in parallel and dedupes by id/webUrl. Front-end `DocumentLinks` shows location next to each file. Verified: 993879 went from 10 → 63 files, 993347 surfaces nested files correctly.
+
+**Files:** `pages/grant-reporting.js`, `pages/api/grant-reporting/{lookup-grant,extract}.js`, `shared/config/prompts/grant-reporting.js`, `shared/utils/grant-report-word-export.js`, `lib/utils/sharepoint-buckets.js`, `lib/services/graph-service.js`, `pages/api/dynamics-explorer/chat.js`, `pages/dynamics-explorer.js`, `docs/DYNAMICS_EXPLORER_DOCUMENT_LISTING_PLAN.md`
+
+---
+
 ## April 2026 — Virtual Review Panel: Devil's Advocate Pass + Progress Timers (Session 93)
 
 Added adversarial "devil's advocate" review stage and improved progress feedback for long-running LLM calls.
