@@ -150,6 +150,15 @@ export const APP_REGISTRY = [
     categories: ['phase-ii'],
     features: ['Multi-LLM Panel', 'Claim Verification', 'Structured Review', 'Panel Synthesis', 'Cost Tracking'],
   },
+  {
+    key: 'grant-reporting',
+    name: 'Grant Reporting',
+    href: '/grant-reporting',
+    icon: '📊',
+    description: 'Extract grantee progress/final reports into an editable form, compare goals vs. achievements against the original proposal, and export a Word doc matching the Keck final report template',
+    categories: ['phase-ii'],
+    features: ['PDF + DOCX Input', 'Dynamics Auto-Fill', 'SharePoint Proposal Lookup', 'Goals Assessment', 'Editable Form', 'Word Export'],
+  },
 ];
 
 /** All app keys for convenience */

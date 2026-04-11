@@ -55,6 +55,7 @@ A multi-application document processing system using Claude AI for grant-related
 | Integrity Screener | `integrity-screener.js` | `/api/integrity-screener/*` | Screen applicants for research integrity |
 | Dynamics Explorer | `dynamics-explorer.js` | `/api/dynamics-explorer/*` | Natural language CRM queries via agentic tool-use |
 | Expertise Finder | `expertise-finder.js` | `/api/expertise-finder/*` | Match proposals to internal staff, consultants, and board members |
+| Grant Reporting | `grant-reporting.js` | `/api/grant-reporting/*` | Interactive grant final report extraction with Dynamics auto-fill, goals assessment vs. original proposal, and Word export |
 
 ## Tech Stack
 
@@ -125,6 +126,7 @@ Each app uses a model optimized for its task. Configured in `shared/config/baseC
 | Contact Enrichment | Haiku 3.5 | - |
 | Dynamics Explorer | Haiku 4.5 | - |
 | Expertise Finder | Sonnet 4 | `CLAUDE_MODEL_EXPERTISE_FINDER` |
+| Grant Reporting | Sonnet 4 | `CLAUDE_MODEL_GRANT_REPORTING` |
 
 ## Development
 
@@ -334,6 +336,10 @@ Located in `lib/utils/`:
 - `POST /api/expertise-finder/match` - Match proposal PDF to internal roster (staff assignment, consultant overlap, board interest)
 - `GET/POST/PATCH/DELETE /api/expertise-finder/roster` - CRUD for expertise roster members
 - `GET /api/expertise-finder/history` - Match history for current user
+
+### Grant Reporting
+- `POST /api/grant-reporting/lookup-grant` - Look up a request in Dynamics + list its SharePoint documents in one call
+- `POST /api/grant-reporting/extract` - Extract structured fields from a grant report (modes: full / regenerate / regenerate-goals); compares proposal vs. report for goals assessment
 
 ### App Access Control
 - `GET /api/app-access` - Get caller's allowed apps (`?all=true` for superuser admin view)

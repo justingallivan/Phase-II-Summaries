@@ -103,6 +103,11 @@ export const BASE_CONFIG = {
     'virtual-review-panel': {
       model: 'claude-sonnet-4-20250514',
       fallback: 'claude-haiku-4-5-20251001'
+    },
+    // Grant Reporting - Sonnet for structured extraction + goals comparison
+    'grant-reporting': {
+      model: 'claude-sonnet-4-20250514',
+      fallback: 'claude-haiku-4-5-20251001'
     }
   },
 
