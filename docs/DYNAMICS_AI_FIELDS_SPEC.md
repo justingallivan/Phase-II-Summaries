@@ -2,8 +2,7 @@
 
 **Audience:** Connor (AkoyaGO / Power Platform admin)
 **Author:** Justin Gallivan
-**Purpose:** Definitive list of custom fields the AI apps need on `akoya_request` so results can be written back to Dynamics (directly from the Vercel apps today, and from PowerAutomate flows in the near future).
-**Status:** Draft — please review and flag anything that's awkward in AkoyaGO or the Power Platform environment before creation.
+**Status:** v2 — incorporates Connor's review notes from the first draft. Ready to build.
 
 ---
 
@@ -18,64 +17,84 @@ Both paths write to the same fields, so we only need to spec them once.
 
 ---
 
+## Decisions incorporated from v1 review
+
+- **Metadata moves to a child entity.** Per-task `*_generated_at`, `*_model`, `*_version`, `*_status` fields are dropped from `akoya_request` — that history lives in a new `wmkf_ai_run` table (below). Only "current values" stay on the request.
+- **Dynamics audit history** covers who/when/old-new for the flat fields on the request, so we don't duplicate that.
+- **Compliance pass/fail** reuses the existing `akoya_submissionaccepted` boolean instead of a new field.
+- **Compliance phase field** is dropped — single-stage submissions are coming, Phase I is going away.
+- **PD assignment** writes directly to the existing `wmkf_programdirector` lookup rather than through an intermediate `wmkf_ai_pd_recommended` field. Confidence / rationale / alternates don't land in Dynamics — PowerAutomate exports them to an Excel sheet for human audit.
+- **PD expertise lookup** stays out of scope here. The Power Platform flow hardcodes PD GUIDs and expertise in the system prompt for now; future dynamic lookup is tracked separately.
+- **Naming convention** (`wmkf_ai_*`) confirmed.
+- **New Choices (option sets)** OK to create as needed.
+
+---
+
 ## Prerequisites (not fields, but related)
 
 ### Write permission on the app registration
 
 - **App ID:** `d2e73696-537a-483b-bb63-4a4de6aa5d45` (same registration used by Dynamics Explorer today)
 - **Current permission:** Read-only via service principal
-- **Needed:** Custom security role granting `prvUpdate` on `akoya_request`
-- Once granted, the Vercel apps and PowerAutomate flows can write to any of the fields below.
+- **Needed:** Custom security role granting `prvUpdate` on `akoya_request` and `prvCreate`/`prvUpdate` on the new `wmkf_ai_run` table
+
+Once granted, the Vercel apps and PowerAutomate flows can write.
 
 ---
 
 ## Naming convention
 
-All custom fields use the `wmkf_ai_` prefix, grouped by task:
+All custom fields on `akoya_request` use the `wmkf_ai_` prefix, grouped by task:
 
-- `wmkf_ai_summary_*` — proposal intake summary (already spec'd in GRANT_CYCLE_LIFECYCLE.md)
-- `wmkf_ai_report_*` — grant report extraction (new)
-- `wmkf_ai_compliance_*` — compliance check results (new)
-- `wmkf_ai_pd_*` — PD assignment recommendation (new)
+- `wmkf_ai_summary_*` — proposal intake summary
+- `wmkf_ai_report_*` — grant report extraction
+- `wmkf_ai_compliance_*` — compliance check
+- (PD assignment writes to the existing `wmkf_programdirector` lookup — no new prefix needed)
 
-Each task has the same four metadata fields so we can track provenance consistently:
-
-- `*_generated_at` (DateTime)
-- `*_model` (Single-line text, ~64 chars)
-- `*_version` (Integer — prompt version number, increments when we change prompts)
-- `*_status` (Option set: pending / processing / completed / failed / needs_review)
-
-**Rule of thumb we're following:** structured data that staff will filter/sort on gets its own typed field. Freeform narrative text gets a multi-line text field. Everything else (rich structured output like a list of goals with statuses) goes into a single multi-line text JSON field to avoid exploding the schema.
+**Rule of thumb:** structured data that staff will filter/sort on gets its own typed field. Freeform narrative text gets a multi-line text field. Rich structured output (list of goals with statuses, list of compliance issues) goes into a single multi-line text JSON field to avoid exploding the schema.
 
 ---
 
-## Field Set A — Proposal Intake Summary (already spec'd)
+## Child entity — `wmkf_ai_run` (new table)
 
-Included here for completeness. These are the fields from `docs/GRANT_CYCLE_LIFECYCLE.md` — no change.
+One row per AI processing run. Serves as both an audit trail and a replay cache. The Vercel apps and PowerAutomate flows write here on every run, even when the "current value" fields on `akoya_request` are also updated.
 
 | Field | Type | Purpose |
 |-------|------|---------|
-| `wmkf_ai_summary` | Multi-line text | AI-generated proposal summary (the narrative) |
+| `wmkf_runid` | Primary key (auto) | |
+| `wmkf_request` | Lookup → `akoya_request` | The request this run was for |
+| `wmkf_task_type` | Option set | `summary`, `report`, `compliance`, `pd_assignment` |
+| `wmkf_generated_at` | DateTime | When the AI call ran |
+| `wmkf_model` | Single-line text (~64) | Claude model ID (e.g. `claude-sonnet-4`) |
+| `wmkf_prompt_version` | Whole number | Prompt version, bumped whenever we change prompt text |
+| `wmkf_status` | Option set | `completed`, `failed`, `needs_review` |
+| `wmkf_raw_output` | Multi-line text (JSON) | Full structured payload from Claude — enables replay/debugging without re-running the model |
+| `wmkf_notes` | Multi-line text | Failure messages, retry context, anything worth preserving |
+
+**Dynamics Explorer note:** the chat tool should be configured to **exclude `wmkf_ai_run` from search results and schema suggestions**. It's an operational log, not business data — staff shouldn't see these records surfacing in natural-language queries about grants. Justin will add the exclusion on the app side.
+
+---
+
+## Field Set A — Proposal Intake Summary
+
+Fields on `akoya_request`. Current values only.
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `wmkf_ai_summary` | Multi-line text | AI-generated proposal summary narrative |
 | `wmkf_ai_structured_data` | Multi-line text (JSON) | Keywords, PI name(s), methods, etc. |
-| `wmkf_ai_summary_generated_at` | DateTime | When AI processing ran |
-| `wmkf_ai_summary_model` | Single-line text | Claude model used (e.g. `claude-sonnet-4`) |
-| `wmkf_ai_summary_version` | Integer | Prompt version |
 
-**Suggested addition** (not in the original spec but useful for UX parity with the other sets):
-
-| Field | Type | Purpose |
-|-------|------|---------|
-| `wmkf_ai_summary_status` | Option set | pending / processing / completed / failed / needs_review |
+*(Provenance — when/model/version — lives in the `wmkf_ai_run` child row with `wmkf_task_type = 'summary'`.)*
 
 ---
 
 ## Field Set B — Grant Report Extraction (Grant Reporting app)
 
-The Grant Reporting app extracts structured data from a grantee's progress/final report. The form staff see today has three sections: header (pulled from Dynamics), counts (numeric), and narratives. This field set mirrors that structure.
+Fields on `akoya_request`. The form staff see today has three sections: header (pulled from Dynamics, no new fields), counts (numeric), and narratives. This field set mirrors that structure.
 
 ### Counts (numeric, filterable)
 
-Keeping these as flat integers lets staff build Dynamics views/reports like "grants with ≥3 peer-reviewed publications":
+Flat integers let staff build Dynamics views/reports like "grants with ≥3 peer-reviewed publications":
 
 | Field | Type | Purpose |
 |-------|------|---------|
@@ -93,7 +112,7 @@ All count fields should allow null — the AI returns `null` when a count isn't 
 
 ### Narratives (freeform text)
 
-Each of these is multi-line text. Staff can edit them in Dynamics after the AI produces a draft.
+Multi-line text. Staff can edit after the AI produces a draft.
 
 | Field | Type | Purpose |
 |-------|------|---------|
@@ -103,15 +122,15 @@ Each of these is multi-line text. Staff can edit them in Dynamics after the AI p
 | `wmkf_ai_report_publication_2` | Multi-line text (JSON) | `{citation, abstract, source}` for second publication |
 | `wmkf_ai_report_implications` | Multi-line text | Staff-draft implications for future grantmaking |
 
-**Publication fields note:** each publication has a citation + abstract + a flag for whether the abstract was verbatim or AI-summarized. Using a JSON blob keeps these together without creating 6 flat fields. If you'd rather have flat fields (`wmkf_ai_report_pub1_citation`, `wmkf_ai_report_pub1_abstract`, `wmkf_ai_report_pub1_source`) for display in forms, that works too — let me know which you prefer.
+**Publication fields note:** each publication has citation + abstract + a flag for whether the abstract was verbatim or AI-summarized. JSON blob keeps these together without six flat fields. If you'd rather have flat fields (`wmkf_ai_report_pub1_citation`, `...pub1_abstract`, `...pub1_source` × 2) for easier display in Dynamics forms, tell me — happy either way.
 
 ### Goals assessment (structured)
 
-The AI compares the original proposal to the report and rates each stated aim. The result is a list of goals with per-goal status and a rolled-up rating. We want both the flat "overall rating" (for filtering/reporting) and the full structured output (for display).
+The AI compares the original proposal to the report and rates each stated aim. Flat "overall rating" (for filtering/reporting) plus the full structured output (for display).
 
 | Field | Type | Purpose |
 |-------|------|---------|
-| `wmkf_ai_report_overall_rating` | Option set | successful / mixed / unsuccessful |
+| `wmkf_ai_report_overall_rating` | Option set | `successful`, `mixed`, `unsuccessful` |
 | `wmkf_ai_report_outcome_summary` | Multi-line text | 2–4 sentence summary of overall delivery |
 | `wmkf_ai_report_goals_assessment` | Multi-line text (JSON) | Full per-goal breakdown (see sample below) |
 | `wmkf_ai_report_notes_for_staff` | Multi-line text | Things a PD should double-check |
@@ -139,32 +158,19 @@ Sample JSON for `wmkf_ai_report_goals_assessment`:
 `status` values: `achieved`, `partial`, `not_addressed`, `pivoted`
 `confidence` values: `high`, `medium`, `low`
 
-### Metadata
-
-| Field | Type | Purpose |
-|-------|------|---------|
-| `wmkf_ai_report_generated_at` | DateTime | When AI processing ran |
-| `wmkf_ai_report_model` | Single-line text | Claude model used |
-| `wmkf_ai_report_version` | Integer | Prompt version |
-| `wmkf_ai_report_status` | Option set | pending / processing / completed / failed / needs_review |
-| `wmkf_ai_report_source_file` | Single-line text (~255) | Filename of the report document that was processed (for traceability — the app already knows the SharePoint location) |
+*(Provenance lives in `wmkf_ai_run` with `wmkf_task_type = 'report'`.)*
 
 ---
 
-## Field Set C — Compliance Check (Phase I/II)
+## Field Set C — Compliance Check
 
-PowerAutomate will call the compliance prompt once per proposal. The output is pass/fail plus a list of issues. Staff need to be able to filter on the top-level result and see the issue list.
+Fields on `akoya_request`. Two new fields; pass/fail reuses an existing one.
 
 | Field | Type | Purpose |
 |-------|------|---------|
-| `wmkf_ai_compliance_passed` | Two options (Yes/No) | Quick-filter: did the proposal pass compliance? |
-| `wmkf_ai_compliance_phase` | Option set | Phase I / Phase II (which compliance prompt ran) |
-| `wmkf_ai_compliance_issues` | Multi-line text (JSON) | Array of `{category, severity, description}` objects |
+| `akoya_submissionaccepted` *(existing)* | Two options | Compliance pass/fail. AI writes this on completion. |
+| `wmkf_ai_compliance_issues` | Multi-line text (JSON) | Array of `{category, severity, description}` |
 | `wmkf_ai_compliance_summary` | Multi-line text | Human-readable one-paragraph summary |
-| `wmkf_ai_compliance_generated_at` | DateTime | When check ran |
-| `wmkf_ai_compliance_model` | Single-line text | Claude model used |
-| `wmkf_ai_compliance_version` | Integer | Prompt version |
-| `wmkf_ai_compliance_status` | Option set | pending / processing / completed / failed / needs_review |
 
 Sample JSON for `wmkf_ai_compliance_issues`:
 
@@ -177,24 +183,17 @@ Sample JSON for `wmkf_ai_compliance_issues`:
 
 `severity` values: `error`, `warning`, `info`
 
+*(Provenance lives in `wmkf_ai_run` with `wmkf_task_type = 'compliance'`.)*
+
 ---
 
 ## Field Set D — PD Assignment
 
-Batch-run after each Phase I application deadline. The AI recommends a program director per proposal based on fit.
+**No new fields on `akoya_request`.**
 
-| Field | Type | Purpose |
-|-------|------|---------|
-| `wmkf_ai_pd_recommended` | Lookup → systemuser | Recommended PD (preferred — enables Dynamics-native queries) |
-| `wmkf_ai_pd_confidence` | Option set | high / medium / low |
-| `wmkf_ai_pd_rationale` | Multi-line text | Why this PD was recommended |
-| `wmkf_ai_pd_alternates` | Multi-line text (JSON) | Runner-up PDs: `[{systemuserid, name, score}]` |
-| `wmkf_ai_pd_generated_at` | DateTime | When assignment ran |
-| `wmkf_ai_pd_model` | Single-line text | Claude model used |
-| `wmkf_ai_pd_version` | Integer | Prompt version |
-| `wmkf_ai_pd_status` | Option set | pending / processing / completed / failed / needs_review |
+The AI writes directly to the existing `wmkf_programdirector` lookup. Confidence, rationale, and alternate candidates are written to an Excel sheet by PowerAutomate for human audit — not persisted in Dynamics.
 
-**Open question:** if lookup to systemuser is painful to populate from the PowerAutomate side, we can fall back to a Single-line text field storing the PD's systemuserid as a string. The lookup is strictly a UX nicety.
+A `wmkf_ai_run` row is still created with `wmkf_task_type = 'pd_assignment'` so we can trace which run set which PD.
 
 ---
 
@@ -202,27 +201,11 @@ Batch-run after each Phase I application deadline. The AI recommends a program d
 
 | Option set | Values |
 |------------|--------|
-| `*_status` (used on all four sets) | `pending`, `processing`, `completed`, `failed`, `needs_review` |
+| `wmkf_task_type` *(on `wmkf_ai_run`)* | `summary`, `report`, `compliance`, `pd_assignment` |
+| `wmkf_status` *(on `wmkf_ai_run`)* | `completed`, `failed`, `needs_review` |
 | `wmkf_ai_report_overall_rating` | `successful`, `mixed`, `unsuccessful` |
-| `wmkf_ai_compliance_phase` | `phase_i`, `phase_ii` |
-| `wmkf_ai_pd_confidence` | `high`, `medium`, `low` |
 
-If there's already an existing option set in the org for any of these (e.g. "status"), reuse it rather than creating a duplicate.
-
----
-
-## Alternative design: related entity per AI run
-
-If the flat-fields approach above feels heavy, the alternative is a child entity:
-
-- New table: `wmkf_ai_output` with fields `(request_id, task_type, generated_at, model, version, status, structured_data, summary_text)`
-- Each AI run creates a new record related back to `akoya_request`
-
-**Trade-offs:**
-- **Pros:** history preserved automatically (re-runs don't overwrite prior results); schema doesn't grow per new AI task; easier retry tracking
-- **Cons:** queries become joins; staff have to click through to related records to see AI output; filter-on-count fields (publications, postdocs) are harder to surface in list views
-
-My current recommendation is the flat-fields approach for data staff read/filter on (counts, overall rating, compliance pass/fail, recommended PD) and a single JSON field for the full structured payload. But if your AkoyaGO experience suggests a related entity would be cleaner in the UI, I'm open to it.
+New Choices to create; no existing option sets need reusing at this point.
 
 ---
 
@@ -230,21 +213,21 @@ My current recommendation is the flat-fields approach for data staff read/filter
 
 We don't need all of this on day one. In priority order:
 
-1. **Set A status field** (`wmkf_ai_summary_status`) — 1 field, unblocks parity with the others.
-2. **Set B: Grant report extraction** — staff are test-driving the Grant Reporting app now and will want to save results to Dynamics soon.
-3. **Set C: Compliance check** — aligns with Phase 4 of the backend automation plan (Phase I automated check-in).
-4. **Set D: PD assignment** — last, after compliance is proven.
+1. **`wmkf_ai_run` child table + option sets.** Foundation for everything else. Enables the Vercel apps to start logging AI runs even before flat fields exist.
+2. **Field Set B — Grant Report Extraction.** Staff are test-driving the Grant Reporting app now and will want to save results to Dynamics soon.
+3. **Field Set A — Proposal Summary.** Used by Phase I/II Writeup apps; low urgency because they're already usable without CRM writeback.
+4. **Field Set C — Compliance Check.** Aligns with Phase 4 of the backend automation plan.
+5. **(No field work for Set D — just needs the write permission grant.)**
 
-Each set is independent — we can build and use the apps against Set B while you're still defining Set C.
+Each set is independent after (1) lands — we can build and use the apps against Set B while you're still defining Set C.
 
 ---
 
-## Questions for Connor
+## Open items
 
-1. Does the flat-fields approach work in your AkoyaGO environment, or would you prefer the related-entity alternative?
-2. Any existing option sets we should reuse (especially for status values)?
-3. For `wmkf_ai_pd_recommended` — lookup to systemuser is ideal, but if that's hard to populate from PowerAutomate, we can use plain text.
-4. Any naming convention changes you'd prefer? I've used `wmkf_ai_*` to cluster these together; happy to follow whatever pattern matches the rest of the custom schema.
+1. **Publication fields shape** (Set B narratives) — single JSON field per publication, or three flat fields per publication? Tell me which fits AkoyaGO better.
+2. **Write permission grant** on the app registration is still outstanding — all of this is useful only once that's in place.
+3. **Dynamics Explorer exclusion** of `wmkf_ai_run` from search results will be handled on Justin's side once the table exists.
 
 ---
 
@@ -253,3 +236,4 @@ Each set is independent — we can build and use the apps against Set B while yo
 - [GRANT_CYCLE_LIFECYCLE.md](./GRANT_CYCLE_LIFECYCLE.md) — full grant proposal lifecycle with AI task mapping
 - [BACKEND_AUTOMATION_PLAN.md](./BACKEND_AUTOMATION_PLAN.md) — roadmap for the Vercel → PowerAutomate migration
 - [DYNAMICS_SCHEMA_ANNOTATION.md](./DYNAMICS_SCHEMA_ANNOTATION.md) — existing `akoya_request` fields, for naming-convention reference
+- [DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md](./DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md) — separate plan to bridge app users ↔ Dynamics systemusers, unblocks attributed writes and future dynamic PD lookup
