@@ -20,6 +20,7 @@
 
 import pdf from 'pdf-parse';
 import mammoth from 'mammoth';
+import { jsonrepair } from 'jsonrepair';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import {
   BASE_CONFIG,
@@ -468,9 +469,21 @@ function parseJsonResponse(text) {
   try {
     return JSON.parse(jsonStr);
   } catch (err) {
-    console.error('[GrantReporting:extract] Failed to parse JSON response:', err.message);
-    console.error('[GrantReporting:extract] Raw text:', text.slice(0, 500));
-    throw httpError(502, `Failed to parse JSON response from Claude: ${err.message}`);
+    // Fallback: attempt to repair common LLM JSON mistakes (unescaped quotes,
+    // control chars, trailing commas) before giving up.
+    try {
+      const repaired = jsonrepair(jsonStr);
+      const parsed = JSON.parse(repaired);
+      console.warn(
+        `[GrantReporting:extract] JSON required repair (original error: ${err.message})`,
+      );
+      return parsed;
+    } catch (repairErr) {
+      console.error('[GrantReporting:extract] Failed to parse JSON response:', err.message);
+      console.error('[GrantReporting:extract] Repair also failed:', repairErr.message);
+      console.error('[GrantReporting:extract] Raw text:', text.slice(0, 500));
+      throw httpError(502, `Failed to parse JSON response from Claude: ${err.message}`);
+    }
   }
 }
 
