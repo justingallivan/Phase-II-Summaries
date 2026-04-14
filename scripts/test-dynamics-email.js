@@ -88,6 +88,24 @@ async function main() {
   const token = await getToken();
   console.log('Authenticated to Dynamics\n');
 
+  // Step 0: Resolve sender to a systemuser GUID. Dynamics requires
+  // partyid_systemuser@odata.bind on the sender party — addressused alone
+  // fails SendEmail with "Invalid sender party".
+  const resolveResp = await fetch(
+    `${DYNAMICS_URL}/api/data/v9.2/systemusers?$select=systemuserid&$filter=internalemailaddress eq '${FROM_EMAIL}'&$top=1`,
+    { headers: headers(token) }
+  );
+  if (!resolveResp.ok) {
+    console.error(`FAILED to resolve sender (${resolveResp.status}): ${await resolveResp.text()}`);
+    process.exit(1);
+  }
+  const sender = (await resolveResp.json()).value?.[0];
+  if (!sender) {
+    console.error(`No systemuser found for email ${FROM_EMAIL}`);
+    process.exit(1);
+  }
+  console.log(`Resolved sender systemuserid: ${sender.systemuserid}\n`);
+
   // Step 1: Create email activity
   console.log('--- Step 1: Create Email Activity ---');
 
@@ -96,7 +114,11 @@ async function main() {
     description: '<p>This is a <strong>test email</strong> sent via the Dynamics 365 Email Activities API.</p><p>If you received this, the integration is working correctly.</p>',
     directioncode: true, // Outgoing
     email_activity_parties: [
-      { participationtypemask: 1, addressused: FROM_EMAIL },
+      {
+        participationtypemask: 1,
+        addressused: FROM_EMAIL,
+        'partyid_systemuser@odata.bind': `/systemusers(${sender.systemuserid})`,
+      },
       { participationtypemask: 2, addressused: TO_EMAIL },
     ],
   };

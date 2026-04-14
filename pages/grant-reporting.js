@@ -159,6 +159,7 @@ function GrantReporting() {
           reportRef,
           proposalRef,
           headerFromDynamics: lookup?.header || {},
+          requestGuid: lookup?.requestId || null,
         }),
       });
       const data = await resp.json();
@@ -197,6 +198,7 @@ function GrantReporting() {
           reportRef,
           fieldKey,
           currentValues: formData,
+          requestGuid: lookup?.requestId || null,
         }),
       });
       const data = await resp.json();
@@ -230,6 +232,7 @@ function GrantReporting() {
           proposalRef,
           headerFromDynamics: lookup?.header || {},
           currentValues: formData,
+          requestGuid: lookup?.requestId || null,
         }),
       });
       const data = await resp.json();

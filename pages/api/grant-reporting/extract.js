@@ -32,11 +32,13 @@ import {
   createGrantReportExtractionPrompt,
   createFieldRegenerationPrompt,
   createGoalsAssessmentPrompt,
+  GRANT_REPORT_PROMPT_VERSION,
 } from '../../../shared/config/prompts/grant-reporting';
 import { logUsage, estimateCostCents } from '../../../lib/utils/usage-logger';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { safeFetch } from '../../../lib/utils/safe-fetch';
 import { GraphService } from '../../../lib/services/graph-service';
+import { DynamicsService } from '../../../lib/services/dynamics-service';
 
 const APP_KEY = 'grant-reporting';
 const limiter = nextRateLimiter({ max: 5 });
@@ -76,6 +78,7 @@ export default async function handler(req, res) {
     headerFromDynamics = {},
     fieldKey,
     currentValues = {},
+    requestGuid = null,
   } = req.body || {};
 
   try {
@@ -87,6 +90,7 @@ export default async function handler(req, res) {
         reportRef,
         proposalRef,
         headerFromDynamics,
+        requestGuid,
       });
     }
 
@@ -98,6 +102,7 @@ export default async function handler(req, res) {
         reportRef,
         fieldKey,
         currentValues,
+        requestGuid,
       });
     }
 
@@ -110,6 +115,7 @@ export default async function handler(req, res) {
         proposalRef,
         headerFromDynamics,
         currentValues,
+        requestGuid,
       });
     }
 
@@ -129,7 +135,7 @@ export default async function handler(req, res) {
 
 // ─── Mode handlers ─────────────────────────────────────────────────────────
 
-async function handleFull({ res, access, apiKey, reportRef, proposalRef, headerFromDynamics }) {
+async function handleFull({ res, access, apiKey, reportRef, proposalRef, headerFromDynamics, requestGuid }) {
   if (!reportRef) {
     return res.status(400).json({ error: 'reportRef is required for mode=full' });
   }
@@ -148,6 +154,7 @@ async function handleFull({ res, access, apiKey, reportRef, proposalRef, headerF
     model,
     fallback,
     userProfileId: access.profileId,
+    requestGuid,
   });
 
   const goalsPromise = proposalLoad
@@ -159,6 +166,7 @@ async function handleFull({ res, access, apiKey, reportRef, proposalRef, headerF
         model,
         fallback,
         userProfileId: access.profileId,
+        requestGuid,
       })
     : Promise.resolve(null);
 
@@ -177,7 +185,7 @@ async function handleFull({ res, access, apiKey, reportRef, proposalRef, headerF
   });
 }
 
-async function handleRegenerate({ res, access, apiKey, reportRef, fieldKey, currentValues }) {
+async function handleRegenerate({ res, access, apiKey, reportRef, fieldKey, currentValues, requestGuid }) {
   if (!reportRef) {
     return res.status(400).json({ error: 'reportRef is required for mode=regenerate' });
   }
@@ -195,14 +203,26 @@ async function handleRegenerate({ res, access, apiKey, reportRef, fieldKey, curr
   const temperature = fieldKey === 'implications_for_future_grantmaking' ? 0.6 : 0.1;
 
   const start = Date.now();
-  const result = await callClaudeWithFallback({
-    apiKey,
-    model,
-    fallback,
-    prompt,
-    temperature,
-    maxTokens: 2048,
-  });
+  let result;
+  try {
+    result = await callClaudeWithFallback({
+      apiKey,
+      model,
+      fallback,
+      prompt,
+      temperature,
+      maxTokens: 2048,
+    });
+  } catch (err) {
+    await tryLogAiRun({
+      requestGuid,
+      model,
+      status: 'failed',
+      rawOutput: { error: err.message, fieldKey },
+      notes: `Grant Reporting regenerate (${fieldKey}) — Claude call failed`,
+    });
+    throw err;
+  }
   const latencyMs = Date.now() - start;
 
   logUsage({
@@ -216,6 +236,15 @@ async function handleRegenerate({ res, access, apiKey, reportRef, fieldKey, curr
   });
 
   const parsed = parseJsonResponse(result.text);
+
+  await tryLogAiRun({
+    requestGuid,
+    model: result.modelUsed,
+    status: 'completed',
+    rawOutput: { fieldKey, value: parsed.value ?? '' },
+    notes: `Grant Reporting regenerate (${fieldKey})`,
+  });
+
   return res.status(200).json({ value: parsed.value ?? '' });
 }
 
@@ -227,6 +256,7 @@ async function handleRegenerateGoals({
   proposalRef,
   headerFromDynamics,
   currentValues,
+  requestGuid,
 }) {
   if (!reportRef || !proposalRef) {
     return res.status(400).json({
@@ -247,6 +277,8 @@ async function handleRegenerateGoals({
     model,
     fallback,
     userProfileId: access.profileId,
+    requestGuid,
+    logContext: 'regenerate-goals',
   });
 
   return res.status(200).json({ goalsAssessment });
@@ -266,17 +298,30 @@ export async function extractReport({
   model,
   fallback,
   userProfileId,
+  requestGuid = null,
 }) {
   const prompt = createGrantReportExtractionPrompt(reportText, headerFromDynamics);
   const start = Date.now();
-  const result = await callClaudeWithFallback({
-    apiKey,
-    model,
-    fallback,
-    prompt,
-    temperature: 0.1,
-    maxTokens: 4096,
-  });
+  let result;
+  try {
+    result = await callClaudeWithFallback({
+      apiKey,
+      model,
+      fallback,
+      prompt,
+      temperature: 0.1,
+      maxTokens: 4096,
+    });
+  } catch (err) {
+    await tryLogAiRun({
+      requestGuid,
+      model,
+      status: 'failed',
+      rawOutput: { error: err.message },
+      notes: 'Grant Reporting extraction — Claude call failed',
+    });
+    throw err;
+  }
   const latencyMs = Date.now() - start;
 
   logUsage({
@@ -289,7 +334,17 @@ export async function extractReport({
     status: 'success',
   });
 
-  return parseJsonResponse(result.text);
+  const parsed = parseJsonResponse(result.text);
+
+  await tryLogAiRun({
+    requestGuid,
+    model: result.modelUsed,
+    status: 'completed',
+    rawOutput: parsed,
+    notes: 'Grant Reporting extraction (full report fields)',
+  });
+
+  return parsed;
 }
 
 /**
@@ -308,6 +363,8 @@ export async function compareProposalToReport({
   model,
   fallback,
   userProfileId,
+  requestGuid = null,
+  logContext = 'goals-assessment',
 }) {
   const prompt = createGoalsAssessmentPrompt({
     proposalText,
@@ -317,14 +374,26 @@ export async function compareProposalToReport({
   });
 
   const start = Date.now();
-  const result = await callClaudeWithFallback({
-    apiKey,
-    model,
-    fallback,
-    prompt,
-    temperature: 0.2,
-    maxTokens: 4096,
-  });
+  let result;
+  try {
+    result = await callClaudeWithFallback({
+      apiKey,
+      model,
+      fallback,
+      prompt,
+      temperature: 0.2,
+      maxTokens: 4096,
+    });
+  } catch (err) {
+    await tryLogAiRun({
+      requestGuid,
+      model,
+      status: 'failed',
+      rawOutput: { error: err.message },
+      notes: `Grant Reporting ${logContext} — Claude call failed`,
+    });
+    throw err;
+  }
   const latencyMs = Date.now() - start;
 
   logUsage({
@@ -338,7 +407,17 @@ export async function compareProposalToReport({
   });
 
   const parsed = parseJsonResponse(result.text);
-  return parsed.goalsAssessment ?? parsed;
+  const goalsAssessment = parsed.goalsAssessment ?? parsed;
+
+  await tryLogAiRun({
+    requestGuid,
+    model: result.modelUsed,
+    status: 'completed',
+    rawOutput: { goalsAssessment },
+    notes: `Grant Reporting ${logContext} (proposal vs. report)`,
+  });
+
+  return goalsAssessment;
 }
 
 // ─── File loading ──────────────────────────────────────────────────────────
@@ -491,6 +570,25 @@ function httpError(status, message) {
   const err = new Error(message);
   err.status = status;
   return err;
+}
+
+// Fire-and-log wrapper around DynamicsService.logAiRun. Writeback is best-effort
+// audit logging — a failure here must never break the user's extraction flow.
+async function tryLogAiRun({ requestGuid, model, status, rawOutput, notes }) {
+  if (!requestGuid) return;
+  try {
+    await DynamicsService.logAiRun({
+      requestGuid,
+      taskType: 'report',
+      model,
+      promptVersion: GRANT_REPORT_PROMPT_VERSION,
+      status,
+      rawOutput,
+      notes,
+    });
+  } catch (err) {
+    console.warn(`[GrantReporting:extract] logAiRun failed (non-fatal): ${err.message}`);
+  }
 }
 
 export const config = {

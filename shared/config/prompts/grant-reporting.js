@@ -9,6 +9,10 @@
  * All prompts instruct Claude to return ONLY valid JSON (no prose, no markdown fences).
  */
 
+// Bump whenever the prompt text changes. Stored on wmkf_ai_run rows so we
+// can cross-reference run outputs to the prompt generation that produced them.
+export const GRANT_REPORT_PROMPT_VERSION = 1;
+
 const NARRATIVE_FIELD_LABELS = {
   project_impacts:
     'Project Impacts — what was accomplished, what changed from the original plan, and any collateral benefits beyond the original goals.',

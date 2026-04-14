@@ -1,8 +1,10 @@
-# Dynamics Custom Fields for AI Output — Spec for Connor
+# Dynamics Custom Fields for AI Output — Spec for Connor (v2, superseded)
+
+> **Superseded by [DYNAMICS_AI_FIELDS_SPEC_v3_cn.md](./DYNAMICS_AI_FIELDS_SPEC_v3_cn.md)** — Connor's v3 is the canonical, implemented spec as of 2026-04-14. This v2 is retained for historical context only. Field names, Choice values, and the `wmkf_ai_run` schema in v2 do **not** match what's actually live in Dynamics — refer to v3.
 
 **Audience:** Connor (AkoyaGO / Power Platform admin)
 **Author:** Justin Gallivan
-**Status:** v2 — incorporates Connor's review notes from the first draft. Ready to build.
+**Status:** v2 — superseded by v3.
 
 ---
 
