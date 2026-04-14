@@ -124,6 +124,115 @@ If you're a Claude Code session picking this up, these are the diagrams that wou
 
 ---
 
+## Sketches (in progress)
+
+Priorities 1 and 2 from the list above. Priorities 3 (worked-example data flow) and 4 (dashboard wireframe) still pending.
+
+### 1. Draft / publish state machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> draft: create new (v1)
+    [*] --> draft: fork from published (v N+1, new row)
+
+    draft --> draft: edit body / metadata in place
+    draft --> published: publish
+    published --> retired: superseded by next publish
+    published --> retired: explicit retire (no replacement)
+    retired --> [*]
+
+    note right of published
+        wmkf_body is immutable here.
+        Exactly one row per wmkf_name
+        has is_current = true at any moment.
+        Publishing a new draft atomically
+        demotes this row to retired and
+        flips is_current to the new row.
+    end note
+
+    note left of draft
+        is_current is always false.
+        Multiple concurrent drafts per
+        wmkf_name are allowed (distinct
+        wmkf_version integers).
+    end note
+```
+
+**Invariants the state machine enforces**
+
+- `wmkf_body` is only mutable while `status = draft`. Published and retired rows are frozen.
+- For each `wmkf_name`, at most one row has `is_current = true`, and that row has `status = published`.
+- The publish transition is atomic: new row becomes `published` + `is_current = true`; prior `is_current` row becomes `retired` + `is_current = false`.
+- `retired` is terminal. Rows stay queryable for historical `wmkf_ai_run.wmkf_ai_promptversion` references, but are never mutated or revived.
+
+### 2. Full-composition vs. hybrid sequence
+
+Same trigger in both: a Dynamics status change fires a PowerAutomate flow that needs to run a prompt for a specific `akoya_request`.
+
+**Full composition** — PowerAutomate owns the Claude call end-to-end. Next.js survives only as a utility for PDF/DOCX text extraction, because no clean Dataverse/PA connector exists for that.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Dyn as Dynamics (trigger)
+    participant PA as PowerAutomate
+    participant PT as wmkf_prompt_template
+    participant SP as SharePoint
+    participant NJ as Next.js /api/util/extract-text
+    participant AN as Anthropic API
+    participant Run as wmkf_ai_run
+
+    Dyn->>PA: status change event
+    PA->>PT: OData: current row for wmkf_name
+    PT-->>PA: body, model, params, variables, version
+    PA->>SP: list + download request files
+    SP-->>PA: PDF / DOCX blobs
+    PA->>NJ: POST blob(s)
+    NJ-->>PA: plain text
+    PA->>PA: render template (substitute variables)
+    PA->>AN: POST /v1/messages (PA assembles cache_control JSON)
+    Note over PA,AN: PA owns retry, 529 backoff, token + cost calc
+    AN-->>PA: completion + usage
+    PA->>Dyn: PATCH akoya_request.wmkf_ai_summary
+    PA->>Run: INSERT wmkf_ai_run (promptversion, tokens, cost, rawOutput)
+```
+
+**Hybrid composition** — PowerAutomate owns the trigger and the final write to `akoya_request`. Next.js owns the mechanics of making the Claude call work: file fetch, extraction, template render, caching, retry, cost tracking, `wmkf_ai_run` logging.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Dyn as Dynamics (trigger)
+    participant PA as PowerAutomate
+    participant PT as wmkf_prompt_template
+    participant NJ as Next.js /api/execute-prompt
+    participant SP as SharePoint
+    participant AN as Anthropic API
+    participant Run as wmkf_ai_run
+
+    Dyn->>PA: status change event
+    PA->>PT: OData: current row for wmkf_name
+    PT-->>PA: body, model, params, variables, version
+    PA->>NJ: POST {prompt_row, request_id, trigger_context}
+    NJ->>SP: list + download files (file-loader + sharepoint-buckets)
+    SP-->>NJ: PDF / DOCX blobs
+    NJ->>NJ: extract text, render template
+    NJ->>AN: POST /v1/messages (reuses existing caching + retry)
+    AN-->>NJ: completion + usage
+    NJ->>Run: INSERT wmkf_ai_run (promptversion, tokens, cost, rawOutput)
+    NJ-->>PA: {summary, run_id}
+    PA->>Dyn: PATCH akoya_request.wmkf_ai_summary
+```
+
+**What the diagrams make visible**
+
+- Full composition has one fewer network hop on the happy path (Anthropic ⇄ PA directly), but PA has to re-implement file extraction, `cache_control` JSON assembly, retry/backoff, and cost calculation. PDF extraction already requires a Next.js helper, which softens the "no Next.js runtime dependency" argument considerably.
+- Hybrid keeps every mechanic that already works in one tested codepath (`file-loader.js`, `claude-reviewer-service.js` retry, prompt caching) and adds exactly one cross-boundary POST. PA still fetches the prompt row itself, so `wmkf_ai_promptversion` provenance stays visible in PA's audit trail — that's the thing hybrid is careful not to give up.
+- In both flows, `wmkf_ai_run` is written by whoever makes the Anthropic call. Logging lives next to the call, never on the trigger side. This matters because the rawOutput + token counts come back with the completion response.
+- A "hybrid lite" variant exists (PA passes only `{prompt_name, request_id}` and lets Next.js fetch the prompt row too). That collapses PA's audit visibility back to just "I called Next.js," which is why the diagram above keeps the prompt fetch on PA's side.
+
+---
+
 ## Out of scope for this design doc
 
 - Prompt eval / A-B testing (covered separately — the "historical replay" use case for batch evaluation tooling)
