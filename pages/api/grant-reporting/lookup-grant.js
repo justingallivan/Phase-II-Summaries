@@ -37,7 +37,9 @@ import { DynamicsService } from '../../../lib/services/dynamics-service';
 import { GraphService } from '../../../lib/services/graph-service';
 import { getRequestSharePointBuckets } from '../../../lib/utils/sharepoint-buckets';
 
-const APP_KEY = 'grant-reporting';
+// Lookup is generic (request lookup + SharePoint doc listing) — any app that
+// needs to target an akoya_request by request number can reuse this endpoint.
+const APP_KEYS = ['grant-reporting', 'batch-phase-i-summaries'];
 
 const HEADER_FIELDS = [
   'akoya_requestid',
@@ -62,7 +64,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const access = await requireAppAccess(req, res, APP_KEY);
+  const access = await requireAppAccess(req, res, ...APP_KEYS);
   if (!access) return;
 
   const { requestNumber } = req.body || {};

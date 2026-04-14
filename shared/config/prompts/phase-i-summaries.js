@@ -3,6 +3,10 @@
  * Used for analyzing Phase I proposals with Keck Foundation alignment evaluation
  */
 
+// Bump whenever createPhaseISummarizationPrompt's text changes. Stored on
+// wmkf_ai_run rows for audit / cross-reference of outputs to prompt gen.
+export const PHASE_I_PROMPT_VERSION = 1;
+
 /**
  * Phase I summarization prompt with Keck Foundation evaluation
  * @param {string} text - The proposal text to analyze

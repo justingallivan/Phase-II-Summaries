@@ -18,8 +18,6 @@
  * without going through req/res.
  */
 
-import pdf from 'pdf-parse';
-import mammoth from 'mammoth';
 import { jsonrepair } from 'jsonrepair';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import {
@@ -36,14 +34,11 @@ import {
 } from '../../../shared/config/prompts/grant-reporting';
 import { logUsage, estimateCostCents } from '../../../lib/utils/usage-logger';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
-import { safeFetch } from '../../../lib/utils/safe-fetch';
-import { GraphService } from '../../../lib/services/graph-service';
+import { loadFile, httpError } from '../../../lib/utils/file-loader';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
 
 const APP_KEY = 'grant-reporting';
 const limiter = nextRateLimiter({ max: 5 });
-
-const MAX_TEXT_LENGTH = BASE_CONFIG?.FILE_PROCESSING?.MAX_TEXT_LENGTH || 1000000;
 
 const ALLOWED_NARRATIVE_FIELDS = new Set([
   'project_impacts',
@@ -420,78 +415,6 @@ export async function compareProposalToReport({
   return goalsAssessment;
 }
 
-// ─── File loading ──────────────────────────────────────────────────────────
-
-/**
- * Load a FileRef and return its plain-text contents + filename.
- * Throws an HTTP-tagged error on validation failure.
- */
-async function loadFile(ref) {
-  if (!ref || typeof ref !== 'object') {
-    throw httpError(400, 'Invalid file reference');
-  }
-
-  let buffer;
-  let filename;
-  let mimeType = null;
-
-  if (ref.source === 'upload') {
-    if (!ref.fileUrl || !ref.filename) {
-      throw httpError(400, 'Upload file reference requires fileUrl and filename');
-    }
-    const resp = await safeFetch(ref.fileUrl);
-    if (!resp.ok) {
-      throw httpError(400, `Failed to fetch uploaded file: ${resp.status}`);
-    }
-    buffer = Buffer.from(await resp.arrayBuffer());
-    filename = ref.filename;
-  } else if (ref.source === 'sharepoint') {
-    if (!ref.library || !ref.folder || !ref.filename) {
-      throw httpError(400, 'SharePoint file reference requires library, folder, and filename');
-    }
-    const downloaded = await GraphService.downloadFileByPath(ref.library, ref.folder, ref.filename);
-    buffer = downloaded.buffer;
-    filename = downloaded.filename || ref.filename;
-    mimeType = downloaded.mimeType;
-  } else {
-    throw httpError(400, `Unknown file source: ${ref.source}`);
-  }
-
-  const text = await extractTextFromBuffer(buffer, filename, mimeType);
-
-  if (!text || text.trim().length < 100) {
-    throw httpError(400, `${filename}: file appears to be empty or contains insufficient text`);
-  }
-
-  if (text.length > MAX_TEXT_LENGTH) {
-    throw httpError(
-      413,
-      `${filename}: extracted text exceeds maximum size (${text.length} > ${MAX_TEXT_LENGTH} chars)`,
-    );
-  }
-
-  return { text: text.trim(), filename };
-}
-
-async function extractTextFromBuffer(buffer, filename, mimeType) {
-  const lower = (filename || '').toLowerCase();
-  const isPdf = lower.endsWith('.pdf') || mimeType === 'application/pdf';
-  const isDocx =
-    lower.endsWith('.docx') ||
-    mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-  const isDoc = lower.endsWith('.doc') || mimeType === 'application/msword';
-
-  if (isPdf) {
-    const data = await pdf(buffer);
-    return data.text || '';
-  }
-  if (isDocx || isDoc) {
-    const result = await mammoth.extractRawText({ buffer });
-    return result.value || '';
-  }
-  throw httpError(400, `Unsupported file type for "${filename}". Use PDF, DOCX, or DOC.`);
-}
-
 // ─── Claude calling ────────────────────────────────────────────────────────
 
 async function callClaudeWithFallback({ apiKey, model, fallback, prompt, temperature, maxTokens }) {
@@ -564,12 +487,6 @@ function parseJsonResponse(text) {
       throw httpError(502, `Failed to parse JSON response from Claude: ${err.message}`);
     }
   }
-}
-
-function httpError(status, message) {
-  const err = new Error(message);
-  err.status = status;
-  return err;
 }
 
 // Fire-and-log wrapper around DynamicsService.logAiRun. Writeback is best-effort
