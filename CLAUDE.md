@@ -56,6 +56,7 @@ A multi-application document processing system using Claude AI for grant-related
 | Dynamics Explorer | `dynamics-explorer.js` | `/api/dynamics-explorer/*` | Natural language CRM queries via agentic tool-use |
 | Expertise Finder | `expertise-finder.js` | `/api/expertise-finder/*` | Match proposals to internal staff, consultants, and board members |
 | Grant Reporting | `grant-reporting.js` | `/api/grant-reporting/*` | Interactive grant final report extraction with Dynamics auto-fill, goals assessment vs. original proposal, and Word export |
+| Phase I Dynamics (Test) | `phase-i-dynamics.js` | `/api/phase-i-dynamics/summarize` | Single-request Phase I summarization with writeback to `akoya_request.wmkf_ai_summary` + `wmkf_ai_run` audit row. Pre-flight overwrite guard. Not in nav — direct URL only. |
 
 ## Tech Stack
 
@@ -208,6 +209,8 @@ Located in `lib/services/`:
 Located in `lib/utils/`:
 - `cron-auth.js` - Vercel cron secret verification
 - `health-checker.js` - Reusable health check logic (7 services incl. Microsoft Graph)
+- `file-loader.js` - Shared FileRef loader (upload/SharePoint → PDF/DOCX text) used by Grant Reporting and Phase I Dynamics
+- `sharepoint-buckets.js` - `getRequestSharePointBuckets(requestId, requestNumber)` — walks active + archive libraries for a request
 
 ---
 
@@ -339,7 +342,10 @@ Located in `lib/utils/`:
 
 ### Grant Reporting
 - `POST /api/grant-reporting/lookup-grant` - Look up a request in Dynamics + list its SharePoint documents in one call
-- `POST /api/grant-reporting/extract` - Extract structured fields from a grant report (modes: full / regenerate / regenerate-goals); compares proposal vs. report for goals assessment
+- `POST /api/grant-reporting/extract` - Extract structured fields from a grant report (modes: full / regenerate / regenerate-goals); compares proposal vs. report for goals assessment. Logs every Claude call to `wmkf_ai_run`.
+
+### Phase I Dynamics (Test)
+- `POST /api/phase-i-dynamics/summarize` - Single-request Phase I summarization; PATCHes narrative to `akoya_request.wmkf_ai_summary` and logs to `wmkf_ai_run`. Returns 409 with existing content when the field is already populated unless `overwrite: true`.
 
 ### App Access Control
 - `GET /api/app-access` - Get caller's allowed apps (`?all=true` for superuser admin view)
