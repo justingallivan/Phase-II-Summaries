@@ -33,6 +33,71 @@ These came out of the design conversation in Session 99. Listed here so a fresh 
    - Superusers only: create drafts, edit drafts, publish drafts, retire published versions
 7. **Git-seed stays committed.** Canonical bootstrap copies live in the repo for disaster recovery and new-environment setup. Dynamics is source of truth; git is backup.
 8. **Dynamics ≠ AkoyaGO.** Storing prompts in `wmkf_prompt_template` is consistent with "minimize reliance on AkoyaGO" — Dynamics is the underlying platform, which we're already committed to.
+9. **App patterns define which prompts need Dynamics storage.** Four migration-relevant patterns exist across the current app suite (see "App patterns and inventory" below). Only Pattern A and dual-caller prompts require Dynamics storage — Pattern B and C prompts have no PA driver and can stay in `.js` indefinitely.
+10. **Retirements.** Concept Evaluator is deprecated (concepts workflow being retired). Batch Phase I Summaries and Batch Phase II Summaries Vercel UIs retire once the backend can loop over the underlying per-proposal prompt — the batch apps only existed because programmatic Dynamics access didn't yet, and they share their prompts with the single-writeup apps. Multi-Perspective Evaluator is a development playground, explicitly out of migration scope.
+11. **Phase I/II writeup apps become dual-caller.** Backend PA auto-drafts on status change and writes to `akoya_request.wmkf_ai_summary`. The Vercel app becomes an interactive refinement surface (Q&A against the draft, optional writeback to the same field). Both PA and Next.js read the same prompt row.
+12. **v1 scope is three prompt rows.** `phase-i-writeup`, `phase-ii-writeup`, `compliance-field-set-c`. Everything else (Pattern B/C prompts, Q&A prompts, shared fragments, non-dev editor UI) is v2+.
+13. **Preprocessing stays in the caller.** Text truncation, PDF/DOCX extraction, chunking, cleaning, and conditional-branch resolution are caller-side logic in both PA and Next.js. Dynamics stores static template text + `wmkf_variables` declarations — callers compute final substitution values (including pre-resolved conditional blocks) before filling slots.
+14. **Q&A sub-prompts stay in `.js` for v1.** Called only from Next.js (interactive writeup sessions); no PA driver. Re-evaluate in v2 once the dual-caller pattern is proven.
+15. **Defensive extraction is caller-specific, not prompt-specific.** Current Vercel prompts are roughly 70% shared analytical core + 20% defensive extraction (institution/PI/amount/period from raw PDF) + 10% input. Target prompts drop most of the 20% because Dynamics-sourced callers pass those fields as known variables. This is what makes one prompt row per analysis viable — the "Vercel sibling with defensive extraction vs. backend twin with structured inputs" split dissolves in the target state.
+
+## App patterns and inventory
+
+Four migration-relevant patterns across the current app suite:
+
+- **Pattern A — Backend-primary, Vercel-as-reader.** PA/Dynamics runs the analysis on a trigger (typically a status change). Output lives in Dynamics fields. The Vercel app is a styled reader: it queries Dynamics and displays results, with no Claude call on the Vercel side.
+- **Pattern B — Vercel-primary, Dynamics-as-source.** User triggers from Vercel. The app pulls structured context from Dynamics rather than asking the user to provide it or re-extract it from a PDF. Claude runs in Next.js. Output is a downloadable artifact (Word doc, `.eml`, markdown, PDF) — not persisted back to Dynamics.
+- **Pattern C — Vercel-primary, user-uploaded input.** User uploads documents not stored in Dynamics (external reviews, arbitrary papers, receipts). Input is genuinely unstructured, so defensive extraction in the prompt is still warranted. Claude runs in Next.js. Output is a downloadable artifact.
+- **Dual-caller (Pattern A + Vercel interactive).** One prompt row is read by both PA (auto-draft on trigger) and Next.js (user interactive refinement). Both write `wmkf_ai_run` rows with the same `wmkf_ai_promptversion` value — provenance is visible in the audit log ("auto-drafted by PA on Monday, refined by user via Q&A on Tuesday, saved over v1"). An interactive session should pin the prompt version it started with so a mid-session republish doesn't cause drift between the draft and subsequent Q&A turns.
+
+### Inventory (post-migration state)
+
+| App | Pattern | Dynamics prompt row? | Notes |
+|---|---|---|---|
+| Phase I Writeup (single) | Dual-caller | Yes (v1) | Backend auto-drafts; Vercel adds Q&A + optional save |
+| Phase II Writeup (single) | Dual-caller | Yes (v1) | Same as above |
+| Batch Phase I Summaries | Pattern A (backend loop) | Shared with Phase I Writeup | Vercel UI retired — backend loops the single-writeup prompt |
+| Batch Phase II Summaries | Pattern A (backend loop) | Shared with Phase II Writeup | Vercel UI retired — same logic |
+| Compliance / Field Set C | Pattern A | Yes (v1) | Backend-only |
+| Phase I Dynamics (Test) | Pattern A (prototype) | Already the prototype | Becomes production Phase I auto-draft; source of `phase-i-writeup` prompt row |
+| Concept Evaluator | Deprecated | No | Concepts workflow retired |
+| Multi-Perspective Evaluator | Playground | No | Out of scope |
+| Literature Analyzer | Pattern C | No — stays in `.js` | Not fully formed; no backend access planned |
+| Peer Review Summarizer | Pattern C | No — stays in `.js` | External reviews, user-uploaded |
+| Expense Reporter | Pattern C | No — stays in `.js` | User-uploaded receipts |
+| Grant Reporting | Pattern B | Possibly (v2+) for editability | Stays in `.js` for v1 |
+| Reviewer Finder | Pattern B | Possibly (v2+) for editability | Stays in `.js` for v1 |
+| Review Manager | Pattern B | Possibly (v2+) for editability | Stays in `.js` for v1 |
+| Expertise Finder | Pattern B | Possibly (v2+) for editability | Stays in `.js` for v1 |
+| Funding Gap Analyzer | Pattern B | Possibly (v2+) for editability | Stays in `.js` for v1 |
+| Integrity Screener (applicant) | Pattern B | Possibly (v2+) for editability | Distinct from Field Set C which is Pattern A |
+| Dynamics Explorer | Pattern B (chat) | Probably not — ephemeral system prompts | — |
+| Phase I/II writeup Q&A | Next.js-only | Deferred to v2 | No PA driver |
+
+### Anatomy of a current Vercel prompt
+
+Using `shared/config/prompts/phase-i-writeup.js` as the worked example. A Claude call in the current codebase is built in six layers; three of them move to Dynamics, three stay in caller code.
+
+| Layer | Moves to `wmkf_prompt_template`? | Notes |
+|---|---|---|
+| Model selection (`getModelForApp`) | Yes — `wmkf_model` | Current fallback chain (DB override → env var → `baseConfig.js`) is superseded by reading Dynamics |
+| Request parameters (max_tokens, temperature) | Yes — `wmkf_maxtokens`, `wmkf_temperature` | — |
+| Static template body | Yes — `wmkf_body` | The ~70% analytical core |
+| Variable slot declarations | Yes — `wmkf_variables` (JSON) | Named slots, descriptions, types |
+| Conditional branches in prompt text | **No** — pre-resolved by caller | Caller builds the final string for the slot (e.g., "institution known" vs "institution unknown" block) and fills a single variable |
+| Preprocessing (truncation, PDF extraction, chunking) | No — caller code | Depends on runtime input; Dynamics can record limits (e.g., `wmkf_max_input_chars`) but not execute them |
+| HTTP envelope (`fetch` call, headers) | No — caller code | PA or Next.js |
+| Response handling + `wmkf_ai_run` logging | No — caller code | Whoever makes the Anthropic call writes the run row |
+
+### Current vs. target prompt shape
+
+Phase I Writeup today, decomposed:
+
+- **~70% shared analytical core** — role framing, output structure, section rules (Summary = 150-200 words, 4 rationale bullets, etc.), tone/forbidden words, formatting, output example. Carries across PA and Next.js identically.
+- **~20% defensive extraction** — "You MUST extract the COMPLETE institution name," validation rules, error examples (Arizona vs. Arizona State, MIT vs. Massachusetts Institute of Technology), PI identification instructions. **Mostly disappears in the target state** because structured callers pass `institution`, `pi_name`, etc. as known variables.
+- **~10% input block** — the truncated proposal text (100k char cap).
+
+The target prompt row in Dynamics ≈ analytical core + structured-variable slots. The migrated Vercel dual-caller path adapts by sourcing those variables from Dynamics lookups instead of PDF extraction.
 
 ## Schema sketch (draft)
 
@@ -79,13 +144,13 @@ Prompts are templates with runtime slots (proposal text, grant context, file con
 
 The tail wags the dog here: whatever PA can substitute cleanly is what we should use on both sides, even if it looks non-standard in the codebase. Need to test PA's `replace()` + string interpolation to pick.
 
-### 2. v1 scope
+### 2. v1 scope — RESOLVED
 
-Options:
-- **Migrate all ~15 prompts now.** Forces every app onto the new store. Clean, but means touching every API route.
-- **Migrate only PA-pipeline prompts first** (Phase I summary, Compliance — Field Set C). Minimum viable. Leaves the other ~13 prompts in JS modules until a reason surfaces to move them.
+**v1 is three prompt rows:** `phase-i-writeup`, `phase-ii-writeup`, `compliance-field-set-c`.
 
-Leaning toward the second — incremental migration, prove the pattern on two prompts, then roll the rest when there's a trigger.
+Rationale: these are the only prompts with a PA driver (the original motivation for moving out of `.js`). Phase I/II writeup rows are dual-caller — read by both PA auto-draft and Next.js interactive refinement. Compliance Field Set C is Pattern A backend-only. Batch Phase I/II Summaries share their prompts with the single-writeup apps (backend loops over the per-proposal prompt), so the batch apps contribute no new prompt rows.
+
+See "App patterns and inventory" above for the full classification. Everything Pattern B, Pattern C, deprecated, or Q&A sub-prompt is explicitly v2+.
 
 ### 3. First non-Justin editor
 
