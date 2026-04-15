@@ -408,6 +408,8 @@ Located in `lib/utils/`:
 | `docs/TODO_EMAIL_NOTIFICATIONS.md` | Unified notification service (dashboard alerts + future email) |
 | `docs/PENDING_ADMIN_REQUESTS.md` | Azure AD + Dynamics admin permission requests |
 | `docs/BACKEND_AUTOMATION_PLAN.md` | PowerAutomate backend automation roadmap (prompt development, data migration, Dynamics integration) |
+| `docs/PROMPT_STORAGE_DESIGN.md` | Live design doc for migrating Claude prompts from `.js` modules into a `wmkf_prompt_template` Dataverse table — schema, draft/publish flow, app patterns, user visibility/override features, editor safety tiers, rollback mechanics |
+| `docs/WORKFLOW_CHAINING_DESIGN.md` | Token-efficiency principle for backend workflows — ingest-once / chain-downstream pattern, multi-output prompts, structured outputs declared in `wmkf_output_schema` |
 | `docs/GRANT_CYCLE_LIFECYCLE.md` | Full grant proposal lifecycle with stages, status values, triggers, and AI tasks |
 | `docs/STAGED_REVIEW_PIPELINE.md` | 3-stage automated proposal triage pipeline design (fit screening → intelligence brief → virtual panel) |
 | `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` | Implementation plan for pipeline apps (Fit Screener + Proposal Pipeline) |
