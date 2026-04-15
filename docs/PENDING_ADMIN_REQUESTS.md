@@ -161,7 +161,7 @@ This uses site-scoped permissions (`Sites.Selected`), not tenant-wide access. Th
 |-------|--------|--------|
 | Azure AD Admin | Add `Sites.Read.All`, `Files.Read.All`, `Mail.Send` to "WMK: Research Review App Suite" + grant consent | Pending |
 | Dynamics Admin | Assign "Email Sender" role (or equivalent privileges) to the app's application user | Pending |
-| IT Admin | Grant `Sites.ReadWrite.Selected` on akoyaGO site to "WMK: Research Review App Suite" | Pending |
+| IT Admin | Grant `Sites.ReadWrite.Selected` on akoyaGO site to "WMK: Research Review App Suite" | **Done** (2026-04-15) |
 
 Once all are complete, we'll have:
 - **SharePoint document access** — list and retrieve files attached to CRM requests

@@ -32,7 +32,7 @@ PowerAutomate flows handle all automated processing:
 
 Our Vercel app is **not in the loop** for automated tasks. This keeps the architecture simple — PowerAutomate already has full Dynamics + SharePoint access and can call Claude's API directly.
 
-> **Update:** This original architecture is being revisited per the Session 100 note above. The hybrid composition variant routes Claude calls through a Next.js `/api/execute-prompt` endpoint to reuse existing file extraction, retry/backoff, prompt caching, and JSON-schema validation. PA still owns the trigger and the final Dynamics write.
+> **Update:** This original architecture is being revisited per the Session 100 note above. The hybrid composition variant routes Claude calls through a Next.js `/api/execute-prompt` endpoint to reuse existing retry/backoff, prompt caching, and JSON-schema validation. PA still owns the trigger and the final Dynamics write. As of 2026-04-15, Connor confirmed PA has native PDF preprocessing capability, so PDF/DOCX text extraction is no longer a dependency on Next.js — this strengthens the case for the original full-composition architecture. Decision still open; see `PROMPT_STORAGE_DESIGN.md` Q4.
 
 ### Human-Initiated Tasks (Vercel App → Dynamics)
 

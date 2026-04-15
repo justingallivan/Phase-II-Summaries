@@ -161,13 +161,13 @@ The run log already exists (Connor's side). Three additions for override and pro
 
 Today these live in Next.js services. Once PA composes, PA owns them (or delegates back via a helper endpoint):
 
-- **PDF/DOCX text extraction** — `lib/utils/file-loader.js`. No clean Dataverse/PA connector for PDF text extraction; likely needs a thin Next.js `/api/util/extract-text` helper.
+- **PDF/DOCX text extraction** — `lib/utils/file-loader.js` on the Vercel side. PA has its own PDF preprocessing capability, so both callers can handle extraction independently — no cross-boundary helper needed.
 - **Anthropic retry / backoff on 529s and rate limits.** PA has built-in retry but it's coarse; needs per-flow configuration.
 - **Prompt caching with `cache_control` markers.** Doable in PA's HTTP action but the JSON assembly is ugly. We use ephemeral cache today — material cost savings.
 - **Token counting + cost estimation.**
 - **Logging to `wmkf_ai_run`.** PA can do this natively (it's the same Dataverse table it already writes to), so this one is easy.
 
-The weight of this list is why **hybrid composition** (PA fetches + renders the prompt from Dynamics, then POSTs the rendered prompt to a thin Next.js `/api/execute-prompt` endpoint that handles the Claude mechanics) is still worth weighing against full composition.
+With PDF extraction solved natively in PA, the remaining items (retry, caching, token counting) are still weighty enough that **hybrid composition** (PA fetches + renders the prompt from Dynamics, then POSTs the rendered prompt to a thin Next.js `/api/execute-prompt` endpoint that handles the Claude mechanics) is still worth weighing against full composition — but the gap has narrowed.
 
 ## User-facing prompt features
 
@@ -335,10 +335,11 @@ Full composition is philosophically cleaner and removes Vercel as a runtime depe
 Tentatively chose full composition in Session 99. The Session 100 additions push hard toward hybrid:
 - **Multi-output prompts return JSON** that needs schema validation + retry on malformed output. Painful in PA, trivial in `claude-reviewer-service.js`.
 - **Prompt resolver and execute-prompt endpoint already exist** for the user-override and superuser-test-run features. PA reusing them means one Claude codepath, not two.
-- **PDF extraction already requires a Next.js helper** in full composition — the "no Next.js runtime dependency" argument is already partially false.
 - **`wmkf_ai_run` audit needs `wmkf_run_source`** to distinguish PA from Vercel calls — easier when both go through the same logging surface.
 
-Recommendation now leans **hybrid** unless Connor has a concrete blocker on Vercel as a runtime dependency.
+> **Update (2026-04-15):** Connor confirmed PA has a native PDF preprocessing capability, removing the PDF extraction dependency on Next.js. This was previously a strong argument for hybrid ("PA needs Next.js for extraction anyway"), so full composition is now more viable than before. The remaining hybrid arguments (JSON schema validation, retry, prompt caching, single codepath) still apply but the gap has narrowed. Decision still open pending Connor's input on the other PA-side concerns (retry complexity, `cache_control` assembly, timeout behavior).
+
+Recommendation leans **hybrid** but full composition is a credible alternative now that PDF extraction is no longer a blocker.
 
 ---
 
@@ -401,7 +402,7 @@ stateDiagram-v2
 
 Same trigger in both: a Dynamics status change fires a PowerAutomate flow that needs to run a prompt for a specific `akoya_request`.
 
-**Full composition** — PowerAutomate owns the Claude call end-to-end. Next.js survives only as a utility for PDF/DOCX text extraction, because no clean Dataverse/PA connector exists for that.
+**Full composition** — PowerAutomate owns the Claude call end-to-end with no Next.js runtime dependency. PA handles PDF/DOCX text extraction natively.
 
 ```mermaid
 sequenceDiagram
@@ -410,7 +411,6 @@ sequenceDiagram
     participant PA as PowerAutomate
     participant PT as wmkf_prompt_template
     participant SP as SharePoint
-    participant NJ as Next.js /api/util/extract-text
     participant AN as Anthropic API
     participant Run as wmkf_ai_run
 
@@ -419,8 +419,7 @@ sequenceDiagram
     PT-->>PA: body, model, params, variables, version
     PA->>SP: list + download request files
     SP-->>PA: PDF / DOCX blobs
-    PA->>NJ: POST blob(s)
-    NJ-->>PA: plain text
+    PA->>PA: extract text from PDF/DOCX (native PA preprocessing)
     PA->>PA: render template (substitute variables)
     PA->>AN: POST /v1/messages (PA assembles cache_control JSON)
     Note over PA,AN: PA owns retry, 529 backoff, token + cost calc
@@ -458,7 +457,7 @@ sequenceDiagram
 
 **What the diagrams make visible**
 
-- Full composition has one fewer network hop on the happy path (Anthropic ⇄ PA directly), but PA has to re-implement file extraction, `cache_control` JSON assembly, retry/backoff, and cost calculation. PDF extraction already requires a Next.js helper, which softens the "no Next.js runtime dependency" argument considerably.
+- Full composition is now fully self-contained — PA handles PDF/DOCX extraction natively (confirmed 2026-04-15), removing the last Next.js dependency. PA still has to implement `cache_control` JSON assembly, retry/backoff, and cost calculation, but the "no Vercel runtime dependency" argument is now genuine.
 - Hybrid keeps every mechanic that already works in one tested codepath (`file-loader.js`, `claude-reviewer-service.js` retry, prompt caching) and adds exactly one cross-boundary POST. PA still fetches the prompt row itself, so `wmkf_ai_promptversion` provenance stays visible in PA's audit trail — that's the thing hybrid is careful not to give up.
 - In both flows, `wmkf_ai_run` is written by whoever makes the Anthropic call. Logging lives next to the call, never on the trigger side. This matters because the rawOutput + token counts come back with the completion response.
 - A "hybrid lite" variant exists (PA passes only `{prompt_name, request_id}` and lets Next.js fetch the prompt row too). That collapses PA's audit visibility back to just "I called Next.js," which is why the diagram above keeps the prompt fetch on PA's side.

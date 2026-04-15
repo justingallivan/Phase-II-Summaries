@@ -190,7 +190,7 @@ Sample JSON for `wmkf_ai_reportgoalsassessment`:
 |--------|--------|--------|
 | Write permissions on app registration | Custom security role: `prvUpdate` on `akoya_request`, `prvCreate`/`prvUpdate` on `wmkf_ai_run`. App ID: `d2e73696-537a-483b-bb63-4a4de6aa5d45` | **Done** (2026-04-14) |
 | Activity privileges | `prvCreateActivity`, `prvWriteActivity`, `prvReadActivity` on Activity entity + `prvSendAsUser` (already granted). Note: `prvSendEmail` from Justin's original spec does not exist as a distinct privilege — `prvSendAsUser` + Activity privileges should cover it. Justin to verify with `node scripts/test-dynamics-email.js`. | **Done** (2026-04-14) |
-| SharePoint write grant | `Sites.Selected` write access on akoyaGO site for the app registration | Pending — requires IT (outside Connor's access) |
+| SharePoint write grant | `Sites.Selected` write access on akoyaGO site for the app registration | **Done** (2026-04-15) — IT granted write via Graph API |
 
 ---
 
@@ -233,4 +233,4 @@ Verification and Connor follow-up after the v3 hand-off.
 ### Privilege gaps noted (not currently blocking)
 
 - **`prvCreateNote` on `annotation`** — the grant does not include Note creation. Nothing in v3 requires it, but if a future flow wants to drop audit notes on records, we'd need to request this.
-- **SharePoint `Sites.Selected` write** — unchanged, still pending IT (outside Connor's access).
+- ~~**SharePoint `Sites.Selected` write**~~ — **Resolved** (2026-04-15). IT granted write access on akoyaGO site.
