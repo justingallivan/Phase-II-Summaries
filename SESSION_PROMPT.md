@@ -1,100 +1,99 @@
-# Session 99 Prompt
+# Session 101 Prompt
 
-## Session 98 Summary
+## Sessions 99–100 Summary
 
-Write day. Connor granted Dynamics write access to the service principal mid-session (2026-04-14, scoped `prvCreate`/`prvUpdate` on `wmkf_ai_run`, `prvUpdate` on `akoya_request`). Unblocked the writeback work that had been paused for weeks — shipped two concrete pieces: (1) Grant Reporting now logs every Claude call to the `wmkf_ai_run` child table, and (2) a standalone `/phase-i-dynamics` test page runs Phase I summarization and patches the narrative into `akoya_request.wmkf_ai_summary`, with an overwrite-guard so user-initiated flows never silently clobber prior analyses.
+Design sessions — no production code changed. Worked through prompt storage strategy end-to-end: where prompts should live now that PowerAutomate-triggered backend jobs are on the horizon, how Next.js keeps reading them without drift, how versioning/audit/editing/safety should work. Session 99 (CLI) framed the problem and landed the core decisions; Session 100 (browser Claude Code, so Mermaid diagrams rendered inline) expanded from 8 to 22 locked-in decisions, mapped every current app into a migration pattern (A / B / C / dual-caller), narrowed v1 scope to three prompt rows, and extracted the "ingest once, chain downstream" token-efficiency principle into its own companion doc. Hybrid composition is now leaning ahead of full-PA composition — the list of things PA would have to re-implement (PDF extraction, Anthropic retry, prompt caching, JSON schema validation) turned out to be heavy enough that routing Claude calls through a thin Next.js `/api/execute-prompt` endpoint is the more pragmatic path. Everything is committed and pushed; the next session starts with specs ready for schema + first implementation.
 
 ### What Was Completed
 
-1. **Dynamics writes unstubbed + AI run logging (`77b3b17`)**
-   - Replaced stubbed `createRecord`/`updateRecord`/`deleteRecord` with real Web API calls in `lib/services/dynamics-service.js`.
-   - Added `DynamicsService.logAiRun({ requestGuid, taskType, model, promptVersion, status, rawOutput, notes })` — handles Choice numeric mapping (Summary=682090000, etc.), the case-sensitive `wmkf_ai_Request` nav binding, and `_truncateForMemo` safety valve (caps at 1M for `rawOutput`, 2000 for `notes`).
-   - Grant Reporting's `/api/grant-reporting/extract` now logs every Claude call (full extract, goals regen, per-field regen). Best-effort — warnings don't break the user flow.
-   - Verified end-to-end against request 1002807 via `scripts/query-ai-runs.js`: 4 rows landed with full 9-11k char `rawOutput` payloads after Connor raised the field cap from the default 2000 to 1,000,000.
-   - Also: retired v2 spec in favor of Connor's canonical v3 (`docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md`), patched email test script's sender binding, added `scripts/inspect-ai-fields.js`, `scripts/query-ai-runs.js`, `scripts/test-log-ai-run.js`, `scripts/test-dynamics-write.js`.
+1. **Prompt storage design doc (`b58d159`, `4697101`, `3bbf70a`)**
+   - Single authoritative spec at `docs/PROMPT_STORAGE_DESIGN.md` covering: 9 guiding principles, 22 locked-in decisions, app pattern taxonomy (A / B / C / dual-caller), full app inventory with per-app migration verdicts, `wmkf_prompt_template` schema sketch, user-facing prompt visibility + per-session override design, multi-tier editor safety model (draft/publish + structural lint + pre-publish test-run + append-only rollback), draft/publish state machine (Mermaid), full-vs-hybrid composition sequence diagrams (Mermaid), and the four original open questions now resolved into decisions.
+   - v1 scope deliberately narrow: **three prompt rows** — `phase-i-writeup`, `phase-ii-writeup`, `compliance-field-set-c`. Pattern B/C prompts stay in `.js` indefinitely (no PA driver). Q&A sub-prompts stay in `.js` for v1.
+   - Retirement decisions baked in: Concept Evaluator (concepts workflow retired), Batch Phase I/II Summaries UIs (backend will loop the single-writeup prompt; batch apps only existed because programmatic Dynamics access didn't), Multi-Perspective Evaluator (playground, out of scope).
+   - Dual-caller pattern codified: one prompt row serves both PA auto-drafts on status change AND Vercel interactive refinement; both callers log `wmkf_ai_run` with the same `wmkf_ai_promptversion`.
 
-2. **Phase I Dynamics test page (`9d53901`)**
-   - First end-to-end flat-field writeback for a user-initiated flow. New page `/phase-i-dynamics` + endpoint `/api/phase-i-dynamics/summarize`.
-   - Takes a request number → calls `/api/grant-reporting/lookup-grant` (widened to accept the `batch-phase-i-summaries` app key) to fetch Dynamics header + SharePoint docs → picks proposal file → runs existing Phase I summarization prompt → PATCHes narrative into `akoya_request.wmkf_ai_summary` → logs audit row to `wmkf_ai_run` (`taskType=summary`, `promptVersion=1`).
-   - **Pre-flight overwrite guard**: GET `wmkf_ai_summary` before calling Claude. If non-empty, return HTTP 409 with `{ existingLength, existingContent, recordModifiedOn }`. UI surfaces a confirm-overwrite card showing the full existing text; staff retry with `overwrite: true`. Saves the Claude call when user cancels.
-   - Extracted shared FileRef loader into `lib/utils/file-loader.js` so Grant Reporting and Phase I Dynamics both use it.
-   - Added `PHASE_I_PROMPT_VERSION = 1` export.
-   - Gated on existing `batch-phase-i-summaries` app access grant; not yet registered in nav (direct URL only while we validate).
+2. **Workflow chaining companion doc (`f8f9568`)**
+   - `docs/WORKFLOW_CHAINING_DESIGN.md` captures the "ingest-once, chain-downstream" principle as a first-class design concern. Not just token efficiency — forces explicit thinking about what data a workflow produces and consumes.
+   - Adds a new required column to `wmkf_prompt_template`: `wmkf_output_schema` (JSON, declares fields a prompt produces + their Dynamics targets). Extends `wmkf_variables` entries with optional `source:` references to upstream outputs so downstream prompts don't re-read the proposal.
+   - Worked example: Phase I writeup becomes the canonical "ingest" call producing `wmkf_ai_summary` + `wmkf_keywords` + `wmkf_methodologies` + `wmkf_risk_flags` + `wmkf_team_info` + others in one hit. Downstream compliance / reviewer matching / portfolio analytics / PD assignment consume structured fields, not the PDF. Order-of-magnitude token savings for a 5-step chain on a 50k-token proposal.
+   - New Dynamics schema work surfaced: intermediate fields on `akoya_request` (`wmkf_keywords`, `wmkf_methodologies`, `wmkf_risk_flags`, `wmkf_team_info`, `wmkf_budget_summary`, `wmkf_timeline`). Connor's domain, needs to be sequenced alongside `wmkf_prompt_template` creation.
+
+3. **`docs/BACKEND_AUTOMATION_PLAN.md` updated (`f8f9568`)**
+   - Added Session 100 update note at the top flagging that Phase 1 prompt development should be designed with the storage schema in mind, and Phase 4 PA flow construction reads prompts from the Dynamics table rather than hard-coded text.
+   - Architecture section flagged that the original "PA calls Anthropic directly" variant is being revisited — hybrid composition routes Claude calls through Next.js `/api/execute-prompt` to reuse file extraction, retry/backoff, prompt caching, and JSON-schema validation.
+
+4. **`CLAUDE.md` updated (`f8f9568`)**
+   - Both new design docs registered in the Extended Documentation table.
 
 ### Commits
 
-- `77b3b17` Unstub Dynamics writes and wire AI run logging into Grant Reporting
-- `9d53901` Add Phase I Dynamics test page with wmkf_ai_summary writeback
+- `b58d159` Draft prompt storage design doc for browser handoff (Session 99, CLI)
+- `4697101` Sketch draft/publish state machine and full-vs-hybrid sequence diagrams (Session 100, browser)
+- `3bbf70a` Capture app patterns, dual-caller, and sharpened v1 scope in design doc (Session 100, browser)
+- `f8f9568` Capture Session 100 prompt-storage decisions across planning docs (Session 100, browser)
+- `42952ab` Merge: prompt storage and workflow chaining design (Session 99-100) — `--no-ff` merge commit grouping the design work
 
 ## Deferred Items (Carried Forward)
 
-- **Reusable no-clobber helper**: once a second user-initiated writeback ships (Field Set C Compliance, Grant Reporting flat fields when Set B unblocks, etc.), lift the inline pre-flight read into `DynamicsService.updateIfEmpty(entitySet, guid, fieldName, value, { overwrite })`. Server-side 409-on-conflict is the contract.
-- **Surface existing writeback state in lookup** — include target flat fields (`wmkf_ai_summary`, etc.) in `/api/grant-reporting/lookup-grant`'s select so the frontend can warn "will overwrite existing from YYYY-MM-DD" upfront instead of paying a round-trip on submit. Low priority until multiple apps hit this pattern.
-- **Register `/phase-i-dynamics` in main nav** once validated across a handful of requests.
-- **Wire `wmkf_ai_dataextract`** (structured JSON capture) — deferred until the capture shape is settled.
-- **Dynamics Identity Reconciliation** (Steps 1–4) — ~½ day, plan at `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md`. Unblocks attributed writes via `MSCRMCallerID` impersonation.
-- **`prvCreateNote` on `annotation`** still not granted — don't design flows that drop notes on records.
-- **SharePoint `Sites.ReadWrite.Selected`** email drafted but not sent. Blocks outputs-back-to-SharePoint.
-- **Staged Pipeline Implementation** — plan at `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md`.
-- **CRM Email Send (Phase A)** — pending feedback on plan.
-- **Drop `Final Report Template.docx` into `public/templates/`** — visual parity check pending.
-- **`wmkf_ai_run` exclusion from Dynamics Explorer** — operational log, shouldn't surface in NL queries about grants.
-- **Stray file: `shared/config/prompts/expertise-finder.js.zip`** — untracked binary in the prompts dir. Decide whether to gitignore or remove.
+From Session 98 — still open, no movement this session:
+
+- **Reusable no-clobber helper** (`DynamicsService.updateIfEmpty(entitySet, guid, fieldName, value, { overwrite })`) — lift once a second user-initiated writeback ships
+- **Surface existing writeback state in `lookup-grant`'s select** — so the frontend can warn upfront instead of paying a round-trip on submit
+- **Register `/phase-i-dynamics` in main nav** once validated across a handful of requests
+- **Wire `wmkf_ai_dataextract`** (structured JSON capture) — deferred until the capture shape is settled (will be partly addressed by the new `wmkf_output_schema` field)
+- **Dynamics Identity Reconciliation (Steps 1–4)** — ~½ day, plan at `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md`
+- **`prvCreateNote` on `annotation`** still not granted
+- **SharePoint `Sites.ReadWrite.Selected`** email drafted but not sent
+- **Staged Pipeline Implementation** — plan at `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md`
+- **CRM Email Send (Phase A)** — pending feedback on plan
+- **Drop `Final Report Template.docx` into `public/templates/`**
+- **`wmkf_ai_run` exclusion from Dynamics Explorer**
+- **Stray file: `shared/config/prompts/expertise-finder.js.zip`**
 
 ## Potential Next Steps
 
-### 1. Validate Phase I Dynamics against more requests
-Run `/phase-i-dynamics` against 5–10 real requests — mix active (`akoya_request` library) and migrated (archive libraries with subfolders). Verify writeback lands on each and the audit rows look right. Good stress test for the SharePoint bucket walker + file loader path.
+### 1. Hand the storage schema to Connor for Dynamics creation
+`docs/PROMPT_STORAGE_DESIGN.md` has a complete `wmkf_prompt_template` schema sketch (name, version, body, model, maxtokens, temperature, status, is_current, variables, output_schema, notes, audit fields). Next move is Connor creating the table in Dynamics with the memo caps raised (same pattern as `wmkf_ai_run.rawOutput`). While that's in flight, the intermediate `akoya_request` fields from the workflow-chaining doc (`wmkf_keywords`, `wmkf_methodologies`, etc.) can be scoped in parallel. Nothing on the Vercel side can move until the table exists.
 
-### 2. Ship Field Set C Compliance writeback
-Second user-initiated writeback surface. Would immediately justify lifting the no-clobber check into `updateIfEmpty`. Fields are ready (`akoya_submissionaccepted` existing, `wmkf_ai_complianceissues` Memo JSON, `wmkf_ai_compliancesummary` Memo).
+### 2. Build the prompt resolver abstraction
+Even ahead of Dynamics availability, the resolver interface (`/api/prompts/[app-key]/current`) can be designed and stubbed. It's pattern-aware: Pattern A + dual-caller apps read from Dynamics (with cache + git-seed fallback), Pattern B + C apps read from `.js`. Same interface, different source. This is the load-bearing piece of the storage design — once it exists, universal prompt visibility + per-session overrides drop in on top of it. Worth building with a mock Dynamics response so it's ready the day the table is live.
 
-### 3. Dynamics Identity Reconciliation (Steps 1–4)
-Creates the `user_profiles ↔ systemuser` bridge via email match. No new permissions needed. Unblocks attribution on writes and joined reporting. Plan at `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md`.
+### 3. Seed the first three prompt rows from existing `.js`
+The v1 set — `phase-i-writeup`, `phase-ii-writeup`, `compliance-field-set-c` — needs to be derived from current `shared/config/prompts/*.js`. The target-state prompts drop most of the ~20% "defensive extraction" layer because structured callers pass `institution`, `pi_name`, etc. as known variables. That's a real refactor, not a copy-paste. Good excuse to write the `phase-i-writeup` target-state prompt as an "ingest" prompt producing the full structured-output set from the workflow-chaining doc. Needs testing against historical proposals to confirm chained extractions don't degrade individual-field quality (honest caveat from the chaining doc — consolidating 8 extractions into one call sometimes hurts).
 
-### 4. Backend/PowerAutomate Phase I trigger
-With user-initiated writeback proven, wire the equivalent flow as a backend job (skip the no-clobber check — authoritative rerun). Would be the first non-interactive AI call in the system.
+### 4. Validate Phase I Dynamics against more requests (carryover)
+Still worthwhile before Session 99–100's theoretical work turns into concrete `phase-i-writeup` seed content. Run `/phase-i-dynamics` against 5–10 real requests — mix active + migrated libraries — to stress the SharePoint bucket walker + file loader path and confirm writeback lands cleanly. Also useful as the baseline for the "target-state `phase-i-writeup` produces the same prose summary" A/B check when the ingest prompt is rewritten.
 
-### 5. Continue testing Grant Reporting
-Session 97 left off mid-testing. `jsonrepair` is in place; now `wmkf_ai_run` logging is in place too. Good chance to iterate prompts with full audit visibility.
+### 5. Ship Field Set C Compliance writeback
+Second user-initiated writeback surface. Now arguably higher-priority than before because it's one of the three v1 prompt rows — shipping the feature and writing the Dynamics row happen close to simultaneously. Fields are ready (`akoya_submissionaccepted` existing, `wmkf_ai_complianceissues` Memo JSON, `wmkf_ai_compliancesummary` Memo).
 
-### 6. Batch Evaluation Tool (Phase 1 Priority)
-Same carryover from 95/96/97/98 — historical-data prompt engineering at scale.
+### 6. Batch Evaluation Tool (Phase 1 Priority — carryover)
+Unchanged from 95/96/97/98. Even more relevant now — the prompt storage + chaining design surfaces several questions ("does consolidating extractions hurt per-field quality? does the target-state prompt match the defensive-extraction prompt's outputs?") that can only be answered empirically against historical proposals.
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `lib/services/dynamics-service.js` | Real writes + `logAiRun` helper |
-| `lib/utils/file-loader.js` | Shared FileRef → text loader (upload/SharePoint, PDF/DOCX) |
-| `pages/api/phase-i-dynamics/summarize.js` | Single-request Phase I + `wmkf_ai_summary` writeback with overwrite guard |
-| `pages/phase-i-dynamics.js` | Test UI (request lookup → file picker → summarize) |
-| `pages/api/grant-reporting/lookup-grant.js` | Widened to accept `batch-phase-i-summaries` app key |
-| `pages/api/grant-reporting/extract.js` | Logs to `wmkf_ai_run` on every Claude call |
-| `shared/config/prompts/phase-i-summaries.js` | Exports `PHASE_I_PROMPT_VERSION` |
-| `scripts/query-ai-runs.js` | Query-back diagnostic for `wmkf_ai_run` |
-| `scripts/test-log-ai-run.js` | CRUD smoke test for `logAiRun` |
-| `scripts/inspect-ai-fields.js` | Dumps actual `wmkf_*ai*` attribute names |
-| `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md` | Canonical field spec (supersedes v2) |
+| `docs/PROMPT_STORAGE_DESIGN.md` | **Primary deliverable.** Full design — guiding principles, 22 decisions, schema, app patterns, state machine, sequence diagrams, editor safety tiers |
+| `docs/WORKFLOW_CHAINING_DESIGN.md` | Companion doc. Ingest-once / chain-downstream principle. New column (`wmkf_output_schema`) + new `akoya_request` intermediate fields |
+| `docs/BACKEND_AUTOMATION_PLAN.md` | Original architecture plan; Session 100 update note flags which sections are being revisited |
+| `CLAUDE.md` | Extended Documentation table registers both new design docs |
 
 ## Testing
 
+No executable changes this session. Validation happens when implementation starts:
+
 ```bash
-npm run dev                                            # Start dev server
+# When the resolver exists (stubbed or real):
+curl http://localhost:3000/api/prompts/phase-i-writeup/current | jq
 
-# Query back what's in wmkf_ai_run for a given request:
-node scripts/query-ai-runs.js 1002807
-node scripts/query-ai-runs.js 1002807 --show-raw
-
-# Phase I Dynamics test: open http://localhost:3000/phase-i-dynamics
-#   1. Enter request number (e.g. 1002807 — already has wmkf_ai_summary populated,
-#      so you'll get the overwrite confirmation card)
-#   2. Pick a proposal file from the SharePoint dropdown (or upload one)
-#   3. Click "Run summary + write to Dynamics"
+# When the first prompt row is seeded:
+node scripts/seed-prompt-templates.js --prompt phase-i-writeup --dry-run
 ```
 
 ## Session hand-off notes
 
-- Two commits (`77b3b17`, `9d53901`) pushed. Working tree clean at session start.
-- Dev server was running on port 3000 during the session.
-- Connor granted write access mid-session; test flows against request 992629 and 1002807 are the ones with rows in `wmkf_ai_run` — ask him to purge periodically (filter `wmkf_ai_model eq 'claude-sonnet-4-TEST'` catches the CRUD smoke-test rows).
+- Two sessions in one handoff: Session 99 (CLI, this terminal) framed the problem and wrote the initial doc; Session 100 (browser Claude Code on the same repo) expanded it with Mermaid diagrams and the full decision set. Both sessions' work is in the merge commit `42952ab`.
+- The browser-session approach worked well for this kind of visual/conceptual design work — consider repeating the CLI-frame-then-browser-expand pattern for future architecture conversations (prompt resolver shape, dashboard wireframes).
+- No dev server is running at session end. No uncommitted changes. Working tree clean, main up to date with origin/main.
+- Today's dates this session: 2026-04-14 (Session 99 CLI) and 2026-04-15 (Session 100 browser, per commit timestamps + in-doc notes).
