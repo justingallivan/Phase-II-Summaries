@@ -13,6 +13,13 @@ See `docs/GRANT_CYCLE_LIFECYCLE.md` for the full proposal lifecycle with stage-b
 
 ---
 
+> **Update — Session 100, 2026-04-15:** Two design decisions taken since this plan was originally written change how Phase 1+ should be approached:
+>
+> 1. **Prompts move out of `.js` into a Dataverse `wmkf_prompt_template` table** so PA can read them natively. See `docs/PROMPT_STORAGE_DESIGN.md`. Affects Phase 1 (prompts under development now should be designed with the storage schema in mind) and Phase 4 (PA flow construction reads from this table, not from hard-coded text).
+> 2. **Workflow chaining via structured outputs** — the first call in a backend lifecycle (e.g., Phase I writeup) produces structured fields that downstream calls (compliance, PD assignment, etc.) consume from Dynamics, rather than re-reading the proposal. See `docs/WORKFLOW_CHAINING_DESIGN.md`. Materially changes what the "Summary + keyword extraction" prompt should produce, and what intermediate Dynamics fields need to exist on `akoya_request` before downstream PA flows can chain.
+>
+> The "Hybrid vs. full PA composition" question (see `PROMPT_STORAGE_DESIGN.md` Q4) currently leans hybrid — PA owns trigger and final write; Next.js owns the Claude mechanics. That affects the architecture diagram below: PA does not call Anthropic directly in the recommended path.
+
 ## Architecture
 
 ### Automated AI Tasks (PowerAutomate → Claude API → Dynamics)
@@ -24,6 +31,8 @@ PowerAutomate flows handle all automated processing:
 4. Write results back to Dynamics fields
 
 Our Vercel app is **not in the loop** for automated tasks. This keeps the architecture simple — PowerAutomate already has full Dynamics + SharePoint access and can call Claude's API directly.
+
+> **Update:** This original architecture is being revisited per the Session 100 note above. The hybrid composition variant routes Claude calls through a Next.js `/api/execute-prompt` endpoint to reuse existing file extraction, retry/backoff, prompt caching, and JSON-schema validation. PA still owns the trigger and the final Dynamics write.
 
 ### Human-Initiated Tasks (Vercel App → Dynamics)
 
