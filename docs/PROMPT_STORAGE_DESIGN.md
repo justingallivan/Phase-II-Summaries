@@ -167,7 +167,7 @@ Today these live in Next.js services. Once PA composes, PA owns them (or delegat
 - **Token counting + cost estimation.**
 - **Logging to `wmkf_ai_run`.** PA can do this natively (it's the same Dataverse table it already writes to), so this one is easy.
 
-With PDF extraction solved natively in PA, the remaining items (retry, caching, token counting) are still weighty enough that **hybrid composition** (PA fetches + renders the prompt from Dynamics, then POSTs the rendered prompt to a thin Next.js `/api/execute-prompt` endpoint that handles the Claude mechanics) is still worth weighing against full composition — but the gap has narrowed.
+With PDF extraction solved natively in PA, the remaining items (retry, caching, token counting) will need to be implemented in PA flows. **Full composition was chosen** (2026-04-16, Session 102) — PA owns the entire Claude call lifecycle with no Vercel dependency for automated backend jobs. Rationale: easier for Connor to debug PA-native flows, and backend automation is mission-critical so removing the Vercel dependency is worth the PA-side complexity.
 
 ## User-facing prompt features
 
@@ -332,14 +332,11 @@ Decision depends on whether anyone other than Justin needs to edit a prompt in t
 
 Full composition is philosophically cleaner and removes Vercel as a runtime dependency for backend jobs. Hybrid is pragmatic — reuses everything we've already built.
 
-Tentatively chose full composition in Session 99. The Session 100 additions push hard toward hybrid:
-- **Multi-output prompts return JSON** that needs schema validation + retry on malformed output. Painful in PA, trivial in `claude-reviewer-service.js`.
-- **Prompt resolver and execute-prompt endpoint already exist** for the user-override and superuser-test-run features. PA reusing them means one Claude codepath, not two.
-- **`wmkf_ai_run` audit needs `wmkf_run_source`** to distinguish PA from Vercel calls — easier when both go through the same logging surface.
+Tentatively chose full composition in Session 99. Session 100 additions noted hybrid advantages (JSON schema validation, retry, single codepath). Session 101 noted PA's native PDF preprocessing removes the extraction dependency on Next.js.
 
-> **Update (2026-04-15):** Connor confirmed PA has a native PDF preprocessing capability, removing the PDF extraction dependency on Next.js. This was previously a strong argument for hybrid ("PA needs Next.js for extraction anyway"), so full composition is now more viable than before. The remaining hybrid arguments (JSON schema validation, retry, prompt caching, single codepath) still apply but the gap has narrowed. Decision still open pending Connor's input on the other PA-side concerns (retry complexity, `cache_control` assembly, timeout behavior).
-
-Recommendation leans **hybrid** but full composition is a credible alternative now that PDF extraction is no longer a blocker.
+> **Decision (2026-04-16, Session 102):** **Full composition confirmed.** Connor chose full PA composition. Rationale: (1) easier to debug when the entire flow is PA-native, and (2) backend automation is mission-critical, so removing the Vercel runtime dependency is worth the added PA-side complexity (retry logic, `cache_control` assembly, JSON validation). PA will own: trigger detection → prompt fetch → file extraction → Claude API call → retry/backoff → result write → `wmkf_ai_run` logging. Next.js is not in the loop for automated backend jobs.
+>
+> **Implications for Next.js:** The `/api/execute-prompt` endpoint is still needed for user-initiated features (prompt test runs, user overrides) but is **not** called by PA flows. The two codepaths (PA and Next.js) will share the same prompt templates from `wmkf_prompt_template` but compose Claude calls independently.
 
 ---
 

@@ -6,7 +6,9 @@ Items that need Connor's input or action to unblock the next phase of developmen
 
 ---
 
-## 1. Create `wmkf_prompt_template` table (blocks prompt storage work)
+## 1. Create `wmkf_prompt_template` table (blocks prompt storage work) — **IN PROGRESS**
+
+> **Update (2026-04-16):** Connor will work on creating this table. Naming convention TBD.
 
 This is the main blocker. Nothing on the Vercel side can move until this table exists in Dynamics.
 
@@ -40,7 +42,9 @@ This is the main blocker. Nothing on the Vercel side can move until this table e
 
 ---
 
-## 2. Hybrid vs. full PowerAutomate composition
+## 2. Hybrid vs. full PowerAutomate composition — **DECIDED: Full composition**
+
+> **Decision (2026-04-16):** Full PA composition chosen. Rationale: easier to debug PA-native flows, and backend automation is mission-critical — removing the Vercel runtime dependency is worth the PA-side complexity.
 
 This is an architecture decision about how PowerAutomate flows will call Claude. Two options:
 

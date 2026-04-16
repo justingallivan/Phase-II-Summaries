@@ -18,7 +18,7 @@ See `docs/GRANT_CYCLE_LIFECYCLE.md` for the full proposal lifecycle with stage-b
 > 1. **Prompts move out of `.js` into a Dataverse `wmkf_prompt_template` table** so PA can read them natively. See `docs/PROMPT_STORAGE_DESIGN.md`. Affects Phase 1 (prompts under development now should be designed with the storage schema in mind) and Phase 4 (PA flow construction reads from this table, not from hard-coded text).
 > 2. **Workflow chaining via structured outputs** — the first call in a backend lifecycle (e.g., Phase I writeup) produces structured fields that downstream calls (compliance, PD assignment, etc.) consume from Dynamics, rather than re-reading the proposal. See `docs/WORKFLOW_CHAINING_DESIGN.md`. Materially changes what the "Summary + keyword extraction" prompt should produce, and what intermediate Dynamics fields need to exist on `akoya_request` before downstream PA flows can chain.
 >
-> The "Hybrid vs. full PA composition" question (see `PROMPT_STORAGE_DESIGN.md` Q4) currently leans hybrid — PA owns trigger and final write; Next.js owns the Claude mechanics. That affects the architecture diagram below: PA does not call Anthropic directly in the recommended path.
+> The "Hybrid vs. full PA composition" question was resolved in Session 102 (2026-04-16): **full PA composition**. PA owns the entire flow including direct Anthropic API calls. The architecture diagram below accurately reflects the chosen path.
 
 ## Architecture
 
@@ -32,7 +32,7 @@ PowerAutomate flows handle all automated processing:
 
 Our Vercel app is **not in the loop** for automated tasks. This keeps the architecture simple — PowerAutomate already has full Dynamics + SharePoint access and can call Claude's API directly.
 
-> **Update:** This original architecture is being revisited per the Session 100 note above. The hybrid composition variant routes Claude calls through a Next.js `/api/execute-prompt` endpoint to reuse existing retry/backoff, prompt caching, and JSON-schema validation. PA still owns the trigger and the final Dynamics write. As of 2026-04-15, Connor confirmed PA has native PDF preprocessing capability, so PDF/DOCX text extraction is no longer a dependency on Next.js — this strengthens the case for the original full-composition architecture. Decision still open; see `PROMPT_STORAGE_DESIGN.md` Q4.
+> **Decision (2026-04-16, Session 102):** Full PA composition confirmed. PA owns the entire Claude call lifecycle for automated backend jobs — no Vercel dependency at runtime. This matches the original architecture above. Rationale: easier to debug PA-native flows, and backend automation is mission-critical. PA handles PDF extraction natively (confirmed 2026-04-15). Retry, `cache_control`, and JSON validation will be implemented in PA flows. See `PROMPT_STORAGE_DESIGN.md` for full decision record.
 
 ### Human-Initiated Tasks (Vercel App → Dynamics)
 
