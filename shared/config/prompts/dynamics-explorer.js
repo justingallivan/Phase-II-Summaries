@@ -77,6 +77,12 @@ export const TABLE_ANNOTATIONS = {
       _wmkf_grantprogram_value: 'lookup → wmkf_grantprogram — broad grant program (11 values: Research, Southern California, Undergraduate Education, Discretionary, etc.)',
       _akoya_programid_value: 'lookup → akoya_program — specific internal program (24 values: S&E, MR, Health Care, etc.). To find requests by program name, first look up the program GUID in akoya_programs, then filter.',
       _wmkf_type_value: 'lookup → wmkf_type — request type classification (8 values: Program, Discretionary, Site Visit, etc.). Many-to-many with grant program in practice.',
+      // Program area served (subject-matter coding — multi-select picklists)
+      wmkf_programareaserved_research: 'multi-select picklist — Research subject area(s). 100+ options including Chemistry, Physics, Biochemistry, Neurosciences, Cancer Biology, Materials Science, Synthetic Biology, Stem Cells, etc. Stored as comma-separated option set IDs (e.g. "707510017" = Chemistry). Use _formatted version (auto-included via annotations) to read labels.',
+      wmkf_programareaserved_socal: 'multi-select picklist — SoCal program subject area(s). 120+ options across arts, education, health, human services. Same comma-separated ID format.',
+      wmkf_lawprogramareaserved: 'multi-select picklist — Law program subject area(s). 6 options (Alternative Dispute Resolution, Court-related Services, Ethics Curriculum Development, Judicial Ethics, Law Education, Legal Services).',
+      wmkf_programareaservedmisc: 'single-select picklist — Misc program area. 3 options (Academic Building, General Engineering, Financial Aid).',
+      wmkf_programareaservedundergradeduc: 'single-select picklist — Undergraduate Education program area.',
       // Flags
       wmkf_vendorverified: 'boolean — applicant payment info verified via GOverify',
       wmkf_phaseiicheckincomplete: 'boolean — Phase II check-in complete',
@@ -93,6 +99,7 @@ export const TABLE_ANNOTATIONS = {
       'Null fields are stripped from results. Only $select fields you will display.',
       'PROGRAM DIRECTOR: _wmkf_programdirector_value is a lookup to systemuser. To filter by director name, first query systemusers to get the GUID, then filter requests by _wmkf_programdirector_value eq {guid}.',
       'PHASE I STATUS: " Ineligible" has a leading space in the data (589 records). Use contains() or exact match with the space.',
+      'MULTI-SELECT PICKLISTS (wmkf_programareaserved_research, wmkf_programareaserved_socal, wmkf_lawprogramareaserved): values are comma-separated option-set IDs. To filter by a value, use the ContainValues function: $filter=Microsoft.Dynamics.CRM.ContainValues(PropertyName=\'wmkf_programareaserved_research\',PropertyValues=[\'707510017\']). To get a record\'s subject area as text, $select the field and read the auto-included _formatted annotation.',
     ],
   },
   akoya_requestpayment: {
