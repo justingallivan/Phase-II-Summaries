@@ -203,7 +203,7 @@ Located in `lib/services/`:
 - `alert-service.js` - CRUD for system_alerts table (deduplication, auto-resolve)
 - `notification-service.js` - Unified notifications (DB alerts + future Graph API email)
 - `maintenance-service.js` - Database/blob cleanup operations with audit trail
-- `prompt-resolver.js` - **Experimental** (Session 103). Fetches Claude prompt templates from Dynamics (scratch `wmkf_ai_run` row for now; will move to `wmkf_prompt_template` when Connor creates it). 5-min in-memory cache. `{{var}}` interpolation. Errors loudly on fetch failure during experiment; production needs `.js` fallback.
+- `prompt-resolver.js` - Fetches Claude prompt templates from Dynamics (scratch `wmkf_ai_run` row for now; will move to `wmkf_prompt_template` when Connor creates it). 5-min in-memory cache, `{{var}}` interpolation. On Dynamics failure, falls back to a bundled `.js` module (60s cache TTL so the next call retries Dynamics). Set `PROMPT_RESOLVER_STRICT=true` to disable fallback (prompt-dev loop).
 
 ### Utility Classes
 
