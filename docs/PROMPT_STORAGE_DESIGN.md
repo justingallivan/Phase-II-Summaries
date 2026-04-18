@@ -1,8 +1,8 @@
 # Prompt Storage Design (In Progress)
 
-**Status:** Design conversation started 2026-04-14 (Session 99), extended in Session 100. Not yet implemented.
+**Status:** Design conversation started 2026-04-14 (Session 99), extended in Sessions 100–103. Session 103 (2026-04-17) shipped a **working prototype** via the Phase I Dynamics test endpoint — see "Session 103 prototype findings" below. Production implementation still blocked on `wmkf_prompt_template` table.
 **Owner:** Justin Gallivan
-**Related docs:** `docs/BACKEND_AUTOMATION_PLAN.md`, `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md`, `docs/WORKFLOW_CHAINING_DESIGN.md`
+**Related docs:** `docs/BACKEND_AUTOMATION_PLAN.md`, `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md`, `docs/WORKFLOW_CHAINING_DESIGN.md`, `docs/PROMPT_CACHING_PLAN.md`, `docs/PROPOSAL_CONTEXT_EXTRACTION_PLAN.md`
 
 > This doc is a live working draft. It exists so a browser Claude Code session can pick up the conceptual work visually (Mermaid diagrams, state machines, flow comparisons). Once decisions settle, it becomes the implementation spec.
 
@@ -130,7 +130,7 @@ Not final — naming and memo caps need to line up with Dataverse conventions an
 |---|---|---|
 | `wmkf_name` | Text (natural key) | e.g. `phase-i-writeup`, `phase-ii-writeup`, `compliance-field-set-c` |
 | `wmkf_version` | Integer | Append-only. Never reused. |
-| `wmkf_body` | Memo | **Must raise cap from default 2000** — same pattern as `wmkf_ai_run.rawOutput` which Connor raised to 1,000,000. Some prompts (Phase I) run 5-8k chars. |
+| `wmkf_body` | Memo | **Cap should match `wmkf_ai_rawoutput` (1,000,000 chars).** Session 103 confirmed a Memo field handles 6.6K chars of prompt content with no truncation at the Dynamics layer — caps we hit elsewhere have been writer-side (e.g., `DynamicsService._truncateForMemo(notes, 2000)` in `logAiRun`). Prompts routinely run 5–8K chars; with Keck guidelines embedded, more. |
 | `wmkf_model` | Text | e.g. `claude-sonnet-4-6` |
 | `wmkf_maxtokens` | Integer | |
 | `wmkf_temperature` | Decimal | |
@@ -163,7 +163,7 @@ Today these live in Next.js services. Once PA composes, PA owns them (or delegat
 
 - **PDF/DOCX text extraction** — `lib/utils/file-loader.js` on the Vercel side. PA has its own PDF preprocessing capability, so both callers can handle extraction independently — no cross-boundary helper needed.
 - **Anthropic retry / backoff on 529s and rate limits.** PA has built-in retry but it's coarse; needs per-flow configuration.
-- **Prompt caching with `cache_control` markers.** Doable in PA's HTTP action but the JSON assembly is ugly. We use ephemeral cache today — material cost savings.
+- **Prompt caching with `cache_control` markers.** Doable in PA's HTTP action but the JSON assembly is ugly. Measured 2026-04-17: **Sonnet 4.6's effective cache minimum is ~2,048 tokens, not the docs-stated 1,024.** PA flows should only bother with `cache_control` when the stable prefix (tools + system + any cached user blocks) comfortably exceeds that floor — otherwise the marker is a no-op and the JSON ceremony is wasted. See `docs/PROMPT_CACHING_PLAN.md` for per-app threshold analysis.
 - **Token counting + cost estimation.**
 - **Logging to `wmkf_ai_run`.** PA can do this natively (it's the same Dataverse table it already writes to), so this one is easy.
 
@@ -293,18 +293,17 @@ The companion doc covers worked examples, prerequisite Dynamics fields on `akoya
 
 ## Four open questions
 
-### 1. Template variable format
+### 1. Template variable format — RESOLVED (Next.js side; PA side still pending)
 
 Prompts are templates with runtime slots (proposal text, grant context, file contents, etc.). What substitution syntax do we use?
 
-- `{{var}}` — Handlebars / Liquid convention. Well-known, but PA's string substitution doesn't natively understand it.
-- `{var}` — Python-style. Also foreign to PA.
-- `$var` — Shell-style. Also foreign.
-- **PA's native substitution** — `replace(variables('prompt'), '[[proposal_text]]', outputs('ExtractText'))` style.
+**Decision:** `{{variable_name}}` (double-brace, Handlebars-style).
 
-PA's `replace()` action is delimiter-agnostic — it'll replace `[[x]]`, `{{x}}`, or `%x%` equally. So PA isn't picking for us; the question is what reads cleanly in the codebase, the editor, and the dashboard. Decision #13 (preprocessing + conditional resolution stays in the caller) means we don't need a template engine with conditionals — flat slot substitution is enough. Recommendation: **`{{var}}`** unless someone hits a concrete PA-side problem with it.
+**Empirical verification (Session 103, 2026-04-17):** The Phase I prototype (`lib/services/prompt-resolver.js`) stored `{{proposal_text}}`, `{{summary_length}}`, `{{summary_length_suffix}}`, and `{{audience_description}}` in a Dataverse Memo field (`wmkf_ai_rawoutput` on a scratch `wmkf_ai_run` row), read them via OData, and successfully interpolated at runtime. **Dataverse does not interpret `{{` in Memo field values** — content is returned as literal strings. The Next.js-side `{{var}}` syntax works.
 
-Still open pending a quick PA empirical check.
+What's still untested: the PA side. When PA reads the same Memo field via Dataverse connector and passes the body through a `replace()` action, does it handle `{{` cleanly? Likely fine (PA's `replace()` is delimiter-agnostic), but a concrete PA flow needs to confirm. The original Connor test (create a PA flow that reads a Memo containing `{{name}}` and echoes it) is still on his list.
+
+**Follow-through:** once the PA-side check passes, remove this Q from the doc entirely.
 
 ### 2. v1 scope — RESOLVED
 
@@ -458,6 +457,43 @@ sequenceDiagram
 - Hybrid keeps every mechanic that already works in one tested codepath (`file-loader.js`, `claude-reviewer-service.js` retry, prompt caching) and adds exactly one cross-boundary POST. PA still fetches the prompt row itself, so `wmkf_ai_promptversion` provenance stays visible in PA's audit trail — that's the thing hybrid is careful not to give up.
 - In both flows, `wmkf_ai_run` is written by whoever makes the Anthropic call. Logging lives next to the call, never on the trigger side. This matters because the rawOutput + token counts come back with the completion response.
 - A "hybrid lite" variant exists (PA passes only `{prompt_name, request_id}` and lets Next.js fetch the prompt row too). That collapses PA's audit visibility back to just "I called Next.js," which is why the diagram above keeps the prompt fetch on PA's side.
+
+---
+
+## Session 103 prototype findings (2026-04-17)
+
+A working prototype of the Dynamics-stored-prompt pattern was built ahead of `wmkf_prompt_template` existing, using a scratch row on `wmkf_ai_run` as temporary storage (GUID `a03f77d9-913a-f111-88b5-000d3a3065b8`, `wmkf_ai_notes` = system prompt, `wmkf_ai_rawoutput` = user prompt template with `{{var}}` slots).
+
+Files shipped:
+- `scripts/seed-phase-i-prompt.js` — writes and verifies the two memo fields; idempotent
+- `lib/services/prompt-resolver.js` — `PromptResolver.getPrompt(appKey)` → fetches from Dynamics, 5-min in-memory cache, `{{var}}` interpolation. Errors loudly on fetch failure (no silent fallback during experiment)
+- `pages/api/phase-i-dynamics/summarize-v2.js` — parallel endpoint; fetches prompt via resolver, uses system/user split, applies `cache_control`, logs `promptSource` to audit row
+- `scripts/ab-phase-i-prompts.js` — bypasses endpoints to run N trials per variant; collects length, token, cache, latency stats
+
+### What the prototype validated
+
+1. **Round-trip fetch works.** Writing 6,634 chars to `wmkf_ai_notes` and reading back — no truncation at the Dynamics layer. The `_truncateForMemo(notes, 2000)` cap in `DynamicsService.logAiRun` is writer-side and does not apply to direct `updateRecord` writes. Memo fields comfortably hold full prompts.
+2. **`{{var}}` interpolation works end-to-end** in the Next.js path (see Q1 above).
+3. **System/user split produces tighter output.** A/B on a real Phase I proposal (Rife/Levin, 3 pages, request 996637): 3 trials of v1 (monolithic) averaged 5,812 output chars; 3 trials of v2 (split) averaged 5,210 — **all 3 v2 trials were shorter than all 3 v1 trials.** Same factual content, same Keck verdict, same classification. The split appears to produce disciplined, slightly tighter summaries.
+4. **Prompt resolver pattern is viable.** The `PromptResolver.getPrompt / interpolate` interface is clean and survives the round-trip. When `wmkf_prompt_template` lands, swap `_fetchFromDynamics()` to read from the real table — no caller changes.
+
+### What the prototype revealed we didn't know
+
+1. **Sonnet 4.6's empirical cache minimum is ~2,048 tokens, not the docs-stated 1,024.** Follow-up binary search confirmed: 1,210-token prompts do not cache, 2,403-token prompts do. The Phase I system block at ~1,650 tokens **does not fire `cache_control`** at all. See `docs/PROMPT_CACHING_PLAN.md` for the detailed measurement and per-app implications.
+2. **For small system prompts, `cache_control` is a no-op.** The system/user split should be justified on other grounds for such apps: editor-safety (the split isolates editable rules from machinery), mix-and-match (one system message can serve several user templates), and the measured tighter-output effect. Caching ROI for small prompts is noise.
+3. **Image handling creates two distinct cost profiles.** A user-side PDF with figures can be 2–3× larger in tokens than a PA-backend text-stripped equivalent. Caching becomes much more valuable on the user-side. The prototype was done on a .docx (text-only); we don't yet have measurements for the vision-input path. Flagged in the caching plan.
+
+### What the prototype is NOT ready for
+
+- Still uses `wmkf_ai_run` as squat space. **Needs `wmkf_prompt_template` to ship.**
+- No versioning (scratch row has one current state, no history).
+- No lint/test-run/publish gating — direct overwrites.
+- Error behavior is "throw loudly" — the production resolver needs a `.js` fallback on Dynamics outage.
+- `promptVersion` in the audit row still references the `.js` constant `PHASE_I_PROMPT_VERSION` because there's no Dynamics version to reference. Fixed when the real table ships.
+
+### UI surface
+
+The `/phase-i-dynamics` test page has a "Use Dynamics-stored prompt (v2)" checkbox. Checked = v2 endpoint (Dynamics fetch + split + cache_control); unchecked = original monolithic v1. A debug panel on v2 results shows: prompt source, fetch latency, system-block size, user-message size, input tokens, cache create/read tokens. This is the minimal visibility surface — decision #16 (universal prompt panel in every app) is the generalization.
 
 ---
 

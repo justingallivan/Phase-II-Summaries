@@ -100,7 +100,11 @@ If you're comfortable with the PA-side complexity, full composition gives you ze
 
 ---
 
-## 3. Template variable syntax
+## 3. Template variable syntax — **PARTIALLY VERIFIED (Next.js side), PA side still pending**
+
+> **Update (2026-04-17, Session 103):** The Next.js side is confirmed to work. A prototype (`lib/services/prompt-resolver.js`) stored `{{proposal_text}}`, `{{summary_length}}`, `{{summary_length_suffix}}`, `{{audience_description}}` in a Dataverse Memo field (`wmkf_ai_rawoutput` on a scratch row), read them via OData, and interpolated at runtime. Dataverse returns Memo values as literal strings — no `{{` expression interpretation. 6,634 chars round-tripped without truncation.
+>
+> **PA-side check still open.** Same question stands: when PA reads a Memo field containing `{{var}}` via the Dataverse connector, does its `replace()` action or expression language trip on the double-braces? The suggested one-minute test below is still the cleanest way to settle it.
 
 Prompts stored in `wmkf_prompt_template` have placeholder slots that get filled at runtime — things like `{{proposal_text}}`, `{{institution}}`, `{{pi_name}}`. The caller (PA or Next.js) reads the template, substitutes the placeholders with real values, and sends the result to Claude.
 
@@ -115,14 +119,7 @@ replace(body, '{{institution}}', triggerOutputs('akoya_request/institution'))
 
 PA's `replace()` is delimiter-agnostic — it doesn't care whether the delimiters are `{{ }}`, `[[ ]]`, or anything else. So the question is really about readability and whether double-braces cause any issues in PA's expression language.
 
-**The concern:** PA expressions themselves use curly braces in some contexts (e.g., JSON objects in Compose actions). Could `{{` in a string literal inside a PA expression cause parsing issues? Specifically:
-
-- When the prompt body is stored in a Dataverse Memo field and PA reads it via a Dataverse connector, does PA try to interpret `{{` in the field value as an expression?
-- Or does PA treat Dataverse field values as plain strings (no expression evaluation)?
-
-If Dataverse field values are treated as plain strings (which we believe is the case), `{{var}}` is fine. If PA does try to evaluate expressions inside field values, we'd need a different delimiter like `[[var]]`.
-
-**Quick test Connor could run:** Create a test Memo field containing the literal text `Hello {{name}}, your score is {{score}}`, read it in a PA flow, and check whether PA returns the string as-is or throws an expression error.
+**Quick test Connor could run:** Create a test Memo field containing the literal text `Hello {{name}}, your score is {{score}}`, read it in a PA flow, and check whether PA returns the string as-is or throws an expression error. If the string passes through unmodified, we're done — `{{var}}` is the canonical syntax.
 
 ---
 
@@ -143,7 +140,7 @@ Not currently blocking anything — the Grant Reporting app works today without 
 
 When the backend runs the Phase I writeup prompt, we want it to extract not just the prose summary but also structured metadata (keywords, methodologies, risk flags, etc.) in the same Claude call. Downstream tasks (compliance screening, PD assignment, reviewer matching) would then read these fields instead of re-reading the full proposal — saving significant cost and time.
 
-**New fields needed on `akoya_request`:**
+**v1 fields needed on `akoya_request`:**
 
 | Field | Type | Purpose |
 |-------|------|---------|
@@ -158,7 +155,9 @@ When the backend runs the Phase I writeup prompt, we want it to extract not just
 
 **Not blocking v1** but ideally created in the same batch as `wmkf_prompt_template` so we can test the full chain early. The exact field list may evolve as we test — starting with these six covers the known downstream consumers.
 
-Full context in `docs/WORKFLOW_CHAINING_DESIGN.md`.
+**Future expansion (single-phase cycle, ~2 cycles out):** Session 103 produced a broader extraction plan — `docs/PROPOSAL_CONTEXT_EXTRACTION_PLAN.md` — with ~15 fields across scientific decomposition (central question, hypotheses, specific aims, methods summary, preliminary data, innovation claims, expected deliverables), review-matching metadata (required expertise, competing groups, cited authors, methods tags, discipline tags, equipment), and verbatim passages (budget summary, key claims, team summary). Not requesting those now — the 6-field v1 set is enough to prove the workflow chain. But worth knowing the growth direction when choosing the v1 field shape, especially if we'd prefer JSON-in-Memo for extensibility.
+
+Full context: `docs/WORKFLOW_CHAINING_DESIGN.md` (the mechanism) and `docs/PROPOSAL_CONTEXT_EXTRACTION_PLAN.md` (the future-state field list + downstream economics).
 
 ---
 

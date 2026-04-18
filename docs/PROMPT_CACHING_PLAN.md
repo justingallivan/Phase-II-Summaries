@@ -235,6 +235,17 @@ The cache prefix is: `model + system_for_this_stage + proposal_text`. As long as
 2. Verify cache reads in `api_usage_log` — if not, the proposal size may be below the 2,048 threshold (unlikely for a full proposal but possible for an abstract-only pass).
 3. Measure actual savings: compute `(cache_read_tokens × 0.1 + cache_write_tokens × 1.25) / (cache_read_tokens + cache_write_tokens + input_tokens)` for the chain — should approach 0.1–0.15 per call once the cache is warm.
 
+### Complementary strategy: pre-extraction (not caching)
+
+Caching and pre-extraction solve different problems. Caching is **intra-workflow** — same prefix reused across back-to-back calls within the 5-minute TTL. Pre-extraction is **across time** — a first pass captures structured context into Dynamics fields, and every downstream call (days, weeks later, different model) reads the extracts instead of re-ingesting the full proposal.
+
+For the single-phase grant cycle (two cycles out) where staff select proposals for deeper evaluation using only the originally submitted document, pre-extraction is the dominant economics. See `docs/PROPOSAL_CONTEXT_EXTRACTION_PLAN.md` for the field shape, downstream calculations (~42K tokens saved per advancing proposal × 4 LLM providers × N deep-dive calls), and the argument for why this compounds with expensive models.
+
+The two strategies layer:
+- **Initial ingest call** (bigger, cache-eligible): runs once, caches to accelerate immediate follow-on if any
+- **Extracted fields in Dynamics**: persist, replace most downstream full-proposal reads
+- **Downstream calls** operate on ~1.5K tokens of extracted context, fall well below cache threshold individually, but don't need caching because the expensive input has already been compressed to structured fields
+
 ## Metrics to track post-rollout
 
 After each Tier 1/2 change, re-query `api_usage_log` for the affected app. Expected pattern:
