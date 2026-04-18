@@ -75,7 +75,9 @@ export default async function handler(req, res) {
   try {
     DynamicsService.setRestrictions([], 'phase-i-dynamics-v2');
 
-    // Pre-flight: same no-clobber guard as v1
+    // Pre-flight: same no-clobber guard as v1. Capture @odata.etag so the
+    // PATCH can use If-Match (optimistic concurrency) and close the TOCTOU gap.
+    let preflightEtag = null;
     if (!overwrite) {
       const existing = await DynamicsService.getRecord('akoya_requests', requestGuid, {
         select: 'wmkf_ai_summary,modifiedon',
@@ -92,6 +94,7 @@ export default async function handler(req, res) {
           },
         });
       }
+      preflightEtag = existing?._etag || null;
     }
 
     // ─── Fetch prompt from Dynamics ────────────────────────────────────────
@@ -100,9 +103,10 @@ export default async function handler(req, res) {
     try {
       prompt = await PromptResolver.getPrompt(PROMPT_APP_KEY);
     } catch (err) {
+      console.error('[PhaseIDynamics:summarize-v2] Prompt fetch failed:', err.message);
       return res.status(500).json({
         error: 'Failed to fetch prompt template from Dynamics',
-        details: err.message,
+        details: process.env.NODE_ENV === 'development' ? err.message : undefined,
       });
     }
     const promptFetchMs = Date.now() - promptFetchStart;
@@ -190,19 +194,24 @@ export default async function handler(req, res) {
     }
 
     // ─── Writeback ─────────────────────────────────────────────────────────
+    // If-Match with the preflight ETag makes concurrent edits surface as 412
+    // rather than silently overwriting.
     let writebackOk = false;
-    let writebackError = null;
+    let writebackFailureCategory = null;
     try {
-      await DynamicsService.updateRecord('akoya_requests', requestGuid, {
-        wmkf_ai_summary: summaryText,
-      });
+      await DynamicsService.updateRecord(
+        'akoya_requests',
+        requestGuid,
+        { wmkf_ai_summary: summaryText },
+        preflightEtag ? { ifMatch: preflightEtag } : undefined,
+      );
       writebackOk = true;
     } catch (err) {
-      writebackError = err.message;
+      writebackFailureCategory = err.status === 412 ? 'conflict' : 'writeback_failed';
       console.error('[PhaseIDynamics:summarize-v2] wmkf_ai_summary writeback failed:', err.message);
     }
 
-    await tryLogAiRun({
+    const auditLogCreated = await tryLogAiRun({
       requestGuid,
       model: modelUsed,
       status: writebackOk ? 'completed' : 'needs_review',
@@ -217,7 +226,7 @@ export default async function handler(req, res) {
       },
       notes: writebackOk
         ? `Phase I v2 Dynamics prompt (${fileLoad.filename}) — wmkf_ai_summary updated [source=${prompt.source}]`
-        : `Phase I v2 Dynamics prompt (${fileLoad.filename}) — writeback failed: ${writebackError}`,
+        : `Phase I v2 Dynamics prompt (${fileLoad.filename}) — writeback ${writebackFailureCategory}`,
     });
 
     return res.status(200).json({
@@ -225,7 +234,8 @@ export default async function handler(req, res) {
       filename: fileLoad.filename,
       model: modelUsed,
       writtenToDynamics: writebackOk,
-      writebackError,
+      writebackFailure: writebackFailureCategory,
+      auditLogCreated,
       promptMeta: {
         source: prompt.source,
         recordGuid: prompt.recordGuid,
@@ -251,8 +261,11 @@ export default async function handler(req, res) {
   }
 }
 
+// Returns true on successful audit-row write. Failure is logged but not
+// rethrown; the boolean surfaces as `auditLogCreated` in the response so
+// monitoring can detect audit gaps.
 async function tryLogAiRun({ requestGuid, model, status, rawOutput, notes }) {
-  if (!requestGuid) return;
+  if (!requestGuid) return false;
   try {
     await DynamicsService.logAiRun({
       requestGuid,
@@ -263,8 +276,10 @@ async function tryLogAiRun({ requestGuid, model, status, rawOutput, notes }) {
       rawOutput,
       notes,
     });
+    return true;
   } catch (err) {
     console.warn(`[PhaseIDynamics:summarize-v2] logAiRun failed (non-fatal): ${err.message}`);
+    return false;
   }
 }
 

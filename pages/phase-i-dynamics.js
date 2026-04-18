@@ -375,7 +375,9 @@ function PhaseIDynamics() {
                 </span>
               ) : (
                 <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-red-100 text-red-800">
-                  ✗ Writeback failed: {result.writebackError || 'unknown error'}
+                  ✗ Writeback {result.writebackFailure === 'conflict'
+                    ? 'blocked: record was modified by another request'
+                    : 'failed — see server logs'}
                 </span>
               )}
             </div>

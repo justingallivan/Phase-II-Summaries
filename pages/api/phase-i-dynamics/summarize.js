@@ -73,6 +73,11 @@ export default async function handler(req, res) {
     // ─── Pre-flight: don't clobber existing wmkf_ai_summary ─────────────────
     // User-initiated flows should never silently overwrite prior analyses.
     // Backend/PowerAutomate flows can skip this check; they're authoritative reruns.
+    //
+    // Capture the record's @odata.etag so the PATCH below can use If-Match for
+    // optimistic concurrency — closes the TOCTOU gap between this read and the
+    // write. If another caller has updated the row in between, PATCH returns 412.
+    let preflightEtag = null;
     if (!overwrite) {
       const existing = await DynamicsService.getRecord('akoya_requests', requestGuid, {
         select: 'wmkf_ai_summary,modifiedon',
@@ -89,6 +94,7 @@ export default async function handler(req, res) {
           },
         });
       }
+      preflightEtag = existing?._etag || null;
     }
 
     const fileLoad = await loadFile(fileRef);
@@ -160,27 +166,36 @@ export default async function handler(req, res) {
     }
 
     // ─── Writeback to akoya_request.wmkf_ai_summary ─────────────────────────
+    // Uses If-Match with the preflight ETag (when we have one) so concurrent
+    // edits surface as 412 instead of silently overwriting.
     let writebackOk = false;
-    let writebackError = null;
+    let writebackFailureCategory = null;
+    let serverSideWritebackError = null;
     try {
-      await DynamicsService.updateRecord('akoya_requests', requestGuid, {
-        wmkf_ai_summary: summaryText,
-      });
+      await DynamicsService.updateRecord(
+        'akoya_requests',
+        requestGuid,
+        { wmkf_ai_summary: summaryText },
+        preflightEtag ? { ifMatch: preflightEtag } : undefined,
+      );
       writebackOk = true;
     } catch (err) {
-      writebackError = err.message;
+      serverSideWritebackError = err.message;
+      writebackFailureCategory = err.status === 412 ? 'conflict' : 'writeback_failed';
       console.error('[PhaseIDynamics:summarize] wmkf_ai_summary writeback failed:', err.message);
     }
 
     // ─── Append-only audit row ──────────────────────────────────────────────
-    await tryLogAiRun({
+    // Category label keeps raw Dynamics error out of the audit memo (which is
+    // itself stored in Dynamics and visible to more users than the API caller).
+    const auditLogCreated = await tryLogAiRun({
       requestGuid,
       model: modelUsed,
       status: writebackOk ? 'completed' : 'needs_review',
       rawOutput: { summary: summaryText, filename: fileLoad.filename, summaryLength, summaryLevel },
       notes: writebackOk
         ? `Phase I Dynamics summarize (${fileLoad.filename}) — wmkf_ai_summary updated`
-        : `Phase I Dynamics summarize (${fileLoad.filename}) — writeback failed: ${writebackError}`,
+        : `Phase I Dynamics summarize (${fileLoad.filename}) — writeback ${writebackFailureCategory}`,
     });
 
     return res.status(200).json({
@@ -188,7 +203,9 @@ export default async function handler(req, res) {
       filename: fileLoad.filename,
       model: modelUsed,
       writtenToDynamics: writebackOk,
-      writebackError,
+      // Category only — internal Dynamics error details stay in server logs.
+      writebackFailure: writebackFailureCategory,
+      auditLogCreated,
     });
   } catch (err) {
     if (err.status && err.status >= 400 && err.status < 600) {
@@ -202,8 +219,12 @@ export default async function handler(req, res) {
   }
 }
 
+// Returns true when the audit row was successfully created. Failures are
+// logged but not rethrown — the user-facing flow must continue — however the
+// boolean bubbles to the response as `auditLogCreated` so monitoring can
+// alert on audit gaps.
 async function tryLogAiRun({ requestGuid, model, status, rawOutput, notes }) {
-  if (!requestGuid) return;
+  if (!requestGuid) return false;
   try {
     await DynamicsService.logAiRun({
       requestGuid,
@@ -214,8 +235,10 @@ async function tryLogAiRun({ requestGuid, model, status, rawOutput, notes }) {
       rawOutput,
       notes,
     });
+    return true;
   } catch (err) {
     console.warn(`[PhaseIDynamics:summarize] logAiRun failed (non-fatal): ${err.message}`);
+    return false;
   }
 }
 

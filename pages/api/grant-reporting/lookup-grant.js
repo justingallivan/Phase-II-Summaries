@@ -87,7 +87,9 @@ export default async function handler(req, res) {
     record = result.records[0] || null;
   } catch (err) {
     console.error('[GrantReporting:lookup] Dynamics query failed:', err.message);
-    errors.dynamics = err.message;
+    // Response body exposes a generic category only. Full error (which may
+    // contain table/field names, OData syntax, internal GUIDs) stays in server logs.
+    errors.dynamics = 'Dynamics query failed';
     return res.status(200).json({
       found: false,
       requestId: null,
@@ -116,7 +118,7 @@ export default async function handler(req, res) {
     documents = await listSharePointDocuments(requestId, trimmed);
   } catch (err) {
     console.error('[GrantReporting:lookup] SharePoint listing failed:', err.message);
-    errors.sharepoint = err.message;
+    errors.sharepoint = 'SharePoint listing failed';
   }
 
   return res.status(200).json({

@@ -1560,7 +1560,9 @@ async function listDocuments({ request_number, request_id }) {
       library: f.library,
       folder: f.folder,
       subfolder: f.subfolder,
-      downloadUrl: `/api/dynamics-explorer/download-document?library=${encodeURIComponent(f.library)}&folder=${encodeURIComponent(f.folder)}&filename=${encodeURIComponent(f.name)}`,
+      // requestId bound into the URL so the server can verify the folder's
+      // GUID suffix before streaming the file. See download-document.js.
+      downloadUrl: `/api/dynamics-explorer/download-document?requestId=${encodeURIComponent(requestId)}&library=${encodeURIComponent(f.library)}&folder=${encodeURIComponent(f.folder)}&filename=${encodeURIComponent(f.name)}`,
     })),
   };
 }
@@ -1588,11 +1590,12 @@ async function searchDocuments({ query, library, request_number }) {
   // loses too much KQL precision when scoring across the whole site.
   let scopes = []; // Array<{ libraryName: string|null, folderPath: string|null, label: string }>
   let scopeLabel;
+  let requestId = null; // Hoisted so download-URL construction can use it when a request scope was supplied.
 
   if (request_number) {
     const reqResult = await getEntity({ type: 'request', identifier: request_number });
     if (reqResult.error) return { error: reqResult.error };
-    const requestId = reqResult.akoya_requestid;
+    requestId = reqResult.akoya_requestid;
     const requestNum = reqResult.akoya_requestnum || request_number;
     if (!requestId) {
       return { error: `Could not resolve request "${request_number}" to a GUID.` };
@@ -1664,17 +1667,34 @@ async function searchDocuments({ query, library, request_number }) {
       header: 'Filename | Size | Modified | Location',
       documents: lines.join('\n'),
       // Structured file data for frontend download links (not sent to Claude)
+      // Each file needs a requestId for the download URL. When a request_number
+      // was supplied up front we use it for every file; otherwise we recover
+      // the GUID from the folder name's `{num}_{GUID32}` suffix. Files whose
+      // folder doesn't match the request-folder convention (e.g. templates in
+      // a non-request folder) get no downloadUrl — they're not downloadable
+      // through this proxy by design.
       _files: merged
         .filter(f => f.folder && f.library)
-        .map(f => ({
-          name: f.name,
-          size: f.size,
-          mimeType: f.mimeType || null,
-          lastModified: f.lastModified,
-          library: f.library,
-          folder: f.folder,
-          downloadUrl: `/api/dynamics-explorer/download-document?library=${encodeURIComponent(f.library)}&folder=${encodeURIComponent(f.folder)}&filename=${encodeURIComponent(f.name)}`,
-        })),
+        .map(f => {
+          const topLevel = String(f.folder).split('/')[0];
+          const m = /^\d+_([0-9A-F]{32})$/.exec(topLevel);
+          const fileGuid = m
+            ? `${m[1].slice(0, 8)}-${m[1].slice(8, 12)}-${m[1].slice(12, 16)}-${m[1].slice(16, 20)}-${m[1].slice(20, 32)}`.toLowerCase()
+            : null;
+          const effectiveRequestId = requestId || fileGuid;
+          const downloadUrl = effectiveRequestId
+            ? `/api/dynamics-explorer/download-document?requestId=${encodeURIComponent(effectiveRequestId)}&library=${encodeURIComponent(f.library)}&folder=${encodeURIComponent(f.folder)}&filename=${encodeURIComponent(f.name)}`
+            : null;
+          return {
+            name: f.name,
+            size: f.size,
+            mimeType: f.mimeType || null,
+            lastModified: f.lastModified,
+            library: f.library,
+            folder: f.folder,
+            downloadUrl,
+          };
+        }),
     };
   } catch (err) {
     return {

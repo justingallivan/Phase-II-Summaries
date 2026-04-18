@@ -55,7 +55,10 @@ export default async function handler(req, res) {
 
   await loadModelOverrides();
 
-  // SSE streaming headers
+  // SSE streaming headers. Must be set AFTER requireAppAccess returns — that
+  // call runs validateOrigin (CSRF) synchronously and sends 403 before any
+  // handler code reaches this point. Moving these headers earlier would let an
+  // off-origin request begin streaming before origin validation completed.
   res.setHeader('Content-Type', 'text/plain');
   res.setHeader('Transfer-Encoding', 'chunked');
   res.setHeader('Cache-Control', 'no-cache');
