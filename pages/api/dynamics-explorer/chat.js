@@ -365,7 +365,7 @@ async function callClaude({ apiKey, model, fallbackModel, systemPrompt, messages
   const body = {
     model,
     max_tokens: 2048,
-    system: systemPrompt,
+    system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
     messages,
     tools,
     stream: true,
@@ -515,6 +515,8 @@ async function parseClaudeStream(resp, { startTime, userProfileId, onTextDelta }
     model: responseModel,
     inputTokens: usage.input_tokens,
     outputTokens: usage.output_tokens,
+    cacheCreationTokens: usage.cache_creation_input_tokens || 0,
+    cacheReadTokens: usage.cache_read_input_tokens || 0,
     latencyMs: Date.now() - startTime,
   });
 
@@ -1846,7 +1848,7 @@ async function callClaudeBatch({ systemPrompt, userMessage, userProfileId }) {
   const body = {
     model,
     max_tokens: 4096,
-    system: systemPrompt,
+    system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: userMessage }],
   };
 
@@ -1892,6 +1894,8 @@ async function callClaudeBatch({ systemPrompt, userMessage, userProfileId }) {
     model: data.model || model,
     inputTokens: usage.input_tokens,
     outputTokens: usage.output_tokens,
+    cacheCreationTokens: usage.cache_creation_input_tokens || 0,
+    cacheReadTokens: usage.cache_read_input_tokens || 0,
     latencyMs: Date.now() - startTime,
   });
 
