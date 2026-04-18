@@ -203,6 +203,7 @@ Located in `lib/services/`:
 - `alert-service.js` - CRUD for system_alerts table (deduplication, auto-resolve)
 - `notification-service.js` - Unified notifications (DB alerts + future Graph API email)
 - `maintenance-service.js` - Database/blob cleanup operations with audit trail
+- `prompt-resolver.js` - **Experimental** (Session 103). Fetches Claude prompt templates from Dynamics (scratch `wmkf_ai_run` row for now; will move to `wmkf_prompt_template` when Connor creates it). 5-min in-memory cache. `{{var}}` interpolation. Errors loudly on fetch failure during experiment; production needs `.js` fallback.
 
 ### Utility Classes
 
@@ -346,6 +347,7 @@ Located in `lib/utils/`:
 
 ### Phase I Dynamics (Test)
 - `POST /api/phase-i-dynamics/summarize` - Single-request Phase I summarization; PATCHes narrative to `akoya_request.wmkf_ai_summary` and logs to `wmkf_ai_run`. Returns 409 with existing content when the field is already populated unless `overwrite: true`.
+- `POST /api/phase-i-dynamics/summarize-v2` - **Experimental (Session 103).** Same contract as `/summarize` but fetches the prompt from Dynamics via `PromptResolver`, uses system/user split, applies `cache_control`. Toggle on `/phase-i-dynamics` via the "Use Dynamics-stored prompt (v2)" checkbox.
 
 ### App Access Control
 - `GET /api/app-access` - Get caller's allowed apps (`?all=true` for superuser admin view)
