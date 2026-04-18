@@ -26,6 +26,7 @@ function PhaseIDynamics() {
 
   const [summaryLength, setSummaryLength] = useState(1);
   const [summaryLevel, setSummaryLevel] = useState('technical-non-expert');
+  const [useDynamicsPrompt, setUseDynamicsPrompt] = useState(false);
 
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState(null);
@@ -88,7 +89,10 @@ function PhaseIDynamics() {
     setResult(null);
     setConflict(null);
     try {
-      const resp = await fetch('/api/phase-i-dynamics/summarize', {
+      const endpoint = useDynamicsPrompt
+        ? '/api/phase-i-dynamics/summarize-v2'
+        : '/api/phase-i-dynamics/summarize';
+      const resp = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -287,8 +291,26 @@ function PhaseIDynamics() {
       {lookup?.found && (
         <Card className="mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-3">Step 3 — Summarize & write back</h2>
+
+          <label className="flex items-start gap-2 mb-3 text-sm">
+            <input
+              type="checkbox"
+              checked={useDynamicsPrompt}
+              onChange={e => setUseDynamicsPrompt(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium text-gray-900">Use Dynamics-stored prompt (v2)</span>
+              <span className="block text-xs text-gray-600">
+                Fetches system/user prompt split from <code>wmkf_ai_runs</code> scratch record,
+                uses <code>cache_control</code> on the system block. Output stored to the same
+                field — compare the two runs against each other.
+              </span>
+            </span>
+          </label>
+
           <Button onClick={() => handleSummarize(false)} disabled={!canSummarize}>
-            {processing ? 'Summarizing…' : 'Run summary + write to Dynamics'}
+            {processing ? 'Summarizing…' : useDynamicsPrompt ? 'Run v2 (Dynamics prompt) + write to Dynamics' : 'Run summary + write to Dynamics'}
           </Button>
           <p className="mt-2 text-xs text-gray-500">
             Writes the narrative to <code>akoya_request.wmkf_ai_summary</code> and
@@ -357,6 +379,20 @@ function PhaseIDynamics() {
                 </span>
               )}
             </div>
+            {result.promptMeta && (
+              <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-900">
+                <div className="font-medium mb-1">v2 run — Dynamics prompt</div>
+                <div>Source: <code>{result.promptMeta.source}</code> · fetched in {result.promptMeta.fetchMs}ms</div>
+                <div>System: {result.promptMeta.systemPromptChars.toLocaleString()} chars · User: {result.promptMeta.userPromptChars.toLocaleString()} chars</div>
+                {result.cacheMeta && (
+                  <div>
+                    Tokens: {result.cacheMeta.inputTokens.toLocaleString()} input
+                    {result.cacheMeta.cacheCreationTokens > 0 && <> · {result.cacheMeta.cacheCreationTokens.toLocaleString()} cache write</>}
+                    {result.cacheMeta.cacheReadTokens > 0 && <> · {result.cacheMeta.cacheReadTokens.toLocaleString()} cache read</>}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Summary</label>

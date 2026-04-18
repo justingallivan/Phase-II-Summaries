@@ -41,6 +41,25 @@ Only Q&A had caching wired up before Session 103. Sample there is tiny (9 calls)
 
 **Verification step:** after a few real sessions, re-run the usage query to confirm cache reads are being logged for `dynamics-explorer`.
 
+### Phase I A/B experiment (2026-04-17)
+
+Ran v1 (monolithic user message) vs v2 (system/user split fetched from Dynamics) 3 trials each on a 3-page Phase I proposal (`Keck_RifeLevin_Phase1 2023.docx`, request 996637). See `scripts/ab-phase-i-prompts.js`.
+
+| Metric | v1 | v2 |
+|---|---|---|
+| Output chars (avg) | 5,812 | **5,210 (−10%)** |
+| Output tokens (avg) | 1,107 | 1,012 |
+| Latency (avg) | 28.5s | 25.9s |
+| Input tokens (regular) | 4,325 | 4,373 |
+| Cache write / read tokens | 0 / 0 | **0 / 0** |
+
+**Key findings:**
+1. **All 3 v2 trials produced shorter output than all 3 v1 trials** — real effect, not noise. The split appears to produce consistently tighter summaries (same factual content, ~10% fewer chars). "Tighter = better" is subjective, but the effect is real.
+2. **Cache did not fire for Phase I.** System block was ~1,650 tokens — below Sonnet 4.6's empirical 2,048 threshold. Confirmed by a follow-up binary search: 1,210-token prompts don't cache, 2,403-token prompts do.
+3. **This does not invalidate the caching argument for other apps** — Dynamics Explorer, Expertise Finder, and chained workflows all exceed the threshold. It does mean Phase I alone gains nothing from caching today, and the system/user split should be justified on other grounds for small-system apps (editor-safety, mix-and-match, tighter output).
+
+**Followup:** the experiment was on a .docx (text-only). Repeat with raw PDF + images once we wire the vision path to get numbers for the user-side scenario.
+
 ## Forward plan
 
 ### Tier 1 — Quick wins (next session)
@@ -116,10 +135,105 @@ logUsage({
 ## Non-obvious gotchas
 
 1. **Cache TTL resets on read.** Each cache hit extends the TTL by 5 min (standard) or 1 hour (extended). Long agentic sessions keep the cache warm indefinitely.
-2. **Haiku requires 2048-token minimum.** Dynamics Explorer uses Haiku 4.5 — tools + system comfortably exceed this, but smaller system prompts on Haiku apps may silently fail to cache.
-3. **Order matters.** `tools → system → messages`. A `cache_control` marker on `system` caches tools + system together (good). A marker on a content block inside `messages` caches everything before it, including tools + system.
-4. **Up to 4 cache breakpoints per request.** Useful for incremental caching in growing conversations (mark the last assistant turn on each round so the growing history stays cached).
-5. **Marker placement doesn't change behavior** — it's purely a billing hint. Anthropic silently ignores it if the prefix is too short or cache is disabled.
+2. **Empirical Sonnet 4.6 minimum is ~2048 tokens, not 1024.** Anthropic's docs list 1024 for Sonnet/Opus, but a 2026-04-17 experiment on Sonnet 4.6 confirmed no caching fires at 1,210 tokens and caching does fire at 2,403 tokens. Treat **2,048 as the working floor for all current models** until proven otherwise. This was a surprise — previously we'd assumed 1024 and would have mis-planned Phase I caching.
+3. **Haiku requires 2048-token minimum** (per docs, and consistent with the empirical Sonnet observation above).
+4. **Order matters.** `tools → system → messages`. A `cache_control` marker on `system` caches tools + system together (good). A marker on a content block inside `messages` caches everything before it, including tools + system.
+5. **Up to 4 cache breakpoints per request.** Useful for incremental caching in growing conversations (mark the last assistant turn on each round so the growing history stays cached).
+6. **Marker placement doesn't change behavior** — it's purely a billing hint. Anthropic silently ignores it if the prefix is too short or cache is disabled.
+
+### Threshold implications for our apps
+
+| App | System block size | Expected cache behavior |
+|---|---|---|
+| Phase I summarization | ~1,650 tokens (system only) | ❌ **Below threshold today.** `cache_control` is a no-op as currently sized. |
+| Dynamics Explorer | Tools + system ≈ 3–5K tokens | ✅ Well above threshold |
+| Expertise Finder | System + roster (planned) ≈ 2–5K | ✅ Above, once roster moves to system |
+| Virtual Review Panel | SYSTEM_PROMPT only is small (<1K) | ❌ Below — the win requires moving proposal text into a cached content block |
+| Batch Phase II | Instructions ~3–4K | ✅ Above once split from proposal text |
+| Grant Reporting | Instructions ~2–3K | Borderline — needs measurement |
+
+**Takeaway:** don't assume `cache_control` on a small system block will fire. Measure the system-block token count against the 2,048 floor before counting the savings.
+
+## Proposal size + caching
+
+Two separate effects as proposal documents grow:
+
+1. **System-block threshold does NOT move with proposal size.** The proposal goes in the user message (or a content block inside it), so the system-block token count is independent of proposal length.
+
+2. **Per-call input cost scales linearly with proposal size.** Rough arithmetic for Sonnet 4.6 at current pricing ($3/MTok input):
+   - 3-page proposal (~14K chars, ~4.3K tokens): ~$0.013/call
+   - 5-page proposal (~23K chars, ~7.2K tokens): ~$0.022/call (+66%)
+
+3. **The real win from bigger proposals is chained caching.** See the next section. If a 5-page proposal is fed into 4 downstream prompts, caching the proposal itself cuts total input cost by ~60%. The savings grow with proposal length × chain depth.
+
+### Image handling — text vs. vision input paths
+
+The A/B experiment on 2026-04-17 was done on a `.docx` proposal which was text-extracted by our `file-loader.js` layer before hitting Claude. So images were effectively stripped upstream. In the production future there are two distinct paths:
+
+| Path | Image handling | Typical input size | Caching implications |
+|---|---|---|---|
+| **PA backend (automation)** | Connor plans to strip images in a pre-filter before the Claude call | Lean, deterministic, text-only | Smaller cached blocks; may fall closer to the 2,048 threshold |
+| **User-side (UI-initiated)** | Unprocessed PDFs likely passed with images intact (via Claude's document API or base64 blocks) | 2–3× larger due to image tokens (~1,000–1,600 tok each) | Cached blocks easily exceed threshold; larger ROI from caching |
+
+Key points:
+- **Image tokens ARE cacheable.** Anthropic's cache supports image content blocks — images get cached along with text when they sit behind a `cache_control` marker.
+- **User-side has higher cache ROI precisely because of image bloat.** A user-side PDF with 4 figures might be 15K tokens cached once, saving 13.5K × N reads in a chained workflow.
+- **Our current experiments don't measure the image path.** All A/B data to date is text-extracted. Before claiming cache ROI on user-side PDFs, rerun the experiment with `pdf` content blocks to get real numbers.
+
+## Workflow chaining cache pattern
+
+The highest-leverage caching opportunity in our roadmap: **ingest-once / chain-downstream workflows** (see `docs/WORKFLOW_CHAINING_DESIGN.md`). A single proposal is fed into multiple sequential prompts (triage → summary → panel review → compliance), and the proposal text is the largest stable element across all of them.
+
+### The pattern
+
+Each downstream call has the same structure:
+```javascript
+{
+  model: '...',
+  system: [
+    { type: 'text', text: SYSTEM_PROMPT_FOR_THIS_STAGE }
+    // ↑ changes per stage; not cached
+  ],
+  messages: [
+    {
+      role: 'user',
+      content: [
+        {
+          type: 'text',
+          text: `Proposal document:\n\n${proposalText}`,
+          cache_control: { type: 'ephemeral' }   // ← cache boundary
+        },
+        {
+          type: 'text',
+          text: STAGE_SPECIFIC_INSTRUCTIONS      // ← changes per stage
+        }
+      ]
+    }
+  ]
+}
+```
+
+The cache prefix is: `model + system_for_this_stage + proposal_text`. As long as the model and the system block for a given stage stay stable, the proposal block reads from cache on every call after the first.
+
+**Variant:** put a stable "role + format" system prompt used across all stages into the system block with its own `cache_control`. Then you have two cache segments — one for the role (shared across all stages) and one for the proposal (shared within each stage). Up to 4 breakpoints per request are allowed.
+
+### When to invest
+
+- Chain depth ≥ 2 (anything that calls Claude multiple times against the same document)
+- Proposal text is large enough that its tokens dominate the per-call cost
+- All calls happen within the 5-minute TTL window (PA-orchestrated flows almost always meet this)
+
+### When NOT to invest
+
+- Single call per document (Phase I summary as currently shipped) — nothing to cache against
+- Very short input documents where the proposal tokens aren't the bulk of the cost
+- Calls separated by user think-time that breaks the TTL
+
+### Implementation order (when we get here)
+
+1. Start with the first real chain we build (likely the 3-stage triage pipeline per `docs/STAGED_REVIEW_PIPELINE.md`). Wire `cache_control` on the proposal block from day one.
+2. Verify cache reads in `api_usage_log` — if not, the proposal size may be below the 2,048 threshold (unlikely for a full proposal but possible for an abstract-only pass).
+3. Measure actual savings: compute `(cache_read_tokens × 0.1 + cache_write_tokens × 1.25) / (cache_read_tokens + cache_write_tokens + input_tokens)` for the chain — should approach 0.1–0.15 per call once the cache is warm.
 
 ## Metrics to track post-rollout
 
