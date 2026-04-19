@@ -78,7 +78,7 @@ export default async function handler(req, res) {
   // ─── Step 1: Dynamics lookup ─────────────────────────────────────────────
   let record = null;
   try {
-    DynamicsService.setRestrictions([]);
+    DynamicsService.bypassRestrictions();
     const result = await DynamicsService.queryRecords('akoya_requests', {
       select: HEADER_FIELDS,
       filter: `akoya_requestnum eq '${escapeOData(trimmed)}'`,

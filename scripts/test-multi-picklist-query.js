@@ -24,7 +24,7 @@ if (fs.existsSync(envPath)) {
 const { DynamicsService } = require('../lib/services/dynamics-service');
 
 async function main() {
-  DynamicsService.setRestrictions([], 'test-mp');
+  DynamicsService.bypassRestrictions('test-mp');
 
   // 1) Single record fetch — confirm _formatted annotation comes back
   console.log('--- Test 1: single-record _formatted annotation ---');

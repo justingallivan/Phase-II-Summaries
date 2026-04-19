@@ -37,7 +37,7 @@ for (const envFile of ['.env', '.env.local']) {
 
 const { DynamicsService } = await import('../lib/services/dynamics-service.js');
 const { SYSTEM_PROMPT, USER_PROMPT_TEMPLATE } = await import('../shared/config/prompts/phase-i-dynamics.js');
-DynamicsService.setRestrictions([], 'seed-phase-i-prompt');
+DynamicsService.bypassRestrictions('seed-phase-i-prompt');
 
 const SCRATCH_GUID = 'a03f77d9-913a-f111-88b5-000d3a3065b8';
 const DRY = process.argv.includes('--dry');

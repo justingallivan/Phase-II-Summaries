@@ -33,7 +33,7 @@ if (fs.existsSync(envPath)) {
 const { DynamicsService } = require('../lib/services/dynamics-service');
 
 async function main() {
-  DynamicsService.setRestrictions([], 'export-program-area-research');
+  DynamicsService.bypassRestrictions('export-program-area-research');
 
   console.log('Fetching all akoya_request records with wmkf_programareaserved_research populated...');
   const { records, totalCount, capped } = await DynamicsService.queryAllRecords('akoya_requests', {

@@ -34,7 +34,7 @@ async function main() {
   const NEEDLE = 'Program Area Served';
 
   // Bypass the user-scoped restriction system for this admin-only one-off.
-  DynamicsService.setRestrictions([], 'find-program-area-field-script');
+  DynamicsService.bypassRestrictions('find-program-area-field-script');
 
   console.log(`Fetching attributes for ${TABLE}...`);
   const attrs = await DynamicsService.getEntityAttributes(TABLE);

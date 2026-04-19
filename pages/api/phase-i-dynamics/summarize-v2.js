@@ -73,7 +73,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    DynamicsService.setRestrictions([], 'phase-i-dynamics-v2');
+    DynamicsService.bypassRestrictions('phase-i-dynamics-v2');
 
     // Pre-flight: same no-clobber guard as v1. Capture @odata.etag so the
     // PATCH can use If-Match (optimistic concurrency) and close the TOCTOU gap.

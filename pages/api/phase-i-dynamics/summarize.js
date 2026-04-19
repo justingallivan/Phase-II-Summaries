@@ -68,7 +68,7 @@ export default async function handler(req, res) {
   try {
     // DynamicsService guards queries behind setRestrictions(); this endpoint
     // only reads/writes akoya_request by ID, so an empty restriction set is fine.
-    DynamicsService.setRestrictions([], 'phase-i-dynamics');
+    DynamicsService.bypassRestrictions('phase-i-dynamics');
 
     // ─── Pre-flight: don't clobber existing wmkf_ai_summary ─────────────────
     // User-initiated flows should never silently overwrite prior analyses.

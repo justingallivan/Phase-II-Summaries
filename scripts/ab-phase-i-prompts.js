@@ -60,7 +60,7 @@ const { getRequestSharePointBuckets } = await import('../lib/utils/sharepoint-bu
 const { loadFile } = await import('../lib/utils/file-loader.js');
 const { BASE_CONFIG, getModelForApp, loadModelOverrides } = await import('../shared/config/baseConfig.js');
 
-DynamicsService.setRestrictions([], 'ab-phase-i');
+DynamicsService.bypassRestrictions('ab-phase-i');
 await loadModelOverrides();
 
 const model = getModelForApp('batch-phase-i');

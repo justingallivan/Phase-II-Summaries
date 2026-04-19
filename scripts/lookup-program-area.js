@@ -66,7 +66,7 @@ const RESEARCH_LABELS = {
 };
 
 async function main() {
-  DynamicsService.setRestrictions([], 'lookup-program-area-script');
+  DynamicsService.bypassRestrictions('lookup-program-area-script');
 
   const result = await DynamicsService.queryRecords('akoya_requests', {
     select: 'akoya_requestid,akoya_requestnum,wmkf_programareaserved_research,wmkf_programareaserved_socal,wmkf_programareaservedmisc',

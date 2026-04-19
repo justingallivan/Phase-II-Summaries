@@ -10,9 +10,9 @@
 |----------|-------|-----------------------|
 | Critical | 0 | — |
 | High | 3 | 3 |
-| Medium | 9 | 5 |
-| Low | 2 | 0 (batched for later) |
-| Informational | 7 | 2 |
+| Medium | 9 | 8 |
+| Low | 2 | 1 |
+| Informational | 7 | 4 |
 
 **Headline:** No critical findings. One real enumeration path (H1, download proxy) and several error-message leaks into API responses (H2) were the most actionable. All three Highs fixed in this session; remaining Mediums/Lows triaged for a follow-up hardening pass.
 
@@ -77,11 +77,11 @@ Writeback happened before audit-row log. If audit failed, summary was persisted 
 
 **Fix:** Response now surfaces `auditLogCreated` so monitoring can alert on audit gaps. Ordering retained (write first, log second) because inverting would require an update-in-place on `wmkf_ai_run`, which `logAiRun` doesn't support.
 
-### M3 — `setRestrictions([], ...)` disables all restrictions with no safety net ⏭️ DEFERRED
+### M3 — `setRestrictions([], ...)` disables all restrictions with no safety net ✅ FIXED
 
-Called at 10+ sites with an empty array to effectively disable table/field access controls for trusted internal flows. Intentional, but easy to misuse.
+Called at 14 sites with an empty array to effectively disable table/field access controls for trusted internal flows. Intentional, but easy to misuse.
 
-**Disposition:** Deferred to hardening pass. Fix is cosmetic — rename the sentinel or add an explicit `bypassRestrictions: true` flag. No active exploit.
+**Fix:** Added explicit `DynamicsService.bypassRestrictions(requestId)` method. Migrated all 14 call sites (API endpoints + scripts + `PromptResolver`). `setRestrictions()` retained for real restriction lists (Dynamics Explorer chat handler only). New callers must state their intent at the call site; empty-array ambiguity is gone.
 
 ### M4 — CRM memo → Claude prompt injection (low blast radius) ⏭️ DEFERRED
 
@@ -109,27 +109,27 @@ VRP invokes 3–4 LLMs per call with no daily $ ceiling. Request-rate limits exi
 
 **Disposition:** Deferred. Product-risk rather than security-risk; requires `api_usage_log` cost tracking to enforce. Tracked in `project_api_credit_monitoring.md` memory.
 
-### M8 — `validatePath` doesn't decode URL-encoded traversal ⏭️ DEFERRED
+### M8 — `validatePath` doesn't decode URL-encoded traversal ✅ FIXED
 
-`graph-service.js:48–56` rejects `..` but not `%2e%2e`. Today's callers only feed Dynamics-derived paths, so not exploitable.
+`graph-service.js:48–56` rejected `..` but not `%2e%2e`.
 
-**Disposition:** Deferred. Fix is a two-line `decodeURIComponent` + re-check. Tracked for hardening pass.
+**Fix:** `validatePath` now `decodeURIComponent`s the input before the traversal check; also rejects single-dot segments (`.`) and malformed URI encoding. Callers only feed Dynamics-derived paths today, so this is defense-in-depth.
 
-### M9 — Recursive `listFiles` lacks overall timeout ⏭️ DEFERRED
+### M9 — Recursive `listFiles` lacks overall timeout ✅ FIXED
 
-Has depth/count caps (3 deep, 500 files) but no wall-clock timeout or cycle detection. SharePoint shouldn't produce cycles, but pathological trees could still stall the walk.
+Had depth/count caps (3 deep, 500 files) but no wall-clock bound.
 
-**Disposition:** Deferred. Fix is an `AbortController` wrapping the recursive call.
+**Fix:** Added `totalTimeoutMs` option (default 30 s) to `GraphService.listFiles`; walk aborts if the deadline passes. Protects against pathological folder trees where the per-folder cap doesn't bind before the recursion fans out.
 
 ## Low
 
-### L1 — Expertise Finder roster CRUD has no superuser check ⏭️ DEFERRED
+### L1 — Expertise Finder roster CRUD has no superuser check ⏭️ DEFERRED (needs input)
 
-Any `expertise-finder` user can mutate the roster. May be intentional (small, trusted user base) but undocumented.
+Any `expertise-finder` user can mutate the roster. May be intentional (small, trusted user base) but undocumented. Blocked on product decision.
 
-### L2 — `fileRef.source` not validated in Grant Reporting ⏭️ DEFERRED
+### L2 — `fileRef.source` not validated in Grant Reporting ✅ FIXED
 
-Client can set arbitrary `source` values; `loadFile` handles unknowns safely but a source-allowlist would be tighter.
+**Fix:** `loadFile` now checks `ref.source` against an explicit `ALLOWED_SOURCES` set (`'upload'`, `'sharepoint'`) at the top of the function. Previously an unknown source would reach the else branch; now it fails at the boundary with a clean 400.
 
 ## Informational
 
@@ -137,9 +137,9 @@ Client can set arbitrary `source` values; `loadFile` handles unknowns safely but
 - **I2** Audit-row failures are logged as warnings and swallowed. Now surfaced to callers via `auditLogCreated` field (M2 fix).
 - **I3** Full narrative text stored in `wmkf_ai_run.rawOutput` — consider whether this is desired retention if reports contain PII.
 - **I4** Graph token cache is a module-level singleton — fine for single-tenant; would need Map keying if ever multi-tenant.
-- **I5** `file-loader.js` does minimal size/MIME validation before feeding PDFs/DOCX to parsers. Zip-bomb / OOM risk is theoretical; 10MB upstream cap mitigates.
+- **I5** ✅ FIXED — `file-loader.js` now rejects buffers >50 MB before parsing and races `pdf-parse`/`mammoth` against a 30 s timeout (`withTimeout` helper).
 - **I6** `Content-Disposition` escapes double quotes but doesn't use RFC 5987. Current encoding is acceptable.
-- **I7** SharePoint site URL is env-driven; if ever attacker-controlled would enable SSRF. Hardcoding to known tenant is worth doing as cleanup.
+- **I7** ✅ FIXED — `SHAREPOINT_SITE_URL` env value is now validated against `ALLOWED_SHAREPOINT_HOSTS` in `graph-service.js`. A mis-set or tampered env var no longer routes Graph calls at an attacker-controlled host.
 
 ## Clean areas (verified by multiple agents)
 
@@ -159,15 +159,26 @@ Client can set arbitrary `source` values; `loadFile` handles unknowns safely but
 | H2 | Error-message sanitization | `summarize.js`, `summarize-v2.js`, `lookup-grant.js` |
 | M1 | TOCTOU via ETag / If-Match | `dynamics-service.js`, `summarize.js`, `summarize-v2.js` |
 | M2 | Audit-log failure surfacing | `summarize.js`, `summarize-v2.js` |
+| M3 | Explicit `bypassRestrictions()` + migration | `dynamics-service.js` + 14 call sites |
 | M5 | Gemini key to header | `multi-llm-service.js` |
 | M6 | Verified no-op + comment | `virtual-review-panel.js` |
+| M8 | `validatePath` decodes before traversal check | `graph-service.js` |
+| M9 | `listFiles` totalTimeoutMs deadline | `graph-service.js` |
+| L2 | `ALLOWED_SOURCES` allowlist on `fileRef.source` | `file-loader.js` |
+| I5 | Pre-parse buffer cap + parser timeout | `file-loader.js` |
+| I7 | `ALLOWED_SHAREPOINT_HOSTS` allowlist | `graph-service.js` |
 
-## Deferred items (hardening pass)
+## Deferred items (need input or external dependency)
 
-M3, M4, M7, M8, M9, L1, L2 — none are actively exploitable; all are bounded by current app scope or user base. Revisit before:
-- Opening `expertise-finder` access more broadly (L1)
-- Routing any externally-controlled input through `validatePath` (M8)
-- Adding any endpoint whose caller identity isn't a session user (I1)
+Remaining opens — all blocked on decisions or upstream work, not effort:
+
+- **M4** prompt-editor governance — waits for `wmkf_prompt_template` (Connor)
+- **M7** per-user cost caps — needs policy ($X/day per app)
+- **L1** roster CRUD superuser — needs product call
+- **I1** `overwrite=true` role gating — blocked on identity reconciliation
+- **I3** `wmkf_ai_run.rawOutput` retention policy — needs PII decision
+- **I4** Graph token cache multi-tenant keying — only relevant if we ever go multi-tenant
+- **I6** `Content-Disposition` RFC 5987 — current encoding acceptable; cleanup-level
 
 ## Follow-ups for the user
 

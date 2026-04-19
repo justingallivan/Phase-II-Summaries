@@ -48,7 +48,7 @@ export default async function handler(req, res) {
     }
 
     // Step 1: Resolve SharePoint folder for this request
-    DynamicsService.setRestrictions([]);
+    DynamicsService.bypassRestrictions();
 
     const locResult = await DynamicsService.queryRecords('sharepointdocumentlocations', {
       select: 'name,relativeurl,_parentsiteorlocation_value',

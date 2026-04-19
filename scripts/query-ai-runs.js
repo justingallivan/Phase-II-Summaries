@@ -34,7 +34,7 @@ for (const envFile of ['.env', '.env.local']) {
 }
 
 const { DynamicsService } = await import('../lib/services/dynamics-service.js');
-DynamicsService.setRestrictions([], 'query-ai-runs');
+DynamicsService.bypassRestrictions('query-ai-runs');
 
 const args = process.argv.slice(2);
 const rIdx = args.indexOf('--request');

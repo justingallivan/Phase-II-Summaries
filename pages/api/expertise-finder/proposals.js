@@ -35,7 +35,7 @@ export default async function handler(req, res) {
 
   try {
     // Allow all tables — we're not in Dynamics Explorer context
-    DynamicsService.setRestrictions([]);
+    DynamicsService.bypassRestrictions();
 
     const result = await DynamicsService.queryAllRecords('akoya_requests', {
       select: [
