@@ -176,7 +176,7 @@ Remaining opens — all blocked on decisions or upstream work, not effort:
 - **M7** per-user cost caps — needs policy ($X/day per app)
 - **L1** roster CRUD superuser — needs product call
 - **I1** `overwrite=true` role gating — blocked on identity reconciliation
-- **I3** `wmkf_ai_run.rawOutput` retention policy — needs PII decision
+- ~~**I3** `wmkf_ai_run.rawOutput` retention policy~~ — ACCEPTED-AS-IS. Content stored does not include PII or material under contractual confidentiality; `wmkf_ai_run` sits under the same IT-governed CRM security profile as the rest of the data. Revisit if that profile ever widens (e.g. a separate analyst/reporting role gains read to `wmkf_ai_run` without read to `akoya_request`).
 - **I4** Graph token cache multi-tenant keying — only relevant if we ever go multi-tenant
 - **I6** `Content-Disposition` RFC 5987 — current encoding acceptable; cleanup-level
 
