@@ -407,6 +407,7 @@ Located in `lib/utils/`:
 | `docs/CREDENTIALS_RUNBOOK.md` | Environment variables, secret rotation, diagnostics |
 | `docs/SYSTEM_OVERVIEW.md` | One-page system overview for administrators |
 | `docs/SECURITY_ARCHITECTURE.md` | Security architecture and threat model |
+| `docs/SECURITY_AUDIT_2026-04-18.md` | Session 104 delta audit against v3.5 baseline — findings + disposition (H/M/L/I) |
 | `docs/TODO_EMAIL_NOTIFICATIONS.md` | Unified notification service (dashboard alerts + future email) |
 | `docs/PENDING_ADMIN_REQUESTS.md` | Azure AD + Dynamics admin permission requests |
 | `docs/BACKEND_AUTOMATION_PLAN.md` | PowerAutomate backend automation roadmap (prompt development, data migration, Dynamics integration) |

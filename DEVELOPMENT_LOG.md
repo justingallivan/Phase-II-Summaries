@@ -4,6 +4,20 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## April 2026 — Security Delta Audit + Hardening Pass (Session 104)
+
+First comprehensive security review since the v3.5 baseline (2026-03-11). Three parallel Explore agents audited the new surface area (~25 commits, 4 new apps, Dynamics writeback, PromptResolver). Consolidated findings into `docs/SECURITY_AUDIT_2026-04-18.md`; fixed everything that did not need product or policy input.
+
+- **PromptResolver `.js` fallback** (`06db9a0`): On Dynamics fetch failure the resolver now loads a bundled module (60s cache TTL) instead of throwing. `PROMPT_RESOLVER_STRICT=true` restores loud-failure behavior for prompt-dev. Extracted the Phase I v2 prompt to `shared/config/prompts/phase-i-dynamics.js` as a single source of truth shared with `seed-phase-i-prompt.js`.
+- **First-pass fixes** (`c1554c1`): H1 download proxy now requires `requestId` and validates the folder's `{num}_{GUID32}` suffix matches it — prevents arbitrary non-request SharePoint downloads. H2 stopped leaking raw Dynamics error bodies in response fields (four endpoints). M1 added ETag / If-Match optimistic concurrency to `DynamicsService.updateRecord`, closing the TOCTOU on `wmkf_ai_summary` writeback. M2 `auditLogCreated` surfaced in responses. M5 Gemini key moved from URL query to `x-goog-api-key` header. M6 verified no-op, added invariant comment.
+- **Second-pass hardening** (`5d86f25`): M3 new `DynamicsService.bypassRestrictions(requestId)` method; migrated 14 call sites from the ambiguous `setRestrictions([])` pattern. M8 `validatePath` decodes before the traversal check. M9 `listFiles` totalTimeoutMs wall-clock deadline. L2 `loadFile` allowlists `ref.source`. I5 `file-loader.js` rejects >50 MB buffers and races `pdf-parse` / `mammoth` against a 30 s timeout via new `withTimeout` helper. I7 `SHAREPOINT_SITE_URL` validated against `ALLOWED_SHAREPOINT_HOSTS`.
+- **I3 closed** (`d6ac70f`): `wmkf_ai_run.rawOutput` retention accepted-as-is; IT-governed security profile + no PII in content set.
+- **Deferred** (need input or external dependency): M4 prompt-editor governance (Connor), M7 per-user cost caps (scoped out in `project_api_credit_monitoring.md` memo — observability-only, email alerts via Dynamics `createAndSendEmail`), L1 roster CRUD superuser (product), I1 overwrite flag role gating (identity reconciliation), I4 / I6 (cleanup-level).
+
+**Files:** `docs/SECURITY_AUDIT_2026-04-18.md` (new); `lib/services/{dynamics-service,graph-service,prompt-resolver,multi-llm-service}.js`; `lib/utils/file-loader.js`; `pages/api/dynamics-explorer/{download-document,chat}.js`; `pages/api/phase-i-dynamics/{summarize,summarize-v2}.js`; `pages/api/grant-reporting/lookup-grant.js`; `pages/api/virtual-review-panel.js`; `pages/phase-i-dynamics.js`; `shared/config/prompts/phase-i-dynamics.js` (new); 9 scripts migrated to `bypassRestrictions()`.
+
+---
+
 ## April 2026 — Grant Reporting App + Multi-Library SharePoint Document Layer (Session 96)
 
 Built the Grant Reporting app end-to-end and hardened the SharePoint document layer for both Grant Reporting and Dynamics Explorer.
