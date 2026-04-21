@@ -205,7 +205,7 @@ Located in `lib/services/`:
 - `serp-contact-service.js` - Google/Scholar search via SerpAPI
 - `integrity-service.js` - Integrity screening orchestration
 - `integrity-matching-service.js` - Name matching algorithms
-- `dynamics-service.js` - Microsoft Dynamics 365 CRM API (OAuth, OData queries, Dataverse Search, Email Activities)
+- `dynamics-service.js` - Microsoft Dynamics 365 CRM API (OAuth, OData queries, Dataverse Search, Email Activities). `updateIfEmpty(entitySet, guid, field, value, { overwrite })` composes a read + empty-check + ETag-guarded PATCH for AI-writeback fields; returns discriminated `{ ok, reason }` result.
 - `graph-service.js` - Microsoft Graph API (SharePoint document access, file listing/download, content search)
 - `feedback-service.js` - CRUD for dynamics_feedback table (user feedback + auto-detection)
 - `alert-service.js` - CRUD for system_alerts table (deduplication, auto-resolve)
