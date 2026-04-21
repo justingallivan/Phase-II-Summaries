@@ -454,6 +454,11 @@ async function parseClaudeStream(resp, { startTime, userProfileId, onTextDelta }
           responseModel = event.message?.model || '';
           if (event.message?.usage) {
             usage.input_tokens = event.message.usage.input_tokens;
+            // Cache tokens are only reported in message_start (not message_delta).
+            // Without these copies they stay undefined and log as 0 — which is how
+            // we ended up with "cache is firing but never recorded" in the DB.
+            usage.cache_creation_input_tokens = event.message.usage.cache_creation_input_tokens;
+            usage.cache_read_input_tokens = event.message.usage.cache_read_input_tokens;
           }
           break;
 
