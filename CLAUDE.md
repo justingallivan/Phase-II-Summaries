@@ -111,6 +111,14 @@ VERCEL_PROJECT_ID=...          # Target project for log analysis
 # Optional - Email Notifications (future)
 NOTIFICATION_EMAIL_FROM=...    # Graph API email sender
 NOTIFICATION_EMAIL_TO=...      # Graph API email recipient
+
+# Optional - Spend monitoring (cron/spend-check)
+DAILY_SPEND_ALERT_CENTS=1000              # today's-total threshold (default 1000 = $10)
+ANTHROPIC_BALANCE_ANCHOR_CENTS=...        # manual anchor — top-up amount in cents
+ANTHROPIC_BALANCE_ANCHOR_DATE=2026-04-21  # ISO date of last top-up; usage summed from here
+LOW_BALANCE_ALERT_CENTS=500               # low-balance threshold (default 500 = $5)
+SPEND_ALERT_EMAIL_TO=...                  # optional override; falls back to NOTIFICATION_EMAIL_TO
+SPEND_ALERT_EMAIL_FROM=...                # optional override; must be a Dynamics systemuser email
 ```
 
 ## Per-App Model Configuration
@@ -379,6 +387,7 @@ Located in `lib/utils/`:
 - `GET /api/cron/health-check` - Health monitoring (every 15 min)
 - `GET /api/cron/secret-check` - Secret expiration check (8:00 AM UTC daily)
 - `GET /api/cron/log-analysis` - Vercel error log analysis (every 6 hours)
+- `GET /api/cron/spend-check` - AI spend thresholds: daily total + estimated credit balance (hourly); emails via Dynamics on low balance
 
 ### Other
 - `POST /api/analyze-funding-gap` - Federal funding analysis

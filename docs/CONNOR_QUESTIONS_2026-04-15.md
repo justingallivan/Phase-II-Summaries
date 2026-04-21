@@ -14,27 +14,50 @@ This is the main blocker. Nothing on the Vercel side can move until this table e
 
 **What it is:** A new Dataverse table that stores Claude prompt templates — the text, model settings, version history, and metadata for every AI task. Both PowerAutomate flows and the Vercel app read from it, so prompts are managed in one place instead of being hard-coded in two systems.
 
-**Full schema:** `docs/PROMPT_STORAGE_DESIGN.md`, lines 127–148. Summary of the columns:
+**Full schema:** `docs/PROMPT_STORAGE_DESIGN.md`, lines 127–148.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `wmkf_name` | Text | Natural key, e.g. `phase-i-writeup` |
-| `wmkf_version` | Integer | Append-only, never reused |
-| `wmkf_body` | Memo | The prompt text. **Needs raised cap** (same as `wmkf_ai_run.rawOutput`) — prompts run 5–8k chars today |
-| `wmkf_model` | Text (~64) | Claude model ID |
-| `wmkf_maxtokens` | Integer | Max output tokens |
-| `wmkf_temperature` | Decimal | |
-| `wmkf_status` | Choice | `draft` / `published` / `retired` |
-| `wmkf_is_current` | Bool | Exactly one `published` row per name has this `true` |
-| `wmkf_variables` | Memo (JSON) | Declared template slots |
-| `wmkf_output_schema` | Memo (JSON) | What structured fields the prompt produces |
-| `wmkf_preflight_passed_at` | DateTime (nullable) | Last successful lint check |
-| `wmkf_last_test_run_at` | DateTime (nullable) | Last superuser test run |
-| `wmkf_rollback_from_version` | Integer (nullable) | Points to the version this row restored |
-| `wmkf_notes` | Memo | Per-version changelog |
-| `created_by` | Lookup (systemuser) | |
-| `created_on` | DateTime | |
-| `published_on` | DateTime (nullable) | |
+Each row in this table is one version of one prompt — e.g. "the Phase I writeup prompt, version 7." The Claude API actually takes **two** prompt pieces: a **system prompt** (instructions, tone, output format — reused across every run and cached server-side by Anthropic for ~90% cost savings) and a **user prompt** (the per-request content — the proposal text, applicant name, etc., with `{{var}}` slots). Both are stored on the same row so they version together.
+
+Column-by-column explanation of how each field is consumed at runtime:
+
+| Column | Type | What it's for (backend use) |
+|--------|------|------------------------------|
+| `wmkf_name` | Text | **Natural key / lookup handle.** PA and the Vercel app both look up prompts by name (e.g. `phase-i-writeup`), never by GUID. Stable across versions. |
+| `wmkf_version` | Integer | **Monotonic version number.** New edits always append a new row with `version + 1`. Never reused, never edited. Lets us audit "which version ran on request X" and roll back to a known-good version. |
+| `wmkf_system_prompt` | Memo | **The system prompt** — the stable, reusable instructions Claude sees on every call. This is the text that benefits from prompt caching, so it should change as rarely as possible. Typically 4–8k chars. **Needs raised memo cap.** |
+| `wmkf_user_prompt` | Memo | **The user prompt template** — the per-request content shell, with `{{var}}` slots the caller fills in at runtime (e.g. `Here is the proposal:\n\n{{proposal_text}}`). Can be as short as a single `{{proposal_text}}` when no framing is needed. **Needs raised memo cap** (user prompts with a full proposal inlined can exceed 50k chars; the template itself is short, but the cap matters for the run log). |
+| `wmkf_model` | Text (~64) | **Claude model ID** (e.g. `claude-sonnet-4-6`). Lets prompt authors pin a specific model to a prompt — some tasks need Opus, others are fine on Haiku. Read by both PA (full composition) and Vercel (hybrid / interactive). |
+| `wmkf_maxtokens` | Integer | **Max output tokens.** Passed straight to the Claude API call. Caps runaway responses and bounds per-call cost. |
+| `wmkf_temperature` | Decimal | **Sampling temperature** (0.0–1.0). Lower for structured extraction, higher for narrative writeups. Passed to the Claude API call. |
+| `wmkf_status` | Choice | **Lifecycle state.** `draft` = editable, never runs in production. `published` = live, immutable. `retired` = archived, won't be selected. Only `published` rows are used at runtime. |
+| `wmkf_is_current` | Bool | **Fast "give me the live version" flag.** Exactly one `published` row per `wmkf_name` has `is_current = true`. Lets callers do a single indexed lookup (`name = X AND is_current = true`) instead of sorting by version. |
+| `wmkf_variables` | Memo (JSON) | **Declared template slots.** A JSON array describing what `{{var}}` names the user prompt expects (e.g. `[{"name":"proposal_text","required":true},{"name":"summary_length","required":false,"default":"300 words"}]`). Used for (1) preflight validation — the editor refuses to publish if the template references an undeclared variable, and (2) runtime — callers know what to supply. |
+| `wmkf_output_schema` | Memo (JSON) | **What structured fields the prompt produces.** When a prompt uses JSON-mode or tool-use to emit structured output (e.g. `{keywords: [...], risk_flags: [...]}`), this column declares the shape. Downstream flows read this to know which `akoya_request` fields to write. See `WORKFLOW_CHAINING_DESIGN.md`. |
+| `wmkf_preflight_passed_at` | DateTime (nullable) | **Last time the prompt passed lint checks** (variable declarations match template, model ID is valid, JSON schemas parse). Editor blocks publish if null or stale. |
+| `wmkf_last_test_run_at` | DateTime (nullable) | **Last time a superuser dry-ran this prompt** against a real request via the "Test Run" button. Soft requirement for publishing — catches prompts that lint-pass but produce garbage. |
+| `wmkf_rollback_from_version` | Integer (nullable) | **Provenance for rollbacks.** If someone restores version 3 as a new version 8, this field on v8 = 3. Makes the rollback visible in version history instead of looking like a fresh edit. |
+| `wmkf_notes` | Memo | **Per-version changelog** — "bumped max_tokens, tightened tone" — written by the editor when saving. Surfaced in the version-history UI. |
+| `created_by` | Lookup (systemuser) | **Who wrote this version.** Attribution for audit + "ask this person what they meant." |
+| `created_on` | DateTime | Draft creation timestamp. |
+| `published_on` | DateTime (nullable) | When the row transitioned `draft → published`. Null for drafts and retired rows that never shipped. |
+
+**Runtime flow (illustrates why each field is there):**
+
+```
+1. PA trigger fires (e.g. request stage → "submitted")
+2. Lookup: WHERE wmkf_name = 'phase-i-writeup' AND wmkf_is_current = true
+   → returns one row
+3. Read wmkf_system_prompt  → Claude `system` param (cached)
+4. Read wmkf_user_prompt    → substitute {{proposal_text}}, {{pi_name}}, etc.
+                              (validated against wmkf_variables)
+                            → Claude `messages[0].content`
+5. Read wmkf_model, wmkf_maxtokens, wmkf_temperature → API call params
+6. Claude returns structured output → validated against wmkf_output_schema
+7. Write results to akoya_request fields; log run to wmkf_ai_run with
+   wmkf_ai_promptversion = this row's wmkf_version
+```
+
+Every field above exists because one of those steps needs it.
 
 **Naming question:** The v3 AI fields spec standardized to `wmkf_ai_` prefix (e.g. `wmkf_ai_run`, `wmkf_ai_summary`). Should this table follow the same convention (`wmkf_ai_prompt_template`, columns like `wmkf_ai_body`) or stay `wmkf_prompt_template`? Either works on our side — just need to know what you prefer so we match it in code.
 

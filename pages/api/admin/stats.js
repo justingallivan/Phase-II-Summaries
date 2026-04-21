@@ -32,14 +32,15 @@ export default async function handler(req, res) {
   const days = period === '7d' ? 7 : period === '90d' ? 90 : 30;
 
   try {
-    const [summary, byUser, byApp, byDay] = await Promise.all([
+    const [summary, byUser, byApp, byDay, today] = await Promise.all([
       getSummary(days),
       getByUser(days),
       getByApp(days),
       getByDay(days),
+      getToday(),
     ]);
 
-    return res.json({ period, days, summary, byUser, byApp, byDay });
+    return res.json({ period, days, summary, byUser, byApp, byDay, today });
   } catch (error) {
     console.error('Admin stats error:', error);
     return res.status(500).json({ error: 'Failed to fetch usage stats' });
@@ -67,7 +68,10 @@ async function getByUser(days) {
   const result = await sql`
     SELECT
       u.user_profile_id,
-      COALESCE(p.name, p.azure_email, 'Unknown') AS user_name,
+      CASE
+        WHEN u.user_profile_id IS NULL THEN 'Backend'
+        ELSE COALESCE(p.name, p.azure_email, 'Unknown')
+      END AS user_name,
       COUNT(*)::int AS request_count,
       COALESCE(SUM(u.input_tokens), 0)::bigint AS total_input_tokens,
       COALESCE(SUM(u.output_tokens), 0)::bigint AS total_output_tokens,
@@ -80,6 +84,51 @@ async function getByUser(days) {
     ORDER BY total_cost_cents DESC
   `;
   return result.rows;
+}
+
+async function getToday() {
+  const [summary, topApps, topUsers] = await Promise.all([
+    sql`
+      SELECT
+        COUNT(*)::int AS request_count,
+        COALESCE(SUM(estimated_cost_cents), 0)::numeric AS total_cost_cents,
+        COUNT(*) FILTER (WHERE request_status = 'error')::int AS error_count
+      FROM api_usage_log
+      WHERE created_at::date = CURRENT_DATE
+    `,
+    sql`
+      SELECT
+        app_name,
+        COUNT(*)::int AS request_count,
+        COALESCE(SUM(estimated_cost_cents), 0)::numeric AS total_cost_cents
+      FROM api_usage_log
+      WHERE created_at::date = CURRENT_DATE
+      GROUP BY app_name
+      ORDER BY total_cost_cents DESC
+      LIMIT 3
+    `,
+    sql`
+      SELECT
+        CASE
+          WHEN u.user_profile_id IS NULL THEN 'Backend'
+          ELSE COALESCE(p.name, p.azure_email, 'Unknown')
+        END AS user_name,
+        COUNT(*)::int AS request_count,
+        COALESCE(SUM(u.estimated_cost_cents), 0)::numeric AS total_cost_cents
+      FROM api_usage_log u
+      LEFT JOIN user_profiles p ON u.user_profile_id = p.id
+      WHERE u.created_at::date = CURRENT_DATE
+      GROUP BY u.user_profile_id, p.name, p.azure_email
+      ORDER BY total_cost_cents DESC
+      LIMIT 3
+    `,
+  ]);
+
+  return {
+    ...summary.rows[0],
+    topApps: topApps.rows,
+    topUsers: topUsers.rows,
+  };
 }
 
 async function getByApp(days) {

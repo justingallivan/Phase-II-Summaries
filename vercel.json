@@ -29,6 +29,10 @@
     {
       "path": "/api/cron/log-analysis",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/spend-check",
+      "schedule": "0 * * * *"
     }
   ]
 }

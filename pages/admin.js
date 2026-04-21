@@ -680,6 +680,52 @@ function UsageSection() {
 
   return (
     <div className="space-y-6">
+      {/* Today's Spend */}
+      {stats?.today && (
+        <Card>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold text-gray-900">Today's Spend</h2>
+            <div className="text-2xl font-bold text-gray-900">
+              {formatCost(stats.today.total_cost_cents)}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            <div>
+              <div className="font-medium text-gray-600 mb-1">Top apps</div>
+              {stats.today.topApps?.length > 0 ? (
+                <ul className="space-y-1">
+                  {stats.today.topApps.map((row, i) => (
+                    <li key={i} className="flex justify-between">
+                      <span className="text-gray-900">{row.app_name}</span>
+                      <span className="text-gray-700">{formatCost(row.total_cost_cents)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <div className="text-gray-400">No activity yet today</div>}
+            </div>
+            <div>
+              <div className="font-medium text-gray-600 mb-1">Top users</div>
+              {stats.today.topUsers?.length > 0 ? (
+                <ul className="space-y-1">
+                  {stats.today.topUsers.map((row, i) => (
+                    <li key={i} className="flex justify-between">
+                      <span className="text-gray-900">{row.user_name}</span>
+                      <span className="text-gray-700">{formatCost(row.total_cost_cents)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <div className="text-gray-400">No activity yet today</div>}
+            </div>
+          </div>
+          <div className="mt-3 text-xs text-gray-500">
+            {stats.today.request_count} request{stats.today.request_count === 1 ? '' : 's'} today
+            {stats.today.error_count > 0 && (
+              <span className="ml-2 text-red-600">• {stats.today.error_count} error{stats.today.error_count === 1 ? '' : 's'}</span>
+            )}
+          </div>
+        </Card>
+      )}
+
       {/* Summary Cards */}
       <Card>
         <div className="flex items-center justify-between mb-4">
