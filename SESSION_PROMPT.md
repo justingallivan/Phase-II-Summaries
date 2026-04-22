@@ -1,125 +1,129 @@
-# Session 106 Prompt
+# Session 107 Prompt
 
-## Session 105 Summary
+## Session 106 Summary
 
-Mixed-bag session — shipped M7 spend monitoring, fixed a silently-broken cache-token logger that cost real money for a month, added a generic `updateIfEmpty` writeback helper, and ran the v1-vs-v2 Phase I comparison that turned into a deeper investigation of native PDF input. Output is a Connor-facing brief on PDF processing for the backend.
+Two major threads. First half: diagnosed why v2 system-prompt caching never fires — Sonnet 4.6 silently doubled the cache floor from 1024 to 2048 tokens, which put three of our apps into a "dead zone" where `cache_control` is accepted but silently dropped. Second half, with Connor in the room: resolved the Open Questions in the PDF-input brief, designed the division of labor between PA backend automation and bespoke web-app retrospectives, and then built a full Postgres → Dataverse migration plan across 27 tables.
 
 ### What Was Completed
 
-1. **M7 spend monitoring** (`04ce74a`)
-   - "Today's Spend" tile on `/admin` (total + top 3 apps + top 3 users)
-   - `/api/cron/spend-check` hourly: daily-threshold alert + low-balance email via `DynamicsService.createAndSendEmail`, gated on anchor env vars
-   - `scripts/update-balance-anchor.sh` for top-up syncing across `.env.local` + Vercel
-   - `stats.js` adds `today` block + relabels backend (NULL `user_profile_id`)
-   - Six env vars (`DAILY_SPEND_ALERT_CENTS`, `LOW_BALANCE_ALERT_CENTS`, `ANTHROPIC_BALANCE_ANCHOR_CENTS`/`_DATE`, `SPEND_ALERT_EMAIL_TO`/`_FROM`) deployed across Production/Preview/Development
+1. **Sonnet 4.6 cache floor diagnosis** (`48dec12`)
+   - Confirmed by bisection: 2,019 tokens → no cache; 2,058 tokens → cache writes. Beta header `prompt-caching-2024-07-31` doesn't help; the marker is accepted, the write is just dropped.
+   - Audited all app system prompts via `count_tokens`. **Three dead-zone apps:** `phase-i-dynamics-v2` (1,419 tok), `qa` with typical 10K-char proposal (1,868 tok), `phase-i-summaries v1 stable portion` (1,426 tok). The `qa` finding is notable — Session 103's "cache paid for itself" data must have been on Sonnet 4.5 or Phase II-sized proposals; on Sonnet 4.6 with a typical proposal, QA now quietly falls below the floor.
+   - `scripts/audit-system-prompt-sizes.js` left in place for future re-checks.
+   - `docs/PROMPT_CACHING_PLAN.md` and `docs/PDF_INPUT_FOR_BACKEND.md` updated with measured numbers and the 2048 finding.
 
-2. **Dynamics-explorer cache fix** (`5d53a32`)
-   - `parseClaudeStream` was silently dropping `cache_creation_input_tokens` and `cache_read_input_tokens` on `message_start.message.usage`. 30 days, 90 calls, zero cache hits in DB despite `cache_control` being sent.
-   - Two-line fix; verified live: 11-call session shows cache_create=11784 then cache_read ~12K across 10 calls
-   - Bug only affected the streaming path (= 100% of dynamics-explorer traffic). Non-streaming `callClaudeBatch` was already correct.
+2. **Connor sync on `docs/PDF_INPUT_FOR_BACKEND.md`** (`48dec12`)
+   - **Q1** (Adobe PDF / Encodian) — licensed but **not needed**; Anthropic handles PDF rendering server-side.
+   - **Q2** (PA HTTP body size) — tested to 75 MB, no tenant cap.
+   - **Q3** (Files API beta header) — end-to-end verified via `scripts/test-files-api.js`. Three HTTP calls (upload → reference → delete) all return 200 with `anthropic-beta: files-api-2025-04-14`. PA replication is now a PA-config issue only.
+   - **Q4** (multi-pass timing) — not a concern for Phase 1. Connor's backend automation processes single requests sequentially; one prompt per request. The future *batch retrospective* regime is where caching + Batch API matter — captured in a new "Future batch-analysis regime" doc section.
+   - **Q5** (2048 floor) — informational only; retained for future non-PDF-anchored flows.
+   - New `docs/RETROSPECTIVE_ANALYSIS_PLAN.md` captures the division of labor: PA owns recurring single-request workflows; web apps own ad hoc retrospective analyses across historical cycles. Four capability gaps identified for the retrospective side (historical-request picker, BYO-prompt batch app, Batch API integration, structured-results export) with recommended sequencing.
 
-3. **`DynamicsService.updateIfEmpty()` helper** (`58b77b7`)
-   - Composes read + empty-check + ETag-guarded PATCH
-   - Returns discriminated `{ ok, reason }` so callers translate to HTTP themselves
-   - `summarize.js` intentionally not migrated — pre-flight-before-Claude saves token spend on conflict
-
-4. **PDF input research + Connor doc** (`3653f42`)
-   - 8 May 2025 Phase I proposals run through v1 vs v2 comparison harness (Stanford, Hopkins, Harvard, Mayo, St. Jude, etc.)
-   - Native PDF document-block measured on SUNY Stony Brook (1001507): $0.13 vs $0.05 text-only — 3× per call but $13/year delta at our volume
-   - **PDF caching verified working**: `cache_control` on the document block → 90% cost cut and 3× latency cut on warm calls (38s → 12s)
-   - For 3-stage pipeline plan: 1 cold + 2 warm = $0.20/proposal vs $0.39 fresh (48% savings) AND ~60s vs ~120s latency
-   - **`docs/PDF_INPUT_FOR_BACKEND.md`** is the Connor-facing brief: measurements, recommended PA flow, Anthropic constraints (32 MB request, 600 pages), Files API guidance, open questions for him
-   - Don't build a PDF-rendering pipeline. Anthropic does it server-side.
-
-5. **Process correction in memory**
-   - I conflated "Concepts" stage submissions (Dec 2025) with Phase I proposals (Apr 2026), wasting a harness run
-   - New memory `feedback_concepts_vs_phase_i.md` enforces hard-exclude of `/concept/i` files from Phase I prompt pipelines
-
-6. **Doc clarifications for Connor** (in `04ce74a`)
-   - Expanded `wmkf_prompt_template` schema in `docs/CONNOR_QUESTIONS_2026-04-15.md` with per-field backend-use explanations + runtime-flow block
-   - Split proposed `wmkf_body` into `wmkf_system_prompt` + `wmkf_user_prompt` to match Claude API + enable caching
+3. **Dataverse migration planning — 27 tables** (`93cbb74`)
+   - Justin got System Customizer in prod + Administrator in the new WM Keck Sandbox. App Registration added as application user in the sandbox; full schema CRUD confirmed via `scripts/probe-sandbox-schema-perms.js` (create/delete test table, handles the Dataverse metadata-cache lag with backoff).
+   - `scripts/discover-dynamics-envs.js` lists all envs the App Registration can reach — both prod and sandbox now visible.
+   - `scripts/probe-fiscal-year-format.js` verified production data: `akoya_fiscalyear` uses **long format** (`"June 2026"`, `"December 2026"`), NOT short codes. 100% of sampled requests have populated `wmkf_meetingdate`; every fiscal-year code maps to exactly one meeting month.
+   - **`docs/POSTGRES_TO_DATAVERSE_MIGRATION.md`** rewritten across multiple rounds of decisions:
+     - **Naming**: `wmkf_app_<table>` (namespaces our work); `wmkf_<column>` on our own tables; existing `wmkf_ai_*` on vendor tables untouched.
+     - **Person model** (key decision): `systemuser` for Keck staff; `contact` for external people; `wmkf_app_researcher` narrowed to bibliometric pool. No crossover.
+     - **Match-on-promote**: ORCID on `contact.wmkf_orcid` (24% populated) + email + fuzzy name, with human confirmation for fuzzy matches. Retroactive reconciliation job for the ~10K researcher rows.
+     - **Reviewer suggestion**: `wmkf_reviewer_contact` (required) + `wmkf_researcher_source` (optional, provenance). One person, one contact, N reviewer suggestions across cycles.
+     - **Publications authorship**: new junction `wmkf_app_publication_author` (old 1:N FK was incorrect).
+     - **Expertise roster**: single table, dual person-lookup (systemuser for staff, contact for consultant/board).
+     - **Grant cycles**: net-new `wmkf_app_grant_cycle` table keyed to fiscal year via alternate key. No `akoya_grantcycle` table exists in Dynamics today — my earlier assumption was wrong.
+     - **Ownership vs visibility**: orthogonal. All tables get org-level Read via security role (akoyaGO convention). `UserOwned` remains for provenance (who ran this match). **Exception**: `wmkf_app_user_preference` gets User-level Read because it holds encrypted secrets.
+     - **Solution strategy (Plan B)**: named unmanaged solution from day 1, scripted creation via Dataverse Web API, managed export for prod. No `pac` dependency (Connor hasn't used it).
+   - **27 tables categorized**: 16 migrate to new `wmkf_app_*` tables, 2 merge into existing (`user_profiles` → `systemuser`, `researcher_keywords` → researcher columns), 2 eliminate (`search_cache`, `dynamics_user_roles`), 7 stay in Postgres (high-volume ops/audit data).
+   - **Wave 1 fully specified** (user + access foundation). **Wave 2 fully specified** (Reviewer Finder core). Wave 4 previewed (expertise roster dual-lookup). Waves 3 and 5 get detail passes at their turn.
 
 ### Commits
 
-- `04ce74a` — M7 spend monitoring + prompt-table schema clarifications
-- `5d53a32` — Fix dynamics-explorer cache token capture in streaming path
-- `58b77b7` — Add DynamicsService.updateIfEmpty helper for AI writeback
-- `3653f42` — PDF input research: cost/cache findings + backend doc
+- `48dec12` — Sonnet 4.6 cache floor diagnosis + Connor sync outcomes (PROMPT_CACHING_PLAN, PDF_INPUT_FOR_BACKEND, RETROSPECTIVE_ANALYSIS_PLAN, audit-system-prompt-sizes, test-files-api)
+- `93cbb74` — Dataverse migration planning: environment access + schema design (POSTGRES_TO_DATAVERSE_MIGRATION, discover-dynamics-envs, probe-sandbox-schema-perms, probe-fiscal-year-format)
 
-## Side observation worth a follow-up
+## Deferred Items (Carried Forward)
 
-Our existing `summarize-v2.js` puts `cache_control` only on the system block and got 0 cache hits across 8 sequential calls. The PDF cache test shows the cache fires reliably when `cache_control` is on the document block. So either (a) v2's system prompt is below the cache threshold for some reason, or (b) cache breakpoints behave differently when there's no document block to anchor them. Worth a focused diagnosis next session — would unlock the same 90% savings on the v2 path that PDF caching gave us.
+From Session 105 — status updates:
+
+- ~~**v2 cache diagnosis**~~ — **done**. Root cause identified (Sonnet 4.6 2048 floor). Fix not applied to v2 — path forward is summarize-v3 (native PDF + caching), where the PDF document block is always above the floor.
+- **Summarize-v3 (native PDF + caching)** — still attractive. Would ship as a second toggle on `/phase-i-dynamics` for validation before backend handoff.
+- **Multi-pass pipeline cost modeling** — redo staged-review-pipeline projections with cached-PDF numbers (from the M7 cache work).
+- **Files API prototype** — partially validated via `scripts/test-files-api.js` end-to-end. Not yet integrated into any app code path.
+- **Text-only vs native PDF A/B on a research proposal** — still unrun; would settle whether vision is worth the 3× per-call cost for figure-heavy proposals.
+
+From Session 98 — still open:
+
+- **Reusable no-clobber helper** — `DynamicsService.updateIfEmpty()` exists; not yet migrated into `summarize.js` (pre-flight-before-Claude still justified there).
+- **Register `/phase-i-dynamics` in main nav** once validated across more requests.
+- **Wire `wmkf_ai_dataextract`** (structured JSON capture) — deferred until capture shape is settled.
+- **`prvCreateNote` on `annotation`** — still not granted.
+- **Staged Pipeline Implementation** — plan at `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md`.
+- **CRM Email Send (Phase A)** — pending feedback on plan.
+- **Drop `Final Report Template.docx` into `public/templates/`**.
+- **Stray file**: `shared/config/prompts/expertise-finder.js.zip`.
+
+## Pending Connor Responses
+
+- **Review `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md`** — validate per-table verdicts, person model, Wave 1 and Wave 2 schemas, solution strategy. Primary input needed before we write any creation code.
+- **Review `docs/RETROSPECTIVE_ANALYSIS_PLAN.md`** — confirm division of labor between PA and web apps.
+- **`wmkf_prompt_template` table** — Connor was creating; not yet confirmed done.
+- Original Q3–Q7 from `docs/CONNOR_QUESTIONS_2026-04-15.md` — Q3 (template variable syntax), Q5 (intermediate fields), Q6 (new `wmkf_ai_run` columns), Q7 (PD expertise on systemuser) still outstanding.
 
 ## Potential Next Steps
 
-### 1. v2 cache diagnosis
-Print the actual system prompt token count at runtime; try moving `cache_control` to the user message; verify with a back-to-back two-call test. ~30 min.
+### 1. Get Connor's review of the migration plan
+Primary dependency before any implementation work starts. Doc is detailed enough that Connor should be able to review without us walking through it live.
 
-### 2. Build summarize-v3 (native PDF input + caching)
-The PDF research recommends this as the path forward for backend processing. Implementation is roughly summarize-v2 + `document` block + `cache_control` on it. Could ship as a second toggle on `/phase-i-dynamics` for further validation before backend handoff.
+### 2. Start Wave 1 schema creation (scripted)
+Once migration plan is blessed: build `scripts/apply-dataverse-schema.js` + `lib/dataverse/schema/*.{yaml,json}` per the Plan B approach. Start with the four Wave 1 tables (`systemuser` extensions, `wmkf_app_user_preference`, `wmkf_app_user_app_access`, `wmkf_app_system_setting`). Test in sandbox; don't touch prod.
 
-### 3. Connor sync
-Walk through `docs/PDF_INPUT_FOR_BACKEND.md` together. Open questions in section "Open questions for Connor" — Encodian/Adobe licensing, PA HTTP body cap, Files API beta header, multi-pass cache window timing.
+### 3. Build summarize-v3 (native PDF input + caching)
+Recommended path forward for backend Phase I. Summarize-v2 + `document` block + `cache_control` on document block. Ship as a second toggle on `/phase-i-dynamics` for validation. Unlocks the 90% cost + 3× latency reduction on warm calls that the PDF cache test measured.
 
-### 4. Multi-pass pipeline cost modeling
-With cached-PDF numbers in hand, redo the staged-review-pipeline cost projections (`project_staged_review_pipeline.md`). Expectation: ~50% cheaper and ~50% faster than the un-cached estimate.
+### 4. Historical-request picker (first gap from retrospective analysis plan)
+Unlocks every downstream capability for bespoke retrospective analyses. Select N requests by cycle/year/status, auto-pull SharePoint PDFs.
 
-### 5. Files API prototype
-For PDFs > 24 MB raw or workflows that span > 5 min between calls, `cache_control: ephemeral` evaporates. Prototype a Files API path that uploads the PDF once, gets a `file_id`, and references it across calls. Useful even if base64 covers 95% of our actual proposals.
+### 5. Phase I Dynamics validation against more requests
+Run `/phase-i-dynamics` against 5–10 real requests to stress the SharePoint bucket walker + file loader path. Still open from prior sessions.
 
-### 6. Run the harness against a single research proposal with text-only vs native PDF
-SUNY's PDF was figure-heavy; we measured cost but never directly compared output quality to confirm the figures changed the summary in any meaningful way. One-shot A/B comparison would settle whether vision is worth the 3× cost.
-
-## Open Audit Items (carryover, all blocked)
-
-| # | What | Blocker |
-|---|------|---------|
-| M4 | Prompt-editor governance for `wmkf_prompt_template` | Connor's table |
-| L1 | Expertise Finder roster CRUD superuser check | Product call |
-| I1 | `overwrite=true` flag role gating | Identity reconciliation |
-| I4, I6 | Token-cache multi-tenant keying / RFC 5987 | Cleanup-only |
+### 6. Field Set C Compliance writeback
+Second user-initiated writeback surface. Fields are ready.
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `docs/PDF_INPUT_FOR_BACKEND.md` | **New.** Connor brief with measurements, PA flow, constraints, open questions |
-| `docs/CONNOR_QUESTIONS_2026-04-15.md` | Expanded `wmkf_prompt_template` schema (system/user split, per-field explanations) |
-| `pages/api/cron/spend-check.js` | Hourly daily-threshold alert + low-balance email (gated) |
-| `pages/api/admin/stats.js` | New `today` block + Backend label |
-| `pages/api/dynamics-explorer/chat.js` | 2-line cache token capture fix in `parseClaudeStream` |
-| `lib/services/dynamics-service.js` | New `updateIfEmpty()` helper (composes ETag-guarded write) |
-| `scripts/update-balance-anchor.sh` | One-shot `.env.local` + Vercel sync after Anthropic top-up |
-| `scripts/compare-phase-i-v1-v2.js` | v1 vs v2 Phase I prompt comparison harness |
-| `scripts/test-suny-pdf-cache.js` | PDF caching verification (90% savings confirmed) |
-| `scripts/test-suny-pdf-native.js` | One-shot text-vs-native-PDF cost comparison |
-| `scripts/find-2025-phase-i.js` | Discover real Phase I candidates around the May 1, 2025 deadline |
-| `tmp/phase-i-comparison/` (gitignored) | Per-request v1+v2 summary comparison files for human review |
+| **`docs/POSTGRES_TO_DATAVERSE_MIGRATION.md`** | **New.** 27-table migration spec, Waves 1–2 detail, person model, solution strategy |
+| **`docs/RETROSPECTIVE_ANALYSIS_PLAN.md`** | **New.** Division of labor: PA recurring vs. web-app bespoke; 4 capability gaps |
+| `docs/PROMPT_CACHING_PLAN.md` | Updated: Session 106 audit table, exact 2048 bisection, QA-size-dependence note |
+| `docs/PDF_INPUT_FOR_BACKEND.md` | Updated: Q1–Q4 resolved; Future batch-analysis regime section |
+| `scripts/audit-system-prompt-sizes.js` | **New.** Re-run after any prompt change to re-check all apps against the 2048 floor |
+| `scripts/test-files-api.js` | **New.** End-to-end Anthropic Files API verification + PA recipe |
+| `scripts/discover-dynamics-envs.js` | **New.** Lists Dataverse envs the App Registration can reach |
+| `scripts/probe-sandbox-schema-perms.js` | **New.** Verifies full schema CRUD in sandbox |
+| `scripts/probe-fiscal-year-format.js` | **New.** Confirms long-form fiscal-year format against production data |
 
 ## Testing
 
 ```bash
-# Syntax-check edited files
-node --check pages/api/cron/spend-check.js
-node --check pages/api/admin/stats.js
-node --check pages/api/dynamics-explorer/chat.js
-node --check lib/services/dynamics-service.js
+# Re-check all app system prompts vs 2048 floor
+node scripts/audit-system-prompt-sizes.js
 
-# Re-run PDF cache verification (uses /tmp/suny-stonybrook-phase-i.pdf)
-node scripts/test-suny-pdf-cache.js
-# Expect: cache_create ~38K on call 1, cache_read ~38K on call 2, 90% cost cut
+# Verify sandbox schema permissions still work
+node scripts/probe-sandbox-schema-perms.js
 
-# Trigger spend-check manually (dev mode bypasses CRON_SECRET)
-curl http://localhost:3000/api/cron/spend-check
-
-# Confirm dynamics-explorer cache logging now works
-# After running a chat session, query api_usage_log for cache_read_tokens > 0
+# Confirm Files API beta still works with our key
+node scripts/test-files-api.js --keep   # --keep skips the delete
 ```
 
 ## Session hand-off notes
 
-- Tree clean, 4 commits ahead of origin until pushed.
-- `tmp/phase-i-comparison/` has the v1 vs v2 outputs for 8 proposals + 1 v3 (native PDF) on SUNY — read these to make the qualitative call on v1 vs v2 prompt direction.
-- Anchor vars deployed but the actual `ANTHROPIC_BALANCE_ANCHOR_CENTS` value was set to 10827 (= $108.27). Update via `scripts/update-balance-anchor.sh` after each top-up.
-- The "v2 caching is broken" finding from this session is real and unresolved — flagged as next-session item #1.
-- Today's date: 2026-04-21.
+- Tree clean, 2 commits ahead of origin until pushed (will be caught by the session-end push).
+- `DYNAMICS_SANDBOX_URL` added to `.env.local` — points to `https://orgd9e66399.crm.dynamics.com`.
+- System Customizer on Justin's user in prod; Administrator on Justin's user in the sandbox.
+- App Registration ("WMK: Research Review App Suite") is now registered as an application user in the sandbox with whatever role Justin assigned at setup time — full schema CRUD confirmed, but we haven't inspected the exact role it got. Worth knowing if future operations return 403.
+- Dataverse metadata-cache lag after schema changes is real — `probe-sandbox-schema-perms.js` handles it with a retry-with-backoff pattern that we'll want to reuse in any future schema-manipulation script.
+- Justin's original recollection of fiscal-year format (`J25` / `D26`) was wrong; real data uses `"June 2026"` / `"December 2026"`. Worth flagging if he references short codes in future conversations.
+- The migration doc is long (500+ lines) but structured for skim-then-drill. Wave 1 and Wave 2 are the sections that need Connor review; later waves are preview-level.
+- Today's date: 2026-04-22.
