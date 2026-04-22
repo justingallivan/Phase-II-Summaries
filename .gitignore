@@ -40,3 +40,4 @@ proposals-for-migration.csv
 # Generated schema output (may contain tokens)
 scripts/dynamics-schema-output.json
 .git.nosync
+tmp/
