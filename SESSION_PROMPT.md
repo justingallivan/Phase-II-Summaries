@@ -1,121 +1,125 @@
-# Session 105 Prompt
+# Session 106 Prompt
 
-## Session 104 Summary
+## Session 105 Summary
 
-Security-focused session. Three parallel Explore-agent audits (Dynamics writeback + prompt injection; new-app attack surface; SharePoint + file handling) produced a delta review against the v3.5 baseline from 2026-03-11. Consolidated everything into `docs/SECURITY_AUDIT_2026-04-18.md` and fixed every finding that did not need product or policy input — 3 Highs, 8 of 9 Mediums, 1 of 2 Lows, 4 of 7 Informationals. Remaining opens are all blocked on external decisions (Connor, product, identity reconciliation).
-
-Also prototyped the PromptResolver `.js` fallback path (production hardening carried over from Session 103) and researched Anthropic Admin API for credit-balance monitoring — memo updated with findings.
+Mixed-bag session — shipped M7 spend monitoring, fixed a silently-broken cache-token logger that cost real money for a month, added a generic `updateIfEmpty` writeback helper, and ran the v1-vs-v2 Phase I comparison that turned into a deeper investigation of native PDF input. Output is a Connor-facing brief on PDF processing for the backend.
 
 ### What Was Completed
 
-1. **PromptResolver `.js` fallback** (`06db9a0`)
-   - On Dynamics fetch failure, loads a bundled fallback module (60s cache TTL, vs 5min for fresh Dynamics fetches) instead of throwing
-   - `PROMPT_RESOLVER_STRICT=true` env var restores the loud-failure behavior for the prompt-development loop
-   - Extracted Phase I v2 prompt text to `shared/config/prompts/phase-i-dynamics.js` as single source of truth — both `seed-phase-i-prompt.js` and the resolver fallback import from it, so they can't drift
-   - `source: 'fallback'` surfaces through to the existing `wmkf_ai_run` audit row automatically
+1. **M7 spend monitoring** (`04ce74a`)
+   - "Today's Spend" tile on `/admin` (total + top 3 apps + top 3 users)
+   - `/api/cron/spend-check` hourly: daily-threshold alert + low-balance email via `DynamicsService.createAndSendEmail`, gated on anchor env vars
+   - `scripts/update-balance-anchor.sh` for top-up syncing across `.env.local` + Vercel
+   - `stats.js` adds `today` block + relabels backend (NULL `user_profile_id`)
+   - Six env vars (`DAILY_SPEND_ALERT_CENTS`, `LOW_BALANCE_ALERT_CENTS`, `ANTHROPIC_BALANCE_ANCHOR_CENTS`/`_DATE`, `SPEND_ALERT_EMAIL_TO`/`_FROM`) deployed across Production/Preview/Development
 
-2. **Security audit doc** (`c1554c1`)
-   - New `docs/SECURITY_AUDIT_2026-04-18.md` — full findings with severity, disposition, file:line citations
-   - Audit ran in parallel across three Explore agents covering distinct surfaces; their reports were consolidated and severity-normalized
+2. **Dynamics-explorer cache fix** (`5d53a32`)
+   - `parseClaudeStream` was silently dropping `cache_creation_input_tokens` and `cache_read_input_tokens` on `message_start.message.usage`. 30 days, 90 calls, zero cache hits in DB despite `cache_control` being sent.
+   - Two-line fix; verified live: 11-call session shows cache_create=11784 then cache_read ~12K across 10 calls
+   - Bug only affected the streaming path (= 100% of dynamics-explorer traffic). Non-streaming `callClaudeBatch` was already correct.
 
-3. **First-pass fixes** (`c1554c1`)
-   - **H1** Download proxy now requires `requestId` and validates the folder's `{num}_{GUID32}` suffix matches. `chat.js` URL construction updated in both `list_documents` and `search_documents` tool paths.
-   - **H2** Raw Dynamics / Graph error bodies no longer bubble into response fields. Four endpoints: `lookup-grant.js` (generic categories), `summarize.js` + `summarize-v2.js` (replaced `writebackError` with `writebackFailure` category), `summarize-v2.js` prompt-fetch details gated on `NODE_ENV`.
-   - **M1** ETag optimistic concurrency: `DynamicsService.getRecord` preserves `@odata.etag` as `_etag`; `updateRecord` takes `{ ifMatch }` option and sets `err.status` on 412. Callers pass the preflight ETag so concurrent edits surface as `conflict` instead of silent overwrite.
-   - **M2** `auditLogCreated` surfaced in responses; `tryLogAiRun` returns boolean.
-   - **M5** Gemini key moved to `x-goog-api-key` header (was URL query string — logged in proxies/CDN).
-   - **M6** Verified `requireAppAccess` runs `validateOrigin` before SSE headers flush; added inline invariant comment.
+3. **`DynamicsService.updateIfEmpty()` helper** (`58b77b7`)
+   - Composes read + empty-check + ETag-guarded PATCH
+   - Returns discriminated `{ ok, reason }` so callers translate to HTTP themselves
+   - `summarize.js` intentionally not migrated — pre-flight-before-Claude saves token spend on conflict
 
-4. **Second-pass hardening** (`5d86f25`)
-   - **M3** `DynamicsService.bypassRestrictions(requestId)` — explicit replacement for the ambiguous `setRestrictions([])` pattern. Migrated 14 call sites (API endpoints + scripts + `PromptResolver`). Real restriction lists (chat handler) still use `setRestrictions()`.
-   - **M8** `validatePath` decodes its input before checking for `..`; rejects `%2e%2e` variants and malformed URI encoding.
-   - **M9** `listFiles` now takes `totalTimeoutMs` (default 30s). Walk aborts if the deadline passes.
-   - **L2** `loadFile()` checks `ref.source` against an explicit `ALLOWED_SOURCES` set at the boundary.
-   - **I5** `file-loader.js` rejects buffers >50 MB before parsing; `withTimeout` helper races `pdf-parse` / `mammoth` against a 30s timer.
-   - **I7** `SHAREPOINT_SITE_URL` env overrides validated against a hardcoded `ALLOWED_SHAREPOINT_HOSTS` set — prevents SSRF via tampered env var.
+4. **PDF input research + Connor doc** (`3653f42`)
+   - 8 May 2025 Phase I proposals run through v1 vs v2 comparison harness (Stanford, Hopkins, Harvard, Mayo, St. Jude, etc.)
+   - Native PDF document-block measured on SUNY Stony Brook (1001507): $0.13 vs $0.05 text-only — 3× per call but $13/year delta at our volume
+   - **PDF caching verified working**: `cache_control` on the document block → 90% cost cut and 3× latency cut on warm calls (38s → 12s)
+   - For 3-stage pipeline plan: 1 cold + 2 warm = $0.20/proposal vs $0.39 fresh (48% savings) AND ~60s vs ~120s latency
+   - **`docs/PDF_INPUT_FOR_BACKEND.md`** is the Connor-facing brief: measurements, recommended PA flow, Anthropic constraints (32 MB request, 600 pages), Files API guidance, open questions for him
+   - Don't build a PDF-rendering pipeline. Anthropic does it server-side.
 
-5. **I3 closed as accepted-as-is** (`d6ac70f`)
-   - User confirmed `wmkf_ai_run.rawOutput` content set doesn't include PII; table sits under the same IT-governed CRM security profile. Revisit trigger documented.
+5. **Process correction in memory**
+   - I conflated "Concepts" stage submissions (Dec 2025) with Phase I proposals (Apr 2026), wasting a harness run
+   - New memory `feedback_concepts_vs_phase_i.md` enforces hard-exclude of `/concept/i` files from Phase I prompt pipelines
 
-6. **Credit-monitoring research**
-   - Investigated Anthropic Admin API via `docs.anthropic.com` — **no direct "balance remaining" endpoint**. Closest is `/v1/organizations/cost_report` with an admin-scoped key (`sk-ant-admin-...`).
-   - Memo `project_api_credit_monitoring.md` updated with two implementation paths: (A) Admin API with manual balance anchor, (B) reuse our own `api_usage_log.estimated_cost_cents` — recommended path, no new secrets, covers all four providers.
-   - Corrected an earlier mistake: email send already works via `DynamicsService.createAndSendEmail` (Session 77), not Graph API. Memo reflects this.
+6. **Doc clarifications for Connor** (in `04ce74a`)
+   - Expanded `wmkf_prompt_template` schema in `docs/CONNOR_QUESTIONS_2026-04-15.md` with per-field backend-use explanations + runtime-flow block
+   - Split proposed `wmkf_body` into `wmkf_system_prompt` + `wmkf_user_prompt` to match Claude API + enable caching
 
 ### Commits
 
-- `06db9a0` — Add .js fallback to PromptResolver
-- `c1554c1` — Security audit 2026-04-18: fix H1, H2, M1, M2, M5
-- `5d86f25` — Security hardening: fix M3, M8, M9, L2, I5, I7
-- `d6ac70f` — Close audit I3 as accepted-as-is
+- `04ce74a` — M7 spend monitoring + prompt-table schema clarifications
+- `5d53a32` — Fix dynamics-explorer cache token capture in streaming path
+- `58b77b7` — Add DynamicsService.updateIfEmpty helper for AI writeback
+- `3653f42` — PDF input research: cost/cache findings + backend doc
 
-## Open audit items (all blocked on input / upstream)
+## Side observation worth a follow-up
 
-| # | What | Blocker |
-|---|------|---------|
-| M4 | Prompt-editor governance for `wmkf_prompt_template` | Waits for Connor's table to ship |
-| M7 | Per-user cost caps / low-balance alerting | Implementation plan complete in `project_api_credit_monitoring.md`; awaiting user green-light. Observability-only (tiles + threshold alert + email via Dynamics), skip hard caps. |
-| L1 | Expertise Finder roster CRUD superuser check | Product call: intentional or not? |
-| I1 | `overwrite=true` flag role gating | Blocked on identity reconciliation (distinguish human vs service-principal callers) |
-| I4, I6 | Token-cache multi-tenant keying / Content-Disposition RFC 5987 | Cleanup-level; not actionable absent trigger conditions |
+Our existing `summarize-v2.js` puts `cache_control` only on the system block and got 0 cache hits across 8 sequential calls. The PDF cache test shows the cache fires reliably when `cache_control` is on the document block. So either (a) v2's system prompt is below the cache threshold for some reason, or (b) cache breakpoints behave differently when there's no document block to anchor them. Worth a focused diagnosis next session — would unlock the same 90% savings on the v2 path that PDF caching gave us.
 
 ## Potential Next Steps
 
-### 1. M7 implementation — observability-only credit monitoring
-Memo `project_api_credit_monitoring.md` has the plan:
-- Extend `/api/admin/stats` with a `today` block (SQL filtered on `CURRENT_DATE`)
-- Add a "Today's spend" tile to `/admin` showing total, top 3 apps, top 3 users
-- New `pages/api/cron/spend-check.js` — hourly, inserts `system_alerts` row when today's total > `DAILY_SPEND_ALERT_CENTS` (default 1000 cents)
-- Low-balance alert (**Option B** path): new env vars `ANTHROPIC_BALANCE_ANCHOR_CENTS` + `_DATE`; cron sums `api_usage_log.estimated_cost_cents` since anchor; email via `DynamicsService.createAndSendEmail` when remaining < threshold
-- Relabel `user_profile_id IS NULL` as "Backend" in the `byUser` rollup (ready for PA calls)
+### 1. v2 cache diagnosis
+Print the actual system prompt token count at runtime; try moving `cache_control` to the user message; verify with a back-to-back two-call test. ~30 min.
 
-### 2. Dynamics Explorer document-listing fixes (carryover from earlier sessions)
-Wire `sharepoint-buckets.js` into `chat.js` tools more fully (Session 103 todo).
+### 2. Build summarize-v3 (native PDF input + caching)
+The PDF research recommends this as the path forward for backend processing. Implementation is roughly summarize-v2 + `document` block + `cache_control` on it. Could ship as a second toggle on `/phase-i-dynamics` for further validation before backend handoff.
 
-### 3. Phase I Dynamics v2 validation on more requests
-Only tested on Rife/Levin. Run against 5–10 more requests mixing active + archived libraries to stress the bucket walker and confirm v2 output quality holds.
+### 3. Connor sync
+Walk through `docs/PDF_INPUT_FOR_BACKEND.md` together. Open questions in section "Open questions for Connor" — Encodian/Adobe licensing, PA HTTP body cap, Files API beta header, multi-pass cache window timing.
 
-### 4. Verify Dynamics Explorer caching is firing
-Cache fix landed in Session 103. Query `api_usage_log` for `dynamics-explorer` rows with non-zero `cache_read_tokens` to confirm hits after real chat usage.
+### 4. Multi-pass pipeline cost modeling
+With cached-PDF numbers in hand, redo the staged-review-pipeline cost projections (`project_staged_review_pipeline.md`). Expectation: ~50% cheaper and ~50% faster than the un-cached estimate.
 
-### 5. A/B on a PDF with images
-Session 103 A/B was text-only. Vision-input cache profile is untested.
+### 5. Files API prototype
+For PDFs > 24 MB raw or workflows that span > 5 min between calls, `cache_control: ephemeral` evaporates. Prototype a Files API path that uploads the PDF once, gets a `file_id`, and references it across calls. Useful even if base64 covers 95% of our actual proposals.
 
-### 6. Reusable `DynamicsService.updateIfEmpty(entitySet, guid, fieldName, value, { overwrite })`
-Captured during Session 98. Phase I writeback now has the ETag piece (M1 fix); the generic helper would compose naturally on top.
+### 6. Run the harness against a single research proposal with text-only vs native PDF
+SUNY's PDF was figure-heavy; we measured cost but never directly compared output quality to confirm the figures changed the summary in any meaningful way. One-shot A/B comparison would settle whether vision is worth the 3× cost.
+
+## Open Audit Items (carryover, all blocked)
+
+| # | What | Blocker |
+|---|------|---------|
+| M4 | Prompt-editor governance for `wmkf_prompt_template` | Connor's table |
+| L1 | Expertise Finder roster CRUD superuser check | Product call |
+| I1 | `overwrite=true` flag role gating | Identity reconciliation |
+| I4, I6 | Token-cache multi-tenant keying / RFC 5987 | Cleanup-only |
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `docs/SECURITY_AUDIT_2026-04-18.md` | **New.** Full audit report — findings, disposition, remaining opens |
-| `lib/services/dynamics-service.js` | `bypassRestrictions()`, ETag-aware `updateRecord`, `_etag` preserved in `getRecord` |
-| `lib/services/graph-service.js` | `ALLOWED_SHAREPOINT_HOSTS`, decoded `validatePath`, `listFiles` deadline |
-| `lib/services/prompt-resolver.js` | `.js` fallback on Dynamics failure |
-| `lib/utils/file-loader.js` | 50 MB buffer cap, 30s parser timeout, `ALLOWED_SOURCES` |
-| `pages/api/dynamics-explorer/download-document.js` | Requires `requestId`, validates folder GUID suffix |
-| `shared/config/prompts/phase-i-dynamics.js` | **Single source of truth** for Phase I v2 prompt (shared with seeder) |
-| `project_api_credit_monitoring.md` (memory) | M7 implementation plan + Admin API research |
+| `docs/PDF_INPUT_FOR_BACKEND.md` | **New.** Connor brief with measurements, PA flow, constraints, open questions |
+| `docs/CONNOR_QUESTIONS_2026-04-15.md` | Expanded `wmkf_prompt_template` schema (system/user split, per-field explanations) |
+| `pages/api/cron/spend-check.js` | Hourly daily-threshold alert + low-balance email (gated) |
+| `pages/api/admin/stats.js` | New `today` block + Backend label |
+| `pages/api/dynamics-explorer/chat.js` | 2-line cache token capture fix in `parseClaudeStream` |
+| `lib/services/dynamics-service.js` | New `updateIfEmpty()` helper (composes ETag-guarded write) |
+| `scripts/update-balance-anchor.sh` | One-shot `.env.local` + Vercel sync after Anthropic top-up |
+| `scripts/compare-phase-i-v1-v2.js` | v1 vs v2 Phase I prompt comparison harness |
+| `scripts/test-suny-pdf-cache.js` | PDF caching verification (90% savings confirmed) |
+| `scripts/test-suny-pdf-native.js` | One-shot text-vs-native-PDF cost comparison |
+| `scripts/find-2025-phase-i.js` | Discover real Phase I candidates around the May 1, 2025 deadline |
+| `tmp/phase-i-comparison/` (gitignored) | Per-request v1+v2 summary comparison files for human review |
 
 ## Testing
 
-No new automated tests. Manual verification:
-
 ```bash
-# Syntax check everything changed this session
+# Syntax-check edited files
+node --check pages/api/cron/spend-check.js
+node --check pages/api/admin/stats.js
+node --check pages/api/dynamics-explorer/chat.js
 node --check lib/services/dynamics-service.js
-node --check lib/services/graph-service.js
-node --check lib/utils/file-loader.js
 
-# Seed script still produces expected char counts (sanity check on prompt extraction)
-node scripts/seed-phase-i-prompt.js --dry
-# Expect: System 6,634 chars; User 258 chars
+# Re-run PDF cache verification (uses /tmp/suny-stonybrook-phase-i.pdf)
+node scripts/test-suny-pdf-cache.js
+# Expect: cache_create ~38K on call 1, cache_read ~38K on call 2, 90% cost cut
+
+# Trigger spend-check manually (dev mode bypasses CRON_SECRET)
+curl http://localhost:3000/api/cron/spend-check
+
+# Confirm dynamics-explorer cache logging now works
+# After running a chat session, query api_usage_log for cache_read_tokens > 0
 ```
 
 ## Session hand-off notes
 
-- Working tree clean after four commits. Four ahead of origin until push.
-- M7 has a complete implementation plan in memory — low-effort next session if user green-lights it.
-- Audit doc is self-contained; read it before touching any finding-related code.
-- PromptResolver fallback is now production-safe. `PROMPT_RESOLVER_STRICT=true` stays useful during prompt development to catch silent fallback masking bugs.
-- Today's date: 2026-04-18.
+- Tree clean, 4 commits ahead of origin until pushed.
+- `tmp/phase-i-comparison/` has the v1 vs v2 outputs for 8 proposals + 1 v3 (native PDF) on SUNY — read these to make the qualitative call on v1 vs v2 prompt direction.
+- Anchor vars deployed but the actual `ANTHROPIC_BALANCE_ANCHOR_CENTS` value was set to 10827 (= $108.27). Update via `scripts/update-balance-anchor.sh` after each top-up.
+- The "v2 caching is broken" finding from this session is real and unresolved — flagged as next-session item #1.
+- Today's date: 2026-04-21.

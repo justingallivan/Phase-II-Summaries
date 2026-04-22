@@ -4,6 +4,22 @@ This file contains the historical development log for the Document Processing Mu
 
 ---
 
+## April 2026 — Spend Monitoring, Cache Bug Fix, PDF Input Research (Session 105)
+
+Shipped M7 (observability-only credit monitoring), fixed a month-long silent cache-token-capture bug in dynamics-explorer, added a generic `updateIfEmpty` helper, and ran the v1-vs-v2 Phase I prompt comparison that turned into a deeper investigation of native PDF input as the path forward for backend processing.
+
+- **M7 spend monitoring** (`04ce74a`): "Today's Spend" tile on `/admin` (total + top 3 apps + top 3 users), hourly `/api/cron/spend-check`, low-balance email via `DynamicsService.createAndSendEmail` (gated on anchor env vars), `scripts/update-balance-anchor.sh` for top-up syncing. `stats.js` now relabels `user_profile_id IS NULL` as `Backend`. Six new env vars deployed across Production/Preview/Development.
+- **Dynamics-explorer cache fix** (`5d53a32`): `parseClaudeStream` was reading `input_tokens` from `message_start.message.usage` but skipping `cache_creation_input_tokens` and `cache_read_input_tokens` on the same object. 90 calls over 30 days, 0 cache hits recorded despite `cache_control` being sent. Two-line fix; verified live with an 11-call session showing cache_create=11784 then cache_read ~12K across 10 follow-ups. Non-streaming path was already correct.
+- **`DynamicsService.updateIfEmpty()` helper** (`58b77b7`): Composes read + empty-check + ETag-guarded PATCH for AI-writeback fields; returns discriminated `{ ok, reason }` result. `summarize.js` intentionally not migrated — its pre-flight-before-Claude pattern saves token spend on conflict.
+- **Phase I v1 vs v2 + PDF input research** (`3653f42`): Built test-discovery + comparison harness against 8 May 2025 Phase I proposals (Stanford, Hopkins, Harvard, Mayo, St. Jude, etc.). v1 vs v2 outputs roughly comparable in length and cost. THE bigger find: native PDF document-block input costs ~3× per call ($0.13 vs $0.05 on SUNY 1001507) but absolute delta is $13/year at our volume. PDF caching with `cache_control` on the document block confirmed: **90% cost reduction and 3× latency reduction** on warm calls. For the 3-stage pipeline plan (fit screen → brief → panel), 1 cold + 2 warm calls drops per-proposal cost from $0.39 → $0.20 and total latency from ~120s → ~60s. **`docs/PDF_INPUT_FOR_BACKEND.md`** written as a Connor-facing brief with the measurements, recommended PA flow, Anthropic API constraints (32 MB request, 600 pages), and Files API guidance for multi-pass workflows.
+- **Side observation worth filing**: our existing v2 endpoint puts `cache_control` only on the system block and got 0 cache hits across 8 sequential calls. Our PDF cache test shows the cache fires reliably when `cache_control` is on the document block too. v2 caching deserves a follow-up diagnosis.
+- **Process correction**: I initially conflated "Concepts" stage submissions (Dec 2025) with Phase I proposals (Apr 2026), feeding 5 concept PDFs through the Phase I prompt before the user caught it. New memory `feedback_concepts_vs_phase_i.md` captures the distinction.
+- **Doc clarifications for Connor** (in `04ce74a`): Expanded `wmkf_prompt_template` schema in `docs/CONNOR_QUESTIONS_2026-04-15.md` with per-field backend-use explanations and a runtime-flow block. Split `wmkf_body` into `wmkf_system_prompt` + `wmkf_user_prompt` to match Claude API + enable caching.
+
+**Files:** `docs/PDF_INPUT_FOR_BACKEND.md` (new); `docs/CONNOR_QUESTIONS_2026-04-15.md`; `pages/admin.js`; `pages/api/admin/stats.js`; `pages/api/cron/spend-check.js` (new); `pages/api/dynamics-explorer/chat.js`; `lib/services/dynamics-service.js`; `vercel.json`; `CLAUDE.md`; `scripts/update-balance-anchor.sh` (new); 7 new investigation scripts under `scripts/` (find-2025-phase-i, find-research-test-cases, find-phase-i-test-cases, list-all-pdfs-for-candidates, compare-phase-i-v1-v2, test-suny-pdf-native, test-suny-pdf-cache, inspect-suny-pdf).
+
+---
+
 ## April 2026 — Security Delta Audit + Hardening Pass (Session 104)
 
 First comprehensive security review since the v3.5 baseline (2026-03-11). Three parallel Explore agents audited the new surface area (~25 commits, 4 new apps, Dynamics writeback, PromptResolver). Consolidated findings into `docs/SECURITY_AUDIT_2026-04-18.md`; fixed everything that did not need product or policy input.
