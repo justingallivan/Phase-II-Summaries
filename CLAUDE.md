@@ -425,6 +425,7 @@ Located in `lib/utils/`:
 | `docs/GRANT_CYCLE_LIFECYCLE.md` | Full grant proposal lifecycle with stages, status values, triggers, and AI tasks |
 | `docs/STAGED_REVIEW_PIPELINE.md` | 3-stage automated proposal triage pipeline design (fit screening → intelligence brief → virtual panel) |
 | `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` | Implementation plan for pipeline apps (Fit Screener + Proposal Pipeline) |
+| `docs/RETROSPECTIVE_ANALYSIS_PLAN.md` | Long-term plan for bespoke historical analyses via web apps (division of labor vs. PA backend automation) |
 | `modules/expertise_matching/CLAUDE.md` | Expertise Finder module: matching rules, expertise boundaries, CSV schema, known gaps |
 | `modules/expertise_matching/docs/SKILL_reviewer_matching.md` | Full operational procedures for Phase I batch and Phase II individual matching |
 

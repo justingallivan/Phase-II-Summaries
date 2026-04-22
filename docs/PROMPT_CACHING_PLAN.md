@@ -1,6 +1,7 @@
 # Prompt Caching Plan
 
 **Created:** 2026-04-17 (Session 103)
+**Last updated:** 2026-04-22 (Session 106) — audit via `count_tokens` across all apps confirmed the 2048 floor
 **Status:** Partial — Dynamics Explorer fixed; other work queued
 
 ## Context
@@ -135,7 +136,7 @@ logUsage({
 ## Non-obvious gotchas
 
 1. **Cache TTL resets on read.** Each cache hit extends the TTL by 5 min (standard) or 1 hour (extended). Long agentic sessions keep the cache warm indefinitely.
-2. **Empirical Sonnet 4.6 minimum is ~2048 tokens, not 1024.** Anthropic's docs list 1024 for Sonnet/Opus, but a 2026-04-17 experiment on Sonnet 4.6 confirmed no caching fires at 1,210 tokens and caching does fire at 2,403 tokens. Treat **2,048 as the working floor for all current models** until proven otherwise. This was a surprise — previously we'd assumed 1024 and would have mis-planned Phase I caching.
+2. **Sonnet 4.6 cache minimum is exactly 2,048 tokens.** Anthropic's docs list 1024 for Sonnet/Opus, and Sonnet 4.5 honored that (1,421-token system block caches fine). Sonnet 4.6 doubled the floor to 2,048 without public documentation. Confirmed by bisection on 2026-04-22: 2,019 tokens → no cache write; 2,058 tokens → cache writes; 2,110+ tokens → cache writes. Dead zone is 1,024–2,047 tokens. Beta header `prompt-caching-2024-07-31` does not help. The `cache_control` marker is accepted in the request but silently dropped by the billing side. **Treat 2,048 as the working floor for all current models.**
 3. **Haiku requires 2048-token minimum** (per docs, and consistent with the empirical Sonnet observation above).
 4. **Order matters.** `tools → system → messages`. A `cache_control` marker on `system` caches tools + system together (good). A marker on a content block inside `messages` caches everything before it, including tools + system.
 5. **Up to 4 cache breakpoints per request.** Useful for incremental caching in growing conversations (mark the last assistant turn on each round so the growing history stays cached).
@@ -143,16 +144,25 @@ logUsage({
 
 ### Threshold implications for our apps
 
-| App | System block size | Expected cache behavior |
-|---|---|---|
-| Phase I summarization | ~1,650 tokens (system only) | ❌ **Below threshold today.** `cache_control` is a no-op as currently sized. |
-| Dynamics Explorer | Tools + system ≈ 3–5K tokens | ✅ Well above threshold |
-| Expertise Finder | System + roster (planned) ≈ 2–5K | ✅ Above, once roster moves to system |
-| Virtual Review Panel | SYSTEM_PROMPT only is small (<1K) | ❌ Below — the win requires moving proposal text into a cached content block |
-| Batch Phase II | Instructions ~3–4K | ✅ Above once split from proposal text |
-| Grant Reporting | Instructions ~2–3K | Borderline — needs measurement |
+**Session 106 audit** — measured via Anthropic's `/v1/messages/count_tokens` endpoint against `claude-sonnet-4-6`. Built each system block using the same prompt-construction code the production API routes use:
 
-**Takeaway:** don't assume `cache_control` on a small system block will fire. Measure the system-block token count against the 2,048 floor before counting the savings.
+| App | System tokens | `cache_control` wired? | Verdict |
+|---|---:|---|---|
+| `dynamics-explorer` (system + tools) | 12,073 | yes | ✅ Cache fires reliably |
+| `dynamics-explorer` (system only) | 9,345 | yes | ✅ Cache fires reliably |
+| `qa` — Phase II–size proposal (>15K chars) | est. 2,500+ | yes | ✅ Cache fires |
+| `qa` — typical 10K-char proposal | **1,868** | yes | ❌ **Dead zone — cache silently dropped** |
+| `qa` — empty proposal | 169 | yes | Too small — no cache possible |
+| `phase-i-dynamics-v2` | **1,419** | yes | ❌ **Dead zone — cache silently dropped** |
+| `phase-i-summaries` (v1, stable portion if split) | **1,426** | no | ❌ Would fall in dead zone if split as-is |
+| `expertise-finder` (as-shipped) | 76 | no | Too small — roster move required |
+| `virtual-review-panel` | (no `SYSTEM_PROMPT` export) | no | Everything in user content today |
+
+**Dead-zone finding:** Three apps have `cache_control: { type: 'ephemeral' }` wired but system blocks of 1,024–2,047 tokens. Anthropic accepts the marker, silently skips the cache write, and the app pays full input price every call. No warning, no error — the symptom is `cache_creation_input_tokens: 0` in usage data with `cache_control` sent.
+
+**QA's proposal-size dependence is notable.** The Session 103 data showed QA cache hits on 9 calls (142K write / 640K read tokens). Those must have been on Phase II–sized proposals or on Sonnet 4.5 (which had a 1024 floor). With Sonnet 4.6 and a typical 10K-char Phase II proposal, QA sits just below the floor. Raising `createQASystemPrompt` even slightly (or relying on larger proposals) pushes it back into cached territory. Worth measuring post-Sonnet-4.6-rollout cache hit rate in `api_usage_log` before investing in any QA prompt rework.
+
+**Takeaway:** don't assume `cache_control` on a small system block will fire. Measure the system-block token count against the 2,048 floor before counting the savings. The audit script `scripts/audit-system-prompt-sizes.js` reports all apps' sizes in one pass — re-run it after significant prompt edits.
 
 ## Proposal size + caching
 

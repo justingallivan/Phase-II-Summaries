@@ -83,6 +83,18 @@ For 300 proposals/year × 3 stages, caching saves ~$60/year and 5 hours of cumul
 
 ---
 
+## System-prompt caching caveat (new — 2026-04-22)
+
+**Sonnet 4.6 requires ≥ 2,048 tokens in a cache breakpoint for caching to fire.** Anthropic's public docs list 1,024 for Sonnet, but the 4.6 generation silently doubled it without announcement. Verified by bisection: 2,019 tokens → no cache write; 2,058 tokens → cache writes. The `cache_control` marker is accepted in the request regardless, but the cache is not populated — so `cache_creation_input_tokens` is `0` even when everything looks wired correctly.
+
+**What this means for the PA flow:**
+
+- **PDF document blocks always clear the floor** — a typical 19-page Phase I proposal is ~38K tokens. Cache fires reliably.
+- **System-prompt-only caching (without a PDF in the request) is fragile.** Our current Phase I system prompt is ~1,419 tokens — in the dead zone. If the PA flow ever sends just `system + short user text` (no PDF block), the cache won't fire. Padding the system prompt to > 2,048 tokens is the fix, ideally with useful content (in-context examples, expanded guidance).
+- **The recommended PA flow in this doc is unaffected.** The PDF is the cache anchor — system block piggybacks on it. That's fine and it works.
+
+**If we ever add a chained "PDF once, small follow-up questions" pattern:** the follow-up calls without the PDF will lose cache unless we keep the PDF in the request (which is the Anthropic-recommended pattern anyway — cache reads on the PDF block cost 10% of base input).
+
 ## Anthropic PDF API constraints
 
 Per Anthropic's [PDF support docs](https://docs.anthropic.com/en/docs/build-with-claude/pdf-support):
@@ -170,7 +182,35 @@ Comparison outputs (gitignored) under `tmp/phase-i-comparison/`.
 
 ## Open questions for Connor
 
-1. **Adobe PDF Services or Encodian connector** — already licensed in the org? If yes, no harm done; if no, this finding means you don't need to spend on either.
-2. **PA HTTP action max body size** — default is 100 MB; should not be a constraint for our 14-25 MB PDFs but worth confirming the tenant doesn't have a smaller cap.
-3. **Files API beta header (`files-api-2025-04-14`)** — fine to use in PA HTTP action? Anthropic uses beta headers for newer features even when they're stable in production.
-4. **Multi-pass pipeline timing** — does the 5-min ephemeral cache window fit your envisioned PA flow rhythm, or do you need the longer-lived Files API path?
+### Resolved (2026-04-22)
+
+1. ~~**Adobe PDF Services or Encodian connector**~~ — Licensed in the org but **not required for this flow**. Anthropic handles PDF rendering server-side; PA sends the raw PDF blob.
+2. ~~**PA HTTP action max body size**~~ — Connor tested up to **75 MB** in the Keck tenant with no cap hit. Comfortably above our 14–25 MB Phase I PDFs (~32 MB base64-inflated).
+
+### Resolved (2026-04-22, continued)
+
+3. ~~**Files API beta header (`files-api-2025-04-14`)**~~ — **Confirmed working end-to-end.** `scripts/test-files-api.js` successfully uploaded → referenced → deleted a 14 MB PDF. All three calls return 200 with the custom beta header in place. Any PA failure from here is a PA / tenant HTTP-connector issue, escalatable without involving Anthropic. Retained for future multi-pass workflows; not needed for Phase 1.
+
+4. ~~**Multi-pass pipeline timing**~~ — **Not a concern for Phase 1.** Backend automation will process single requests sequentially (one PA call per request, one prompt applied), so caching gives almost nothing in that mode — each call is a different PDF. The future use case (batch analysis across prior grant cycles: one prompt applied to many historical proposals) is a different regime — see "Future batch-analysis regime" below.
+
+### Still open
+
+5. **2048-token cache floor on Sonnet 4.6** — confirmed by our testing, undocumented by Anthropic. Worth flagging in any Anthropic support thread if you hit it. Doesn't affect the recommended PDF-anchored flow, but bites any "small system prompt, small request" pattern.
+
+---
+
+## Future batch-analysis regime
+
+Connor flagged (2026-04-22) a separate use case we'll hit later: **one prompt applied to many historical proposals** — e.g., "run this new evaluation criterion against every Phase I submission from the last three cycles." Different economics from Phase 1's sequential single-request flow.
+
+| Optimization | Applies to Phase 1 (sequential singles)? | Applies to future batch? |
+|---|---|---|
+| **PDF caching** (`cache_control` on document block) | No — each request is a different PDF | No — each file is different |
+| **System-prompt caching** (`cache_control` on system block, > 2048 tokens) | Minimal — requests arrive minutes or hours apart, cache TTL expires | **Yes, significant.** All calls share the system prompt. One cold write + N−1 warm reads if calls fire within 5 min of each other |
+| **Batch API** (`/v1/messages/batches`, async, 24h turnaround) | No — need synchronous writeback | **Yes, 50% off list price.** Ideal for "process last cycle's 300 proposals overnight." |
+
+**Implications when the batch use case arrives:**
+
+- The v2 system prompt's 2048-token shortfall becomes real cost. Fixing it (padding with in-context examples) unlocks system-prompt caching for the batch regime.
+- Anthropic's Batch API is the correct tool for bulk historical analysis, not ephemeral caching — batches run async at 50% list, complete within 24h, and results come back as a downloadable JSONL. No PA HTTP polling concerns.
+- Batch API + system-prompt caching stack: a batch of 300 proposals × cached system prompt = ~50% (batch) × ~90% (cache read on system tokens) = much cheaper than a naive loop.
