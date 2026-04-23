@@ -1,0 +1,8 @@
+{
+  "uniqueName": "wmkfResearchReviewAppSuite",
+  "__comment_uniqueName": "Must start with the publisher customization prefix (wmkf) per Dataverse naming rules for solutions.",
+  "friendlyName": "Research Review App Suite",
+  "description": "Custom tables and columns backing the Research Review App Suite (Keck Foundation). Created and maintained by scripts/apply-dataverse-schema.js.",
+  "publisherUniqueName": "WMKF_Publisher",
+  "publisherPrefix": "wmkf"
+}

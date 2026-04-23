@@ -1,0 +1,22 @@
+{
+  "name": "systemuser-extensions",
+  "kind": "attributes-on-existing",
+  "entityLogicalName": "systemuser",
+  "attributes": [
+    {
+      "type": "String",
+      "schemaName": "wmkf_app_AvatarColor",
+      "displayName": "App Avatar Color",
+      "description": "Hex color used by the Research Review App Suite UI. Migrated from user_profiles.avatar_color.",
+      "maxLength": 7,
+      "requiredLevel": "None"
+    },
+    {
+      "type": "Boolean",
+      "schemaName": "wmkf_app_NeedsLinking",
+      "displayName": "App Needs Linking",
+      "description": "True when the user profile has not yet been reconciled to an Azure/Dynamics identity.",
+      "default": false
+    }
+  ]
+}

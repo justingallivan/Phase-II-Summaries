@@ -1,0 +1,37 @@
+{
+  "name": "wmkf_app_user_preference",
+  "kind": "new-entity",
+  "schemaName": "wmkf_AppUserPreference",
+  "displayName": "App User Preference",
+  "displayCollectionName": "App User Preferences",
+  "description": "Per-user preferences for the Research Review App Suite. Holds encrypted secrets; requires User-level Read access on the security role (post-schema step).",
+  "ownershipType": "UserOwned",
+  "primaryNameAttribute": {
+    "schemaName": "wmkf_PreferenceKey",
+    "displayName": "Preference Key",
+    "maxLength": 100,
+    "requiredLevel": "ApplicationRequired"
+  },
+  "attributes": [
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_PreferenceValue",
+      "displayName": "Preference Value",
+      "description": "Stored value. Encrypted blob when wmkf_IsEncrypted is true.",
+      "maxLength": 100000,
+      "requiredLevel": "None"
+    },
+    {
+      "type": "Boolean",
+      "schemaName": "wmkf_IsEncrypted",
+      "displayName": "Is Encrypted",
+      "description": "True when the preference value is AES-256-GCM encrypted.",
+      "default": false
+    }
+  ],
+  "alternateKeys": [],
+  "notes": [
+    "Access restriction (User-level Read) must be applied via security role after table creation — the metadata API does not configure role privileges.",
+    "No alt-key on (wmkf_preferencekey, ownerid): Dataverse rejects polymorphic PrincipalAttributes (ownerid) in composite keys. Per-user uniqueness on preference key is enforced app-side."
+  ]
+}

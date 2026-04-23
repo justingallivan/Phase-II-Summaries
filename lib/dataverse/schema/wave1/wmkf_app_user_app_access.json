@@ -1,0 +1,44 @@
+{
+  "name": "wmkf_app_user_app_access",
+  "kind": "new-entity",
+  "schemaName": "wmkf_AppUserAppAccess",
+  "displayName": "App User App Access",
+  "displayCollectionName": "App User App Access",
+  "description": "Per-user grants for apps in the Research Review App Suite. Matches appRegistry.js keys.",
+  "ownershipType": "OrganizationOwned",
+  "primaryNameAttribute": {
+    "schemaName": "wmkf_AppKey",
+    "displayName": "App Key",
+    "description": "App identifier from shared/config/appRegistry.js (e.g., batch-phase-i-summaries).",
+    "maxLength": 100,
+    "requiredLevel": "ApplicationRequired"
+  },
+  "attributes": [],
+  "relationships": [
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_appuserappaccess_user_systemuser",
+      "referencedEntity": "systemuser",
+      "lookupSchemaName": "wmkf_User",
+      "lookupDisplayName": "User",
+      "lookupDescription": "The user being granted access.",
+      "required": "ApplicationRequired"
+    },
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_appuserappaccess_grantedby_systemuser",
+      "referencedEntity": "systemuser",
+      "lookupSchemaName": "wmkf_GrantedBy",
+      "lookupDisplayName": "Granted By",
+      "lookupDescription": "The admin who granted this access.",
+      "required": "None"
+    }
+  ],
+  "alternateKeys": [
+    {
+      "schemaName": "wmkf_user_appkey",
+      "displayName": "User + App Key",
+      "keyAttributes": ["wmkf_user", "wmkf_appkey"]
+    }
+  ]
+}

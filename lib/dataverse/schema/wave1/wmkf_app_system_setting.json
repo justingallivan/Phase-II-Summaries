@@ -1,0 +1,42 @@
+{
+  "name": "wmkf_app_system_setting",
+  "kind": "new-entity",
+  "schemaName": "wmkf_AppSystemSetting",
+  "displayName": "App System Setting",
+  "displayCollectionName": "App System Settings",
+  "description": "Admin-editable key/value configuration for the Research Review App Suite (model overrides, etc.).",
+  "ownershipType": "OrganizationOwned",
+  "primaryNameAttribute": {
+    "schemaName": "wmkf_SettingKey",
+    "displayName": "Setting Key",
+    "maxLength": 255,
+    "requiredLevel": "ApplicationRequired"
+  },
+  "attributes": [
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_SettingValue",
+      "displayName": "Setting Value",
+      "maxLength": 100000,
+      "requiredLevel": "None"
+    }
+  ],
+  "relationships": [
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_appsystemsetting_updatedby_systemuser",
+      "referencedEntity": "systemuser",
+      "lookupSchemaName": "wmkf_UpdatedBy",
+      "lookupDisplayName": "Updated By",
+      "lookupDescription": "Staff member who last updated this setting.",
+      "required": "None"
+    }
+  ],
+  "alternateKeys": [
+    {
+      "schemaName": "wmkf_settingkey",
+      "displayName": "Setting Key",
+      "keyAttributes": ["wmkf_settingkey"]
+    }
+  ]
+}
