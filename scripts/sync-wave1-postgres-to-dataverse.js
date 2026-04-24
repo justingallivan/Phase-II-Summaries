@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Sync Wave 1 tables from Postgres to Dataverse (sandbox by default).
+ * Sync Wave 1 tables from Postgres to Dataverse.
  *
  * Postgres source → Dataverse target:
  *   user_preferences   → wmkf_AppUserPreference   (User-owned; set ownerid)
@@ -22,8 +22,9 @@
  * natural key). Safe to rerun.
  *
  * Usage:
- *   node scripts/sync-wave1-postgres-to-dataverse.js           # dry-run
- *   node scripts/sync-wave1-postgres-to-dataverse.js --execute # live
+ *   node scripts/sync-wave1-postgres-to-dataverse.js                     # sandbox, dry-run
+ *   node scripts/sync-wave1-postgres-to-dataverse.js --execute           # sandbox, live
+ *   node scripts/sync-wave1-postgres-to-dataverse.js --target=prod --execute
  *   node scripts/sync-wave1-postgres-to-dataverse.js --only=preferences,app-access,settings
  */
 
@@ -32,8 +33,19 @@ const { sql } = require('@vercel/postgres');
 
 loadEnvLocal();
 
-const SANDBOX = process.env.DYNAMICS_SANDBOX_URL;
-if (!SANDBOX) throw new Error('DYNAMICS_SANDBOX_URL not set');
+function resourceUrl(target) {
+  if (target === 'prod') {
+    const u = process.env.DYNAMICS_URL;
+    if (!u) throw new Error('DYNAMICS_URL not set');
+    return u;
+  }
+  if (target === 'sandbox') {
+    const u = process.env.DYNAMICS_SANDBOX_URL;
+    if (!u) throw new Error('DYNAMICS_SANDBOX_URL not set');
+    return u;
+  }
+  throw new Error(`Unknown target: ${target}`);
+}
 
 const USER_ID_OVERRIDES = {
   1: { action: 'skip', reason: 'Test User — no email, no production usage' },
@@ -43,12 +55,13 @@ const USER_ID_OVERRIDES = {
 const ALL_TABLES = ['preferences', 'app-access', 'settings'];
 
 function parseArgs(argv) {
-  const out = { execute: false, only: ALL_TABLES };
+  const out = { target: 'sandbox', execute: false, only: ALL_TABLES };
   for (const a of argv.slice(2)) {
     if (a === '--execute') out.execute = true;
+    else if (a.startsWith('--target=')) out.target = a.slice('--target='.length);
     else if (a.startsWith('--only=')) out.only = a.slice('--only='.length).split(',').map((s) => s.trim());
     else if (a === '--help' || a === '-h') {
-      console.log('Usage: node scripts/sync-wave1-postgres-to-dataverse.js [--only=preferences,app-access,settings] [--execute]');
+      console.log('Usage: node scripts/sync-wave1-postgres-to-dataverse.js [--target=sandbox|prod] [--only=preferences,app-access,settings] [--execute]');
       process.exit(0);
     } else { console.error(`Unknown flag: ${a}`); process.exit(1); }
   }
@@ -264,13 +277,17 @@ function summarize(label, r) {
 
 (async () => {
   const args = parseArgs(process.argv);
+  const resource = resourceUrl(args.target);
   const mode = args.execute ? 'EXECUTE' : 'DRY-RUN';
-  console.log(`Target: sandbox (${SANDBOX})`);
+  console.log(`Target: ${args.target} (${resource})`);
   console.log(`Mode:   ${mode}`);
   console.log(`Tables: ${args.only.join(', ')}\n`);
+  if (args.target === 'prod' && args.execute) {
+    console.log('⚠ PROD --execute — writes will hit production Dataverse.\n');
+  }
 
-  const token = await getAccessToken(SANDBOX);
-  const client = createClient({ resourceUrl: SANDBOX, token });
+  const token = await getAccessToken(resource);
+  const client = createClient({ resourceUrl: resource, token });
 
   const { map, unmapped } = await buildIdentityMap(client);
   printIdentityMap(map, unmapped);
