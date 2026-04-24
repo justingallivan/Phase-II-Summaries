@@ -10,6 +10,7 @@
 
 import { requireAuthWithProfile, isAuthRequired } from '../../../lib/utils/auth';
 import { sql } from '@vercel/postgres';
+import { listSettingsWithMeta, setSetting } from '../../../lib/services/settings-service';
 
 // Secrets we track
 const TRACKED_SECRETS = [
@@ -36,17 +37,11 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     try {
-      const settings = await sql`
-        SELECT setting_key, setting_value, updated_at
-        FROM system_settings
-        WHERE setting_key LIKE 'secret_expiration:%'
-           OR setting_key LIKE 'secret_rotation:%'
-      `;
-
-      const settingsMap = {};
-      for (const row of settings.rows) {
-        settingsMap[row.setting_key] = { value: row.setting_value, updatedAt: row.updated_at };
-      }
+      const [expirations, rotations] = await Promise.all([
+        listSettingsWithMeta('secret_expiration:'),
+        listSettingsWithMeta('secret_rotation:'),
+      ]);
+      const settingsMap = { ...expirations, ...rotations };
 
       const now = new Date();
       const secrets = TRACKED_SECRETS.map(secret => {
@@ -95,21 +90,11 @@ export default async function handler(req, res) {
       }
 
       if (rotationDate) {
-        await sql`
-          INSERT INTO system_settings (setting_key, setting_value, updated_by)
-          VALUES (${'secret_rotation:' + key}, ${rotationDate}, ${profileId})
-          ON CONFLICT (setting_key)
-          DO UPDATE SET setting_value = ${rotationDate}, updated_by = ${profileId}, updated_at = CURRENT_TIMESTAMP
-        `;
+        await setSetting(`secret_rotation:${key}`, rotationDate, profileId);
       }
 
       if (expirationDate) {
-        await sql`
-          INSERT INTO system_settings (setting_key, setting_value, updated_by)
-          VALUES (${'secret_expiration:' + key}, ${expirationDate}, ${profileId})
-          ON CONFLICT (setting_key)
-          DO UPDATE SET setting_value = ${expirationDate}, updated_by = ${profileId}, updated_at = CURRENT_TIMESTAMP
-        `;
+        await setSetting(`secret_expiration:${key}`, expirationDate, profileId);
       }
 
       return res.json({ ok: true });

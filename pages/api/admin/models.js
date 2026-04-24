@@ -11,6 +11,7 @@
 import { requireAuthWithProfile, isAuthRequired } from '../../../lib/utils/auth';
 import { sql } from '@vercel/postgres';
 import { BASE_CONFIG, clearModelOverridesCache } from '../../../shared/config/baseConfig';
+import { listSettings, setSetting, deleteSetting } from '../../../lib/services/settings-service';
 
 // Valid model types that can be overridden
 const VALID_MODEL_TYPES = ['model', 'visionModel', 'fallback'];
@@ -105,16 +106,16 @@ export default async function handler(req, res) {
 async function handleGet(req, res) {
   try {
     // Fetch DB overrides, available models, and env overrides in parallel
-    const [dbResult, availableModels] = await Promise.all([
-      sql`SELECT setting_key, setting_value FROM system_settings WHERE setting_key LIKE 'model_override:%'`,
+    const [dbSettings, availableModels] = await Promise.all([
+      listSettings('model_override:'),
       fetchAvailableModels(),
     ]);
 
     // Build a map of DB overrides: { "concept-evaluator:model": "claude-..." }
     const dbOverrides = {};
-    for (const row of dbResult.rows) {
-      const suffix = row.setting_key.replace('model_override:', '');
-      dbOverrides[suffix] = row.setting_value;
+    for (const [key, value] of Object.entries(dbSettings)) {
+      const suffix = key.replace('model_override:', '');
+      dbOverrides[suffix] = value;
     }
 
     // Build apps array from APP_MODELS config
@@ -186,15 +187,10 @@ async function handlePut(req, res, profileId) {
 
     if (modelId === null || modelId === undefined || modelId === '') {
       // Delete the override — revert to env/hardcoded default
-      await sql`DELETE FROM system_settings WHERE setting_key = ${settingKey}`;
+      await deleteSetting(settingKey);
     } else {
       // Upsert the override
-      await sql`
-        INSERT INTO system_settings (setting_key, setting_value, updated_by, updated_at)
-        VALUES (${settingKey}, ${modelId}, ${updatedBy}, NOW())
-        ON CONFLICT (setting_key)
-        DO UPDATE SET setting_value = ${modelId}, updated_by = ${updatedBy}, updated_at = NOW()
-      `;
+      await setSetting(settingKey, modelId, updatedBy);
     }
 
     // Clear the in-memory cache so the next API request picks up the change

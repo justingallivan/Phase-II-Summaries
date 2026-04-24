@@ -22,6 +22,7 @@ loadEnvLocal();
 // not require time, so we can flip the env var per test.
 const { DatabaseService } = require('../lib/services/database-service');
 const appAccess = require('../lib/services/app-access-service');
+const settings = require('../lib/services/settings-service');
 
 const JUSTIN = 2;
 const KEVIN = 3;
@@ -51,6 +52,10 @@ async function withPrefsBackend(backend, fn) {
 
 async function withAppAccessBackend(backend, fn) {
   return withBackend('WAVE1_BACKEND_APP_ACCESS', backend, fn);
+}
+
+async function withSettingsBackend(backend, fn) {
+  return withBackend('WAVE1_BACKEND_SETTINGS', backend, fn);
 }
 
 async function cleanupBoth() {
@@ -190,6 +195,49 @@ async function cleanupBoth() {
       record(
         `[${backend}] revokeApps returned revoked=[${TEST_APPS[0]}]`,
         revoke.revoked.includes(TEST_APPS[0]),
+      );
+    });
+  }
+
+  // ── Settings parity ──
+  console.log('\n━━━ Settings parity: listSettings(model_override:) ━━━');
+  const pgModels = await withSettingsBackend('postgres', () => settings.listSettings('model_override:'));
+  const dvModels = await withSettingsBackend('dataverse', () => settings.listSettings('model_override:'));
+  const pgModelKeys = Object.keys(pgModels).sort();
+  const dvModelKeys = Object.keys(dvModels).sort();
+  record(
+    `model_override keys match (${pgModelKeys.length} each)`,
+    pgModelKeys.length === dvModelKeys.length && pgModelKeys.every((k, i) => k === dvModelKeys[i]),
+  );
+  let settingsValuesMatch = true;
+  for (const k of pgModelKeys) {
+    if (pgModels[k] !== dvModels[k]) settingsValuesMatch = false;
+  }
+  record('model_override values match for every key', settingsValuesMatch);
+
+  console.log('\n━━━ Settings parity: set + get + delete ━━━');
+  const TEST_KEY = 'test.flag.setting';
+  for (const backend of ['postgres', 'dataverse']) {
+    await withSettingsBackend(backend, async () => {
+      await settings.deleteSetting(TEST_KEY);
+      const setOk = await settings.setSetting(TEST_KEY, `value-${backend}`, JUSTIN);
+      record(`[${backend}] setSetting returns true`, setOk === true);
+      const got = await settings.getSetting(TEST_KEY);
+      record(`[${backend}] getSetting returns the written value`, got === `value-${backend}`, `got=${got}`);
+      await settings.deleteSetting(TEST_KEY);
+      const gotAfterDelete = await settings.getSetting(TEST_KEY);
+      record(`[${backend}] delete removes value`, gotAfterDelete === null);
+    });
+  }
+
+  console.log('\n━━━ Settings parity: listSettingsWithMeta has updatedAt ━━━');
+  for (const backend of ['postgres', 'dataverse']) {
+    await withSettingsBackend(backend, async () => {
+      const meta = await settings.listSettingsWithMeta('model_override:');
+      const firstKey = Object.keys(meta)[0];
+      record(
+        `[${backend}] listSettingsWithMeta returns { value, updatedAt }`,
+        meta[firstKey] && 'value' in meta[firstKey] && 'updatedAt' in meta[firstKey],
       );
     });
   }

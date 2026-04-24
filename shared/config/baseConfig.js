@@ -280,16 +280,13 @@ const DB_OVERRIDES_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export async function loadModelOverrides() {
   if (Date.now() - _dbOverridesLoadedAt < DB_OVERRIDES_TTL_MS) return;
   try {
-    const { sql } = await import('@vercel/postgres');
-    const result = await sql`
-      SELECT setting_key, setting_value FROM system_settings
-      WHERE setting_key LIKE 'model_override:%'
-    `;
+    const { listSettings } = await import('../../lib/services/settings-service');
+    const overrides = await listSettings('model_override:');
     const map = new Map();
-    for (const row of result.rows) {
+    for (const [key, value] of Object.entries(overrides)) {
       // setting_key format: model_override:{appKey}:{modelType}
-      const suffix = row.setting_key.replace('model_override:', '');
-      map.set(suffix, row.setting_value); // e.g. "concept-evaluator:model" → "claude-sonnet-4-..."
+      const suffix = key.replace('model_override:', '');
+      map.set(suffix, value); // e.g. "concept-evaluator:model" → "claude-sonnet-4-..."
     }
     _dbOverrides = map;
     _dbOverridesLoadedAt = Date.now();

@@ -18,6 +18,7 @@
 import { sql } from '@vercel/postgres';
 import { verifyCronSecret } from '../../../lib/utils/cron-auth';
 import NotificationService from '../../../lib/services/notification-service';
+import { listSettings } from '../../../lib/services/settings-service';
 import AlertService from '../../../lib/services/alert-service';
 
 // Secrets we track — display name + settings key suffix
@@ -37,18 +38,12 @@ export default async function handler(req, res) {
   if (!verifyCronSecret(req, res)) return;
 
   try {
-    // Load all secret_expiration:* settings
-    const settings = await sql`
-      SELECT setting_key, setting_value
-      FROM system_settings
-      WHERE setting_key LIKE 'secret_expiration:%'
-         OR setting_key LIKE 'secret_rotation:%'
-    `;
-
-    const settingsMap = {};
-    for (const row of settings.rows) {
-      settingsMap[row.setting_key] = row.setting_value;
-    }
+    // Load all secret_expiration:* and secret_rotation:* settings
+    const [expirations, rotations] = await Promise.all([
+      listSettings('secret_expiration:'),
+      listSettings('secret_rotation:'),
+    ]);
+    const settingsMap = { ...expirations, ...rotations };
 
     const results = [];
     const now = new Date();
