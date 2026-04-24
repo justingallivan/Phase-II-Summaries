@@ -1,0 +1,32 @@
+{
+  "name": "WMKF Research Review App Suite - Staff",
+  "description": "Grants staff access to Wave 1 tables in the Research Review App Suite. Organization-level on shared tables (system settings, app access). User-level on the user-preference table, which holds encrypted per-user secrets and must not be readable across users.",
+  "businessUnit": "root",
+  "addToSolution": "wmkfResearchReviewAppSuite",
+  "_depthLegend": {
+    "Basic": "User — rows owned by the calling user only",
+    "Local": "Business Unit — rows owned within the user's BU",
+    "Deep": "Parent:Child BU — user's BU and descendants",
+    "Global": "Organization — all rows in the org"
+  },
+  "privileges": [
+    {
+      "table": "wmkf_appsystemsetting",
+      "_note": "Organization-owned. All staff read/write shared settings.",
+      "depth": "Global",
+      "ops": ["Create", "Read", "Write", "Delete", "Append", "AppendTo"]
+    },
+    {
+      "table": "wmkf_appuserappaccess",
+      "_note": "Organization-owned. Admins need to see everyone's grants.",
+      "depth": "Global",
+      "ops": ["Create", "Read", "Write", "Delete", "Append", "AppendTo"]
+    },
+    {
+      "table": "wmkf_appuserpreference",
+      "_note": "User-owned. Holds encrypted API keys/secrets. Must not be readable across users. Assign/Share deliberately omitted so rows cannot be reassigned or shared.",
+      "depth": "Basic",
+      "ops": ["Create", "Read", "Write", "Delete", "Append", "AppendTo"]
+    }
+  ]
+}
