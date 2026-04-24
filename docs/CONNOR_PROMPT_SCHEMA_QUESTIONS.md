@@ -16,9 +16,9 @@ Currently: single `wmkf_ai_promptbody` Memo column.
 
 Claude's prompt cache requires system and user content as separate blocks. A single merged field forces us to either split client-side (fragile) or skip caching (3–5× API spend, 30–60% slower first tokens on our long-prompt apps).
 
-**My lean:** add a second Memo column `wmkf_ai_system_prompt` alongside the existing `wmkf_ai_promptbody` (which becomes the user portion). ~2 min in the maker portal. Or authorize me to add it from our side — I'd need `prvWriteEntity` on the table (one more checkbox on `WMKF AI Tools`, if easier for you).
+**My lean:** add a second Memo column `wmkf_ai_system_prompt` alongside the existing `wmkf_ai_promptbody` (which becomes the user portion). ~2 min in the maker portal, and it belongs in your solution — so your solution export stays self-contained. (I checked adding it from our side; we'd create a cross-solution dependency on your table that'd complicate future exports, so better you do it.)
 
-**Reply I need:** "yes, add the column, you do it" / "yes, I'll add it" / "no — use a delimiter instead" / "no — keep system prompts in code."
+**Reply I need:** "yes, I'll add it" / "no — use a delimiter instead" / "no — keep system prompts in code."
 
 ---
 
