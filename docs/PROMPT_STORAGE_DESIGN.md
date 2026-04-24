@@ -1,8 +1,27 @@
 # Prompt Storage Design (In Progress)
 
-**Status:** Design conversation started 2026-04-14 (Session 99), extended in Sessions 100–103. Session 103 (2026-04-17) shipped a **working prototype** via the Phase I Dynamics test endpoint — see "Session 103 prototype findings" below. Production implementation still blocked on `wmkf_prompt_template` table.
+**Status:** Design conversation started 2026-04-14 (Session 99), extended in Sessions 100–103. Session 103 (2026-04-17) shipped a **working prototype** via the Phase I Dynamics test endpoint — see "Session 103 prototype findings" below. Session 109 (2026-04-24) reconciled this design with Connor's built-out schema and produced a phased delivery plan.
 **Owner:** Justin Gallivan
-**Related docs:** `docs/BACKEND_AUTOMATION_PLAN.md`, `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md`, `docs/WORKFLOW_CHAINING_DESIGN.md`, `docs/PROMPT_CACHING_PLAN.md`, `docs/PROPOSAL_CONTEXT_EXTRACTION_PLAN.md`
+**Related docs:** `docs/EXECUTOR_CONTRACT.md` (authoritative for the shared PA/Vercel spec), `docs/BACKEND_AUTOMATION_PLAN.md`, `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md`, `docs/WORKFLOW_CHAINING_DESIGN.md`, `docs/PROMPT_CACHING_PLAN.md`, `docs/PROPOSAL_CONTEXT_EXTRACTION_PLAN.md`
+
+> **⚠ Session 109 reconciliation (2026-04-24):** Connor built the prompt-storage table as **`wmkf_ai_prompt`**, not `wmkf_prompt_template` as originally spec'd. Field names differ accordingly. When reading this doc, apply these renames:
+>
+> | This doc says | Actual field on the live table |
+> |---|---|
+> | `wmkf_prompt_template` (table) | `wmkf_ai_prompt` |
+> | `wmkf_body` | `wmkf_ai_promptbody` |
+> | `wmkf_variables` | `wmkf_ai_promptvariables` |
+> | `wmkf_output_schema` | `wmkf_ai_promptoutputschema` |
+> | `wmkf_name` | `wmkf_ai_promptname` |
+> | `wmkf_version` | `wmkf_promptversion` |
+> | `wmkf_status` | `wmkf_ai_promptstatus` (Picklist: Draft / Published / Retired) |
+> | `wmkf_is_current` | `wmkf_ai_iscurrent` |
+>
+> Connor added `wmkf_ai_systemprompt` Memo (system/user split for caching) and Lookup `wmkf_ai_prompt` on `wmkf_ai_run` (fixes provenance gap) — both **confirmed live 2026-04-24**. Already-present fields include `wmkf_ai_rollbackfrom`, `wmkf_ai_preflightpasseddatetime`, `wmkf_ai_lasttestdatetime`. Note the field name is `wmkf_ai_systemprompt` (no underscore between "system" and "prompt").
+>
+> **For implementation, read `docs/EXECUTOR_CONTRACT.md` first** — that is the shared spec both PowerAutomate and Vercel executors build against. This design doc remains the conceptual backdrop; the Executor contract is the operational spec.
+>
+> **Phased delivery (set in Session 109):** Phase 0 = shared Dynamics core + Vercel Executor by 2026-05-01. Phase 1 = PowerAutomate executor post-cycle. Phase 2 = context blocks + cross-prompt cache alignment.
 
 > This doc is a live working draft. It exists so a browser Claude Code session can pick up the conceptual work visually (Mermaid diagrams, state machines, flow comparisons). Once decisions settle, it becomes the implementation spec.
 
