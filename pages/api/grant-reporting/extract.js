@@ -20,12 +20,8 @@
 
 import { jsonrepair } from 'jsonrepair';
 import { requireAppAccess } from '../../../lib/utils/auth';
-import {
-  BASE_CONFIG,
-  getModelForApp,
-  getFallbackModelForApp,
-  loadModelOverrides,
-} from '../../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp, getFallbackModelForApp } from '../../../shared/config/baseConfig';
+import { loadModelOverrides } from '../../../lib/services/model-override-loader';
 import {
   createGrantReportExtractionPrompt,
   createFieldRegenerationPrompt,

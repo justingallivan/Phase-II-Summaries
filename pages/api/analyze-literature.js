@@ -7,7 +7,8 @@
  * 2. Claude to synthesize findings across all papers
  */
 
-import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
+import { loadModelOverrides } from '../../lib/services/model-override-loader';
 import {
   createPaperExtractionPrompt,
   createSynthesisPrompt,

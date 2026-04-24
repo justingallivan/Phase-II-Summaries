@@ -1,5 +1,6 @@
 import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
-import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
+import { loadModelOverrides } from '../../lib/services/model-override-loader';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { requireAppAccess } from '../../lib/utils/auth';
 

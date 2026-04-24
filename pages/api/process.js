@@ -1,5 +1,6 @@
 import pdf from 'pdf-parse';
-import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
+import { loadModelOverrides } from '../../lib/services/model-override-loader';
 import { createSummarizationPrompt, createStructuredDataExtractionPrompt, enhanceFormatting as enhanceFormattingPrompt } from '../../shared/config/prompts/proposal-summarizer';
 import { requireAppAccess } from '../../lib/utils/auth';
 import { logUsage } from '../../lib/utils/usage-logger';

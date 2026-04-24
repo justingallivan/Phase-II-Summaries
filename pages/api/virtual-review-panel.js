@@ -9,7 +9,7 @@
  * Streams progress via SSE. Results persisted to panel_reviews/panel_review_items.
  */
 
-import { loadModelOverrides } from '../../shared/config/baseConfig';
+import { loadModelOverrides } from '../../lib/services/model-override-loader';
 import { requireAppAccess } from '../../lib/utils/auth';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { safeFetch } from '../../lib/utils/safe-fetch';

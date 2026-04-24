@@ -19,7 +19,8 @@ import { DynamicsService } from '../../../lib/services/dynamics-service';
 import { GraphService } from '../../../lib/services/graph-service';
 import { getRequestSharePointBuckets } from '../../../lib/utils/sharepoint-buckets';
 import { buildSystemPrompt, TOOL_DEFINITIONS, TABLE_ANNOTATIONS } from '../../../shared/config/prompts/dynamics-explorer';
-import { getModelForApp, getFallbackModelForApp, loadModelOverrides } from '../../../shared/config/baseConfig';
+import { getModelForApp, getFallbackModelForApp } from '../../../shared/config/baseConfig';
+import { loadModelOverrides } from '../../../lib/services/model-override-loader';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 import { logUsage, estimateCostCents } from '../../../lib/utils/usage-logger';
 

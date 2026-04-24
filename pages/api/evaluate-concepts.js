@@ -7,7 +7,8 @@
  * 2. Literature search + Claude for final evaluation with novelty assessment
  */
 
-import { BASE_CONFIG, getModelForApp, getFallbackModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp, getFallbackModelForApp } from '../../shared/config/baseConfig';
+import { loadModelOverrides } from '../../lib/services/model-override-loader';
 import { splitPdfToPages } from '../../lib/utils/pdf-page-splitter';
 import {
   createInitialAnalysisPrompt,

@@ -10,7 +10,8 @@
 
 import { requireAuthWithProfile, isAuthRequired } from '../../../lib/utils/auth';
 import { sql } from '@vercel/postgres';
-import { BASE_CONFIG, clearModelOverridesCache } from '../../../shared/config/baseConfig';
+import { BASE_CONFIG } from '../../../shared/config/baseConfig';
+import { clearModelOverridesCache } from '../../../lib/services/model-override-loader';
 import { listSettings, setSetting, deleteSetting } from '../../../lib/services/settings-service';
 
 // Valid model types that can be overridden

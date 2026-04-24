@@ -13,7 +13,8 @@
  * Stage 4 (Fan-in): Integrator synthesizes all perspectives
  */
 
-import { BASE_CONFIG, getModelForApp, getFallbackModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp, getFallbackModelForApp } from '../../shared/config/baseConfig';
+import { loadModelOverrides } from '../../lib/services/model-override-loader';
 import { splitPdfToPages } from '../../lib/utils/pdf-page-splitter';
 import {
   createInitialAnalysisPrompt,

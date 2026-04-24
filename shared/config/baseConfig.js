@@ -277,23 +277,21 @@ const DB_OVERRIDES_TTL_MS = 5 * 60 * 1000; // 5 minutes
  * Call once near the top of each API handler (after auth, before getModelForApp).
  * No-ops if cache is still fresh.
  */
-export async function loadModelOverrides() {
-  if (Date.now() - _dbOverridesLoadedAt < DB_OVERRIDES_TTL_MS) return;
-  try {
-    const { listSettings } = await import('../../lib/services/settings-service');
-    const overrides = await listSettings('model_override:');
-    const map = new Map();
-    for (const [key, value] of Object.entries(overrides)) {
-      // setting_key format: model_override:{appKey}:{modelType}
-      const suffix = key.replace('model_override:', '');
-      map.set(suffix, value); // e.g. "concept-evaluator:model" → "claude-sonnet-4-..."
-    }
-    _dbOverrides = map;
-    _dbOverridesLoadedAt = Date.now();
-  } catch (err) {
-    // On failure (e.g. table doesn't exist yet), leave cache as-is
-    console.error('loadModelOverrides: failed to load overrides:', err.message);
-  }
+/**
+ * Internal cache primitives used by lib/services/model-override-loader.js.
+ * The loader lives in a server-only module to keep the settings-service →
+ * Dataverse chain out of client bundles that import BASE_CONFIG constants.
+ *
+ * Application code should still call loadModelOverrides() from the server-
+ * only module; the read getters here remain synchronous and read from this
+ * cache.
+ */
+export function _shouldReloadOverrides() {
+  return Date.now() - _dbOverridesLoadedAt >= DB_OVERRIDES_TTL_MS;
+}
+export function _setOverridesCache(map) {
+  _dbOverrides = map;
+  _dbOverridesLoadedAt = Date.now();
 }
 
 /**

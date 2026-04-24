@@ -16,7 +16,8 @@
 import pdf from 'pdf-parse';
 import { sql } from '@vercel/postgres';
 import { requireAppAccess } from '../../../lib/utils/auth';
-import { BASE_CONFIG, getModelForApp, getFallbackModelForApp, loadModelOverrides } from '../../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp, getFallbackModelForApp } from '../../../shared/config/baseConfig';
+import { loadModelOverrides } from '../../../lib/services/model-override-loader';
 import { createMatchingPrompt, SYSTEM_PROMPT } from '../../../shared/config/prompts/expertise-finder';
 import { logUsage, estimateCostCents } from '../../../lib/utils/usage-logger';
 import { safeFetch } from '../../../lib/utils/safe-fetch';

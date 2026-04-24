@@ -7,7 +7,10 @@
  */
 
 // Base configuration
-export { BASE_CONFIG, getEnvironmentConfig, mergeConfig, validateConfig, getModelForApp, getFallbackModelForApp, loadModelOverrides, clearModelOverridesCache } from './baseConfig';
+export { BASE_CONFIG, getEnvironmentConfig, mergeConfig, validateConfig, getModelForApp, getFallbackModelForApp } from './baseConfig';
+
+// Server-only loader (keeps settings-service chain out of client bundles)
+export { loadModelOverrides, clearModelOverridesCache } from '../../lib/services/model-override-loader';
 
 // Keck Foundation guidelines
 export { KECK_GUIDELINES } from './keck-guidelines';

@@ -6,7 +6,8 @@
  * streams Claude responses via SSE, supports web search tool.
  */
 
-import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config/baseConfig';
+import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
+import { loadModelOverrides } from '../../lib/services/model-override-loader';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { requireAppAccess } from '../../lib/utils/auth';
 import { logUsage } from '../../lib/utils/usage-logger';
