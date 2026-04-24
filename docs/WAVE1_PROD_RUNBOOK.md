@@ -39,9 +39,27 @@ In sandbox the same app user has System Administrator, which is why we've been a
 Run these from this repo on a machine where `DYNAMICS_URL` points at prod (`wmkf.crm.dynamics.com`) **and** the app user has temporary elevated privileges. Two ways to give it those:
 
 - **Simplest:** assign `System Administrator` role to the `WMK: Research Review App Suite` application user in prod, run the three commands, revoke.
-- **More surgical:** grant `prvCreateEntity`, `prvCreateAttribute`, `prvCreateRelationship`, `prvCreateEntityKey`, `prvWriteRole`, `prvCreateRole`, `prvWriteSolution` on a temporary role — then remove after.
+- **Simpler middle ground:** assign the built-in `System Customizer` role. It covers all the metadata + role-management privileges listed below without granting data access. Probably the right call if Sys Admin is off the table — single built-in role, no custom role to build and maintain.
+- **Most surgical:** build a temporary custom role with just these privileges, assign it, run the commands, remove.
 
-Both take about the same effort and leave nothing behind. My preference is the simplest path, but I'll defer to your call.
+#### Surgical privilege list (if building a temporary custom role)
+
+| Privilege | Where it's used | Why |
+|---|---|---|
+| `prvCreateSolution` | `POST /solutions` in schema script | Solution `wmkfResearchReviewAppSuite` doesn't exist in prod yet — must be created |
+| `prvWriteSolution` | `POST /AddSolutionComponent` | Role-apply script adds the staff role into the solution |
+| `prvCreateEntity` | Metadata API — new tables | The 3 Wave 1 tables |
+| `prvCreateAttribute` | Metadata API | Columns on new tables + 2 extension columns on `systemuser` |
+| `prvCreateRelationship` | Metadata API | N:1 lookups (e.g., `wmkf_UpdatedBy` → `systemuser`) |
+| `prvCreateEntityKey` | Metadata API | Alternate keys for idempotent upserts |
+| `prvCreateRole` | `POST /roles` | Staff role doesn't exist in prod yet |
+| `prvWriteRole` | `AddPrivilegesRole` action | Setting the role's privilege matrix |
+
+Publisher `WMKF_Publisher` already exists in prod (verified 2026-04-24), so `prvCreatePublisher` is NOT needed.
+
+For the data-sync step (command 3 below), the app user additionally needs normal read/write privileges on the three Wave 1 tables. Easiest path there: assign the `WMKF Research Review App Suite - Staff` role to the app user *after* command 2 creates it. Or leave Sys-Admin/System-Customizer on until command 3 is done.
+
+My recommendation: **System Customizer** unless there's a reason not to. It's one role, built-in, covers everything in the table above, doesn't grant broad data access.
 
 Each command is **dry-run by default**. You have to add `--execute` for any write to happen. You can run any of them dry-run first to see the plan.
 
