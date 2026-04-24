@@ -1,178 +1,154 @@
-# Session 109 Prompt
+# Session 110 Prompt: Build `executePrompt()` + seed `phase-i.summary`
 
-## Session 108 Summary
+## Session 109 Summary
 
-**The Wave 1 Postgres → Dataverse migration is LIVE in prod.** Full pipeline from nothing to production cutover plus complete application-level wiring behind feature flags. 20 commits over a long day.
+Day-long architectural reconciliation session with Connor in the room. Input: six overlapping design docs written over Sessions 90–108, plus the Wave 1 prod migration that shipped yesterday, plus Connor's quietly-built-out Dynamics schema. Output: one shared spec (`docs/EXECUTOR_CONTRACT.md`) and a phased delivery plan that both sides can build against, with the first piece targeted for May 1 2026 when a few hundred Phase I proposals arrive.
 
 ### What Was Completed
 
-1. **Wave 1 security role infrastructure**
-   - `lib/dataverse/schema/roles/wave1-staff.json` — declarative role + privilege matrix
-   - `lib/dataverse/role-apply.js` — ensureRole / resolvePrivilegeIds / applyPrivileges / addRoleToSolution / assignRoleToUser helpers, all idempotent
-   - `scripts/apply-security-role.js` — CLI mirroring `apply-dataverse-schema.js` conventions (dry-run default, `--target`, `--role`, `--assign`, `--execute`)
-   - Discovered and embedded two Dataverse API quirks in comments: Depth enum requires string form ("Global"), plain equality works for string filters since Dataverse is case-insensitive (tolower is unsupported)
+1. **Live schema probe** — ground-truth pass against sandbox to see what Connor had actually built vs. what the design docs described
+   - `wmkf_ai_prompt` table present with 17 custom fields (pre-session), 0 rows
+   - `wmkf_ai_promptoutputschema` Memo already existed — `WORKFLOW_CHAINING_DESIGN` treated this as future work, it's there
+   - `wmkf_ai_rollbackfrom`, `preflightpasseddatetime`, `lasttestdatetime`, `iscurrent`, `promptstatus` picklist all present
+   - Surfaced provenance gap: `wmkf_ai_run.wmkf_ai_promptversion` is an Integer with no way to disambiguate which prompt produced a run
 
-2. **Symmetric two-user isolation test** (sandbox)
-   - Justin + Kevin, both non-admin → each blocked from the other's preference rows
-   - 11/11 assertions pass on Preferences (User-level isolation) + AppSystemSetting (Org-level sharing)
-   - Auto-detects and skips sys-admin users with clear notes
+2. **Architectural reconciliation** (captured in `/Users/gallivan/.claude/plans/ok-claude-connor-is-precious-dove.md`)
+   - **Path B chosen** over Path A (duplicated wrappers) and Path C (HTTP gateway). Declarative wrappers on the prompt row + generic executors in both PA and Vercel.
+   - **Key vocabulary split:** separate the **function** (prompt row — inputs, body, outputs) from the **process** (Flow — trigger, sequence, side effects). Dynamics owns the function. PA and Vercel each own their own processes. The shared thing is the Executor contract.
+   - **Two chain shapes, both first-class:** sequential (output → input via `prior_output` source kind) and parallel-consumer (shared raw input via `context_block` source kind, with `placement: system` for cross-prompt cache alignment)
+   - **Routing decision:** Option 4 — Lookup `wmkf_ai_prompt` on `wmkf_ai_run` + naming convention `<domain>.<purpose>` on `wmkf_ai_promptname` (e.g., `phase-i.summary`, `phase-i.compliance`, `shared.full_application`)
+   - **Caching contract:** byte-identical prefixes across callers; `cacheable: true|false` flag on each declared variable; variables declared in system vs user placement; context blocks (Phase 2) enable cross-prompt cache alignment
 
-3. **Postgres → Dataverse Wave 1 data sync**
-   - `scripts/sync-wave1-postgres-to-dataverse.js` — identity bridge (user_profiles.azure_email → systemuser.internalemailaddress), hardcoded Test-User skip + Tom→Beth remap, per-table idempotent upserts
-   - 149 rows migrated in sandbox initially; then ALL 149 again in prod
+3. **Walked the architecture through concrete lenses** (each a section in the plan file)
+   - **User-friendly Vercel features** — PDF upload (all-`override` variables), interactive Q&A (each turn = separate Executor call, state in route), download formats (post-Executor utilities), prompt preview + per-session edit (`overridePromptBody` deferred to Phase 2), streaming (stays outside Executor for now), Dynamics Explorer agent loop (separate path)
+   - **Vercel code shift** — orchestration moves to Dynamics + shared Executor; UI/auth/UX stays entirely on Vercel. Reference route like `summarize-v2.js` shrinks from ~200 lines to ~30
+   - **Worked example** — Summary + Keywords from PDF: one prompt row in Dynamics, 9 identical Executor steps in both callers, PA and Vercel differ only in trigger/auth/runSource/post-execution UX
+   - **Connor's "compliance needs full docs" observation** — expanded the architecture to include parallel-consumer chains via context blocks with `placement: system` so summary + compliance share cached document prefix
 
-4. **Read-path byte-level verification**
-   - `scripts/verify-wave1-read-path.js` — raw ciphertext comparison (not just decrypted plaintext, which would pass vacuously when the local encryption key is missing) + is_encrypted flag + per-user app access set + shared settings
-   - 66/66 assertions in sandbox, then 66/66 in prod
+4. **Connor additions confirmed live end-of-session (2026-04-24)**
+   - `wmkf_ai_systemprompt` Memo on `wmkf_ai_prompt` — enables system/user split for Claude prompt caching. **Note: the field name is `wmkf_ai_systemprompt` (no underscore between "system" and "prompt"); EXECUTOR_CONTRACT.md and memory updated to reflect.**
+   - Lookup `wmkf_ai_prompt` on `wmkf_ai_run` targeting `wmkf_ai_prompt` — fixes provenance gap. Bonus: auto-generated virtual `wmkf_ai_promptname` String on run rows, so resolved prompt name is available without a join.
+   - `wmkf__ai_summary` double-underscore still present on `akoya_request` — not yet deleted; cosmetic only, we ignore it (all writes target single-underscore `wmkf_ai_summary`).
 
-5. **Three Dataverse-backed service adapters**
-   - `lib/services/dataverse-identity-map.js` — profile ↔ systemuser bridge with 5-min TTL
-   - `lib/services/dataverse-prefs-service.js` (16/16 e2e tests) — full parity with DatabaseService preference methods including encryption/masking
-   - `lib/services/dataverse-app-access-service.js` — 4 methods covering auth hot path + admin CRUD + default grants
-   - `lib/services/dataverse-settings-service.js` — get/list/set/delete + listSettingsWithMeta variant for admin/secrets
+5. **Phased delivery plan** (Phase 0 → 1 → 2)
+   - **Phase 0 (by 2026-05-01):** shared Dynamics core + Vercel Executor only. No PA flows, no context blocks, no cross-prompt cache alignment. First prompt row: `phase-i.summary`. Reference route: `summarize-v2.js` refactored to ~30 lines.
+   - **Phase 1 (post-cycle):** Connor builds `ExecutePrompt` PA child flow + first parent flow. Same prompt rows. Adds `prior_output` source kind. Echo-prompt test oracle verifies byte-identical output from both callers.
+   - **Phase 2 (when compliance joins summary):** context blocks + parallel-consumer chains. `shared.full_application` block authored. `placement: system` attribute added. `context_block` source kind added. Cross-prompt cache alignment kicks in.
 
-6. **Feature-flag dispatch wiring** — three independent flags, default postgres
-   - Prefs: wrapped inside `DatabaseService` (6 methods) via `WAVE1_BACKEND_PREFS`
-   - App-access: new `lib/services/app-access-service.js` wrapper, 3 call sites replaced (auth hot path, admin API, NextAuth callback) via `WAVE1_BACKEND_APP_ACCESS`
-   - Settings: new `lib/services/settings-service.js` wrapper, 5 call sites replaced (baseConfig preload, maintenance, admin/models, admin/secrets, cron/secret-check) via `WAVE1_BACKEND_SETTINGS`
-   - `scripts/test-wave1-flag-dispatch.js` — 35/35 parity assertions across all three tables via both backends through the real service APIs
+6. **Docs + memory**
+   - `docs/EXECUTOR_CONTRACT.md` created — the one-page operational spec, whiteboard-ready. Both implementations build against this. Scope-of-generality section makes it explicit that this is NOT a universal LLM workflow engine — it's for Pattern A / dual-caller / Pattern B+C prompts. Agent loops, streaming, non-Claude, Batch API stay on separate paths.
+   - `docs/PROMPT_STORAGE_DESIGN.md` reconciliation banner added — name-rename table, Connor's Phase 0 additions noted as live, phased plan pointer, EXECUTOR_CONTRACT reference. Didn't do a full-body rename — banner prevents someone implementing from stale names without seeing the correction.
+   - `memory/project_prompt_storage_strategy.md` rewritten — Session 109 decisions captured: Path B, function/process split, two chain shapes, ground-truth schema, phased plan, non-goals.
+   - `MEMORY.md` index line updated to point to EXECUTOR_CONTRACT.md as the operational spec.
 
-7. **Turbopack client-bundle safety**
-   - Issue: Turbopack statically traces both `require()` and `await import()` even inside function bodies, pulling the Dataverse client into the client bundle via baseConfig → settings-service → dataverse-settings-service → dataverse/client.js (fs/path)
-   - Fix: variable-path requires defeat the tracer; fs/path in client.js and the dataverse service loaders in all three wrappers now use this pattern
-   - Architectural fix: extracted `loadModelOverrides` + `clearModelOverridesCache` out of `shared/config/baseConfig.js` into a new server-only `lib/services/model-override-loader.js`; updated 15 API route import statements and `shared/config/index.js` re-exports
+### Commits
 
-8. **Prod cutover — end to end (2026-04-24)**
-   - Three privilege rounds with Connor: first System Customizer (to get past prvCreateSystemForm etc.), then prvAssignRole on the permanent WMKF AI Tools role. Schema script hit a transient SQL deadlock (error 1205) mid-run; plain retry resolved it.
-   - All 3 tables + relationships + alt-keys + systemuser extensions live in prod
-   - Role created in prod, 18 privileges applied, added to solution
-   - Assigned to all 7 staff + the app user (8 assignments)
-   - 149 rows migrated prod Postgres → prod Dataverse
-   - 66/66 verification assertions pass against prod
+- `adef1c8` Session 109: Executor Contract + Phase 0 schema reconciliation
 
-9. **Connor handoff documentation (six docs)**
-   - `docs/WAVE1_PROD_RUNBOOK.md` — complete cutover runbook, kept for reference + Wave 2 template
-   - `docs/WAVE1_PROD_PRIVILEGE_REQUEST.md` — initial "Option A surgical vs Option B System Customizer" decision
-   - `docs/WAVE1_PROD_PRIVILEGE_REQUEST_2.md` — follow-up on prvAssignRole for user assignment
-   - `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md` — future procedure for removing temp roles (when flag rollout is stable)
-   - `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md` — sequenced plan: SETTINGS → PREFS → APP_ACCESS, 24h between flips
-   - `docs/CONNOR_PROMPT_TABLE_FOLLOWUP.md` / `docs/CONNOR_PROMPT_SCHEMA_QUESTIONS.md` — surfaced the `wmkf_ai_prompt` privilege + two schema design questions. Privileges confirmed granted; schema decisions pending (column add for system/user split, routing convention)
+(Session 109 produced a single commit because most of the work was architectural/conceptual — the plan file at `/Users/gallivan/.claude/plans/ok-claude-connor-is-precious-dove.md` captures ~4× more detail than fit into the committed docs, intentionally. The plan file is the complete record of the reconciliation conversation; the committed docs are the operational distillation.)
 
-### Key State Facts
+## Key State Facts
 
-- **Prod Dataverse is a byte-for-byte copy of prod Postgres** for the 3 Wave 1 tables. Verified.
-- **App behavior is unchanged.** All three feature flags default to `postgres`. Nothing is reading Dataverse yet at runtime.
-- **App user prod roles (as of session end):** WMKF AI Elevated TEMP + System Customizer (temporary, to be removed per `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md`), WMKF AI Tools (permanent, now includes prvAssignRole), WMKF Custom Entities, akoyaGO Read Only access, WMKF Research Review App Suite - Staff (new, permanent).
-- **`wmkf_ai_prompt` read/write privileges** confirmed on the app user. Table is empty. Two schema questions sent to Connor, awaiting reply before porting PromptResolver.
-
-### Commits (20 this session)
-
-- `e3f865f` Wave 1 security role: declarative config + idempotent apply script
-- `a76697e` Wave 1 role isolation test — verifies User-level Read on AppUserPreference
-- `0094449` Wave 1 isolation test: symmetric Justin + Kevin; sys admin auto-skip
-- `518756b` Wave 1 data sync: Postgres → Dataverse sandbox
-- `b98c249` Wave 1 read-path verification: ciphertext + plaintext byte-equal Postgres ↔ Dataverse
-- `817d8f7` Dataverse prefs service — full parallel implementation, not yet wired in
-- `8c4ee6c` Wave 1 prod runbook + sync script --target=prod support
-- `9965d08` Dataverse adapters for app-access + settings
-- `5b68604` Wire prefs dispatch into DatabaseService via WAVE1_BACKEND_PREFS flag
-- `8838c8f` Wire app-access dispatch via WAVE1_BACKEND_APP_ACCESS flag
-- `636b8da` Wire settings dispatch via WAVE1_BACKEND_SETTINGS — all 3 Wave 1 tables flag-wired
-- `11028c5` Make Wave 1 dispatch client-bundle-safe (Turbopack)
-- `f2c404e` Correct Wave 1 runbook privilege list: add prvCreateSolution, recommend System Customizer
-- `bb312cd` Connor handoff: Option A (surgical) vs Option B (System Customizer) for prod cutover
-- `7963af6` Connor handoff #2: unblock user-role-assignment step
-- `5398b41` verify-wave1-read-path.js: add --target=prod support + run prod cutover
-- `f1b59be` Wave 1 follow-up docs: revert elevations + Vercel flag rollout
-- `ef8acad` Connor handoff: wmkf_ai_prompt privilege + two schema decisions
-- `91e760e` Connor targeted follow-up: just the two prompt-table schema questions
-- `48009d2` Refine Q1 ask on Connor schema doc — drop "I can add it" offer
-
-## Pending Connor Responses
-
-1. **`wmkf_ai_prompt` schema decisions** (`docs/CONNOR_PROMPT_SCHEMA_QUESTIONS.md`):
-   - System vs user prompt split (add a second Memo column — lean yes)
-   - Routing via name convention vs structured column (lean convention)
-
-   Privileges were confirmed granted — this is purely two design decisions.
-
-2. **From prior sessions** — `wmkf_ai_prompt` broader questions, Q3/Q5/Q6/Q7 from `docs/CONNOR_QUESTIONS_2026-04-15.md`.
+- **Phase 0 schema is complete in Dynamics sandbox.** Every field the Executor contract needs — reading or writing — exists in the live schema. No further schema asks pending for Phase 0. The one outstanding cosmetic item (`wmkf__ai_summary` deletion) doesn't block anything.
+- **`wmkf_ai_prompt` still has 0 rows.** Table is ready; awaiting first seed (`phase-i.summary`).
+- **Vercel code is unchanged this session.** No executor service function yet, no route refactor yet. `pages/api/phase-i-dynamics/summarize-v2.js` still uses the scratch-row `PromptResolver` from Session 103.
+- **Wave 1 flag flips still pending** (orthogonal to this work — per `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md`).
+- **Today's date: 2026-04-24.** Cycle arrives 2026-05-01 — 7 days.
 
 ## Potential Next Steps
 
-### 1. Flip Vercel feature flags (most important non-blocking work)
-Per `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md` — SETTINGS first (lowest blast radius), then PREFS, then APP_ACCESS. 24h watch between each. Rollback is unset-the-flag. Zero code change; this is pure config + monitoring.
+### 1. Seed `phase-i.summary` prompt row (prerequisite for everything else)
+Write a script like `scripts/seed-phase-i-summary-prompt.js` that creates or updates the first `wmkf_ai_prompt` row. Fields to populate:
+- `wmkf_ai_promptname`: `phase-i.summary`
+- `wmkf_ai_systemprompt`: the system prompt text (extract from `shared/config/prompts/phase-i-dynamics.js`)
+- `wmkf_ai_promptbody`: the user prompt template with `{{var}}` slots + explicit `<<<CACHE_BOUNDARY>>>` marker
+- `wmkf_ai_promptvariables`: JSON array per the contract (`dynamics` + `sharepoint` + `override` source kinds)
+- `wmkf_ai_promptoutputschema`: JSON with `outputs[]` (targets: `wmkf_ai_summary` + `wmkf_ai_dataextract.$.keywords`) and `jsonSchema`
+- `wmkf_ai_model`: `claude-sonnet-4-6`
+- `wmkf_ai_promptstatus`: `Published` (682090001)
+- `wmkf_ai_iscurrent`: `true`
+- `wmkf_promptversion`: `1`
 
-### 2. Port PromptResolver to `wmkf_ai_prompt`
-Once Connor answers the two schema questions. `lib/services/prompt-resolver.js` currently uses a scratch `wmkf_ai_run` row as a hack. Replace with a real query against `wmkf_ai_prompt` with `wmkf_ai_iscurrent eq true` filter. Toggle on `/phase-i-dynamics` already exists (`summarize-v2`).
+Run it against sandbox first. Validate by fetching the row back and round-tripping the JSON fields.
 
-### 3. Automated first-login onboarding
-Per `memory/project_wave1_onboarding.md` — extend `grantDefaultApps` in NextAuth callback to also call a new `ensureStaffRoleAssigned(profileId)` helper. Builds on the role-apply.js assignRoleToUser function. Do this AFTER flags flip, not before. ~30 lines of code.
+### 2. Build `executePrompt()` Vercel service function
+New file `lib/services/execute-prompt.js`. Nine steps per `docs/EXECUTOR_CONTRACT.md`:
+1. Resolve prompt (extend existing `PromptResolver` or replace with direct Dataverse query by name + iscurrent)
+2. Parse `wmkf_ai_promptvariables`
+3. Resolve each variable via source-kind switch: `dynamics` (use `DynamicsService.getRecord`), `sharepoint` (use `GraphService.listFiles` + `lib/utils/file-loader.js`), `override` (from input)
+4. Compose Claude payload: system + user split, `cache_control: ephemeral` at `<<<CACHE_BOUNDARY>>>` marker
+5. Call Anthropic API
+6. Parse output JSON against `wmkf_ai_promptoutputschema.jsonSchema`
+7. Persist each output: PATCH `akoya_request` fields (with JSON-path set for `wmkf_ai_dataextract`)
+8. Create `wmkf_ai_run` row with the new Lookup populated + full audit fields
+9. Return `{ parsed, runId, cacheHit }`
 
-### 4. Interim grant report auto-evaluation (unblocked by Dynamics write access)
-PowerAutomate-triggered job that runs our extract + goals assessment on interim reports and writes back to `wmkf_ai_*` fields. Production-ization of `pages/api/grant-reporting/extract.js` but triggered by a Dynamics status change. High visibility.
+Write a unit/integration test that goes end-to-end against a known sandbox request.
 
-### 5. Wave 2 schema — Reviewer Finder core
-Much bigger migration. Needs:
-- Choice/Picklist + OptionSet support added to `lib/dataverse/schema-apply.js` (a few hours)
-- Junction tables (researcher ↔ publication ↔ keyword — new pattern for us)
-- Wave 2 JSON specs under `lib/dataverse/schema/wave2/`
-- Data sync script following the Wave 1 pattern
+### 3. Refactor `summarize-v2.js` as the reference call site
+Reduce `pages/api/phase-i-dynamics/summarize-v2.js` to ~30 lines: auth, overwrite guard, `await executePrompt('phase-i.summary', requestId, overrides, 'Vercel Interactive')`, return response. The existing route is the natural testbed because it already uses `PromptResolver` + has the overwrite-guard pattern.
 
-Tables involved: `researchers`, `publications`, `grant_cycles`, `reviewer_suggestions`, `researcher_keywords`.
+### 4. Smoke test end-to-end against a real Phase I request
+Pick a test request in sandbox. Run through the UI at `/phase-i-dynamics`. Verify:
+- Prompt fetched from Dynamics
+- PDF pulled from SharePoint via the existing bucket walker
+- Claude called with system/user split + cache_control
+- Summary written to `akoya_request.wmkf_ai_summary`
+- Keywords written to `akoya_request.wmkf_ai_dataextract` at `$.keywords`
+- `wmkf_ai_run` row created with Lookup populated
+- Second invocation on same request → `cacheHit: true`
 
-### 6. Remove temp role elevations from prod app user
-Per `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md`. Do this after flag rollout is stable. Connor handles via maker portal. Verification script + recovery path documented.
+### 5. (Optional) Author `phase-i.compliance` prompt row
+Same mechanics as `phase-i.summary` but for format + content compliance check. Phase 0 version reads the full PDF again (no cache alignment with summary yet — Phase 2 fixes that via context blocks). If bandwidth allows, ship for May 1; otherwise defer to post-cycle.
 
-### 7. Summarize-v3 (native PDF input + caching) + Files API integration
-Still queued from Session 106. Quick wins if in the mood for something contained.
-
-### 8. System-level workflow diagram
-Discussed at session end — no single big-picture mermaid diagram exists yet (there are four diagrams in docs but they all cover subsystems). If we build Wave 2 or the backend automation platform, a system overview would be useful.
+### 6. (After Phase 0 ships) Remaining reconciliations from the plan file
+- Global body rewrite of `docs/PROMPT_STORAGE_DESIGN.md` (banner is in place; full rename of field references still pending)
+- Update `docs/BACKEND_AUTOMATION_PLAN.md` with "Wave 1 complete" note + prompt-reshape milestone
+- Update `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md` with Wave 1 ✅
+- Set explicit retirement criterion in `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md`
+- Re-resolve `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` pipeline-state storage question (recommend: akoya_request fields + wmkf_ai_run JSON, not a new Postgres table)
+- Consider writing `docs/ARCHITECTURE_SPINE.md` as the canonical link-target so future design docs stop drifting
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `lib/dataverse/role-apply.js` | Idempotent helpers: ensureRole, resolvePrivilegeIds, applyPrivileges, addRoleToSolution, assignRoleToUser |
-| `lib/dataverse/schema/roles/wave1-staff.json` | Declarative role spec + privilege matrix |
-| `scripts/apply-security-role.js` | CLI for the role apply; --target/--role/--assign/--execute |
-| `scripts/sync-wave1-postgres-to-dataverse.js` | Data sync with identity bridge; Test-User skip + Tom→Beth remap encoded in USER_ID_OVERRIDES |
-| `scripts/verify-wave1-read-path.js` | Postgres ↔ Dataverse parity at the ciphertext + plaintext + app-access + settings levels |
-| `scripts/test-wave1-flag-dispatch.js` | 35/35 integration test across all three wrappers and both backends |
-| `lib/services/dataverse-identity-map.js` | profile_id ↔ systemuserid bridge with TTL cache; Tom→Beth remap encoded here |
-| `lib/services/dataverse-prefs-service.js` | 1:1 parity with DatabaseService preferences; encryption roundtrip |
-| `lib/services/dataverse-app-access-service.js` | listAppKeysForUser, listAllGrantsForAdmin, grantApps, revokeApps |
-| `lib/services/dataverse-settings-service.js` | getSetting, listSettings, listSettingsWithMeta, setSetting, deleteSetting |
-| `lib/services/app-access-service.js` | Postgres wrapper + Dataverse dispatcher for app access |
-| `lib/services/settings-service.js` | Postgres wrapper + Dataverse dispatcher for settings |
-| `lib/services/model-override-loader.js` | Server-only loader — kept out of client bundles |
-| `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md` | TODO: sequenced flag-flip plan |
-| `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md` | TODO: Connor procedure for removing temp roles after rollout |
-| `docs/WAVE1_PROD_RUNBOOK.md` | Full prod cutover runbook (now historical reference) |
+| `docs/EXECUTOR_CONTRACT.md` | **The shared spec.** Both PA and Vercel executors build against this. One page. Whiteboard-ready. |
+| `docs/PROMPT_STORAGE_DESIGN.md` | Design backdrop; now carries a reconciliation banner mapping old field names to actual |
+| `/Users/gallivan/.claude/plans/ok-claude-connor-is-precious-dove.md` | Full record of the Session 109 reconciliation conversation — ~4× more detail than the committed docs |
+| `lib/services/prompt-resolver.js` | Current Session 103 scratch-row resolver; needs extension or replacement for Phase 0 |
+| `pages/api/phase-i-dynamics/summarize-v2.js` | Reference call site; will shrink to ~30 lines |
+| `shared/config/prompts/phase-i-dynamics.js` | Current canonical prompt text; extract system vs. body for the seed |
+| `scripts/inspect-ai-fields.js` | Pre-existing schema probe — `wmkf_ai_*` fields on `akoya_request` + `wmkf_ai_run` |
+| `/tmp/verify-phase0-schema.mjs` | Session 109 probe — use as template for future schema verification |
+| `lib/services/dynamics-service.js` | `getRecord` / `updateIfEmpty` — the Vercel executor's Dataverse client |
+| `lib/services/graph-service.js` | `listFiles` / `getFileContent` — the Vercel executor's SharePoint client |
+| `lib/utils/sharepoint-buckets.js` | `getRequestSharePointBuckets` — walks active + archive libraries for a request |
+| `lib/utils/file-loader.js` | PDF/DOCX → text extraction (preprocess hint `pdf_to_text`) |
 
 ## Testing
 
 ```bash
-# Sandbox parity — same as prod, no blast radius
-node scripts/apply-dataverse-schema.js                 # dry-run sandbox
-node scripts/apply-security-role.js                     # dry-run sandbox
-node scripts/sync-wave1-postgres-to-dataverse.js        # dry-run sandbox
+# Re-run the Phase 0 schema probe (sandbox)
+node /tmp/verify-phase0-schema.mjs
 
-# Integration + parity tests (safe to rerun)
-node scripts/test-wave1-flag-dispatch.js                # 35/35 — all 3 tables via both backends
-node scripts/test-dataverse-prefs-service.js            # 16/16 — prefs service e2e
-node scripts/test-dataverse-app-access-and-settings.js  # 20/20 — app-access + settings services
-node scripts/test-role-isolation-wave1.js               # 11/11 — symmetric Justin + Kevin
+# (New in Session 110) Seed the first prompt row
+node scripts/seed-phase-i-summary-prompt.js --target=sandbox --dry-run
+node scripts/seed-phase-i-summary-prompt.js --target=sandbox --execute
 
-# Prod read-path sanity check (safe, read-only)
-node scripts/verify-wave1-read-path.js --target=prod    # 66/66 if still in sync
+# (New in Session 110) End-to-end test against a known request
+# via the UI at http://localhost:3000/phase-i-dynamics with auth disabled
+
+# Wave 1 parity tests (unchanged from Session 108, still safe to rerun)
+node scripts/test-wave1-flag-dispatch.js
+node scripts/verify-wave1-read-path.js --target=prod
 ```
 
 ## Session hand-off notes
 
-- Prod Dataverse is a shadow copy. App continues reading/writing Postgres until flags flip in Vercel.
-- `WMKF AI Elevated TEMP` + `System Customizer` are still assigned to the prod app user. Plan is to leave them until flag rollout is stable, then remove per `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md`.
-- Session ended mid-conversation about the `wmkf_ai_prompt` port. We're awaiting Connor's answers on two yes/no schema questions; after that, the PromptResolver port is ~2 hours of work.
-- Next session shouldn't touch prod without re-checking `git log` to see if anything landed in between (e.g., flag flips happening async).
-- Today's date: 2026-04-24. Wave 1 was completed in prod today. Session was long (~20 commits) but the architectural arc — sandbox → verification → adapters → wiring → build safety → prod cutover → runbooks — was completed cleanly with every step test-verified.
+- **Do the prompt row before the Executor code.** The Executor's debugging loop is much cleaner when there's a real row to fetch. Ship the seed script first, confirm the row is fetchable + the JSON round-trips cleanly, then build `executePrompt()` against a known-good seed.
+- **Cycle deadline is real but narrow.** If Executor work is still shaky by 2026-04-30, fall back: keep `summarize-v2.js` using the scratch-row `PromptResolver` for the May cycle. The Executor work isn't wasted — Phase 1 (PA) will consume the same prompt rows either way. No data loss either way; the prompts for Phase I summaries would just use the Session 103 code path one more cycle.
+- **`wmkf_ai_systemprompt` — no underscore in "systemprompt".** Easy to get wrong. Committed docs reflect the correct name.
+- **Resist building context blocks in Phase 0.** Tempting given the architecture's clean, but it's Phase 2 by design. Summary + compliance running back-to-back without context blocks pays the token double-bill for a few hundred proposals — bounded cost, acceptable.
+- **Connor is Phase 1+ owner.** Don't do any PA work in Vercel's name; the handoff to Connor is the echo-prompt test oracle + a fresh read of `docs/EXECUTOR_CONTRACT.md`.
+- **Session-ending verification passed.** Re-probing schema end of session confirmed Connor's two additions are live; no blockers to beginning implementation.

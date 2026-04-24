@@ -420,8 +420,9 @@ Located in `lib/utils/`:
 | `docs/TODO_EMAIL_NOTIFICATIONS.md` | Unified notification service (dashboard alerts + future email) |
 | `docs/PENDING_ADMIN_REQUESTS.md` | Azure AD + Dynamics admin permission requests |
 | `docs/BACKEND_AUTOMATION_PLAN.md` | PowerAutomate backend automation roadmap (prompt development, data migration, Dynamics integration) |
-| `docs/PROMPT_STORAGE_DESIGN.md` | Live design doc for migrating Claude prompts from `.js` modules into a `wmkf_prompt_template` Dataverse table — schema, draft/publish flow, app patterns, user visibility/override features, editor safety tiers, rollback mechanics |
-| `docs/WORKFLOW_CHAINING_DESIGN.md` | Token-efficiency principle for backend workflows — ingest-once / chain-downstream pattern, multi-output prompts, structured outputs declared in `wmkf_output_schema` |
+| `docs/EXECUTOR_CONTRACT.md` | **Shared spec** that both PowerAutomate `ExecutePrompt` child flow and Vercel `executePrompt()` service function implement. 9 steps, declarative variable/output metadata, caching contract, logging contract, Phase 0/1/2 scope. Read before any prompt work. |
+| `docs/PROMPT_STORAGE_DESIGN.md` | Design backdrop for Dynamics-backed prompt storage. Live table is `wmkf_ai_prompt` (not `wmkf_prompt_template` as originally spec'd) — see banner at top of doc for field-name reconciliation. For implementation, read EXECUTOR_CONTRACT.md. |
+| `docs/WORKFLOW_CHAINING_DESIGN.md` | Token-efficiency principle for backend workflows — ingest-once / chain-downstream pattern, multi-output prompts. Field `wmkf_ai_promptoutputschema` Memo (live) declares outputs. |
 | `docs/GRANT_CYCLE_LIFECYCLE.md` | Full grant proposal lifecycle with stages, status values, triggers, and AI tasks |
 | `docs/STAGED_REVIEW_PIPELINE.md` | 3-stage automated proposal triage pipeline design (fit screening → intelligence brief → virtual panel) |
 | `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` | Implementation plan for pipeline apps (Fit Screener + Proposal Pipeline) |
