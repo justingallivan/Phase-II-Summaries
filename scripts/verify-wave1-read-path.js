@@ -25,8 +25,17 @@ const { decrypt } = require('../lib/utils/encryption');
 
 loadEnvLocal();
 
-const SANDBOX = process.env.DYNAMICS_SANDBOX_URL;
-if (!SANDBOX) throw new Error('DYNAMICS_SANDBOX_URL not set');
+function resourceUrl(target) {
+  if (target === 'prod') {
+    const u = process.env.DYNAMICS_URL;
+    if (!u) throw new Error('DYNAMICS_URL not set');
+    return u;
+  }
+  const u = process.env.DYNAMICS_SANDBOX_URL;
+  if (!u) throw new Error('DYNAMICS_SANDBOX_URL not set');
+  return u;
+}
+let TARGET_URL = resourceUrl('sandbox');
 
 const USER_ID_OVERRIDES = {
   1: { action: 'skip' },
@@ -34,14 +43,16 @@ const USER_ID_OVERRIDES = {
 };
 
 function parseArgs(argv) {
-  const out = { filterEmail: null };
+  const out = { filterEmail: null, target: 'sandbox' };
   for (const a of argv.slice(2)) {
     if (a.startsWith('--user=')) out.filterEmail = a.slice('--user='.length);
+    else if (a.startsWith('--target=')) out.target = a.slice('--target='.length);
     else if (a === '--help' || a === '-h') {
-      console.log('Usage: node scripts/verify-wave1-read-path.js [--user=<email>]');
+      console.log('Usage: node scripts/verify-wave1-read-path.js [--target=sandbox|prod] [--user=<email>]');
       process.exit(0);
     } else { console.error(`Unknown flag: ${a}`); process.exit(1); }
   }
+  TARGET_URL = resourceUrl(out.target);
   return out;
 }
 
@@ -205,12 +216,12 @@ async function verifyUser(user, client) {
 
 (async () => {
   const args = parseArgs(process.argv);
-  const token = await getAccessToken(SANDBOX);
-  const client = createClient({ resourceUrl: SANDBOX, token });
+  const token = await getAccessToken(TARGET_URL);
+  const client = createClient({ resourceUrl: TARGET_URL, token });
 
   console.log('Wave 1 read-path verification');
   console.log(`Source:  Postgres (live)`);
-  console.log(`Target:  Dataverse sandbox (${SANDBOX})`);
+  console.log(`Target:  Dataverse ${args.target} (${TARGET_URL})`);
   if (args.filterEmail) console.log(`Filter:  ${args.filterEmail}`);
 
   const users = await buildIdentityMap(client, args.filterEmail);
