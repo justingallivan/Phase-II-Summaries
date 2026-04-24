@@ -17,6 +17,7 @@ import AzureADProvider from 'next-auth/providers/azure-ad';
 import { sql } from '@vercel/postgres';
 import { DEFAULT_APP_GRANTS } from '../../../shared/config/appRegistry';
 import NotificationService from '../../../lib/services/notification-service';
+import { grantApps } from '../../../lib/services/app-access-service';
 
 export const authOptions = {
   providers: [
@@ -212,13 +213,7 @@ export const authOptions = {
  */
 async function grantDefaultApps(profileId) {
   try {
-    for (const appKey of DEFAULT_APP_GRANTS) {
-      await sql`
-        INSERT INTO user_app_access (user_profile_id, app_key)
-        VALUES (${profileId}, ${appKey})
-        ON CONFLICT (user_profile_id, app_key) DO NOTHING
-      `;
-    }
+    await grantApps(profileId, DEFAULT_APP_GRANTS, null);
   } catch (error) {
     console.error('Error granting default apps:', error);
     // Non-fatal — user can still sign in

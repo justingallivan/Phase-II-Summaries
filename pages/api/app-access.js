@@ -10,6 +10,12 @@
 import { requireAuthWithProfile, isAuthRequired, clearAppAccessCache } from '../../lib/utils/auth';
 import { sql } from '@vercel/postgres';
 import { ALL_APP_KEYS } from '../../shared/config/appRegistry';
+import {
+  listAppKeysForUser,
+  listAllGrantsForAdmin,
+  grantApps,
+  revokeApps,
+} from '../../lib/services/app-access-service';
 
 export default async function handler(req, res) {
   // When auth is disabled (dev mode), return all apps
@@ -49,34 +55,16 @@ async function handleGet(req, res, profileId, isSuperuser) {
       return res.status(403).json({ error: 'Superuser access required' });
     }
 
-    const grants = await sql`
-      SELECT
-        p.id as user_profile_id,
-        p.name as user_name,
-        p.azure_email,
-        COALESCE(array_agg(a.app_key ORDER BY a.app_key) FILTER (WHERE a.app_key IS NOT NULL), '{}') as apps
-      FROM user_profiles p
-      LEFT JOIN user_app_access a ON p.id = a.user_profile_id
-      WHERE p.is_active = true
-      GROUP BY p.id, p.name, p.azure_email
-      ORDER BY p.name
-    `;
-
+    const grants = await listAllGrantsForAdmin();
     return res.json({
-      grants: grants.rows,
+      grants,
       allApps: ALL_APP_KEYS,
     });
   }
 
   // Regular user: return their own grants
-  const result = await sql`
-    SELECT app_key FROM user_app_access
-    WHERE user_profile_id = ${profileId}
-    ORDER BY app_key
-  `;
-
   return res.json({
-    apps: result.rows.map(r => r.app_key),
+    apps: await listAppKeysForUser(profileId),
     isSuperuser: false,
   });
 }
@@ -98,14 +86,7 @@ async function handlePost(req, res, profileId, isSuperuser) {
     return res.status(400).json({ error: `Invalid app keys: ${invalid.join(', ')}` });
   }
 
-  // Insert grants (ignore duplicates)
-  for (const appKey of apps) {
-    await sql`
-      INSERT INTO user_app_access (user_profile_id, app_key, granted_by)
-      VALUES (${userProfileId}, ${appKey}, ${profileId})
-      ON CONFLICT (user_profile_id, app_key) DO NOTHING
-    `;
-  }
+  await grantApps(userProfileId, apps, profileId);
 
   clearAppAccessCache(userProfileId);
   return res.json({ success: true, granted: apps });
@@ -122,12 +103,7 @@ async function handleDelete(req, res, profileId, isSuperuser) {
     return res.status(400).json({ error: 'userProfileId and apps[] are required' });
   }
 
-  for (const appKey of apps) {
-    await sql`
-      DELETE FROM user_app_access
-      WHERE user_profile_id = ${userProfileId} AND app_key = ${appKey}
-    `;
-  }
+  await revokeApps(userProfileId, apps);
 
   clearAppAccessCache(userProfileId);
   return res.json({ success: true, revoked: apps });

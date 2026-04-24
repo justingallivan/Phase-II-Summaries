@@ -21,8 +21,10 @@ loadEnvLocal();
 // captures the right thing — except actually the dispatch is at call time,
 // not require time, so we can flip the env var per test.
 const { DatabaseService } = require('../lib/services/database-service');
+const appAccess = require('../lib/services/app-access-service');
 
 const JUSTIN = 2;
+const KEVIN = 3;
 
 const results = [];
 function record(name, pass, detail) {
@@ -31,21 +33,30 @@ function record(name, pass, detail) {
   console.log(`  ${tag}  ${name}${detail ? ` — ${detail}` : ''}`);
 }
 
-async function withBackend(backend, fn) {
-  const prev = process.env.WAVE1_BACKEND_PREFS;
-  process.env.WAVE1_BACKEND_PREFS = backend;
+async function withBackend(flagName, backend, fn) {
+  const prev = process.env[flagName];
+  process.env[flagName] = backend;
   try {
     return await fn();
   } finally {
-    if (prev === undefined) delete process.env.WAVE1_BACKEND_PREFS;
-    else process.env.WAVE1_BACKEND_PREFS = prev;
+    if (prev === undefined) delete process.env[flagName];
+    else process.env[flagName] = prev;
   }
+}
+
+// Back-compat shim for existing prefs tests
+async function withPrefsBackend(backend, fn) {
+  return withBackend('WAVE1_BACKEND_PREFS', backend, fn);
+}
+
+async function withAppAccessBackend(backend, fn) {
+  return withBackend('WAVE1_BACKEND_APP_ACCESS', backend, fn);
 }
 
 async function cleanupBoth() {
   // Clean up test keys on both backends so rerun is safe.
   for (const backend of ['postgres', 'dataverse']) {
-    await withBackend(backend, async () => {
+    await withPrefsBackend(backend, async () => {
       for (const key of ['test.flag.plain', 'test.flag.encrypted', 'test.flag.temp']) {
         await DatabaseService.deleteUserPreference(JUSTIN, key);
       }
@@ -59,8 +70,8 @@ async function cleanupBoth() {
 
   // ── Read parity: listing Justin's prefs via both backends ──
   console.log('━━━ Read parity: DatabaseService.getUserPreferences ━━━');
-  const pgPrefs = await withBackend('postgres', () => DatabaseService.getUserPreferences(JUSTIN, true));
-  const dvPrefs = await withBackend('dataverse', () => DatabaseService.getUserPreferences(JUSTIN, true));
+  const pgPrefs = await withPrefsBackend('postgres', () => DatabaseService.getUserPreferences(JUSTIN, true));
+  const dvPrefs = await withPrefsBackend('dataverse', () => DatabaseService.getUserPreferences(JUSTIN, true));
 
   const pgKeys = new Set(Object.keys(pgPrefs));
   const dvKeys = new Set(Object.keys(dvPrefs));
@@ -79,7 +90,7 @@ async function cleanupBoth() {
   // ── Write-then-read through each backend ──
   console.log('\n━━━ Write parity: setUserPreference + read back ━━━');
   for (const backend of ['postgres', 'dataverse']) {
-    await withBackend(backend, async () => {
+    await withPrefsBackend(backend, async () => {
       const ok = await DatabaseService.setUserPreference(JUSTIN, 'test.flag.plain', `hello-${backend}`);
       record(`[${backend}] setUserPreference returns true`, ok === true);
       const v = await DatabaseService.getDecryptedApiKey(JUSTIN, 'test.flag.plain');
@@ -96,8 +107,8 @@ async function cleanupBoth() {
   // flipping the flag — no cross-backend period.
   console.log('\n━━━ Cross-backend visibility (documented limitation) ━━━');
   await cleanupBoth();
-  await withBackend('postgres', () => DatabaseService.setUserPreference(JUSTIN, 'test.flag.temp', 'pg-only'));
-  const seenFromDv = await withBackend('dataverse', () => DatabaseService.getDecryptedApiKey(JUSTIN, 'test.flag.temp'));
+  await withPrefsBackend('postgres', () => DatabaseService.setUserPreference(JUSTIN, 'test.flag.temp', 'pg-only'));
+  const seenFromDv = await withPrefsBackend('dataverse', () => DatabaseService.getDecryptedApiKey(JUSTIN, 'test.flag.temp'));
   record(
     'write via postgres is NOT visible via dataverse (expected — separate storage)',
     seenFromDv === null,
@@ -108,7 +119,7 @@ async function cleanupBoth() {
   console.log('\n━━━ Encryption parity ━━━');
   const SECRET = 'sk-flag-test-secret-0987654321';
   for (const backend of ['postgres', 'dataverse']) {
-    await withBackend(backend, async () => {
+    await withPrefsBackend(backend, async () => {
       await DatabaseService.setUserPreference(JUSTIN, 'test.flag.encrypted', SECRET, true);
       const plaintext = await DatabaseService.getDecryptedApiKey(JUSTIN, 'test.flag.encrypted');
       record(`[${backend}] encrypted roundtrip`, plaintext === SECRET, `got=${plaintext}`);
@@ -118,6 +129,70 @@ async function cleanupBoth() {
   }
 
   await cleanupBoth();
+
+  // ── App-access parity ──
+  console.log('\n━━━ App-access parity: listAppKeysForUser (Justin) ━━━');
+  const pgApps = await withAppAccessBackend('postgres', () => appAccess.listAppKeysForUser(JUSTIN));
+  const dvApps = await withAppAccessBackend('dataverse', () => appAccess.listAppKeysForUser(JUSTIN));
+  record(
+    `Justin's app grants match across backends (${pgApps.length} apps)`,
+    pgApps.length === dvApps.length && pgApps.every((k, i) => k === dvApps[i]),
+    pgApps.length === dvApps.length ? null : `pg=${pgApps.length} dv=${dvApps.length}`,
+  );
+
+  console.log('\n━━━ App-access parity: listAllGrantsForAdmin shape ━━━');
+  const pgAdmin = await withAppAccessBackend('postgres', () => appAccess.listAllGrantsForAdmin());
+  const dvAdmin = await withAppAccessBackend('dataverse', () => appAccess.listAllGrantsForAdmin());
+  record(
+    `admin view user count matches (${pgAdmin.length} pg, ${dvAdmin.length} dv)`,
+    pgAdmin.length === dvAdmin.length,
+  );
+
+  // Compare Justin's apps in the admin view specifically
+  const pgJustin = pgAdmin.find((u) => u.user_profile_id === JUSTIN);
+  const dvJustin = dvAdmin.find((u) => u.user_profile_id === JUSTIN);
+  record(
+    'admin view: Justin present on both sides',
+    pgJustin && dvJustin,
+  );
+  if (pgJustin && dvJustin) {
+    const pgSorted = [...pgJustin.apps].sort();
+    const dvSorted = [...dvJustin.apps].sort();
+    record(
+      `admin view: Justin's apps match (${pgSorted.length} each)`,
+      pgSorted.length === dvSorted.length && pgSorted.every((k, i) => k === dvSorted[i]),
+    );
+  }
+
+  console.log('\n━━━ App-access parity: grant + revoke (Kevin) ━━━');
+  const TEST_APPS = ['literature-analyzer']; // Kevin doesn't have this one
+  for (const backend of ['postgres', 'dataverse']) {
+    await withAppAccessBackend(backend, async () => {
+      // Ensure clean state for this backend
+      await appAccess.revokeApps(KEVIN, TEST_APPS);
+
+      const grant = await appAccess.grantApps(KEVIN, TEST_APPS, JUSTIN);
+      record(
+        `[${backend}] grantApps returned granted=[${TEST_APPS[0]}]`,
+        grant.granted.includes(TEST_APPS[0]),
+      );
+      const after = await appAccess.listAppKeysForUser(KEVIN);
+      record(
+        `[${backend}] Kevin now has the granted app`,
+        after.includes(TEST_APPS[0]),
+      );
+      const regrant = await appAccess.grantApps(KEVIN, TEST_APPS, JUSTIN);
+      record(
+        `[${backend}] regrant is idempotent`,
+        regrant.granted.length === 0,
+      );
+      const revoke = await appAccess.revokeApps(KEVIN, TEST_APPS);
+      record(
+        `[${backend}] revokeApps returned revoked=[${TEST_APPS[0]}]`,
+        revoke.revoked.includes(TEST_APPS[0]),
+      );
+    });
+  }
 
   console.log('\n═══ Summary ═══');
   const pass = results.filter((r) => r.pass).length;
