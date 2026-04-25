@@ -42,7 +42,7 @@ if (fs.existsSync(envPath)) {
 const { sql } = require('@vercel/postgres');
 
 const ALL_APP_KEYS = [
-  'concept-evaluator',
+  // 'concept-evaluator' deprecated 2026-04-25 — see /_archived/README.md
   'multi-perspective-evaluator',
   'batch-phase-i-summaries',
   'batch-proposal-summaries',

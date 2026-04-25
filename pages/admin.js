@@ -881,7 +881,6 @@ const MODEL_TYPE_LABELS = {
 
 // Friendly names for APP_MODELS keys that don't match APP_REGISTRY
 const APP_MODEL_NAMES = {
-  'concept-evaluator': 'Concept Evaluator',
   'multi-perspective-evaluator': 'Multi-Perspective Evaluator',
   'literature-analyzer': 'Literature Analyzer',
   'batch-phase-i': 'Batch Phase I',

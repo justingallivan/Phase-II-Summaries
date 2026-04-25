@@ -16,12 +16,7 @@ export const BASE_CONFIG = {
   // Each app can specify its preferred model based on task complexity
   // Format: { model, visionModel (optional), fallback }
   APP_MODELS: {
-    // High complexity - Opus for best evaluation quality
-    'concept-evaluator': {
-      model: 'claude-opus-4-20250514',
-      visionModel: 'claude-opus-4-20250514',
-      fallback: 'claude-sonnet-4-20250514'
-    },
+    // 'concept-evaluator' deprecated 2026-04-25 (archived to /_archived).
     // Multi-perspective evaluator - Sonnet for cost-effective multi-call architecture
     'multi-perspective-evaluator': {
       model: 'claude-sonnet-4-20250514',

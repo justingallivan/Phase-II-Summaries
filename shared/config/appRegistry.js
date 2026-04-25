@@ -6,15 +6,12 @@
  */
 
 export const APP_REGISTRY = [
-  {
-    key: 'concept-evaluator',
-    name: 'Concept Evaluator',
-    href: '/concept-evaluator',
-    icon: '🔬',
-    description: 'Screen research concepts with AI analysis and automated literature search to identify the strongest candidates',
-    categories: ['concepts'],
-    features: ['AI Analysis', 'Literature Search', 'Novelty Assessment', 'Batch Evaluation'],
-  },
+  // Concept Evaluator deprecated 2026-04-25 (Session 110). Concept-stage
+  // screening workflow superseded; intake AI work moves to backend automation
+  // post-cycle. Page + API + prompt archived to /_archived. Existing
+  // user_app_access grants for 'concept-evaluator' are left in place — they
+  // simply have no app to grant access to. A later cleanup pass can drop
+  // those rows; not blocking.
   {
     key: 'multi-perspective-evaluator',
     name: 'Multi-Perspective Evaluator',

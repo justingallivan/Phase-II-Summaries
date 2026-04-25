@@ -26,7 +26,10 @@ function record(name, pass, detail) {
   console.log(`  ${tag}  ${name}${detail ? ` — ${detail}` : ''}`);
 }
 
-const TEST_APPS = ['concept-evaluator', 'literature-analyzer'];
+// Two arbitrary app keys for grant/revoke round-trip testing. The test
+// is about the dispatch path, not these specific apps. Pick two that
+// exist in APP_REGISTRY today.
+const TEST_APPS = ['literature-analyzer', 'expense-reporter'];
 
 async function cleanupAppAccess() {
   await appAccess.revokeApps(KEVIN, TEST_APPS);
