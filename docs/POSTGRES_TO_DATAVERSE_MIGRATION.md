@@ -223,10 +223,18 @@ The scripted-creation approach also gives us git-diffable schema, review-before-
 
 Migration doesn't happen all at once. Wave 1 is fully specified below; later waves get detail passes when their turn comes.
 
-### Wave 1 — User + access foundation
+### Wave 1 — User + access foundation ✅ shipped 2026-04-24
+
 `systemuser` (extend), `wmkf_app_user_preference`, `wmkf_app_user_app_access`, `wmkf_app_system_setting`
 
 Why first: everything downstream looks back at `systemuser`. Get ownership and access-grant plumbing working before any data table moves.
+
+**Status:** prod cutover complete 2026-04-24 (Session 108). Dataverse is a verified byte-for-byte shadow of Postgres (66/66). Three feature flags (`WAVE1_BACKEND_SETTINGS`, `_PREFS`, `_APP_ACCESS`) gate the read/write path; all default to `postgres` until flipped. See `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md` for the flip sequence and explicit retirement criterion.
+
+**Outstanding follow-ups:**
+- Flip the three flags one at a time (~3 days calendar; <1 hour active work)
+- Remove temp role elevations per `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md`
+- Drop the three Postgres tables once flags have been on `dataverse` for 14+ days without regression
 
 ### Wave 2 — Reviewer Finder core
 `wmkf_app_researcher`, `wmkf_app_publication`, `wmkf_app_publication_author`, `wmkf_app_proposal_search`, `wmkf_app_reviewer_suggestion`, `wmkf_app_grant_cycle`

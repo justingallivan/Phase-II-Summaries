@@ -87,6 +87,18 @@ Dataverse rows written during the short flag-on window stay in Dataverse; Postgr
 3. Remove the three Postgres tables from the migration plan as "done".
 4. Proceed to Wave 2.
 
+## Retirement criterion
+
+This rollout doc is **retired** — and the `WAVE1_BACKEND_*` flag dispatch removed from the codebase — when **all three** of these are true:
+
+1. All three flags have been set to `dataverse` in production.
+2. They've stayed in that state for **at least 14 days** with no regressions reported (no rollbacks, no user reports of misbehaving settings/prefs/app-access, no anomalous Dataverse-side errors in cron/log-analysis output).
+3. The three Postgres tables (`system_settings`, `user_preferences`, `user_app_access`) have either been dropped OR scheduled for drop within the next 30 days.
+
+When all three hold: delete the dispatch wrappers in `lib/services/{settings,user-preferences,app-access}-service.js`, remove the three env vars from Vercel, archive this doc to `docs/archive/`, and close out the Wave 1 entries in `MEMORY.md` and `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md`.
+
+Until those conditions hold, leave this doc in `docs/` as the active rollback playbook.
+
 ---
 
 ## Recommended pacing

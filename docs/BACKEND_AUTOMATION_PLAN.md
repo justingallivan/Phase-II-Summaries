@@ -20,6 +20,17 @@ See `docs/GRANT_CYCLE_LIFECYCLE.md` for the full proposal lifecycle with stage-b
 >
 > The "Hybrid vs. full PA composition" question was resolved in Session 102 (2026-04-16): **full PA composition**. PA owns the entire flow including direct Anthropic API calls. The architecture diagram below accurately reflects the chosen path.
 
+> **Update — Session 110, 2026-04-25:** Phase 0 of the prompt-storage + Executor architecture is **shipped on the Vercel side**. Concrete state:
+>
+> 1. **`wmkf_ai_prompt` table is live** in Dynamics with a real seed row (`phase-i.summary`, GUID `d4201d8e-3840-f111-88b5-000d3a3065b8`). Seed script at `scripts/seed-phase-i-summary-prompt.js` is idempotent and round-trips cleanly. Field names finalized: `wmkf_ai_systemprompt`, `wmkf_ai_promptbody`, `wmkf_ai_promptvariables`, `wmkf_ai_promptoutputschema`, plus the new `wmkf_ai_Prompt` Lookup on `wmkf_ai_run` for provenance.
+> 2. **`executePrompt()` Executor service** lives at `lib/services/execute-prompt.js`. Implements the 10-step contract in `docs/EXECUTOR_CONTRACT.md` including the new step-4 output guards (`skip-if-populated` / `always-overwrite` + `forceOverwrite` input). Always writes a `wmkf_ai_run` row — even on failure or block — with both Lookups populated. Phase 0 source kinds: `dynamics`, `sharepoint`, `override`. Phase 0 target kinds: `akoya_request` (with optional `$.foo` jsonPath), `none`. Phase 0 parseModes: `raw`, `json`.
+> 3. **Reference call site refactored** — `pages/api/phase-i-dynamics/summarize-v2.js` shrank from 292 → 145 lines and now does only Vercel-specific concerns (auth, rate limit, file load from `fileRef`, 409 shaping, per-user usage logging). UI compatibility preserved.
+> 4. **Strategic shift on user-facing intake apps** — see `memory/project_phase_i_summary_app_winddown.md`. Phase I summary as a user-facing task is winding down post-May-2026 cycle; future intake prompts (compliance, fit-assessment, keywords) should be designed **backend-first** (PA-triggered) rather than as new Vercel routes. User-driven apps that tie into Dynamics (reviewer finder, Phase II tools, Expertise Finder, Grant Reporting, Review Manager) stay in active development.
+>
+> **Phase 1 implications for Connor:** the `ExecutePrompt` PA child flow builds against `docs/EXECUTOR_CONTRACT.md` — same 10 steps, same prompt-row schema, same `wmkf_ai_run` write contract. The Vercel implementation is the test oracle (echo-prompt parity). PA-side `forceOverwrite` defaults to caller's choice — see contract § "Notes for caller authors" for explicit guidance per parent flow type. The `phase-i.compliance` prompt row was deferred from Phase 0; when authored, it's a backend-first prompt.
+>
+> **Executor extensions still pending** before backend automation can do compliance/fit/keywords: native PDF input (`preprocess: pdf_native`), multi-output PATCH coalescing (current Executor's same-row second-PATCH would 412), Picklist-target output type. None blocking May 1; needed before backend intake automation.
+
 > **Update — Session 103, 2026-04-17:** Three empirical findings affect PA flow design:
 >
 > 1. **`{{var}}` interpolation syntax verified on the Next.js side** (still needs a PA-side confirmation). Dataverse Memo fields holding `{{proposal_text}}`-style placeholders round-trip cleanly through OData — `{{` is not interpreted as an expression. See `docs/CONNOR_QUESTIONS_2026-04-15.md` Q3.

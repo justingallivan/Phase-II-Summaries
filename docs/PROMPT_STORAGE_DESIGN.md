@@ -4,24 +4,14 @@
 **Owner:** Justin Gallivan
 **Related docs:** `docs/EXECUTOR_CONTRACT.md` (authoritative for the shared PA/Vercel spec), `docs/BACKEND_AUTOMATION_PLAN.md`, `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md`, `docs/WORKFLOW_CHAINING_DESIGN.md`, `docs/PROMPT_CACHING_PLAN.md`, `docs/PROPOSAL_CONTEXT_EXTRACTION_PLAN.md`
 
-> **⚠ Session 109 reconciliation (2026-04-24):** Connor built the prompt-storage table as **`wmkf_ai_prompt`**, not `wmkf_prompt_template` as originally spec'd. Field names differ accordingly. When reading this doc, apply these renames:
+> **Reconciliation history:**
 >
-> | This doc says | Actual field on the live table |
-> |---|---|
-> | `wmkf_prompt_template` (table) | `wmkf_ai_prompt` |
-> | `wmkf_body` | `wmkf_ai_promptbody` |
-> | `wmkf_variables` | `wmkf_ai_promptvariables` |
-> | `wmkf_output_schema` | `wmkf_ai_promptoutputschema` |
-> | `wmkf_name` | `wmkf_ai_promptname` |
-> | `wmkf_version` | `wmkf_promptversion` |
-> | `wmkf_status` | `wmkf_ai_promptstatus` (Picklist: Draft / Published / Retired) |
-> | `wmkf_is_current` | `wmkf_ai_iscurrent` |
->
-> Connor added `wmkf_ai_systemprompt` Memo (system/user split for caching) and Lookup `wmkf_ai_prompt` on `wmkf_ai_run` (fixes provenance gap) — both **confirmed live 2026-04-24**. Already-present fields include `wmkf_ai_rollbackfrom`, `wmkf_ai_preflightpasseddatetime`, `wmkf_ai_lasttestdatetime`. Note the field name is `wmkf_ai_systemprompt` (no underscore between "system" and "prompt").
+> - **Session 109 (2026-04-24):** Connor's live schema reconciled with this doc — table renamed from the design-time `wmkf_prompt_template` to **`wmkf_ai_prompt`**, field names renamed to match (`wmkf_ai_promptbody`, `wmkf_ai_promptvariables`, `wmkf_ai_promptoutputschema`, `wmkf_ai_promptname`, `wmkf_promptversion`, `wmkf_ai_promptstatus`, `wmkf_ai_iscurrent`). Connor added `wmkf_ai_systemprompt` Memo (system/user split for caching) and Lookup `wmkf_ai_prompt` on `wmkf_ai_run` (fixes provenance gap) — both confirmed live 2026-04-24. Already-present fields include `wmkf_ai_rollbackfrom`, `wmkf_ai_preflightpasseddatetime`, `wmkf_ai_lasttestdatetime`. Note the field name is `wmkf_ai_systemprompt` (no underscore between "system" and "prompt").
+> - **Session 110 (2026-04-25):** body of this doc rewritten in place to use the live field names. References below now match `wmkf_ai_*` directly; no mental mapping needed.
 >
 > **For implementation, read `docs/EXECUTOR_CONTRACT.md` first** — that is the shared spec both PowerAutomate and Vercel executors build against. This design doc remains the conceptual backdrop; the Executor contract is the operational spec.
 >
-> **Phased delivery (set in Session 109):** Phase 0 = shared Dynamics core + Vercel Executor by 2026-05-01. Phase 1 = PowerAutomate executor post-cycle. Phase 2 = context blocks + cross-prompt cache alignment.
+> **Phased delivery (set Session 109, Phase 0 shipped Vercel-side Session 110):** Phase 0 = shared Dynamics core + Vercel Executor by 2026-05-01 ✅ (shipped on Vercel; PA-side Phase 1 still pending). Phase 1 = PowerAutomate executor post-cycle. Phase 2 = context blocks + cross-prompt cache alignment.
 
 > This doc is a live working draft. It exists so a browser Claude Code session can pick up the conceptual work visually (Mermaid diagrams, state machines, flow comparisons). Once decisions settle, it becomes the implementation spec.
 
@@ -56,28 +46,28 @@ We need prompts to live somewhere that:
 
 These came out of the design conversation in Session 99. Listed here so a fresh agent session doesn't re-litigate them:
 
-1. **Storage location: Microsoft Dynamics / Dataverse.** A new table, `wmkf_prompt_template`, is the single source of truth for both PA and Next.js.
+1. **Storage location: Microsoft Dynamics / Dataverse.** A new table, `wmkf_ai_prompt`, is the single source of truth for both PA and Next.js.
 2. **PowerAutomate composes Claude calls itself** (not dumb-trigger Next.js). This is the reason Dynamics storage wins over Postgres — PA reads Dataverse natively.
 3. **Next.js reads the same Dynamics table** via OData, with aggressive in-process cache (5-min TTL pattern, same as `user_app_access`) and a git-backed seed file as fallback for outages.
-4. **Append-only versions.** A published version is immutable. Any edit produces a new version row. Never mutate a published `wmkf_body`.
+4. **Append-only versions.** A published version is immutable. Any edit produces a new version row. Never mutate a published `wmkf_ai_promptbody`.
 5. **Draft / publish flow.** Edits create a `status=draft` row. An explicit publish step transitions it to `status=published` and swaps the `is_current` pointer. Old `published` versions stay queryable as `status=retired`.
 6. **Dashboard access model:**
    - All authenticated users: view any prompt, any version, with diff against previous
    - Superusers only: create drafts, edit drafts, publish drafts, retire published versions
 7. **Git-seed stays committed.** Canonical bootstrap copies live in the repo for disaster recovery and new-environment setup. Dynamics is source of truth; git is backup.
-8. **Dynamics ≠ AkoyaGO.** Storing prompts in `wmkf_prompt_template` is consistent with "minimize reliance on AkoyaGO" — Dynamics is the underlying platform, which we're already committed to.
+8. **Dynamics ≠ AkoyaGO.** Storing prompts in `wmkf_ai_prompt` is consistent with "minimize reliance on AkoyaGO" — Dynamics is the underlying platform, which we're already committed to.
 9. **App patterns define which prompts need Dynamics storage.** Four migration-relevant patterns exist across the current app suite (see "App patterns and inventory" below). Only Pattern A and dual-caller prompts require Dynamics storage — Pattern B and C prompts have no PA driver and can stay in `.js` indefinitely.
 10. **Retirements.** Concept Evaluator is deprecated (concepts workflow being retired). Batch Phase I Summaries and Batch Phase II Summaries Vercel UIs retire once the backend can loop over the underlying per-proposal prompt — the batch apps only existed because programmatic Dynamics access didn't yet, and they share their prompts with the single-writeup apps. Multi-Perspective Evaluator is a development playground, explicitly out of migration scope.
 11. **Phase I/II writeup apps become dual-caller.** Backend PA auto-drafts on status change and writes to `akoya_request.wmkf_ai_summary`. The Vercel app becomes an interactive refinement surface (Q&A against the draft, optional writeback to the same field). Both PA and Next.js read the same prompt row.
 12. **v1 scope is three prompt rows.** `phase-i-writeup`, `phase-ii-writeup`, `compliance-field-set-c`. Everything else (Pattern B/C prompts, Q&A prompts, shared fragments, non-dev editor UI) is v2+.
-13. **Preprocessing stays in the caller.** Text truncation, PDF/DOCX extraction, chunking, cleaning, and conditional-branch resolution are caller-side logic in both PA and Next.js. Dynamics stores static template text + `wmkf_variables` declarations — callers compute final substitution values (including pre-resolved conditional blocks) before filling slots.
+13. **Preprocessing stays in the caller.** Text truncation, PDF/DOCX extraction, chunking, cleaning, and conditional-branch resolution are caller-side logic in both PA and Next.js. Dynamics stores static template text + `wmkf_ai_promptvariables` declarations — callers compute final substitution values (including pre-resolved conditional blocks) before filling slots.
 14. **Q&A sub-prompts stay in `.js` for v1.** Called only from Next.js (interactive writeup sessions); no PA driver. Re-evaluate in v2 once the dual-caller pattern is proven.
 15. **Defensive extraction is caller-specific, not prompt-specific.** Current Vercel prompts are roughly 70% shared analytical core + 20% defensive extraction (institution/PI/amount/period from raw PDF) + 10% input. Target prompts drop most of the 20% because Dynamics-sourced callers pass those fields as known variables. This is what makes one prompt row per analysis viable — the "Vercel sibling with defensive extraction vs. backend twin with structured inputs" split dissolves in the target state.
 16. **User-facing prompt visibility is universal for Vercel apps.** Every Vercel Claude-calling app displays the prompt it's about to run in a collapsed panel, expandable by any authenticated user. Fetched via a **prompt resolver** abstraction (`/api/prompts/[app-key]/current`) that transparently reads from Dynamics (Pattern A + dual-caller) or from the `.js` export (Pattern B + C). One interface, pattern-aware storage.
 17. **Per-session user overrides are supported.** Any user can expand the prompt, edit it, and run with the modified version. The canonical Dynamics row is unchanged. `wmkf_ai_run` logs the full override text verbatim so provenance stays complete ("what exactly was sent to Claude"). Universal-edit with a "restore default" button is preferred over per-app opt-in — transparency trumps guard-rails.
 18. **Editor safety is multi-tiered.** Beyond draft/publish: (a) pre-publish structural lint — every declared variable appears in the body and vice versa, braces balanced, model ID valid; (b) pre-publish test-run — superuser runs the draft against a pinned sample input and inspects the output (ideally side-by-side with current published output). The publish button is gated on both.
 19. **Rollback appends, does not mutate.** Reverting from v4 to v3's body creates a new published v5 whose body is a copy of v3. v4 transitions to `retired` normally. Retired rows never come back to life — the append-only invariant stays intact, the audit log reads cleanly ("v5 was a rollback from v4 to v3's body"), and `wmkf_ai_run.wmkf_ai_promptversion` never points at an ambiguous row.
-20. **Prompts declare their structured outputs.** A new `wmkf_output_schema` column defines what fields a prompt produces and where they persist in Dynamics. This enables workflow chaining — see `WORKFLOW_CHAINING_DESIGN.md`.
+20. **Prompts declare their structured outputs.** A new `wmkf_ai_promptoutputschema` column defines what fields a prompt produces and where they persist in Dynamics. This enables workflow chaining — see `WORKFLOW_CHAINING_DESIGN.md`.
 21. **Ingest-once principle.** For Pattern A workflows, the first Claude call reads the full proposal and produces structured outputs covering everything downstream steps need. Downstream calls consume those outputs from Dynamics fields. Phase I writeup becomes the canonical "ingest" prompt — not just "write a summary" but "extract the prose summary AND keywords AND methodologies AND risk flags AND team info in one call."
 22. **Infrastructure composes across features.** The prompt resolver + execute-with-body endpoint + `wmkf_ai_run` logging serves: PA workflows, user overrides, superuser test runs, "promote override to draft," and dashboard previews. Building these primitives once unlocks all of them.
 
@@ -118,12 +108,12 @@ Four migration-relevant patterns across the current app suite:
 
 Using `shared/config/prompts/phase-i-writeup.js` as the worked example. A Claude call in the current codebase is built in six layers; three of them move to Dynamics, three stay in caller code.
 
-| Layer | Moves to `wmkf_prompt_template`? | Notes |
+| Layer | Moves to `wmkf_ai_prompt`? | Notes |
 |---|---|---|
 | Model selection (`getModelForApp`) | Yes — `wmkf_model` | Current fallback chain (DB override → env var → `baseConfig.js`) is superseded by reading Dynamics |
 | Request parameters (max_tokens, temperature) | Yes — `wmkf_maxtokens`, `wmkf_temperature` | — |
-| Static template body | Yes — `wmkf_body` | The ~70% analytical core |
-| Variable slot declarations | Yes — `wmkf_variables` (JSON) | Named slots, descriptions, types |
+| Static template body | Yes — `wmkf_ai_promptbody` | The ~70% analytical core |
+| Variable slot declarations | Yes — `wmkf_ai_promptvariables` (JSON) | Named slots, descriptions, types |
 | Conditional branches in prompt text | **No** — pre-resolved by caller | Caller builds the final string for the slot (e.g., "institution known" vs "institution unknown" block) and fills a single variable |
 | Preprocessing (truncation, PDF extraction, chunking) | No — caller code | Depends on runtime input; Dynamics can record limits (e.g., `wmkf_max_input_chars`) but not execute them |
 | HTTP envelope (`fetch` call, headers) | No — caller code | PA or Next.js |
@@ -143,20 +133,20 @@ The target prompt row in Dynamics ≈ analytical core + structured-variable slot
 
 Not final — naming and memo caps need to line up with Dataverse conventions and Connor's review.
 
-### `wmkf_prompt_template` (new table)
+### `wmkf_ai_prompt` (new table)
 
 | Column | Type | Notes |
 |---|---|---|
-| `wmkf_name` | Text (natural key) | e.g. `phase-i-writeup`, `phase-ii-writeup`, `compliance-field-set-c` |
-| `wmkf_version` | Integer | Append-only. Never reused. |
-| `wmkf_body` | Memo | **Cap should match `wmkf_ai_rawoutput` (1,000,000 chars).** Session 103 confirmed a Memo field handles 6.6K chars of prompt content with no truncation at the Dynamics layer — caps we hit elsewhere have been writer-side (e.g., `DynamicsService._truncateForMemo(notes, 2000)` in `logAiRun`). Prompts routinely run 5–8K chars; with Keck guidelines embedded, more. |
+| `wmkf_ai_promptname` | Text (natural key) | e.g. `phase-i-writeup`, `phase-ii-writeup`, `compliance-field-set-c` |
+| `wmkf_promptversion` | Integer | Append-only. Never reused. |
+| `wmkf_ai_promptbody` | Memo | **Cap should match `wmkf_ai_rawoutput` (1,000,000 chars).** Session 103 confirmed a Memo field handles 6.6K chars of prompt content with no truncation at the Dynamics layer — caps we hit elsewhere have been writer-side (e.g., `DynamicsService._truncateForMemo(notes, 2000)` in `logAiRun`). Prompts routinely run 5–8K chars; with Keck guidelines embedded, more. |
 | `wmkf_model` | Text | e.g. `claude-sonnet-4-6` |
 | `wmkf_maxtokens` | Integer | |
 | `wmkf_temperature` | Decimal | |
-| `wmkf_status` | Choice | `draft` \| `published` \| `retired` |
-| `wmkf_is_current` | Bool | True for exactly one `published` row per `wmkf_name` |
-| `wmkf_variables` | Memo (JSON) | Declared template slots + descriptions. Entries may include `{source: "akoya_request.wmkf_keywords"}` when the slot is sourced from an upstream prompt output (see `WORKFLOW_CHAINING_DESIGN.md`). |
-| `wmkf_output_schema` | Memo (JSON) | **New.** Declared structured outputs — field names, types, descriptions, target Dynamics columns. Enables workflow chaining and dashboard preview. |
+| `wmkf_ai_promptstatus` | Choice | `draft` \| `published` \| `retired` |
+| `wmkf_ai_iscurrent` | Bool | True for exactly one `published` row per `wmkf_ai_promptname` |
+| `wmkf_ai_promptvariables` | Memo (JSON) | Declared template slots + descriptions. Entries may include `{source: "akoya_request.wmkf_keywords"}` when the slot is sourced from an upstream prompt output (see `WORKFLOW_CHAINING_DESIGN.md`). |
+| `wmkf_ai_promptoutputschema` | Memo (JSON) | **New.** Declared structured outputs — field names, types, descriptions, target Dynamics columns. Enables workflow chaining and dashboard preview. |
 | `wmkf_preflight_passed_at` | DateTime (nullable) | **New.** Last time pre-publish lint ran clean on this row. Publish button reads this. |
 | `wmkf_last_test_run_at` | DateTime (nullable) | **New.** Last time superuser test-ran this draft. Publish button reads this. |
 | `wmkf_rollback_from_version` | Integer (nullable) | **New.** When a published row is itself a rollback, this records which retired version it restored. Read in the audit UI. |
@@ -172,7 +162,7 @@ The run log already exists (Connor's side). Three additions for override and pro
 | Column | Type | Notes |
 |---|---|---|
 | `wmkf_ai_promptversion` | Integer | Existing. Points at the base version the call started from, even when overridden. |
-| `wmkf_prompt_override` | Memo (nullable) | **New.** Full override text if the user modified the prompt for this run. NULL if the call used the published body unmodified. Same memo cap as `wmkf_body`. |
+| `wmkf_prompt_override` | Memo (nullable) | **New.** Full override text if the user modified the prompt for this run. NULL if the call used the published body unmodified. Same memo cap as `wmkf_ai_promptbody`. |
 | `wmkf_prompt_was_overridden` | Bool | **New.** Denormalized flag for fast filtering ("show me all runs that used overrides"). |
 | `wmkf_run_source` | Choice | **New.** `pa-auto` \| `vercel-user` \| `vercel-test-run` \| `vercel-interactive`. Distinguishes PA auto-drafts from user overrides from superuser test-runs, which is necessary for cost attribution and eval filtering. |
 
@@ -210,7 +200,7 @@ When the panel is expanded, any user can edit the body and run with their overri
 - Submission sends `{prompt_body_override, input_variables}` to the existing API endpoint. The endpoint runs Claude with the override instead of fetching from Dynamics.
 - `wmkf_ai_run` records the full override text in `wmkf_prompt_override` and flips `wmkf_prompt_was_overridden = true`. Provenance never breaks.
 - A "Restore default" button is always present.
-- A future "Promote to draft" button (deferred to v2) packages an override into a new `wmkf_prompt_template` draft row for superuser publish review. Gives users a path from "I tweaked this and it's better" to "this should become canonical."
+- A future "Promote to draft" button (deferred to v2) packages an override into a new `wmkf_ai_prompt` draft row for superuser publish review. Gives users a path from "I tweaked this and it's better" to "this should become canonical."
 
 ### The prompt resolver abstraction
 
@@ -251,11 +241,11 @@ The draft/publish flow (decision #5) is the first safety tier. Three more, in in
 
 Server-side check on a draft row before the publish button is enabled. Writes `wmkf_preflight_passed_at` on success.
 
-- Every name in `wmkf_variables` appears at least once in `wmkf_body`
-- Every `{{slot}}` in `wmkf_body` is declared in `wmkf_variables` (catches typos like `{{pi_nmae}}`)
+- Every name in `wmkf_ai_promptvariables` appears at least once in `wmkf_ai_promptbody`
+- Every `{{slot}}` in `wmkf_ai_promptbody` is declared in `wmkf_ai_promptvariables` (catches typos like `{{pi_nmae}}`)
 - Body is non-empty, braces balanced, model ID resolves, `max_tokens` is within Anthropic's allowed range
 - (Optional) body length didn't drop more than 50% since the last published version — warn, don't block
-- (Optional) `wmkf_output_schema` is valid JSON if present, declared output fields don't collide
+- (Optional) `wmkf_ai_promptoutputschema` is valid JSON if present, declared output fields don't collide
 
 Half a day of work. Catches the dumb mistakes.
 
@@ -264,21 +254,21 @@ Half a day of work. Catches the dumb mistakes.
 Superuser runs the draft against a known input and inspects the output. Writes `wmkf_last_test_run_at` on completion.
 
 - One or two **pinned test inputs** per prompt (e.g., a known `akoya_request` ID for Phase I writeup with well-understood expected output)
-- "Run test" button on the draft editor invokes `/api/prompts/execute` with `prompt_body_override = draft.wmkf_body, run_source = "vercel-test-run"`
+- "Run test" button on the draft editor invokes `/api/prompts/execute` with `prompt_body_override = draft.wmkf_ai_promptbody, run_source = "vercel-test-run"`
 - Output rendered next to the current published prompt's output for the same input (run both — yes, this doubles the cost per test click, worth it for the prompts we care about)
 - Superuser eyeballs side-by-side, decides to publish or iterate
 
 Reuses the prompt resolver and execute-prompt infrastructure from the user-override feature. **The test-run is architecturally identical to a user override — only the audit `run_source` differs.**
 
-The publish button is gated on `wmkf_preflight_passed_at IS NOT NULL` AND `wmkf_last_test_run_at IS NOT NULL` for the current `wmkf_version`.
+The publish button is gated on `wmkf_preflight_passed_at IS NOT NULL` AND `wmkf_last_test_run_at IS NOT NULL` for the current `wmkf_promptversion`.
 
 ### Tier 4: Fast rollback (mechanical, append-only)
 
 If a published version is bad, restore the previous body in one click without breaking the append-only invariant.
 
 Mechanics:
-- Read `wmkf_body` from the most recent retired row (or whichever target version is selected)
-- Create a new `wmkf_prompt_template` row with that body, `wmkf_version = current_max + 1`, `status = draft`
+- Read `wmkf_ai_promptbody` from the most recent retired row (or whichever target version is selected)
+- Create a new `wmkf_ai_prompt` row with that body, `wmkf_promptversion = current_max + 1`, `status = draft`
 - Auto-populate `wmkf_notes` ("rollback to v3 from v4 — see incident log") and `wmkf_rollback_from_version = 3`
 - Lint and test-run can be skipped (the body was previously validated by virtue of having been published) — fast-track publish
 - Result: v5 is published, v4 is retired, v3 stays retired. Audit reads "v5 = rollback to v3."
@@ -304,8 +294,8 @@ Probably 2–3 days of build for a competent React engineer. Materially more tha
 
 The token-efficiency principle (#7 above) has its own design doc — see `WORKFLOW_CHAINING_DESIGN.md`. The intersection with this doc is two columns and one design assumption:
 
-- `wmkf_prompt_template.wmkf_output_schema` (Memo, JSON) declares what structured fields a prompt produces and where they persist in Dynamics
-- `wmkf_prompt_template.wmkf_variables` entries can include `{source: "akoya_request.wmkf_keywords"}` to express "this slot is filled by an upstream prompt's output, not a runtime input"
+- `wmkf_ai_prompt.wmkf_ai_promptoutputschema` (Memo, JSON) declares what structured fields a prompt produces and where they persist in Dynamics
+- `wmkf_ai_prompt.wmkf_ai_promptvariables` entries can include `{source: "akoya_request.wmkf_keywords"}` to express "this slot is filled by an upstream prompt's output, not a runtime input"
 - The first call in a backend workflow (typically the writeup/ingest prompt) is multi-output by design — it produces everything downstream calls need so the proposal text is read once per lifecycle
 
 The companion doc covers worked examples, prerequisite Dynamics fields on `akoya_request` (Connor's domain), the three token-reduction techniques, and honest caveats about when chaining doesn't work.
@@ -354,7 +344,7 @@ Tentatively chose full composition in Session 99. Session 100 additions noted hy
 
 > **Decision (2026-04-16, Session 102):** **Full composition confirmed.** Connor chose full PA composition. Rationale: (1) easier to debug when the entire flow is PA-native, and (2) backend automation is mission-critical, so removing the Vercel runtime dependency is worth the added PA-side complexity (retry logic, `cache_control` assembly, JSON validation). PA will own: trigger detection → prompt fetch → file extraction → Claude API call → retry/backoff → result write → `wmkf_ai_run` logging. Next.js is not in the loop for automated backend jobs.
 >
-> **Implications for Next.js:** The `/api/execute-prompt` endpoint is still needed for user-initiated features (prompt test runs, user overrides) but is **not** called by PA flows. The two codepaths (PA and Next.js) will share the same prompt templates from `wmkf_prompt_template` but compose Claude calls independently.
+> **Implications for Next.js:** The `/api/execute-prompt` endpoint is still needed for user-initiated features (prompt test runs, user overrides) but is **not** called by PA flows. The two codepaths (PA and Next.js) will share the same prompt templates from `wmkf_ai_prompt` but compose Claude calls independently.
 
 ---
 
@@ -390,8 +380,8 @@ stateDiagram-v2
     retired --> [*]
 
     note right of published
-        wmkf_body is immutable here.
-        Exactly one row per wmkf_name
+        wmkf_ai_promptbody is immutable here.
+        Exactly one row per wmkf_ai_promptname
         has is_current = true at any moment.
         Publishing a new draft atomically
         demotes this row to retired and
@@ -401,15 +391,15 @@ stateDiagram-v2
     note left of draft
         is_current is always false.
         Multiple concurrent drafts per
-        wmkf_name are allowed (distinct
-        wmkf_version integers).
+        wmkf_ai_promptname are allowed (distinct
+        wmkf_promptversion integers).
     end note
 ```
 
 **Invariants the state machine enforces**
 
-- `wmkf_body` is only mutable while `status = draft`. Published and retired rows are frozen.
-- For each `wmkf_name`, at most one row has `is_current = true`, and that row has `status = published`.
+- `wmkf_ai_promptbody` is only mutable while `status = draft`. Published and retired rows are frozen.
+- For each `wmkf_ai_promptname`, at most one row has `is_current = true`, and that row has `status = published`.
 - The publish transition is atomic: new row becomes `published` + `is_current = true`; prior `is_current` row becomes `retired` + `is_current = false`.
 - `retired` is terminal. Rows stay queryable for historical `wmkf_ai_run.wmkf_ai_promptversion` references, but are never mutated or revived.
 
@@ -424,13 +414,13 @@ sequenceDiagram
     autonumber
     participant Dyn as Dynamics (trigger)
     participant PA as PowerAutomate
-    participant PT as wmkf_prompt_template
+    participant PT as wmkf_ai_prompt
     participant SP as SharePoint
     participant AN as Anthropic API
     participant Run as wmkf_ai_run
 
     Dyn->>PA: status change event
-    PA->>PT: OData: current row for wmkf_name
+    PA->>PT: OData: current row for wmkf_ai_promptname
     PT-->>PA: body, model, params, variables, version
     PA->>SP: list + download request files
     SP-->>PA: PDF / DOCX blobs
@@ -450,14 +440,14 @@ sequenceDiagram
     autonumber
     participant Dyn as Dynamics (trigger)
     participant PA as PowerAutomate
-    participant PT as wmkf_prompt_template
+    participant PT as wmkf_ai_prompt
     participant NJ as Next.js /api/execute-prompt
     participant SP as SharePoint
     participant AN as Anthropic API
     participant Run as wmkf_ai_run
 
     Dyn->>PA: status change event
-    PA->>PT: OData: current row for wmkf_name
+    PA->>PT: OData: current row for wmkf_ai_promptname
     PT-->>PA: body, model, params, variables, version
     PA->>NJ: POST {prompt_row, request_id, trigger_context}
     NJ->>SP: list + download files (file-loader + sharepoint-buckets)
@@ -481,7 +471,7 @@ sequenceDiagram
 
 ## Session 103 prototype findings (2026-04-17)
 
-A working prototype of the Dynamics-stored-prompt pattern was built ahead of `wmkf_prompt_template` existing, using a scratch row on `wmkf_ai_run` as temporary storage (GUID `a03f77d9-913a-f111-88b5-000d3a3065b8`, `wmkf_ai_notes` = system prompt, `wmkf_ai_rawoutput` = user prompt template with `{{var}}` slots).
+A working prototype of the Dynamics-stored-prompt pattern was built ahead of `wmkf_ai_prompt` existing, using a scratch row on `wmkf_ai_run` as temporary storage (GUID `a03f77d9-913a-f111-88b5-000d3a3065b8`, `wmkf_ai_notes` = system prompt, `wmkf_ai_rawoutput` = user prompt template with `{{var}}` slots).
 
 Files shipped:
 - `scripts/seed-phase-i-prompt.js` — writes and verifies the two memo fields; idempotent
@@ -494,7 +484,7 @@ Files shipped:
 1. **Round-trip fetch works.** Writing 6,634 chars to `wmkf_ai_notes` and reading back — no truncation at the Dynamics layer. The `_truncateForMemo(notes, 2000)` cap in `DynamicsService.logAiRun` is writer-side and does not apply to direct `updateRecord` writes. Memo fields comfortably hold full prompts.
 2. **`{{var}}` interpolation works end-to-end** in the Next.js path (see Q1 above).
 3. **System/user split produces tighter output.** A/B on a real Phase I proposal (Rife/Levin, 3 pages, request 996637): 3 trials of v1 (monolithic) averaged 5,812 output chars; 3 trials of v2 (split) averaged 5,210 — **all 3 v2 trials were shorter than all 3 v1 trials.** Same factual content, same Keck verdict, same classification. The split appears to produce disciplined, slightly tighter summaries.
-4. **Prompt resolver pattern is viable.** The `PromptResolver.getPrompt / interpolate` interface is clean and survives the round-trip. When `wmkf_prompt_template` lands, swap `_fetchFromDynamics()` to read from the real table — no caller changes.
+4. **Prompt resolver pattern is viable.** The `PromptResolver.getPrompt / interpolate` interface is clean and survives the round-trip. When `wmkf_ai_prompt` lands, swap `_fetchFromDynamics()` to read from the real table — no caller changes.
 
 ### What the prototype revealed we didn't know
 
@@ -504,7 +494,7 @@ Files shipped:
 
 ### What the prototype is NOT ready for
 
-- Still uses `wmkf_ai_run` as squat space. **Needs `wmkf_prompt_template` to ship.**
+- Still uses `wmkf_ai_run` as squat space. **Needs `wmkf_ai_prompt` to ship.**
 - No versioning (scratch row has one current state, no history).
 - No lint/test-run/publish gating — direct overwrites.
 - Error behavior is "throw loudly" — the production resolver needs a `.js` fallback on Dynamics outage.
