@@ -9,11 +9,11 @@ A strategic shift surfaced mid-session that reshapes Session 111+ priorities (se
 ### What was completed
 
 1. **CI fix** — `tests/integration/auth-routes.test.js` mock for `baseConfig` was missing the internal cache helpers (`_shouldReloadOverrides`, `_setOverridesCache`, `clearModelOverridesCache`), causing the dynamics-explorer/chat path to throw post-auth. Added the helpers + a direct mock of `lib/services/model-override-loader`. Bumped all `actions/checkout@v4` → `@v5` and `actions/setup-node@v4` → `@v5` to silence the Node 20 deprecation warning.
-2. **`phase-i.summary` prompt row seeded** in `wmkf_ai_prompts` (sandbox row `d4201d8e-3840-f111-88b5-000d3a3065b8`). Idempotent seed at `scripts/seed-phase-i-summary-prompt.js`. Documents the Phase 0 placement compromise (3 of 4 declared user-placement variables physically interpolate into the system prompt — kept as-is to avoid prompt-quality drift this close to cycle; Phase 2 reconciles via `placement: "system"` on context blocks).
+2. **`phase-i.summary` prompt row seeded** in `wmkf_ai_prompts` on prod Dynamics (row `d4201d8e-3840-f111-88b5-000d3a3065b8`). Idempotent seed at `scripts/seed-phase-i-summary-prompt.js`. Documents the Phase 0 placement compromise (3 of 4 declared user-placement variables physically interpolate into the system prompt — kept as-is to avoid prompt-quality drift this close to cycle; Phase 2 reconciles via `placement: "system"` on context blocks).
 3. **`executePrompt()` Executor service** at `lib/services/execute-prompt.js`. Implements the 10-step contract. Single entry point. Phase 0 supported source kinds: `dynamics`, `sharepoint`, `override`. Target kinds: `akoya_request` (with optional `$.foo` jsonPath), `none`. Guards: `skip-if-populated`, `always-overwrite`. parseModes: `raw`, `json`. Returns `{ parsed, runId, cacheHit, blocked, conflicts, writeResults, usage, meta }`.
 4. **Executor Contract extended** with output guards (`docs/EXECUTOR_CONTRACT.md`). Step 4 = preflight guards before Claude call (no wasted tokens on conflicts). New section "Notes for caller authors" gives explicit guidance for Connor on `forceOverwrite` defaults per parent-flow type. Added `usage` + `meta` to return shape for caller observability.
 5. **`summarize-v2.js` refactored** from 292 → 145 lines. Now does only Vercel-specific concerns (auth, rate limit, file load from `fileRef`, 409 shaping for UI, per-user usage logging). UI compatibility preserved — same 409 conflict shape, same 200 success shape.
-6. **End-to-end smoke test** — `scripts/test-execute-prompt.js`. Three runs verified against sandbox request 993879 (Carter/UNC-CH):
+6. **End-to-end smoke test** — `scripts/test-execute-prompt.js`. Three runs verified against prod request 993879 (Carter/UNC-CH):
    - empty field, no force → write OK, run row OK, both Lookups populated, 23.1s
    - populated, no force → blocked, no Claude call, 0.4s, run row with `Needs Review` status
    - populated, `--force` → write OK, **`cacheHit: true`** on rerun, 21.5s
@@ -46,7 +46,7 @@ Justin clarified the post-May-2026 trajectory. Key points (captured in `memory/p
 ## Key state facts
 
 - **Phase 0 Vercel implementation: complete.** No further changes needed for the May 1 cycle to function via the new Executor.
-- **`phase-i.summary` row**: GUID `d4201d8e-3840-f111-88b5-000d3a3065b8` in sandbox. Single output to `wmkf_ai_summary`, parseMode raw, guard skip-if-populated. Sonnet 4 model, temperature 0.3, max_tokens 16384.
+- **`phase-i.summary` row**: GUID `d4201d8e-3840-f111-88b5-000d3a3065b8` in prod Dynamics (`wmkf.crm.dynamics.com`). Single output to `wmkf_ai_summary`, parseMode raw, guard skip-if-populated. Sonnet 4 model, temperature 0.3, max_tokens 16384. **There is no separate AI-work sandbox** — the sandbox at `orgd9e66399.crm.dynamics.com` is for schema-migration work only (Wave 1, future Wave 2+).
 - **`phase-i.compliance` row**: not authored. Connor provided a draft prompt (in Session 110 conversation transcript). Plan: trim to clerical + keywords + priority-fit (drop summary task — `phase-i.summary` owns that). Backend-first.
 - **Executor extensions still pending** (needed for backend intake automation, not for May 1):
   1. `preprocess: pdf_native` — send PDFs to Claude as document content blocks (Anthropic supports). Required for budget compliance check.
@@ -63,8 +63,8 @@ Justin clarified the post-May-2026 trajectory. Key points (captured in `memory/p
 ### 2. Cycle-prep verification (May 1 readiness)
 Light pre-flight before the cycle hits:
 - `npm run test:ci` — confirm CI green on the merged Session 110 commits
-- One more end-to-end smoke run via `/phase-i-dynamics` to confirm prod parity (the UI test we already did was against sandbox via dev server)
-- Spot-check that the seed row is unchanged in sandbox: `grep -A 2 "phase-i.summary" scripts/seed-phase-i-summary-prompt.js | head -3`
+- The dev-server UI test (Session 110) and the smoke-test script were both run against prod Dynamics via `.env.local`. Prod Vercel deployment auto-deployed from the Session 110 push and was confirmed Ready 2026-04-25. No further pre-cycle smoke run strictly needed; one more click-through against the prod URL won't hurt.
+- Spot-check that the seed row is unchanged: `node scripts/seed-phase-i-summary-prompt.js --dry-run` (idempotent — re-running with `--execute` updates in place if drifted).
 
 ### 3. Executor extensions for backend automation (post-cycle work)
 None of these block May 1. All three are needed before backend intake automation can ship.

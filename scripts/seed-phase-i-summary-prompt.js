@@ -10,9 +10,14 @@
  *   node scripts/seed-phase-i-summary-prompt.js --dry-run
  *   node scripts/seed-phase-i-summary-prompt.js --execute
  *
- * Target (sandbox from .env.local):
+ * Target (prod Dynamics — wmkf.crm.dynamics.com via .env.local):
  *   Entity: wmkf_ai_prompts
  *   Key:    wmkf_ai_promptname = 'phase-i.summary' AND wmkf_ai_iscurrent = true
+ *
+ * Note: there is no separate "AI sandbox" Dynamics environment. The sandbox
+ * at orgd9e66399.crm.dynamics.com is for schema-migration work (Wave 1+);
+ * AI prompt rows + per-request writebacks are reversible enough to author
+ * directly in prod. wmkf_ai_prompt was built by Connor on prod.
  *
  * Prompt text source of truth:
  *   shared/config/prompts/phase-i-dynamics.js (SYSTEM_PROMPT + USER_PROMPT_TEMPLATE)

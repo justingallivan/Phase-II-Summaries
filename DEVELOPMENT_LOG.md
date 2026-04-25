@@ -15,7 +15,7 @@ The pre-Session 84 chronological per-session log (everything after the September
 **Milestone:** Prompt rows live in Dynamics + Executor service in Vercel + reference call site refactored. Same prompt row will serve PowerAutomate and Vercel callers when Phase 1 (Connor's PA work) lands.
 **Sessions:** 110 (2026-04-25)
 **Ship state:**
-- `wmkf_ai_prompt` table populated; `phase-i.summary` row live in sandbox (`d4201d8e-3840-f111-88b5-000d3a3065b8`)
+- `wmkf_ai_prompt` table populated; `phase-i.summary` row live in prod Dynamics (`d4201d8e-3840-f111-88b5-000d3a3065b8`)
 - `lib/services/execute-prompt.js` implements the 10-step contract — including step 4 output guards (`skip-if-populated` / `always-overwrite` + `forceOverwrite` input)
 - `pages/api/phase-i-dynamics/summarize-v2.js` refactored from 292 → 145 lines — only Vercel-specific concerns remain (auth, file load, 409 shaping)
 - Verified end-to-end via UI (`/phase-i-dynamics`) and a smoke-test script with three runs (write / block / cache-hit)

@@ -3,7 +3,7 @@
 /**
  * Smoke test for lib/services/execute-prompt.js (Phase 0 Executor).
  *
- * Exercises the full flow against a known sandbox request:
+ * Exercises the full flow against a known prod request (wmkf.crm.dynamics.com):
  *   - prompt resolution from wmkf_ai_prompts (phase-i.summary)
  *   - SharePoint variable resolution (walks active + archive libraries)
  *   - Claude call + response parse (parseMode=raw)
