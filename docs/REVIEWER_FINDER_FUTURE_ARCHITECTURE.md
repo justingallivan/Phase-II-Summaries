@@ -16,17 +16,22 @@ That orchestration *is* complex, but it lives in the **route**, not in the Claud
 
 ## Migration shape
 
-Three Claude calls, three prompt rows in `wmkf_ai_prompt`:
+**Reconciled 2026-04-25 against actual code (Session 111):** the live pipeline has **two** Claude calls, not three. `createAnalysisPrompt` already does proposal-metadata extraction + reviewer suggestions + search-query generation in a single call — splitting it into separate `analyze` and `search-strategy` rows is a real prompt rewrite (and parser rewrite) for no Phase 0 benefit. We mirror reality:
+
+Two Claude calls, two prompt rows in `wmkf_ai_prompt`:
 
 | Prompt name | Purpose | Inputs | Outputs |
 |---|---|---|---|
-| `reviewer-finder.analyze` | Extract proposal metadata (PI, institution, keywords, research area) | `proposal_text` (override) | structured JSON: PI, institution, area, keywords[] |
-| `reviewer-finder.search-strategy` | Given the analysis, propose search queries for each external database | analysis output (passed via override) | `{ pubmed: [...], scholar: [...], orcid: [...] }` |
-| `reviewer-finder.score-candidates` | Given a list of candidate researchers + the proposal, rank and rationalize | analysis output + candidate list (overrides) | ranked list with rationale |
+| `reviewer-finder.analyze` | Extract proposal metadata + suggest reviewers + emit DB search queries (combined) | `proposal_text`, `additional_notes_block`, `excluded_names_block`, `reviewer_count` (all override) | single delimited-text response (PART 1/2/3) |
+| `reviewer-finder.score-candidates` | Given a batch of candidates + proposal summary, mark RELEVANT yes/no with reasoning + seniority | `proposal_summary`, `candidates_list` (override) | single delimited-text response |
 
-All three are single-shot, parseMode=json, no jsonPath writeback (results land in Postgres `proposal_searches` + `reviewer_suggestions` today, eventually Dataverse Wave 2 tables). `target.kind: "none"` for all outputs since the route consumes them and persists separately.
+Both prompts use **`parseMode: "raw"`** with a single `response_text` output and `target.kind: "none"`. The current text format (`REVIEWER:`/`NAME:`/`RELEVANT: Yes`/etc.) is parsed by hand-rolled regex helpers (`parseAnalysisResponse`, `parseDiscoveredReasoningResponse`); those stay in `reviewer-finder.js` and the route owns post-parsing. End-state JSON migration is a Phase 2 concern — defer until staff actually want to edit the structured output schema. This mirrors the `phase-i.summary` Phase 0 precedent: minimize prompt-text drift on first migration.
+
+Conditional sections in the legacy prompt (`additionalNotes ? ... : ''`, `excludedNames.length > 0 ? ... : ''`) become caller-formatted blocks. The route builds either the full block or `""` and passes it via `overrideVariables`. Same pattern as `summary_length_suffix` in `phase-i.summary`.
 
 Variable kinds: all `override`. The route owns input plumbing (the proposal text comes from upload; the candidate list comes from external APIs after the route runs them). No `dynamics` or `sharepoint` source kinds needed — Reviewer Finder doesn't read from `akoya_request` or SharePoint today.
+
+Results still land in Postgres `proposal_searches` + `reviewer_suggestions` (eventually Dataverse Wave 2 tables, orthogonal to this migration).
 
 ## What the migration does NOT change
 
@@ -52,9 +57,9 @@ But none of these are blocking. Reviewer Finder migrates cleanly without it. Def
 
 ## Sequenced plan (post-cycle)
 
-1. **Author the three prompt rows** in `wmkf_ai_prompt`. Same flow as `phase-i.summary` seed. Naming: `reviewer-finder.analyze`, `reviewer-finder.search-strategy`, `reviewer-finder.score-candidates`.
-2. **Refactor `analyze.js`** to call `executePrompt('reviewer-finder.analyze', ...)`. Smallest of the three; good warm-up.
-3. **Refactor `discover.js`** to use `executePrompt` for each Claude call inside its orchestration loop. Streaming SSE stays at the route level — emit progress events between Executor calls.
+1. **Author the two prompt rows** in `wmkf_ai_prompt` (Session 111, ahead of route refactor). Source-of-truth templates live at `shared/config/prompts/reviewer-finder-dynamics.js`; seed via `scripts/seed-reviewer-finder-prompts.js`. Naming: `reviewer-finder.analyze`, `reviewer-finder.score-candidates`.
+2. **Refactor `analyze.js`** to call `executePrompt('reviewer-finder.analyze', ...)` with the four override variables. Route still owns post-parse via `parseAnalysisResponse`. Smallest call site; good warm-up.
+3. **Refactor `discover.js` / `claude-reviewer-service.js`** to use `executePrompt('reviewer-finder.score-candidates', ...)` per batch inside `generateDiscoveredReasoning`. Streaming SSE stays at the route level — emit progress events between Executor calls.
 4. **Smoke test** end-to-end against a known proposal.
 5. **(Independent track) Wave 2 Dataverse migration** moves `researchers`/`publications`/`proposal_searches`/`reviewer_suggestions` to Dataverse. Doesn't affect prompt rows; affects where saved candidate state lives. Do this when Postgres bill or staff-facing data discoverability becomes a real driver.
 
