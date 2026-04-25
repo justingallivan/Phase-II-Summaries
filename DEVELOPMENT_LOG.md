@@ -1,6 +1,41 @@
 # Development Log
 
-This file contains the historical development log for the Document Processing Multi-App System. For current project documentation, see [CLAUDE.md](./CLAUDE.md).
+This file is a **milestone log**, not a per-session log. An entry exists when a session shipped something a future Justin would search for: a production cutover, a new architecture, a strategic pivot, a deprecated capability removed, an incident. Most sessions are prep, exploration, refactors, or doc work — those live in commit messages and `SESSION_PROMPT.md`, not here.
+
+For current project documentation see [CLAUDE.md](./CLAUDE.md). For the most recent session hand-off see [SESSION_PROMPT.md](./SESSION_PROMPT.md).
+
+**Format reminder for future sessions:** Add an entry only at a real milestone. Tight: ~8 lines, with **Milestone**, **Sessions**, **Ship state**, **Why it matters**, **Pointers**. Skipping is the right answer most weeks.
+
+The pre-Session 84 chronological per-session log (everything after the September 2025 divider further down) is preserved in its original form — older format, kept for archaeology, not maintained going forward.
+
+---
+
+## April 2026 — Phase 0 Executor architecture shipped on Vercel side (Session 110)
+
+**Milestone:** Prompt rows live in Dynamics + Executor service in Vercel + reference call site refactored. Same prompt row will serve PowerAutomate and Vercel callers when Phase 1 (Connor's PA work) lands.
+**Sessions:** 110 (2026-04-25)
+**Ship state:**
+- `wmkf_ai_prompt` table populated; `phase-i.summary` row live in sandbox (`d4201d8e-3840-f111-88b5-000d3a3065b8`)
+- `lib/services/execute-prompt.js` implements the 10-step contract — including step 4 output guards (`skip-if-populated` / `always-overwrite` + `forceOverwrite` input)
+- `pages/api/phase-i-dynamics/summarize-v2.js` refactored from 292 → 145 lines — only Vercel-specific concerns remain (auth, file load, 409 shaping)
+- Verified end-to-end via UI (`/phase-i-dynamics`) and a smoke-test script with three runs (write / block / cache-hit)
+**Why it matters:** Cycle path (May 1 2026) now runs through the new infrastructure. PA-side (Phase 1) and context blocks (Phase 2) are queued as future work; Vercel-side is done.
+**Strategic shift captured:** user-facing intake apps (`/phase-i-dynamics`) are winding down post-cycle; backend automation owns the future of compliance/keywords/fit prompts. See `memory/project_phase_i_summary_app_winddown.md`.
+**Pointers:** `docs/EXECUTOR_CONTRACT.md`, commits `f465799`..`f47b849`
+
+---
+
+## April 2026 — Executor Contract + Phase 0 schema reconciliation (Session 109)
+
+**Milestone:** Day-long architectural reconciliation with Connor in the room. Output: one shared spec both PowerAutomate and Vercel executors will build against, with phased delivery plan.
+**Sessions:** 109 (2026-04-24)
+**Ship state:**
+- `docs/EXECUTOR_CONTRACT.md` created — the operational spec. Defines 9 (later 10) steps, declarative variable + output metadata, caching contract, logging contract.
+- Path B chosen over duplicated wrappers (Path A) and HTTP gateway (Path C). Vocabulary split: prompt row = the **function**, PA/Vercel flows = the **process**, Executor = the shared invocation contract.
+- Connor's late additions confirmed live: `wmkf_ai_systemprompt` Memo (system/user split for caching) + Lookup `wmkf_ai_prompt` on `wmkf_ai_run` (fixes provenance gap).
+- Phased plan set: Phase 0 (May 1 cycle) = shared core + Vercel Executor; Phase 1 (post-cycle) = PowerAutomate `ExecutePrompt` child flow; Phase 2 = context blocks + cross-prompt cache alignment.
+**Why it matters:** Six overlapping design docs from Sessions 90–108 were collapsed into one operational spec. Both implementations build against it. No more drift between Vercel and PA.
+**Pointers:** `docs/EXECUTOR_CONTRACT.md`, `docs/PROMPT_STORAGE_DESIGN.md` (now reconciled), commit `adef1c8`
 
 ---
 
@@ -385,6 +420,12 @@ Built a natural-language chatbot for querying the Keck Foundation's Microsoft Dy
 - Token optimization: conversation compaction between agentic rounds, compact text results instead of raw JSON, HTML stripping for email bodies
 
 **Files:** `pages/dynamics-explorer.js`, `pages/api/dynamics-explorer/chat.js`, `lib/services/dynamics-service.js`, `shared/config/prompts/dynamics-explorer.js`
+
+---
+
+# Legacy chronological session log (pre-2026-03-12, deprecated format)
+
+Everything below is the original session-by-session log from before the milestone-log format was adopted. It's preserved verbatim for archaeology. **Do not add new entries below this point** — milestones go above.
 
 ---
 
