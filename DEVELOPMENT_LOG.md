@@ -10,6 +10,20 @@ The pre-Session 84 chronological per-session log (everything after the September
 
 ---
 
+## April 2026 — Concept Evaluator deprecated (Session 110)
+
+**Milestone:** A user-facing app removed from the active set. Page + API + prompt archived; registry entries removed; no user-visible app remains for the concept-stage screening workflow.
+**Sessions:** 110 (2026-04-25)
+**Ship state:**
+- `pages/concept-evaluator.js`, `pages/api/evaluate-concepts.js`, `shared/config/prompts/concept-evaluator.js` moved into a new top-level `/_archived` directory (Next.js does not route it; nothing live imports them)
+- Removed from `appRegistry.js` (APP_REGISTRY array), `baseConfig.js` (APP_MODELS map), `admin.js` (APP_MODEL_NAMES), CLAUDE.md (app inventory + per-app model table), and two utility scripts
+- New `_archived/README.md` documents the convention so future deprecations follow it
+- Existing `user_app_access` grants for `concept-evaluator` left in place — harmless without an app, drop in a later cleanup pass
+**Why it matters:** concept-stage screening workflow superseded by emerging backend automation; intake AI work moves to PA-triggered prompts post-cycle. Removing dead surface area now shrinks the app set staff see in navigation and the per-app model dashboard.
+**Pointers:** `_archived/README.md`, commit `bb19027`
+
+---
+
 ## April 2026 — Phase 0 Executor architecture shipped on Vercel side (Session 110)
 
 **Milestone:** Prompt rows live in Dynamics + Executor service in Vercel + reference call site refactored. Same prompt row will serve PowerAutomate and Vercel callers when Phase 1 (Connor's PA work) lands.
