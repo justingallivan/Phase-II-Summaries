@@ -1,36 +1,33 @@
 /**
- * API Route: /api/phase-i-dynamics/summarize-v2 — EXPERIMENT
+ * API Route: /api/phase-i-dynamics/summarize-v2
  *
- * Same external contract as /summarize, but:
- *   - Fetches the prompt template from Dynamics (via PromptResolver) rather
- *     than importing from shared/config/prompts/phase-i-summaries.js
- *   - Uses the system/user message split (system = static instructions +
- *     Keck guidelines, user = proposal text)
- *   - Puts cache_control on the system block so repeated runs within 5 min
- *     hit Anthropic's prompt cache
- *   - Records promptSource: 'dynamics' in the audit-row notes so we can
- *     distinguish v1 vs v2 runs in `wmkf_ai_run`
+ * Phase 0 reference call site for the shared Executor (lib/services/execute-prompt.js).
  *
- * Fallback behavior: if the Dynamics read or interpolation fails, the request
- * errors out rather than silently falling back to the .js prompt. We want
- * failures to be visible during the experiment.
+ * Responsibilities of THIS route (Vercel-specific concerns):
+ *   - auth + rate limiting
+ *   - body parsing (requestGuid, fileRef, summary parameters)
+ *   - load proposal text from fileRef (upload OR user-picked SharePoint file)
+ *   - turn `blocked` Executor result into HTTP 409 with conflict details
+ *   - shape the success response for the existing UI
+ *
+ * Everything else (prompt fetch, variable resolution, Claude call, writeback,
+ * audit log) lives in executePrompt() — see docs/EXECUTOR_CONTRACT.md.
+ *
+ * Pre-Phase 0 this file was ~290 lines and reimplemented the prompt fetch /
+ * Claude / writeback / audit dance inline. The new shape is intentionally
+ * minimal — file loading is the only Vercel-specific concern that doesn't
+ * belong in the Executor (file source ambiguity is a UI concern, not a
+ * prompt-execution concern).
  */
 
 import { requireAppAccess } from '../../../lib/utils/auth';
-import {
-  BASE_CONFIG,
-  getModelForApp,
-  loadModelOverrides,
-} from '../../../shared/config';
-import { PHASE_I_PROMPT_VERSION } from '../../../shared/config/prompts/phase-i-summaries';
 import { logUsage } from '../../../lib/utils/usage-logger';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { loadFile } from '../../../lib/utils/file-loader';
-import { DynamicsService } from '../../../lib/services/dynamics-service';
-import { PromptResolver } from '../../../lib/services/prompt-resolver';
+import { executePrompt } from '../../../lib/services/execute-prompt';
 
 const APP_KEY = 'batch-phase-i-summaries';
-const PROMPT_APP_KEY = 'phase-i-dynamics-v2';
+const PROMPT_NAME = 'phase-i.summary';
 const limiter = nextRateLimiter({ max: 5 });
 
 const AUDIENCE_DESCRIPTIONS = {
@@ -50,13 +47,6 @@ export default async function handler(req, res) {
   const allowed = await limiter(req, res);
   if (allowed !== true) return;
 
-  await loadModelOverrides();
-
-  const apiKey = process.env.CLAUDE_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'Claude API key not configured on server' });
-  }
-
   const {
     requestGuid = null,
     fileRef = null,
@@ -65,222 +55,95 @@ export default async function handler(req, res) {
     overwrite = false,
   } = req.body || {};
 
-  if (!requestGuid) {
-    return res.status(400).json({ error: 'requestGuid is required' });
-  }
-  if (!fileRef) {
-    return res.status(400).json({ error: 'fileRef is required' });
-  }
+  if (!requestGuid) return res.status(400).json({ error: 'requestGuid is required' });
+  if (!fileRef) return res.status(400).json({ error: 'fileRef is required' });
 
+  let fileLoad;
   try {
-    DynamicsService.bypassRestrictions('phase-i-dynamics-v2');
+    fileLoad = await loadFile(fileRef);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    return res.status(500).json({ error: `Failed to load file: ${err.message}` });
+  }
 
-    // Pre-flight: same no-clobber guard as v1. Capture @odata.etag so the
-    // PATCH can use If-Match (optimistic concurrency) and close the TOCTOU gap.
-    let preflightEtag = null;
-    if (!overwrite) {
-      const existing = await DynamicsService.getRecord('akoya_requests', requestGuid, {
-        select: 'wmkf_ai_summary,modifiedon',
-      });
-      const current = (existing?.wmkf_ai_summary || '').trim();
-      if (current.length > 0) {
-        return res.status(409).json({
-          error: 'wmkf_ai_summary already populated — confirm overwrite to proceed',
-          conflict: {
-            field: 'wmkf_ai_summary',
-            existingLength: current.length,
-            existingContent: current,
-            recordModifiedOn: existing?.modifiedon || null,
-          },
-        });
-      }
-      preflightEtag = existing?._etag || null;
-    }
-
-    // ─── Fetch prompt from Dynamics ────────────────────────────────────────
-    const promptFetchStart = Date.now();
-    let prompt;
-    try {
-      prompt = await PromptResolver.getPrompt(PROMPT_APP_KEY);
-    } catch (err) {
-      console.error('[PhaseIDynamics:summarize-v2] Prompt fetch failed:', err.message);
-      return res.status(500).json({
-        error: 'Failed to fetch prompt template from Dynamics',
-        details: process.env.NODE_ENV === 'development' ? err.message : undefined,
-      });
-    }
-    const promptFetchMs = Date.now() - promptFetchStart;
-
-    // ─── Load proposal file ────────────────────────────────────────────────
-    const fileLoad = await loadFile(fileRef);
-    const model = getModelForApp('batch-phase-i');
-
-    // ─── Interpolate template variables ───────────────────────────────────
-    const audienceDescription =
-      AUDIENCE_DESCRIPTIONS[summaryLevel] || AUDIENCE_DESCRIPTIONS['technical-non-expert'];
-    const summaryLengthSuffix = summaryLength > 1 ? 's' : '';
-
-    const systemPromptResolved = PromptResolver.interpolate(prompt.systemPrompt, {
-      summary_length: summaryLength,
-      summary_length_suffix: summaryLengthSuffix,
-      audience_description: audienceDescription,
-    });
-    const userPromptResolved = PromptResolver.interpolate(prompt.userPromptTemplate, {
-      proposal_text: fileLoad.text.substring(0, 100000),
-    });
-
-    // ─── Call Claude with system/user split + cache_control ───────────────
-    const start = Date.now();
-    let summaryText, usage, modelUsed;
-    try {
-      const resp = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey.trim(),
-          'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION,
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: BASE_CONFIG.MODEL_PARAMS.DEFAULT_MAX_TOKENS,
-          temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
-          system: [
-            { type: 'text', text: systemPromptResolved, cache_control: { type: 'ephemeral' } },
-          ],
-          messages: [{ role: 'user', content: userPromptResolved }],
-        }),
-      });
-      if (!resp.ok) {
-        const body = await resp.text();
-        throw new Error(`Claude API error (${resp.status}): ${body}`);
-      }
-      const data = await resp.json();
-      summaryText = data.content?.[0]?.text || '';
-      usage = data.usage || null;
-      modelUsed = data.model || model;
-    } catch (err) {
-      await tryLogAiRun({
-        requestGuid,
-        model,
-        status: 'failed',
-        rawOutput: { error: err.message, promptSource: prompt.source, promptRecord: prompt.recordGuid },
-        notes: `Phase I v2 (Dynamics prompt) — Claude call failed (${fileLoad.filename})`,
-      });
-      throw err;
-    }
-    const latencyMs = Date.now() - start;
-
-    logUsage({
-      userProfileId: access.profileId,
-      appName: 'batch-phase-i',
-      model: modelUsed,
-      inputTokens: usage?.input_tokens || 0,
-      outputTokens: usage?.output_tokens || 0,
-      cacheCreationTokens: usage?.cache_creation_input_tokens || 0,
-      cacheReadTokens: usage?.cache_read_input_tokens || 0,
-      latencyMs,
-      status: 'success',
-    });
-
-    if (!summaryText || summaryText.trim().length < 20) {
-      await tryLogAiRun({
-        requestGuid,
-        model: modelUsed,
-        status: 'failed',
-        rawOutput: { error: 'empty-summary', raw: summaryText, promptSource: prompt.source },
-        notes: `Phase I v2 (Dynamics prompt) — empty summary (${fileLoad.filename})`,
-      });
-      return res.status(502).json({ error: 'Claude returned an empty summary' });
-    }
-
-    // ─── Writeback ─────────────────────────────────────────────────────────
-    // If-Match with the preflight ETag makes concurrent edits surface as 412
-    // rather than silently overwriting.
-    let writebackOk = false;
-    let writebackFailureCategory = null;
-    try {
-      await DynamicsService.updateRecord(
-        'akoya_requests',
-        requestGuid,
-        { wmkf_ai_summary: summaryText },
-        preflightEtag ? { ifMatch: preflightEtag } : undefined,
-      );
-      writebackOk = true;
-    } catch (err) {
-      writebackFailureCategory = err.status === 412 ? 'conflict' : 'writeback_failed';
-      console.error('[PhaseIDynamics:summarize-v2] wmkf_ai_summary writeback failed:', err.message);
-    }
-
-    const auditLogCreated = await tryLogAiRun({
-      requestGuid,
-      model: modelUsed,
-      status: writebackOk ? 'completed' : 'needs_review',
-      rawOutput: {
-        summary: summaryText,
-        filename: fileLoad.filename,
-        summaryLength,
-        summaryLevel,
-        promptSource: prompt.source,
-        promptRecord: prompt.recordGuid,
-        promptVariant: 'v2-split-dynamics',
+  let result;
+  try {
+    result = await executePrompt({
+      promptName: PROMPT_NAME,
+      requestId: requestGuid,
+      overrideVariables: {
+        proposal_text: fileLoad.text.substring(0, 100000),
+        summary_length: summaryLength,
+        summary_length_suffix: summaryLength > 1 ? 's' : '',
+        audience_description:
+          AUDIENCE_DESCRIPTIONS[summaryLevel] || AUDIENCE_DESCRIPTIONS['technical-non-expert'],
       },
-      notes: writebackOk
-        ? `Phase I v2 Dynamics prompt (${fileLoad.filename}) — wmkf_ai_summary updated [source=${prompt.source}]`
-        : `Phase I v2 Dynamics prompt (${fileLoad.filename}) — writeback ${writebackFailureCategory}`,
-    });
-
-    return res.status(200).json({
-      summary: summaryText,
-      filename: fileLoad.filename,
-      model: modelUsed,
-      writtenToDynamics: writebackOk,
-      writebackFailure: writebackFailureCategory,
-      auditLogCreated,
-      promptMeta: {
-        source: prompt.source,
-        recordGuid: prompt.recordGuid,
-        fetchMs: promptFetchMs,
-        systemPromptChars: systemPromptResolved.length,
-        userPromptChars: userPromptResolved.length,
-      },
-      cacheMeta: {
-        cacheCreationTokens: usage?.cache_creation_input_tokens || 0,
-        cacheReadTokens: usage?.cache_read_input_tokens || 0,
-        inputTokens: usage?.input_tokens || 0,
-      },
+      runSource: 'Vercel Interactive',
+      forceOverwrite: !!overwrite,
     });
   } catch (err) {
-    if (err.status && err.status >= 400 && err.status < 600) {
-      return res.status(err.status).json({ error: err.message });
-    }
-    console.error('[PhaseIDynamics:summarize-v2] Unhandled error:', err);
+    console.error('[summarize-v2] executePrompt failed:', err.message);
     return res.status(500).json({
       error: 'Failed to summarize proposal',
       details: process.env.NODE_ENV === 'development' ? err.message : undefined,
+      runId: err.runId || null,
     });
   }
-}
 
-// Returns true on successful audit-row write. Failure is logged but not
-// rethrown; the boolean surfaces as `auditLogCreated` in the response so
-// monitoring can detect audit gaps.
-async function tryLogAiRun({ requestGuid, model, status, rawOutput, notes }) {
-  if (!requestGuid) return false;
-  try {
-    await DynamicsService.logAiRun({
-      requestGuid,
-      taskType: 'summary',
-      model,
-      promptVersion: PHASE_I_PROMPT_VERSION,
-      status,
-      rawOutput,
-      notes,
+  // Block path → HTTP 409 in the shape the UI expects (existingLength,
+  // existingContent, recordModifiedOn on a single `conflict` object).
+  if (result.blocked) {
+    const c = result.conflicts.find(x => x.field === 'wmkf_ai_summary') || result.conflicts[0];
+    return res.status(409).json({
+      error: 'wmkf_ai_summary already populated — confirm overwrite to proceed',
+      runId: result.runId,
+      conflict: {
+        field: c.field,
+        existingLength: c.existingLength,
+        existingContent: c.existingContent,
+        recordModifiedOn: c.modifiedOn,
+      },
     });
-    return true;
-  } catch (err) {
-    console.warn(`[PhaseIDynamics:summarize-v2] logAiRun failed (non-fatal): ${err.message}`);
-    return false;
   }
+
+  // Surface API usage to the per-user usage log.
+  logUsage({
+    userProfileId: access.profileId,
+    appName: 'batch-phase-i',
+    model: result.meta?.modelUsed,
+    inputTokens: result.usage?.input_tokens || 0,
+    outputTokens: result.usage?.output_tokens || 0,
+    cacheCreationTokens: result.usage?.cache_creation_input_tokens || 0,
+    cacheReadTokens: result.usage?.cache_read_input_tokens || 0,
+    latencyMs: 0, // Executor doesn't expose this yet — add to meta if needed
+    status: 'success',
+  });
+
+  const summaryWrite = result.writeResults?.results?.find(r => r.output === 'summary');
+  const writebackOk = !!summaryWrite?.ok;
+  const writebackFailure = writebackOk ? null : (summaryWrite?.reason || 'writeback_failed');
+
+  return res.status(200).json({
+    summary: result.parsed?.summary || '',
+    filename: fileLoad.filename,
+    model: result.meta?.modelUsed || null,
+    runId: result.runId,
+    writtenToDynamics: writebackOk,
+    writebackFailure,
+    auditLogCreated: true, // Executor's audit-completeness invariant
+    promptMeta: {
+      source: 'dynamics',
+      promptName: result.meta?.promptName,
+      promptVersion: result.meta?.promptVersion,
+      systemPromptChars: result.meta?.systemChars || 0,
+      userPromptChars: result.meta?.bodyChars || 0,
+    },
+    cacheMeta: {
+      cacheCreationTokens: result.usage?.cache_creation_input_tokens || 0,
+      cacheReadTokens: result.usage?.cache_read_input_tokens || 0,
+      inputTokens: result.usage?.input_tokens || 0,
+    },
+  });
 }
 
 export const config = {

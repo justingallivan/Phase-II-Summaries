@@ -61,6 +61,9 @@ The contract covers **Pattern A + dual-caller prompts and Pattern B/C Vercel-onl
 | `cacheHit` | bool | Derived from Claude response's `usage.cache_read_input_tokens > 0`. For observability. |
 | `blocked` | bool | `true` when at least one guarded target was already populated and `forceOverwrite` was false. Claude was not called; no targets written. |
 | `conflicts` | array | When `blocked`, one entry per guarded target that triggered the block: `{ output, table, field, existingContent, existingLength, modifiedOn }`. Caller (typically Vercel) uses this to render a confirm-overwrite UI. |
+| `writeResults` | object \| null | When not blocked: `{ allOk, results: [{ output, ok, field?, jsonPath?, reason?, error? }] }`. `null` when blocked. |
+| `usage` | object \| null | Verbatim Anthropic `usage` object (`input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`). `null` when blocked. |
+| `meta` | object \| null | `{ promptName, promptVersion, promptId, modelUsed, systemChars, bodyChars }`. `null` when blocked. Useful for observability/UI display. |
 
 ### Errors
 
