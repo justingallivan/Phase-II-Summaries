@@ -109,12 +109,13 @@ const promptVariables = {
   variables: [
     {
       name: 'proposal_text',
-      source: {
-        kind: 'sharepoint',
-        pattern: 'project_narrative*.pdf',
-        preprocess: 'pdf_to_text',
-        maxChars: 100000, // matches summarize-v2.js truncation
-      },
+      // Phase 0: callers (summarize-v2.js, future PA flows that pre-load
+      // files) pass the proposal text in via overrideVariables. The route
+      // owns file-source ambiguity (uploads vs. user-picked SharePoint vs.
+      // future drag-drop) and hands the Executor a single string. Phase 1+
+      // can add `source.kind: "sharepoint"` with auto-discovery for PA
+      // flows that trigger autonomously from Dynamics state.
+      source: { kind: 'override' },
       required: true,
       cacheable: true,
       placement: 'user',
