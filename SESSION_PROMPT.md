@@ -1,154 +1,152 @@
-# Session 110 Prompt: Build `executePrompt()` + seed `phase-i.summary`
+# Session 111 Prompt: Backend Executor extensions + cycle prep
 
-## Session 109 Summary
+## Session 110 Summary
 
-Day-long architectural reconciliation session with Connor in the room. Input: six overlapping design docs written over Sessions 90–108, plus the Wave 1 prod migration that shipped yesterday, plus Connor's quietly-built-out Dynamics schema. Output: one shared spec (`docs/EXECUTOR_CONTRACT.md`) and a phased delivery plan that both sides can build against, with the first piece targeted for May 1 2026 when a few hundred Phase I proposals arrive.
+Phase 0 of the Executor + prompt-row architecture is **shipped on the Vercel side**, on time for the May 1 2026 cycle. The cycle path (user-facing `/phase-i-dynamics`) is end-to-end functional against Dynamics with the new infrastructure. PA-side Phase 1 is Connor's, post-cycle.
 
-### What Was Completed
+A strategic shift surfaced mid-session that reshapes Session 111+ priorities (see "Strategic shift" below).
 
-1. **Live schema probe** — ground-truth pass against sandbox to see what Connor had actually built vs. what the design docs described
-   - `wmkf_ai_prompt` table present with 17 custom fields (pre-session), 0 rows
-   - `wmkf_ai_promptoutputschema` Memo already existed — `WORKFLOW_CHAINING_DESIGN` treated this as future work, it's there
-   - `wmkf_ai_rollbackfrom`, `preflightpasseddatetime`, `lasttestdatetime`, `iscurrent`, `promptstatus` picklist all present
-   - Surfaced provenance gap: `wmkf_ai_run.wmkf_ai_promptversion` is an Integer with no way to disambiguate which prompt produced a run
+### What was completed
 
-2. **Architectural reconciliation** (captured in `/Users/gallivan/.claude/plans/ok-claude-connor-is-precious-dove.md`)
-   - **Path B chosen** over Path A (duplicated wrappers) and Path C (HTTP gateway). Declarative wrappers on the prompt row + generic executors in both PA and Vercel.
-   - **Key vocabulary split:** separate the **function** (prompt row — inputs, body, outputs) from the **process** (Flow — trigger, sequence, side effects). Dynamics owns the function. PA and Vercel each own their own processes. The shared thing is the Executor contract.
-   - **Two chain shapes, both first-class:** sequential (output → input via `prior_output` source kind) and parallel-consumer (shared raw input via `context_block` source kind, with `placement: system` for cross-prompt cache alignment)
-   - **Routing decision:** Option 4 — Lookup `wmkf_ai_prompt` on `wmkf_ai_run` + naming convention `<domain>.<purpose>` on `wmkf_ai_promptname` (e.g., `phase-i.summary`, `phase-i.compliance`, `shared.full_application`)
-   - **Caching contract:** byte-identical prefixes across callers; `cacheable: true|false` flag on each declared variable; variables declared in system vs user placement; context blocks (Phase 2) enable cross-prompt cache alignment
+1. **CI fix** — `tests/integration/auth-routes.test.js` mock for `baseConfig` was missing the internal cache helpers (`_shouldReloadOverrides`, `_setOverridesCache`, `clearModelOverridesCache`), causing the dynamics-explorer/chat path to throw post-auth. Added the helpers + a direct mock of `lib/services/model-override-loader`. Bumped all `actions/checkout@v4` → `@v5` and `actions/setup-node@v4` → `@v5` to silence the Node 20 deprecation warning.
+2. **`phase-i.summary` prompt row seeded** in `wmkf_ai_prompts` (sandbox row `d4201d8e-3840-f111-88b5-000d3a3065b8`). Idempotent seed at `scripts/seed-phase-i-summary-prompt.js`. Documents the Phase 0 placement compromise (3 of 4 declared user-placement variables physically interpolate into the system prompt — kept as-is to avoid prompt-quality drift this close to cycle; Phase 2 reconciles via `placement: "system"` on context blocks).
+3. **`executePrompt()` Executor service** at `lib/services/execute-prompt.js`. Implements the 10-step contract. Single entry point. Phase 0 supported source kinds: `dynamics`, `sharepoint`, `override`. Target kinds: `akoya_request` (with optional `$.foo` jsonPath), `none`. Guards: `skip-if-populated`, `always-overwrite`. parseModes: `raw`, `json`. Returns `{ parsed, runId, cacheHit, blocked, conflicts, writeResults, usage, meta }`.
+4. **Executor Contract extended** with output guards (`docs/EXECUTOR_CONTRACT.md`). Step 4 = preflight guards before Claude call (no wasted tokens on conflicts). New section "Notes for caller authors" gives explicit guidance for Connor on `forceOverwrite` defaults per parent-flow type. Added `usage` + `meta` to return shape for caller observability.
+5. **`summarize-v2.js` refactored** from 292 → 145 lines. Now does only Vercel-specific concerns (auth, rate limit, file load from `fileRef`, 409 shaping for UI, per-user usage logging). UI compatibility preserved — same 409 conflict shape, same 200 success shape.
+6. **End-to-end smoke test** — `scripts/test-execute-prompt.js`. Three runs verified against sandbox request 993879 (Carter/UNC-CH):
+   - empty field, no force → write OK, run row OK, both Lookups populated, 23.1s
+   - populated, no force → blocked, no Claude call, 0.4s, run row with `Needs Review` status
+   - populated, `--force` → write OK, **`cacheHit: true`** on rerun, 21.5s
+7. **UI smoke test** through `/phase-i-dynamics` — works first time, 409 warning on second run, overwrite-with-cache-hit on third. Justin verified.
+8. **Doc reconciliations:**
+   - `docs/PROMPT_STORAGE_DESIGN.md` — body rewrite applying the Session 109 renames (`wmkf_prompt_template` → `wmkf_ai_prompt`, etc.); reconciliation banner becomes a tighter history note.
+   - `docs/BACKEND_AUTOMATION_PLAN.md` — Session 110 update describing the Vercel-side ship, the strategic winddown framing, and pending Executor extensions for backend automation.
+   - `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md` — Wave 1 ✅ shipped 2026-04-24 with outstanding follow-ups listed.
+   - `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md` — added explicit retirement criterion (3 flags on dataverse 14+ days, table-drop scheduled).
 
-3. **Walked the architecture through concrete lenses** (each a section in the plan file)
-   - **User-friendly Vercel features** — PDF upload (all-`override` variables), interactive Q&A (each turn = separate Executor call, state in route), download formats (post-Executor utilities), prompt preview + per-session edit (`overridePromptBody` deferred to Phase 2), streaming (stays outside Executor for now), Dynamics Explorer agent loop (separate path)
-   - **Vercel code shift** — orchestration moves to Dynamics + shared Executor; UI/auth/UX stays entirely on Vercel. Reference route like `summarize-v2.js` shrinks from ~200 lines to ~30
-   - **Worked example** — Summary + Keywords from PDF: one prompt row in Dynamics, 9 identical Executor steps in both callers, PA and Vercel differ only in trigger/auth/runSource/post-execution UX
-   - **Connor's "compliance needs full docs" observation** — expanded the architecture to include parallel-consumer chains via context blocks with `placement: system` so summary + compliance share cached document prefix
+### Strategic shift (mid-session)
 
-4. **Connor additions confirmed live end-of-session (2026-04-24)**
-   - `wmkf_ai_systemprompt` Memo on `wmkf_ai_prompt` — enables system/user split for Claude prompt caching. **Note: the field name is `wmkf_ai_systemprompt` (no underscore between "system" and "prompt"); EXECUTOR_CONTRACT.md and memory updated to reflect.**
-   - Lookup `wmkf_ai_prompt` on `wmkf_ai_run` targeting `wmkf_ai_prompt` — fixes provenance gap. Bonus: auto-generated virtual `wmkf_ai_promptname` String on run rows, so resolved prompt name is available without a join.
-   - `wmkf__ai_summary` double-underscore still present on `akoya_request` — not yet deleted; cosmetic only, we ignore it (all writes target single-underscore `wmkf_ai_summary`).
+Justin clarified the post-May-2026 trajectory. Key points (captured in `memory/project_phase_i_summary_app_winddown.md`):
 
-5. **Phased delivery plan** (Phase 0 → 1 → 2)
-   - **Phase 0 (by 2026-05-01):** shared Dynamics core + Vercel Executor only. No PA flows, no context blocks, no cross-prompt cache alignment. First prompt row: `phase-i.summary`. Reference route: `summarize-v2.js` refactored to ~30 lines.
-   - **Phase 1 (post-cycle):** Connor builds `ExecutePrompt` PA child flow + first parent flow. Same prompt rows. Adds `prior_output` source kind. Echo-prompt test oracle verifies byte-identical output from both callers.
-   - **Phase 2 (when compliance joins summary):** context blocks + parallel-consumer chains. `shared.full_application` block authored. `placement: system` attribute added. `context_block` source kind added. Cross-prompt cache alignment kicks in.
+- **Cycle structure changes** post-May 2026: Phase I and Phase II merge into a streamlined single-phase process. Many proposals will use AI-generated summaries instead of human writeups. Demand for the `/phase-i-dynamics` user-facing app collapses.
+- **Backend automation owns the future** of intake-style workflows (compliance, fit assessment, keywords). These should be authored backend-first (PA-triggered Executor calls), not as new user-facing routes.
+- **User-driven apps that tie into Dynamics still get forward investment** — reviewer finder, Phase II writeup/Q&A, Expertise Finder, Grant Reporting, Review Manager. Justin specifically called this out so it doesn't get caught in the winddown framing.
+- **`phase-i.compliance` was deferred from Phase 0.** When built (post-cycle), it's a backend-first prompt. The Executor extensions needed to support it are listed below as Session 111+ work.
 
-6. **Docs + memory**
-   - `docs/EXECUTOR_CONTRACT.md` created — the one-page operational spec, whiteboard-ready. Both implementations build against this. Scope-of-generality section makes it explicit that this is NOT a universal LLM workflow engine — it's for Pattern A / dual-caller / Pattern B+C prompts. Agent loops, streaming, non-Claude, Batch API stay on separate paths.
-   - `docs/PROMPT_STORAGE_DESIGN.md` reconciliation banner added — name-rename table, Connor's Phase 0 additions noted as live, phased plan pointer, EXECUTOR_CONTRACT reference. Didn't do a full-body rename — banner prevents someone implementing from stale names without seeing the correction.
-   - `memory/project_prompt_storage_strategy.md` rewritten — Session 109 decisions captured: Path B, function/process split, two chain shapes, ground-truth schema, phased plan, non-goals.
-   - `MEMORY.md` index line updated to point to EXECUTOR_CONTRACT.md as the operational spec.
+### Commits (5 ahead of origin)
 
-### Commits
+- `107a73b` Fix CI: baseConfig mock + actions v5
+- `f465799` seed phase-i.summary + output guards in contract
+- `b12282e` Phase 0 Executor + smoke test
+- `56a170a` Refactor summarize-v2 (292 → 145 lines)
+- `6945d6b` Doc reconciliations after Phase 0 ship
 
-- `adef1c8` Session 109: Executor Contract + Phase 0 schema reconciliation
+**Not yet pushed to origin.** First step in Session 111 is `git push origin main`.
 
-(Session 109 produced a single commit because most of the work was architectural/conceptual — the plan file at `/Users/gallivan/.claude/plans/ok-claude-connor-is-precious-dove.md` captures ~4× more detail than fit into the committed docs, intentionally. The plan file is the complete record of the reconciliation conversation; the committed docs are the operational distillation.)
+## Key state facts
 
-## Key State Facts
+- **Phase 0 Vercel implementation: complete.** No further changes needed for the May 1 cycle to function via the new Executor.
+- **`phase-i.summary` row**: GUID `d4201d8e-3840-f111-88b5-000d3a3065b8` in sandbox. Single output to `wmkf_ai_summary`, parseMode raw, guard skip-if-populated. Sonnet 4 model, temperature 0.3, max_tokens 16384.
+- **`phase-i.compliance` row**: not authored. Connor provided a draft prompt (in Session 110 conversation transcript). Plan: trim to clerical + keywords + priority-fit (drop summary task — `phase-i.summary` owns that). Backend-first.
+- **Executor extensions still pending** (needed for backend intake automation, not for May 1):
+  1. `preprocess: pdf_native` — send PDFs to Claude as document content blocks (Anthropic supports). Required for budget compliance check.
+  2. Multi-output PATCH coalescing — current Executor PATCHes outputs sequentially with the same ETag; second PATCH would 412. Group all `akoya_request` writes into one PATCH (one GET for jsonPath fields, one PATCH for everything).
+  3. Picklist target output type — `wmkf_ai_compliancecheck` and `wmkf_ai_fitassessment` are Picklists. Add an output-schema convention for label→option-set mapping so Claude returns string labels and Executor maps to numeric values.
+- **Wave 1 flag flips still pending** (orthogonal — Justin to flip on his pace).
+- **Today's date: 2026-04-25.** Cycle arrives 2026-05-01 — 6 days.
 
-- **Phase 0 schema is complete in Dynamics sandbox.** Every field the Executor contract needs — reading or writing — exists in the live schema. No further schema asks pending for Phase 0. The one outstanding cosmetic item (`wmkf__ai_summary` deletion) doesn't block anything.
-- **`wmkf_ai_prompt` still has 0 rows.** Table is ready; awaiting first seed (`phase-i.summary`).
-- **Vercel code is unchanged this session.** No executor service function yet, no route refactor yet. `pages/api/phase-i-dynamics/summarize-v2.js` still uses the scratch-row `PromptResolver` from Session 103.
-- **Wave 1 flag flips still pending** (orthogonal to this work — per `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md`).
-- **Today's date: 2026-04-24.** Cycle arrives 2026-05-01 — 7 days.
+## Potential next steps
 
-## Potential Next Steps
+### 1. Push Session 110 commits to origin
+`git push origin main`. Five commits waiting.
 
-### 1. Seed `phase-i.summary` prompt row (prerequisite for everything else)
-Write a script like `scripts/seed-phase-i-summary-prompt.js` that creates or updates the first `wmkf_ai_prompt` row. Fields to populate:
-- `wmkf_ai_promptname`: `phase-i.summary`
-- `wmkf_ai_systemprompt`: the system prompt text (extract from `shared/config/prompts/phase-i-dynamics.js`)
-- `wmkf_ai_promptbody`: the user prompt template with `{{var}}` slots + explicit `<<<CACHE_BOUNDARY>>>` marker
-- `wmkf_ai_promptvariables`: JSON array per the contract (`dynamics` + `sharepoint` + `override` source kinds)
-- `wmkf_ai_promptoutputschema`: JSON with `outputs[]` (targets: `wmkf_ai_summary` + `wmkf_ai_dataextract.$.keywords`) and `jsonSchema`
-- `wmkf_ai_model`: `claude-sonnet-4-6`
-- `wmkf_ai_promptstatus`: `Published` (682090001)
-- `wmkf_ai_iscurrent`: `true`
-- `wmkf_promptversion`: `1`
+### 2. Cycle-prep verification (May 1 readiness)
+Light pre-flight before the cycle hits:
+- `npm run test:ci` — confirm CI green on the merged Session 110 commits
+- One more end-to-end smoke run via `/phase-i-dynamics` to confirm prod parity (the UI test we already did was against sandbox via dev server)
+- Spot-check that the seed row is unchanged in sandbox: `grep -A 2 "phase-i.summary" scripts/seed-phase-i-summary-prompt.js | head -3`
 
-Run it against sandbox first. Validate by fetching the row back and round-tripping the JSON fields.
+### 3. Executor extensions for backend automation (post-cycle work)
+None of these block May 1. All three are needed before backend intake automation can ship.
 
-### 2. Build `executePrompt()` Vercel service function
-New file `lib/services/execute-prompt.js`. Nine steps per `docs/EXECUTOR_CONTRACT.md`:
-1. Resolve prompt (extend existing `PromptResolver` or replace with direct Dataverse query by name + iscurrent)
-2. Parse `wmkf_ai_promptvariables`
-3. Resolve each variable via source-kind switch: `dynamics` (use `DynamicsService.getRecord`), `sharepoint` (use `GraphService.listFiles` + `lib/utils/file-loader.js`), `override` (from input)
-4. Compose Claude payload: system + user split, `cache_control: ephemeral` at `<<<CACHE_BOUNDARY>>>` marker
-5. Call Anthropic API
-6. Parse output JSON against `wmkf_ai_promptoutputschema.jsonSchema`
-7. Persist each output: PATCH `akoya_request` fields (with JSON-path set for `wmkf_ai_dataextract`)
-8. Create `wmkf_ai_run` row with the new Lookup populated + full audit fields
-9. Return `{ parsed, runId, cacheHit }`
+**3a. `preprocess: pdf_native`** — Anthropic's messages API supports PDF document blocks (`{type: "document", source: {type: "base64", data: "...", media_type: "application/pdf"}}`). Add this preprocess hint to the variable resolver — when set, instead of running pdf-parse → text, the file's buffer is base64-encoded and inserted into the user message as a content block. Will need to update `composeMessages()` to support an array of content parts (mix of text + document blocks).
 
-Write a unit/integration test that goes end-to-end against a known sandbox request.
+**3b. Multi-output PATCH coalescing** — refactor `persistOutputs()` in the Executor:
+- Compose a single PATCH payload merging all `akoya_request` field-targets
+- For jsonPath outputs sharing the same Memo field, do one GET → merge all paths → include in the single PATCH
+- Use the captured ETag for `If-Match` once
+- Document: "all outputs to same row → one PATCH" semantics
 
-### 3. Refactor `summarize-v2.js` as the reference call site
-Reduce `pages/api/phase-i-dynamics/summarize-v2.js` to ~30 lines: auth, overwrite guard, `await executePrompt('phase-i.summary', requestId, overrides, 'Vercel Interactive')`, return response. The existing route is the natural testbed because it already uses `PromptResolver` + has the overwrite-guard pattern.
+**3c. Picklist target type** — extend output schema:
+```json
+{
+  "name": "clerical_status",
+  "type": "string",
+  "target": { "kind": "akoya_request", "field": "wmkf_ai_compliancecheck" },
+  "valueMap": { "pass": 682090000, "fail": 682090001, "review": 682090002 }
+}
+```
+Executor reads `valueMap[claudeReturnedString]` and writes the numeric value. Probe option-set values for `wmkf_ai_compliancecheck` and `wmkf_ai_fitassessment` before authoring `phase-i.intake-check`.
 
-### 4. Smoke test end-to-end against a real Phase I request
-Pick a test request in sandbox. Run through the UI at `/phase-i-dynamics`. Verify:
-- Prompt fetched from Dynamics
-- PDF pulled from SharePoint via the existing bucket walker
-- Claude called with system/user split + cache_control
-- Summary written to `akoya_request.wmkf_ai_summary`
-- Keywords written to `akoya_request.wmkf_ai_dataextract` at `$.keywords`
-- `wmkf_ai_run` row created with Lookup populated
-- Second invocation on same request → `cacheHit: true`
+### 4. Author `phase-i.intake-check` prompt (post-cycle)
+After 3a-3c land. Three tasks: clerical (sections + budget validation) + keywords + priority fit. Drop the summary task (overlaps `phase-i.summary`). Connor's draft prompt is in the Session 110 conversation transcript at `/Users/gallivan/.claude/plans/` if needed; otherwise reauthor against the trimmed scope. Six outputs targeting:
+- `wmkf_ai_compliancecheck` (Picklist via valueMap)
+- `wmkf_ai_complianceissues` (Memo, list of violations)
+- `wmkf_ai_compliancesummary` (Memo, brief rationale)
+- `wmkf_ai_fitassessment` (Picklist via valueMap)
+- `wmkf_ai_fitrationale` (Memo)
+- `wmkf_ai_dataextract.$.keywords` (jsonPath)
 
-### 5. (Optional) Author `phase-i.compliance` prompt row
-Same mechanics as `phase-i.summary` but for format + content compliance check. Phase 0 version reads the full PDF again (no cache alignment with summary yet — Phase 2 fixes that via context blocks). If bandwidth allows, ship for May 1; otherwise defer to post-cycle.
+### 5. User-driven app forward work (Justin's emphasis)
+Don't park user-driven apps that tie into Dynamics. Possible Session 111+ targets:
+- Reviewer Finder Dynamics integration (currently Postgres-resident; Wave 2 of the migration plan covers it)
+- Phase II writeup/Q&A — does it need any Dynamics writeback today?
+- Expertise Finder — currently Postgres-resident roster; Wave 4 migration target
+- Grant Reporting — already integrates with Dynamics for grant lookup; consider whether report content should write back to a `wmkf_ai_report` row when the user finalizes
 
-### 6. (After Phase 0 ships) Remaining reconciliations from the plan file
-- Global body rewrite of `docs/PROMPT_STORAGE_DESIGN.md` (banner is in place; full rename of field references still pending)
-- Update `docs/BACKEND_AUTOMATION_PLAN.md` with "Wave 1 complete" note + prompt-reshape milestone
-- Update `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md` with Wave 1 ✅
-- Set explicit retirement criterion in `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md`
-- Re-resolve `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` pipeline-state storage question (recommend: akoya_request fields + wmkf_ai_run JSON, not a new Postgres table)
-- Consider writing `docs/ARCHITECTURE_SPINE.md` as the canonical link-target so future design docs stop drifting
+These don't have a deadline; they're "what's next" candidates once cycle is stable.
 
-## Key Files Reference
+### 6. (Stretch) Other Session 109 punch-list items
+- `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` — re-resolve pipeline-state storage decision (recommend: `akoya_request` fields + `wmkf_ai_run` JSON, not a new Postgres table)
+- `docs/ARCHITECTURE_SPINE.md` — write as canonical link target so future design docs stop drifting
+- `DEVELOPMENT_LOG.md` — last entry is Session 84; long backfill task, low priority
+
+## Key files reference
 
 | File | Purpose |
-|------|---------|
-| `docs/EXECUTOR_CONTRACT.md` | **The shared spec.** Both PA and Vercel executors build against this. One page. Whiteboard-ready. |
-| `docs/PROMPT_STORAGE_DESIGN.md` | Design backdrop; now carries a reconciliation banner mapping old field names to actual |
-| `/Users/gallivan/.claude/plans/ok-claude-connor-is-precious-dove.md` | Full record of the Session 109 reconciliation conversation — ~4× more detail than the committed docs |
-| `lib/services/prompt-resolver.js` | Current Session 103 scratch-row resolver; needs extension or replacement for Phase 0 |
-| `pages/api/phase-i-dynamics/summarize-v2.js` | Reference call site; will shrink to ~30 lines |
-| `shared/config/prompts/phase-i-dynamics.js` | Current canonical prompt text; extract system vs. body for the seed |
-| `scripts/inspect-ai-fields.js` | Pre-existing schema probe — `wmkf_ai_*` fields on `akoya_request` + `wmkf_ai_run` |
-| `/tmp/verify-phase0-schema.mjs` | Session 109 probe — use as template for future schema verification |
-| `lib/services/dynamics-service.js` | `getRecord` / `updateIfEmpty` — the Vercel executor's Dataverse client |
-| `lib/services/graph-service.js` | `listFiles` / `getFileContent` — the Vercel executor's SharePoint client |
-| `lib/utils/sharepoint-buckets.js` | `getRequestSharePointBuckets` — walks active + archive libraries for a request |
-| `lib/utils/file-loader.js` | PDF/DOCX → text extraction (preprocess hint `pdf_to_text`) |
+|---|---|
+| `lib/services/execute-prompt.js` | **The Executor.** 10-step Phase 0 implementation. |
+| `docs/EXECUTOR_CONTRACT.md` | Shared spec; Connor builds PA-side `ExecutePrompt` against this. |
+| `pages/api/phase-i-dynamics/summarize-v2.js` | Reference call site (~145 lines). |
+| `scripts/seed-phase-i-summary-prompt.js` | Idempotent seed for `phase-i.summary` row. |
+| `scripts/test-execute-prompt.js` | End-to-end smoke test. `--force-overwrite`, `--restore ""` options. |
+| `lib/services/dynamics-service.js` | `getRecord` / `updateRecord` (with `ifMatch`) / `queryRecords` / `createRecord` — already wired with `_etag` capture in `processAnnotations`. |
+| `lib/utils/sharepoint-buckets.js` | `getRequestSharePointBuckets` — walks active + archive libraries. |
+| `lib/utils/file-loader.js` | `loadFile` (via fileRef) and `extractTextFromBuffer` (used directly by Executor's sharepoint resolver). |
+| `memory/project_phase_i_summary_app_winddown.md` | Strategic context for post-cycle direction. |
 
 ## Testing
 
 ```bash
-# Re-run the Phase 0 schema probe (sandbox)
-node /tmp/verify-phase0-schema.mjs
+# Reproduce the cycle path locally (auth disabled in dev)
+npm run dev
+# → http://localhost:3000/phase-i-dynamics
 
-# (New in Session 110) Seed the first prompt row
-node scripts/seed-phase-i-summary-prompt.js --target=sandbox --dry-run
-node scripts/seed-phase-i-summary-prompt.js --target=sandbox --execute
+# Re-run the executor smoke test
+node scripts/test-execute-prompt.js                  # default — block-or-write
+node scripts/test-execute-prompt.js --force-overwrite # force, expect cacheHit on rerun
+node scripts/test-execute-prompt.js --restore ""      # reset wmkf_ai_summary
 
-# (New in Session 110) End-to-end test against a known request
-# via the UI at http://localhost:3000/phase-i-dynamics with auth disabled
+# Re-seed if the prompt row drifts
+node scripts/seed-phase-i-summary-prompt.js --execute
 
-# Wave 1 parity tests (unchanged from Session 108, still safe to rerun)
-node scripts/test-wave1-flag-dispatch.js
-node scripts/verify-wave1-read-path.js --target=prod
+# CI suite
+npm run test:ci
 ```
 
 ## Session hand-off notes
 
-- **Do the prompt row before the Executor code.** The Executor's debugging loop is much cleaner when there's a real row to fetch. Ship the seed script first, confirm the row is fetchable + the JSON round-trips cleanly, then build `executePrompt()` against a known-good seed.
-- **Cycle deadline is real but narrow.** If Executor work is still shaky by 2026-04-30, fall back: keep `summarize-v2.js` using the scratch-row `PromptResolver` for the May cycle. The Executor work isn't wasted — Phase 1 (PA) will consume the same prompt rows either way. No data loss either way; the prompts for Phase I summaries would just use the Session 103 code path one more cycle.
-- **`wmkf_ai_systemprompt` — no underscore in "systemprompt".** Easy to get wrong. Committed docs reflect the correct name.
-- **Resist building context blocks in Phase 0.** Tempting given the architecture's clean, but it's Phase 2 by design. Summary + compliance running back-to-back without context blocks pays the token double-bill for a few hundred proposals — bounded cost, acceptable.
-- **Connor is Phase 1+ owner.** Don't do any PA work in Vercel's name; the handoff to Connor is the echo-prompt test oracle + a fresh read of `docs/EXECUTOR_CONTRACT.md`.
-- **Session-ending verification passed.** Re-probing schema end of session confirmed Connor's two additions are live; no blockers to beginning implementation.
+- **Push the commits early.** Five commits ahead of origin; pushing at the start of the next session puts `origin/main` in the right state for any branch work.
+- **Don't start Executor extensions (3a-3c) under cycle pressure.** They're real work and they're for backend automation, not for May 1. Cycle pressure encourages cutting corners; do these post-cycle.
+- **Connor will need a brief on the contract changes** — output guards, `forceOverwrite`, `usage`/`meta` return additions. The "Notes for caller authors" section in `EXECUTOR_CONTRACT.md` is the deliverable; ping Connor once Phase 0 is fully shipped (probably after the first cycle smoke test).
+- **The strategic shift is real.** Don't spend Session 111 cycles on `/phase-i-dynamics` UI polish or new user-facing intake routes. The backend track is the future. User-driven apps that tie into Dynamics (review finder etc.) remain investment-worthy — see the dedicated note above.
