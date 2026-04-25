@@ -181,14 +181,32 @@ A `dynamics` source variable that pulls a Picklist field value gets the numeric 
 
 Phase 1 of this extension: **output side only**. Phase 2: input side, if needed.
 
-### Schema-probe utility
+### Schema-probe utility — shipped Session 110
 
-Before authoring `valueMap`s, the option-set values must be probed from metadata. Add `scripts/probe-picklist.js` (generalize the inline probe from Session 110) that takes `<entity>.<field>` arguments and dumps the option-set with both numeric values and labels, ready to paste into a prompt-row JSON.
+`scripts/probe-picklist.js` (Session 110) takes `<entity>.<field>` arguments and dumps the option-set with both numeric values and labels, ready to paste into a prompt-row JSON.
 
 ```bash
 node scripts/probe-picklist.js akoya_request.wmkf_ai_compliancecheck
 node scripts/probe-picklist.js akoya_request.wmkf_ai_fitassessment
 ```
+
+Probed values for the two picklists relevant to `phase-i.intake-check` (probed 2026-04-25):
+
+```json
+"wmkf_ai_compliancecheck": {
+  "Compliant":     682090000,
+  "Non-Compliant": 682090001,
+  "Human Review":  682090002
+}
+
+"wmkf_ai_fitassessment": {
+  "Fit":       682090000,
+  "Not a Fit": 682090001,
+  "Unclear":   682090002
+}
+```
+
+Note: Connor's labels for `wmkf_ai_compliancecheck` are **"Compliant" / "Non-Compliant" / "Human Review"** (not "pass" / "fail" / "review" as casually written elsewhere). Match these labels exactly when authoring the prompt body or the `valueMap` keys.
 
 ---
 
