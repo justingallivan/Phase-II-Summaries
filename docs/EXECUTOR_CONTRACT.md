@@ -48,6 +48,7 @@ The contract covers **Pattern A + dual-caller prompts and Pattern B/C Vercel-onl
 | `requestId` | GUID | conditional | `akoya_request` row GUID. Required for prompts that declare any `dynamics:akoya_request.*` or `sharepoint` source variables. Optional for all-`override` prompts (Pattern B/C). |
 | `overrideVariables` | object | no | Per-invocation variable overrides. Keys must match names declared in `wmkf_ai_promptvariables`. Used for user-session overrides (Vercel) and test harness runs. |
 | `runSource` | enum | yes | One of the `wmkf_ai_runsource` picklist values (e.g., `PowerAutomate Auto`, `Vercel Interactive`, `Vercel User`, `Vercel Test`). Caller supplies. |
+| `forceOverwrite` | bool | no | Default `false`. When `true`, output guards (see *Output guards*) are bypassed and the Executor writes regardless of whether targets are populated. Caller's choice — not a Dynamics-row setting. |
 
 **Deferred (Phase 1+):** `overridePromptBody: { system?: string, body?: string }` — body-level override for per-session prompt editing (PROMPT_STORAGE_DESIGN §17). Not needed for May 1.
 
@@ -55,9 +56,11 @@ The contract covers **Pattern A + dual-caller prompts and Pattern B/C Vercel-onl
 
 | Name | Type | Purpose |
 |---|---|---|
-| `parsed` | object | Output object matching `wmkf_ai_promptoutputschema`. Downstream chain steps consume this. |
+| `parsed` | object \| null | Output object matching `wmkf_ai_promptoutputschema`. `null` when `blocked = true`. Downstream chain steps consume this. |
 | `runId` | GUID | `wmkf_ai_run.wmkf_ai_runid` for the logged Execution. |
 | `cacheHit` | bool | Derived from Claude response's `usage.cache_read_input_tokens > 0`. For observability. |
+| `blocked` | bool | `true` when at least one guarded target was already populated and `forceOverwrite` was false. Claude was not called; no targets written. |
+| `conflicts` | array | When `blocked`, one entry per guarded target that triggered the block: `{ output, table, field, existingContent, existingLength, modifiedOn }`. Caller (typically Vercel) uses this to render a confirm-overwrite UI. |
 
 ### Errors
 
@@ -67,19 +70,20 @@ Executor throws (Vercel) or sets failure status (PA) on: prompt not found, varia
 
 ---
 
-## The 9 steps
+## The 10 steps
 
 | # | Step | PA action | Vercel equivalent |
 |---|---|---|---|
 | 1 | Resolve prompt | HTTP GET `wmkf_ai_prompts?$filter=wmkf_ai_promptname eq '<name>' and wmkf_ai_iscurrent eq true&$top=1` | `PromptResolver.getPrompt(name)` (to be extended) |
 | 2 | Parse variable declarations | Parse JSON on `wmkf_ai_promptvariables` | `JSON.parse(row.wmkf_ai_promptvariables)` |
 | 3 | Resolve variable values | Apply-to-each + Switch on `source.kind` | Loop + switch; source kinds handled by dedicated resolvers |
-| 4 | Compose Claude payload | Compose action: system + user blocks; `cache_control: {type:"ephemeral"}` at declared prefix boundary | `buildClaudeRequest(prompt, variables)` |
-| 5 | Call Claude | HTTP action → Anthropic API | `fetch('https://api.anthropic.com/v1/messages', ...)` |
-| 6 | Parse output | Parse JSON on Claude response `content[0].text` using `wmkf_ai_promptoutputschema.jsonSchema` | Same |
-| 7 | Persist outputs | Apply-to-each target binding + Switch on `target.kind` | Same loop |
-| 8 | Log Execution | Create `wmkf_ai_run`: Lookup to prompt row, `wmkf_ai_promptversion`, `wmkf_ai_runsource`, `wmkf_ai_status`, `wmkf_ai_model`, `wmkf_ai_rawoutput`, token/cache counts in `wmkf_ai_notes`, `wmkf_ai_request` Lookup | Same |
-| 9 | Return | Return `{ parsed, runId, cacheHit }` | `return { parsed, runId, cacheHit }` |
+| 4 | **Preflight output guards** | For each output with `guard != "always-overwrite"`, GET target field. If populated AND `forceOverwrite = false` → write `wmkf_ai_run` with status `Needs Review`, return `{ blocked: true, conflicts, runId }`. Capture `@odata.etag` per target for step 8's `If-Match`. | Same. Skip steps 5–8 on block. |
+| 5 | Compose Claude payload | Compose action: system + user blocks; `cache_control: {type:"ephemeral"}` at declared prefix boundary | `buildClaudeRequest(prompt, variables)` |
+| 6 | Call Claude | HTTP action → Anthropic API | `fetch('https://api.anthropic.com/v1/messages', ...)` |
+| 7 | Parse output | Parse JSON on Claude response `content[0].text` using `wmkf_ai_promptoutputschema.jsonSchema` (or treat as raw text when `parseMode = "raw"`) | Same |
+| 8 | Persist outputs | Apply-to-each target binding + Switch on `target.kind`. PATCH with `If-Match: <etag>` from step 4 (write fails 412 on concurrent edit, surfaced to caller as `writeback_failed`). | Same loop |
+| 9 | Log Execution | Create `wmkf_ai_run`: Lookup to prompt row, `wmkf_ai_promptversion`, `wmkf_ai_runsource`, `wmkf_ai_status`, `wmkf_ai_model`, `wmkf_ai_rawoutput`, token/cache counts in `wmkf_ai_notes`, `wmkf_ai_request` Lookup | Same |
+| 10 | Return | Return `{ parsed, runId, cacheHit, blocked: false }` | `return { parsed, runId, cacheHit, blocked: false }` |
 
 ---
 
@@ -144,12 +148,14 @@ Executor throws (Vercel) or sets failure status (PA) on: prompt not found, varia
     {
       "name": "summary",
       "type": "string",
-      "target": { "kind": "akoya_request", "field": "wmkf_ai_summary" }
+      "target": { "kind": "akoya_request", "field": "wmkf_ai_summary" },
+      "guard": "skip-if-populated"
     },
     {
       "name": "keywords",
       "type": "array",
-      "target": { "kind": "akoya_request", "field": "wmkf_ai_dataextract", "jsonPath": "$.keywords" }
+      "target": { "kind": "akoya_request", "field": "wmkf_ai_dataextract", "jsonPath": "$.keywords" },
+      "guard": "skip-if-populated"
     }
   ],
   "jsonSchema": {
@@ -168,8 +174,21 @@ Executor throws (Vercel) or sets failure status (PA) on: prompt not found, varia
 | Kind | Meaning |
 |---|---|
 | `akoya_request` | PATCH a field on the `akoya_request` row identified by `requestId`. `jsonPath` optional — used when multiple outputs share a JSON Memo field (e.g., `wmkf_ai_dataextract`). |
-| `wmkf_ai_run` | Write to a field on the Execution row being created in step 8. |
+| `wmkf_ai_run` | Write to a field on the Execution row being created in step 9. |
 | `none` | Output is computed but not persisted (consumer is the caller's return value only). |
+
+**Output guards (Phase 0):**
+
+Each output may declare a `guard` policy that the Executor applies in step 4 (preflight) before any Claude call. Default is `"skip-if-populated"` for any `akoya_request` field-target.
+
+| Guard | Behavior |
+|---|---|
+| `skip-if-populated` | Read target field. If populated (string-trim length > 0; for JSON-path targets, the path must resolve and be non-null/non-empty) AND `forceOverwrite = false` → block. |
+| `always-overwrite` | Skip the preflight read. Always proceed to Claude. Use for fields that are deliberately re-derived every run (audit logs, computed scores, status flags). |
+
+**Phase 1+ deferred guards:** `append` (concatenate to existing value with separator), `version-on-conflict` (write to `field_v2` etc.), `error-on-conflict` (fail with 409 instead of returning `blocked`).
+
+**`parseMode` (output schema, Phase 0):** `"json"` (default — Claude must return parseable JSON matching `jsonSchema`) or `"raw"` (the entire `content[0].text` becomes the value of the single declared output; `jsonSchema` ignored). Multi-output prompts must use `"json"`.
 
 ---
 
@@ -204,12 +223,40 @@ Every Execution writes one `wmkf_ai_run` row with, at minimum:
 | `wmkf_ai_promptoverride` | Verbatim text of the override inputs (for audit) if applicable |
 | `wmkf_ai_runsource` | Caller-supplied input |
 | `wmkf_ai_tasktype` | Derived from the prompt row (future — after `tasktype` lands on `wmkf_ai_prompt`) |
-| `wmkf_ai_status` | `Completed` / `Failed` / `Needs Review` |
+| `wmkf_ai_status` | `Completed` / `Failed` / `Needs Review` (the last is also used for blocked runs — see *Notes for caller authors*) |
 | `wmkf_ai_model` | The model ID actually used |
 | `wmkf_ai_rawoutput` | Claude's raw response text |
 | `wmkf_ai_request` | Lookup to `akoya_request` (if applicable) |
 | `wmkf_ai_notes` | Input/output token counts + cache hit counts + any error summary |
 | `wmkf_ai_rundatetime` | Set by caller or default to now |
+
+---
+
+## Notes for caller authors (Vercel route + PA parent flow)
+
+The Executor is intentionally minimal. Two decisions belong to the caller, not the prompt row:
+
+### 1. `forceOverwrite` — set per *call site*, not per prompt
+
+Each caller decides whether the user invoking it can clobber populated target fields. Suggested defaults:
+
+| Caller | `forceOverwrite` default | Rationale |
+|---|---|---|
+| Interactive Vercel route (button click in UI) | `false` | User is in front of the screen — surface the conflict, let them confirm. Vercel route turns `blocked: true` into HTTP 409, UI shows existing content + "Overwrite?" button, user re-submits with `forceOverwrite: true`. |
+| PowerAutomate auto-trigger (status-change-driven) | depends on the trigger | If the trigger fires only on the *first* transition into the target stage, `forceOverwrite: false` is the safer default — it prevents re-runs on backsliding statuses from clobbering curated content. If the parent flow is explicitly a *re-summarize all rows* batch (e.g., model bump, prompt-template change), set `forceOverwrite: true`. |
+| Vercel test harness | `true` | Test runs use clean fixtures or controlled overwrites. |
+| PowerAutomate manual-button flow ("Re-run summary on this row") | `true` | The user clicked a button literally meaning "redo this." |
+
+**For Connor's PA flows (Phase 1):** every parent flow that calls `ExecutePrompt` must explicitly pass `forceOverwrite` as an input parameter. Don't default it to either value at the child-flow level — make the parent flow author declare intent. A bulk re-summarization flow and a first-pass intake flow have opposite correct defaults; the contract should not pick.
+
+### 2. Output `guard` — set once on the prompt row
+
+The `guard` policy lives on the `wmkf_ai_promptoutputschema` row, not per call site. It encodes a property of the *target field*, not a property of the caller. Examples:
+
+- `wmkf_ai_summary` (human-curated narrative): `guard: "skip-if-populated"` — guard fires by default; `forceOverwrite` decides
+- An audit-log JSON Memo that's always re-derived: `guard: "always-overwrite"` — Executor never preflights; `forceOverwrite` is a no-op for this output
+
+A prompt row with `guard: "always-overwrite"` on every output ignores `forceOverwrite` entirely. This is correct: the caller should not be choosing whether to overwrite a field that *should always be overwritten by design*.
 
 ---
 
@@ -243,12 +290,14 @@ If either assertion fails, the two implementations have drifted and must be reco
 ## Phase 0 concrete scope (May 1 2026)
 
 **Built for May 1 (Vercel-only):**
-- `executePrompt()` service function implementing steps 1–9
+- `executePrompt()` service function implementing steps 1–10
 - Variable source resolvers: `dynamics`, `sharepoint`, `override`
 - Preprocessor: `pdf_to_text` (via existing `lib/utils/file-loader.js`)
 - Target writer: `akoya_request` (including JSON-path set for `wmkf_ai_dataextract`)
+- Output guards: `skip-if-populated` (default for `akoya_request` field-targets) and `always-overwrite`
+- `forceOverwrite` input on the Executor; `parseMode: "raw"` and `parseMode: "json"` on output schemas
 - Reference route: `pages/api/phase-i-dynamics/summarize-v2.js` becomes a ~30-line call into `executePrompt()`
-- First prompt row: `phase-i.summary` (system/body split, cacheable PDF variable, output schema targeting `wmkf_ai_summary` + `wmkf_ai_dataextract.$.keywords`)
+- First prompt row: `phase-i.summary` (system/body split, single raw-text output to `wmkf_ai_summary`, `guard: "skip-if-populated"`)
 
 **Explicitly deferred:**
 - PowerAutomate `ExecutePrompt` child flow (Phase 1)
