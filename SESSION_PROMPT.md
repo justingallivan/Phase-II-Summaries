@@ -82,7 +82,17 @@ Prompts seeded; route is `pages/api/process-peer-reviews.js`. Smaller and more l
 - Phase II Writeup / Q&A — multi-call, high-touch app. Same Plan A pattern can author the prompts now if there's bandwidth.
 - Anything else with prompts in `shared/config/prompts/*.js` follows the same recipe.
 
-### 7. Stretch / housekeeping
+### 7. Post-cycle security follow-ups (from 2026-04-26 pass)
+The 2026-04-26 security pass closed all P1 findings that didn't require touching active upload paths or major dependency bumps. Remaining queue, all explicitly deferred per Justin's threat-model read at the time:
+
+- **Public blob → private + auth proxy** (P1 in original Codex findings, downgraded after Justin assessed leak risk as low). Affects `pages/api/upload-file.js`, `pages/api/upload-handler.js`, `pages/api/reviewer-finder/extract-summary.js`, `pages/api/review-manager/upload-review.js`. Switch blob `access` from `'public'` to `'private'`, add a `/api/blob-proxy?url=…` route that does `requireAppAccess` + signs/streams the file, update callers to use proxy URLs. Manual smoke test of every upload path is mandatory — silent 403 mid-cycle is the bad outcome.
+- **Proposal password masking** (P2). `pages/api/review-manager/reviewers.js` returns `proposalPassword` in the standard GET payload. Mask by default; add a narrowly scoped reveal/update endpoint for explicit user actions. Justin assessed blast radius as low (passwords go via email to external reviewers for SharePoint single-file access).
+- **Dynamics restrictions module-global state** (P2). `lib/services/dynamics-service.js` `activeRestrictions` is process-global and overwritten per request. Real concurrency hazard for Dynamics Explorer. Fix: pass restrictions through an explicit request-context argument or use AsyncLocalStorage.
+- **Remaining 5 moderate npm vulns** (post-`audit fix`). All blocked behind Next.js / next-auth majors. Bundle with the next planned framework upgrade rather than chasing it isolated. Audit list is in the commit message of `36a8ab6`.
+
+If a future Codex re-scan flags anything new in the same areas, treat the existing findings doc (`docs/SECURITY_FINDINGS_2026-04-26.md`) as the canonical baseline — only flag deltas vs. that doc.
+
+### 8. Stretch / housekeeping
 - `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` re-resolve pipeline-state storage (recommend `akoya_request` fields + `wmkf_ai_run` JSON, not a new Postgres table)
 - `docs/ARCHITECTURE_SPINE.md` — write as canonical link target so future design docs stop drifting
 - Optional: echo-prompt test oracle row (mentioned in Connor brief) — small `wmkf_ai_prompt` row that just echoes inputs as outputs, for cross-implementation parity verification
