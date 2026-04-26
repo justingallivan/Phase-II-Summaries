@@ -124,20 +124,23 @@ export function nextRateLimiter(options = {}) {
 }
 
 /**
- * Get identifier for rate limiting (IP or API key)
- * @param {Object} req - Request object
- * @returns {string} - Identifier
+ * Get identifier for rate limiting.
+ *
+ * Keyed strictly by client IP (forwarded hop, then socket fallback). The
+ * previous x-api-key / req.body.apiKey path was attacker-controllable: a
+ * caller could vary the header value to mint fresh buckets and bypass
+ * expensive-operation limits. Removed in the 2026-04-26 security pass.
+ *
+ * Note: per-IP keying conservatively groups multiple users behind the same
+ * NAT/VPN under one bucket. Acceptable for current scale (foundation-internal
+ * use). If finer per-user limits are needed, fold an authenticated profileId
+ * in via an explicit option — do not re-introduce request-body trust.
  */
 function getIdentifier(req) {
-  // Try to get API key first
-  const apiKey = req.headers['x-api-key'] || req.body?.apiKey;
-  if (apiKey) {
-    return `key:${apiKey.substring(0, 10)}`;
-  }
-
-  // Fall back to IP address
   const forwarded = req.headers['x-forwarded-for'];
-  const ip = forwarded ? forwarded.split(',')[0] : req.connection?.remoteAddress || '127.0.0.1';
+  const ip = forwarded
+    ? forwarded.split(',')[0].trim()
+    : (req.connection?.remoteAddress || req.socket?.remoteAddress || '127.0.0.1');
   return `ip:${ip}`;
 }
 

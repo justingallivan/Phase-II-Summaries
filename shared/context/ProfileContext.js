@@ -267,31 +267,6 @@ export function ProfileProvider({ children }) {
   }, [currentProfile, refreshPreferences]);
 
   /**
-   * Get a decrypted API key (requires separate API call)
-   */
-  const getDecryptedApiKey = useCallback(async (key) => {
-    if (!currentProfile) {
-      return null;
-    }
-
-    try {
-      const response = await fetch(
-        `/api/user-preferences?profileId=${currentProfile.id}&key=${key}&includeDecrypted=true`
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to get API key');
-      }
-
-      const data = await response.json();
-      return data.value;
-    } catch (err) {
-      console.error('Failed to get decrypted API key:', err);
-      return null;
-    }
-  }, [currentProfile]);
-
-  /**
    * Check if a preference exists for the current profile
    */
   const hasPreference = useCallback((key) => {
@@ -385,7 +360,6 @@ export function ProfileProvider({ children }) {
     setPreferences: savePreferences,  // Alias for backwards compatibility
     savePreferences,
     refreshPreferences,
-    getDecryptedApiKey,
     hasPreference,
 
     // Convenience getters

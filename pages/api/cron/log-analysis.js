@@ -17,6 +17,7 @@
 
 import { verifyCronSecret } from '../../../lib/utils/cron-auth';
 import NotificationService from '../../../lib/services/notification-service';
+import { redactLogText, redactErrorList } from '../../../lib/utils/log-redactor';
 
 const ERROR_THRESHOLD = 10; // minimum errors to trigger AI analysis
 const LOOKBACK_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -53,14 +54,17 @@ export default async function handler(req, res) {
     const logsData = await logsResponse.json();
     const events = logsData.events || [];
 
-    // Extract error messages
-    const errors = events
-      .filter(e => e.type === 'error' || e.type === 'stderr')
-      .map(e => ({
-        timestamp: e.created,
-        message: e.text || e.payload?.text || JSON.stringify(e.payload || {}),
-        path: e.payload?.path || e.proxy?.path || 'unknown',
-      }));
+    // Extract error messages and redact credentials/PII before any value
+    // leaves the system (Claude prompt, alert metadata).
+    const errors = redactErrorList(
+      events
+        .filter(e => e.type === 'error' || e.type === 'stderr')
+        .map(e => ({
+          timestamp: e.created,
+          message: e.text || e.payload?.text || JSON.stringify(e.payload || {}),
+          path: e.payload?.path || e.proxy?.path || 'unknown',
+        }))
+    );
 
     if (errors.length < ERROR_THRESHOLD) {
       return res.json({
@@ -72,7 +76,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // Summarize errors for AI analysis
+    // Summarize errors for AI analysis (redaction already applied above)
     const errorSummary = errors
       .slice(0, 50) // limit to 50 for token efficiency
       .map(e => `[${new Date(e.timestamp).toISOString()}] ${e.path}: ${e.message}`)
@@ -99,7 +103,10 @@ export default async function handler(req, res) {
     let analysis = 'AI analysis unavailable';
     if (analysisResponse.ok) {
       const aiResult = await analysisResponse.json();
-      analysis = aiResult.content?.[0]?.text || 'No analysis returned';
+      // Redact again on the way out — Claude responses occasionally echo
+      // input substrings, and the analysis is stored in alerts that may be
+      // read by less-privileged dashboards.
+      analysis = redactLogText(aiResult.content?.[0]?.text || 'No analysis returned');
     }
 
     // Create alert with analysis

@@ -22,6 +22,7 @@ import {
   requireAuth,
   requireAuthWithProfile,
   requireAppAccess,
+  isAuthRequired,
 } from '../../../lib/utils/auth';
 
 // Clear the in-memory app-access cache between every test
@@ -98,6 +99,22 @@ describe('requireAuth', () => {
     const result = await requireAuth(req, res);
 
     expect(result).toBeTruthy();
+  });
+
+  it('returns 403 on POST with cookies but no Origin or Referer header', async () => {
+    mockAuthenticatedUser(1, []);
+    process.env.NEXTAUTH_URL = 'https://our-app.vercel.app';
+
+    const req = createMockReq({
+      method: 'POST',
+      headers: { cookie: 'next-auth.session-token=test' },
+    });
+    const res = createMockRes();
+
+    const result = await requireAuth(req, res);
+
+    expect(result).toBeNull();
+    expect(res.status).toHaveBeenCalledWith(403);
   });
 });
 
@@ -259,5 +276,72 @@ describe('requireAppAccess', () => {
 
     expect(result).toBeNull();
     expect(res.status).toHaveBeenCalledWith(403);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isAuthRequired — production fail-closed
+// ---------------------------------------------------------------------------
+describe('isAuthRequired (production fail-closed)', () => {
+  const ORIGINAL_ENV = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  it('returns true in production when AUTH_REQUIRED is missing and no emergency bypass', () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.AUTH_REQUIRED;
+    delete process.env.EMERGENCY_AUTH_BYPASS;
+    process.env.AZURE_AD_CLIENT_ID = 'x';
+    process.env.AZURE_AD_CLIENT_SECRET = 'x';
+    process.env.AZURE_AD_TENANT_ID = 'x';
+
+    expect(isAuthRequired()).toBe(true);
+  });
+
+  it('returns true in production when Azure credentials are missing and no emergency bypass', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.AUTH_REQUIRED = 'true';
+    delete process.env.EMERGENCY_AUTH_BYPASS;
+    delete process.env.AZURE_AD_CLIENT_ID;
+    delete process.env.AZURE_AD_CLIENT_SECRET;
+    delete process.env.AZURE_AD_TENANT_ID;
+
+    expect(isAuthRequired()).toBe(true);
+  });
+
+  it('returns false in production only when EMERGENCY_AUTH_BYPASS=true', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.EMERGENCY_AUTH_BYPASS = 'true';
+    delete process.env.AUTH_REQUIRED;
+    delete process.env.AZURE_AD_CLIENT_ID;
+
+    expect(isAuthRequired()).toBe(false);
+  });
+
+  it('keeps existing dev behavior: false when AUTH_REQUIRED!=true', () => {
+    process.env.NODE_ENV = 'development';
+    delete process.env.AUTH_REQUIRED;
+
+    expect(isAuthRequired()).toBe(false);
+  });
+
+  it('keeps existing dev behavior: false when Azure credentials missing', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.AUTH_REQUIRED = 'true';
+    delete process.env.AZURE_AD_CLIENT_ID;
+
+    expect(isAuthRequired()).toBe(false);
+  });
+
+  it('returns true in dev when AUTH_REQUIRED=true and creds present', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.AUTH_REQUIRED = 'true';
+    process.env.AZURE_AD_CLIENT_ID = 'x';
+    process.env.AZURE_AD_CLIENT_SECRET = 'x';
+    process.env.AZURE_AD_TENANT_ID = 'x';
+
+    expect(isAuthRequired()).toBe(true);
   });
 });

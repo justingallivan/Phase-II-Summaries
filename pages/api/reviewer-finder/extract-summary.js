@@ -16,6 +16,8 @@ import { extractPages } from '../../../lib/utils/pdf-extractor';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import Busboy from 'busboy';
 
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
 export const config = {
   api: {
     bodyParser: false, // busboy needs the raw stream
@@ -44,6 +46,22 @@ export default async function handler(req, res) {
 
     if (!proposalId) {
       return res.status(400).json({ error: 'proposalId is required' });
+    }
+
+    // IDOR guard: confirm the proposal belongs to the caller before letting
+    // the upload write to it. The previous implementation accepted any
+    // proposalId and updated all matching reviewer_suggestions rows, allowing
+    // one reviewer-finder user to clobber another user's saved candidates.
+    // (Security pass 2026-04-26.)
+    const callerProfileId = access.profileId;
+    const ownership = await sql`
+      SELECT 1
+      FROM proposal_searches
+      WHERE id = ${proposalId} AND user_profile_id = ${callerProfileId}
+      LIMIT 1
+    `;
+    if (ownership.rowCount === 0) {
+      return res.status(403).json({ error: 'Proposal not found or not owned by caller' });
     }
 
     const pages = summaryPages || '2';
@@ -81,6 +99,11 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
+    if (error?.code === 'FILE_TOO_LARGE') {
+      return res.status(413).json({
+        error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB.`
+      });
+    }
     console.error('Extract summary error:', error);
     return res.status(500).json({
       error: 'Failed to extract summary',
@@ -91,23 +114,35 @@ export default async function handler(req, res) {
 }
 
 /**
- * Parse multipart form data using busboy
+ * Parse multipart form data using busboy with stream-level size limit.
+ * (Security pass 2026-04-26: aborts before fully buffering oversized uploads.)
  */
 function parseFormData(req) {
   return new Promise((resolve, reject) => {
-    const busboy = Busboy({ headers: req.headers });
+    const busboy = Busboy({ headers: req.headers, limits: { fileSize: MAX_FILE_SIZE, files: 1 } });
     const fields = {};
     let fileData = null;
+    let aborted = false;
 
     busboy.on('file', (fieldname, file) => {
       const chunks = [];
       file.on('data', (chunk) => chunks.push(chunk));
-      file.on('end', () => { fileData = Buffer.concat(chunks); });
+      file.on('limit', () => {
+        aborted = true;
+        file.resume();
+        const err = new Error('FILE_TOO_LARGE');
+        err.code = 'FILE_TOO_LARGE';
+        reject(err);
+      });
+      file.on('end', () => {
+        if (!aborted) fileData = Buffer.concat(chunks);
+      });
     });
 
     busboy.on('field', (name, val) => { fields[name] = val; });
 
     busboy.on('finish', () => {
+      if (aborted) return;
       resolve({ fields, fileData });
     });
 

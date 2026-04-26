@@ -15,7 +15,6 @@ import { useState, useEffect, useRef } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import HelpButton from '../shared/components/HelpButton';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
-import ApiSettingsPanel from '../shared/components/ApiSettingsPanel';
 import EmailSettingsPanel from '../shared/components/EmailSettingsPanel';
 import EmailGeneratorModal from '../shared/components/EmailGeneratorModal';
 import SettingsModal from '../shared/components/SettingsModal';
@@ -380,7 +379,7 @@ function CandidateCard({ candidate, selected, onSelect }) {
 }
 
 // New Search Tab content
-function NewSearchTab({ apiSettings, onCandidatesSaved, searchState, setSearchState, userProfileId }) {
+function NewSearchTab({ apiCapabilities, onCandidatesSaved, searchState, setSearchState, userProfileId }) {
   // Use lifted state from parent (persists across tab switches)
   const { uploadedFiles, analysisResult, discoveryResult, selectedCandidates } = searchState;
 
@@ -898,11 +897,6 @@ function NewSearchTab({ apiSettings, onCandidatesSaved, searchState, setSearchSt
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           candidates: selected,
-          credentials: {
-            orcidClientId: apiSettings?.orcidClientId,
-            orcidClientSecret: apiSettings?.orcidClientSecret,
-            serpApiKey: enrichmentOptions.useSerpSearch ? apiSettings?.serpApiKey : null,
-          },
           options: enrichmentOptions,
         }),
       });
@@ -1485,25 +1479,25 @@ function NewSearchTab({ apiSettings, onCandidatesSaved, searchState, setSearchSt
                     </label>
 
                     <label className={`flex items-start gap-3 p-3 rounded-lg ${
-                      apiSettings?.orcidClientId && apiSettings?.orcidClientSecret
+                      apiCapabilities?.orcid
                         ? 'bg-green-50 border border-green-200 cursor-pointer'
                         : 'bg-gray-50 border border-gray-200 cursor-not-allowed opacity-60'
                     }`}>
                       <input
                         type="checkbox"
-                        checked={enrichmentOptions.useOrcid && apiSettings?.orcidClientId && apiSettings?.orcidClientSecret}
+                        checked={enrichmentOptions.useOrcid && apiCapabilities?.orcid}
                         onChange={(e) => setEnrichmentOptions(prev => ({ ...prev, useOrcid: e.target.checked }))}
                         className="mt-0.5"
-                        disabled={!apiSettings?.orcidClientId || !apiSettings?.orcidClientSecret}
+                        disabled={!apiCapabilities?.orcid}
                       />
                       <div>
-                        <div className={`font-medium ${apiSettings?.orcidClientId && apiSettings?.orcidClientSecret ? 'text-green-800' : 'text-gray-500'}`}>
+                        <div className={`font-medium ${apiCapabilities?.orcid ? 'text-green-800' : 'text-gray-500'}`}>
                           Tier 2: ORCID
                         </div>
-                        <div className={`text-xs ${apiSettings?.orcidClientId && apiSettings?.orcidClientSecret ? 'text-green-600' : 'text-gray-500'}`}>
+                        <div className={`text-xs ${apiCapabilities?.orcid ? 'text-green-600' : 'text-gray-500'}`}>
                           Look up email, website, and ORCID ID. <strong>Free</strong>
-                          {(!apiSettings?.orcidClientId || !apiSettings?.orcidClientSecret) && (
-                            <span className="ml-1 text-amber-600">(Configure ORCID credentials in API Settings)</span>
+                          {!apiCapabilities?.orcid && (
+                            <span className="ml-1 text-amber-600">(ORCID not configured on server)</span>
                           )}
                         </div>
                       </div>
@@ -1539,8 +1533,8 @@ function NewSearchTab({ apiSettings, onCandidatesSaved, searchState, setSearchSt
                         </div>
                         <div className="text-xs text-blue-600">
                           Search Google for faculty pages and emails. <strong>~$0.005 per candidate</strong>
-                          {!apiSettings?.serpApiKey && (
-                            <span className="ml-1 text-amber-600">(Configure SerpAPI key in API Settings)</span>
+                          {!apiCapabilities?.serp && (
+                            <span className="ml-1 text-amber-600">(SerpAPI not configured on server)</span>
                           )}
                           <div className="mt-1 text-blue-500">
                             Only runs if Tiers 1-3 don't find contact info.
@@ -5742,11 +5736,20 @@ function ReviewerFinderPage() {
   const [activeTab, setActiveTab] = useState('search');
   const [myCandidatesRefresh, setMyCandidatesRefresh] = useState(0);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [apiSettings, setApiSettings] = useState({
-    orcidClientId: '',
-    orcidClientSecret: '',
-    ncbiApiKey: '',
-  });
+  const [apiCapabilities, setApiCapabilities] = useState({ orcid: false, ncbi: false, serp: false });
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/api-capabilities')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setApiCapabilities(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Get current profile ID for user scoping
   let profileContext = null;
@@ -5774,11 +5777,6 @@ function ReviewerFinderPage() {
     setActiveTab('candidates');
   };
 
-  // Handle API settings change from ApiSettingsPanel
-  const handleApiSettingsChange = (settings) => {
-    setApiSettings(settings);
-  };
-
   // Callback to trigger refresh of My Candidates tab
   const handleCandidatesSaved = () => {
     setMyCandidatesRefresh(prev => prev + 1);
@@ -5804,18 +5802,14 @@ function ReviewerFinderPage() {
       </PageHeader>
 
       <div className="py-8 space-y-6">
-        {/* API Settings */}
+        {/* Model Indicator */}
         <Card>
-          {/* Model Indicator */}
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-2">
             <span className="text-lg">🤖</span>
             <span className="text-sm text-gray-600">
               Model: <strong className="text-gray-800">{getModelDisplayName(BASE_CONFIG.APP_MODELS?.['reviewer-finder']?.model || BASE_CONFIG.CLAUDE.DEFAULT_MODEL)}</strong>
             </span>
           </div>
-
-          {/* Optional API Settings (ORCID, NCBI) */}
-          <ApiSettingsPanel onSettingsChange={handleApiSettingsChange} />
         </Card>
 
         {/* Tab Navigation */}
@@ -5848,7 +5842,7 @@ function ReviewerFinderPage() {
 
         {/* Tab Content */}
         <div className="min-h-[400px]">
-          {activeTab === 'search' && <NewSearchTab apiSettings={apiSettings} onCandidatesSaved={handleCandidatesSaved} searchState={searchState} setSearchState={setSearchState} userProfileId={userProfileId} />}
+          {activeTab === 'search' && <NewSearchTab apiCapabilities={apiCapabilities} onCandidatesSaved={handleCandidatesSaved} searchState={searchState} setSearchState={setSearchState} userProfileId={userProfileId} />}
           {activeTab === 'candidates' && <MyCandidatesTab refreshTrigger={myCandidatesRefresh} userProfileId={userProfileId} navigateToProposal={navigateToProposal} onNavigationComplete={() => setNavigateToProposal(null)} />}
           {activeTab === 'database' && <DatabaseTab onNavigateToProposal={handleNavigateToProposal} />}
         </div>

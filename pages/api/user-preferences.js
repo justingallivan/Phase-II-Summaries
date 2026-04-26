@@ -29,58 +29,32 @@ export default async function handler(req, res) {
 }
 
 async function handleGet(req, res, profileId) {
+  // Decrypted credential values are intentionally NEVER returned over the
+  // wire (security pass 2026-04-26). Encrypted preference values are always
+  // returned masked; the previous includeDecrypted=true branch was removed.
   try {
-    const { key, includeDecrypted } = req.query;
+    const { key } = req.query;
 
-    // If a specific key is requested, return just that value
     if (key) {
-      // For API keys, use the special decryption method
-      if (DatabaseService.ENCRYPTED_PREFERENCE_KEYS.includes(key)) {
-        if (includeDecrypted === 'true') {
-          const value = await DatabaseService.getDecryptedApiKey(profileId, key);
-          return res.status(200).json({
-            success: true,
-            key,
-            value,
-            isEncrypted: true
-          });
-        } else {
-          // Return masked value
-          const preferences = await DatabaseService.getUserPreferences(profileId, false);
-          return res.status(200).json({
-            success: true,
-            key,
-            value: preferences[key] || null,
-            isEncrypted: true,
-            masked: true
-          });
-        }
-      } else {
-        const preferences = await DatabaseService.getUserPreferences(profileId, true);
-        return res.status(200).json({
-          success: true,
-          key,
-          value: preferences[key] || null,
-          isEncrypted: false
-        });
-      }
+      const preferences = await DatabaseService.getUserPreferences(profileId, false);
+      const isEncrypted = DatabaseService.ENCRYPTED_PREFERENCE_KEYS.includes(key);
+      return res.status(200).json({
+        success: true,
+        key,
+        value: preferences[key] || null,
+        isEncrypted,
+        masked: isEncrypted,
+      });
     }
 
-    // Get all preferences
-    // By default, sensitive values are masked unless includeDecrypted is true
-    const preferences = await DatabaseService.getUserPreferences(
-      profileId,
-      includeDecrypted === 'true'
-    );
-
-    // Also indicate which keys are encrypted
+    const preferences = await DatabaseService.getUserPreferences(profileId, false);
     const encryptedKeys = DatabaseService.ENCRYPTED_PREFERENCE_KEYS;
 
     return res.status(200).json({
       success: true,
       profileId,
       preferences,
-      encryptedKeys
+      encryptedKeys,
     });
   } catch (error) {
     console.error('Get user preferences error:', error);

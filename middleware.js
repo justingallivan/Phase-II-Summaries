@@ -21,7 +21,9 @@ import { withAuth } from 'next-auth/middleware';
 export default withAuth(
   function middleware(req) {
     // Generate a unique nonce for this request
-    const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
+    const nonceBytes = new Uint8Array(16);
+    crypto.getRandomValues(nonceBytes);
+    const nonce = btoa(String.fromCharCode(...nonceBytes));
     const isDev = process.env.NODE_ENV === 'development';
 
     // Build CSP directives
@@ -76,7 +78,9 @@ export default withAuth(
   },
   {
     callbacks: {
-      authorized({ token }) {
+      authorized({ req, token }) {
+        const pathname = req.nextUrl.pathname;
+        if (pathname?.startsWith('/auth/')) return true;
         // Kill switch: allow all when auth is not required
         if (process.env.AUTH_REQUIRED !== 'true') return true;
         // Require a valid JWT with azureId (empty token from idle timeout returns {})
@@ -102,10 +106,9 @@ export const config = {
      * - _next/image (image optimization)
      * - favicon.ico (browser icon)
      * - apple-touch-icon* (iOS home screen icons)
-     * - /auth/* (custom sign-in/error pages must be accessible for login flow)
      * - /api/auth/* (NextAuth routes must be accessible for login flow)
      * - /api/cron/* (Vercel cron jobs authenticate via CRON_SECRET, not JWT)
      */
-    '/((?!_next/static|_next/image|favicon\\.ico|apple-touch-icon|auth/|api/auth|api/cron).*)',
+    '/((?!_next/static|_next/image|favicon\\.ico|apple-touch-icon|api/auth|api/cron).*)',
   ],
 };

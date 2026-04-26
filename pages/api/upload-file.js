@@ -45,13 +45,6 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'No file provided' });
     }
 
-    // Enforce file size limit
-    if (file.length > MAX_FILE_SIZE) {
-      return res.status(413).json({
-        error: `File too large (${(file.length / 1024 / 1024).toFixed(1)}MB). Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB.`
-      });
-    }
-
     // Enforce mime-type allowlist
     if (!ALLOWED_CONTENT_TYPES.has(contentType)) {
       return res.status(415).json({
@@ -75,6 +68,11 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
+    if (error?.code === 'FILE_TOO_LARGE') {
+      return res.status(413).json({
+        error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB.`
+      });
+    }
     console.error('File upload error:', error);
     return res.status(500).json({
       error: 'Upload failed',
@@ -85,24 +83,41 @@ export default async function handler(req, res) {
 }
 
 /**
- * Parse multipart form data using busboy
+ * Parse multipart form data using busboy.
+ *
+ * Enforces MAX_FILE_SIZE at the stream level via Busboy's `limits.fileSize`.
+ * When the limit fires, the file stream emits 'limit' and we abort the parse
+ * — the request body is never fully buffered into memory. Without this, a
+ * 1GB upload would be entirely buffered before the post-parse size check
+ * could reject it. (Security pass 2026-04-26.)
  */
 function parseFormData(req) {
   return new Promise((resolve, reject) => {
-    const busboy = Busboy({ headers: req.headers });
+    const busboy = Busboy({ headers: req.headers, limits: { fileSize: MAX_FILE_SIZE, files: 1 } });
     let fileData = null;
     let fileName = null;
     let fileContentType = null;
+    let aborted = false;
 
     busboy.on('file', (fieldname, file, info) => {
       const chunks = [];
       fileName = info.filename;
       fileContentType = info.mimeType;
       file.on('data', (chunk) => chunks.push(chunk));
-      file.on('end', () => { fileData = Buffer.concat(chunks); });
+      file.on('limit', () => {
+        aborted = true;
+        file.resume(); // drain the rest so busboy emits 'finish' / 'error'
+        const err = new Error('FILE_TOO_LARGE');
+        err.code = 'FILE_TOO_LARGE';
+        reject(err);
+      });
+      file.on('end', () => {
+        if (!aborted) fileData = Buffer.concat(chunks);
+      });
     });
 
     busboy.on('finish', () => {
+      if (aborted) return;
       resolve({ file: fileData, filename: fileName, contentType: fileContentType });
     });
 

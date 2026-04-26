@@ -12,6 +12,8 @@ import { sql } from '@vercel/postgres';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import Busboy from 'busboy';
 
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
 export const config = {
   api: {
     bodyParser: false, // busboy needs the raw stream
@@ -77,33 +79,50 @@ export default async function handler(req, res) {
       filename: fileName,
     });
   } catch (error) {
+    if (error?.code === 'FILE_TOO_LARGE') {
+      return res.status(413).json({
+        error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB.`
+      });
+    }
     console.error('Review upload error:', error);
     return res.status(500).json({ error: 'Failed to upload review', details: process.env.NODE_ENV === 'development' ? error.message : undefined, timestamp: new Date().toISOString() });
   }
 }
 
 /**
- * Parse multipart form data using busboy
+ * Parse multipart form data using busboy with stream-level size limit.
+ * (Security pass 2026-04-26: aborts before fully buffering oversized uploads.)
  */
 function parseFormData(req) {
   return new Promise((resolve, reject) => {
-    const busboy = Busboy({ headers: req.headers });
+    const busboy = Busboy({ headers: req.headers, limits: { fileSize: MAX_FILE_SIZE, files: 1 } });
     const fields = {};
     let fileData = null;
     let fileName = null;
     let fileContentType = null;
+    let aborted = false;
 
     busboy.on('file', (fieldname, file, info) => {
       const chunks = [];
       fileName = info.filename;
       fileContentType = info.mimeType;
       file.on('data', (chunk) => chunks.push(chunk));
-      file.on('end', () => { fileData = Buffer.concat(chunks); });
+      file.on('limit', () => {
+        aborted = true;
+        file.resume();
+        const err = new Error('FILE_TOO_LARGE');
+        err.code = 'FILE_TOO_LARGE';
+        reject(err);
+      });
+      file.on('end', () => {
+        if (!aborted) fileData = Buffer.concat(chunks);
+      });
     });
 
     busboy.on('field', (name, val) => { fields[name] = val; });
 
     busboy.on('finish', () => {
+      if (aborted) return;
       resolve({ fields, fileData, fileName, fileContentType });
     });
 

@@ -11,7 +11,6 @@
 import { useState, useEffect } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import { useProfile } from '../shared/context/ProfileContext';
-import ApiSettingsPanel from '../shared/components/ApiSettingsPanel';
 
 // Preset colors for avatar selection
 const AVATAR_COLORS = [
@@ -188,12 +187,6 @@ export default function ProfileSettings() {
             </div>
           </Card>
         )}
-
-        {/* API Keys Section */}
-        <Card>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">API Configuration</h2>
-          <ApiSettingsPanel onSettingsChange={() => {}} />
-        </Card>
 
         {/* All Profiles Section */}
         <Card>

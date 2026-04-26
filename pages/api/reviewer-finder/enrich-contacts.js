@@ -11,9 +11,13 @@
  * Request body:
  * {
  *   candidates: [{ name, affiliation, publications }],
- *   credentials: { orcidClientId, orcidClientSecret },
- *   options: { usePubmed, useOrcid, useClaudeSearch }
+ *   options: { usePubmed, useOrcid, useClaudeSearch, useSerpSearch }
  * }
+ *
+ * All third-party API credentials (ORCID, NCBI, SerpAPI) are read from
+ * server-side environment variables. Browser-provided credentials are
+ * intentionally NOT honored — the per-user override path was removed in
+ * the 2026-04-26 security pass.
  *
  * Response: Server-Sent Events (SSE) stream with progress updates
  */
@@ -46,7 +50,7 @@ export default async function handler(req, res) {
   const allowed = await limiter(req, res);
   if (allowed !== true) return;
 
-  const { candidates, credentials = {}, options = {} } = req.body;
+  const { candidates, options = {} } = req.body;
 
   // Validate input
   if (!candidates || !Array.isArray(candidates) || candidates.length === 0) {
@@ -71,12 +75,13 @@ export default async function handler(req, res) {
     });
 
     // Enrich candidates with progress updates
-    // Client-provided serpApiKey takes priority over server env var
+    // All credentials sourced server-side (no browser pass-through)
     const results = await ContactEnrichmentService.enrichCandidates(candidates, {
       credentials: {
-        ...credentials,
         claudeApiKey: process.env.CLAUDE_API_KEY,
-        serpApiKey: credentials.serpApiKey || process.env.SERP_API_KEY,
+        orcidClientId: process.env.ORCID_CLIENT_ID,
+        orcidClientSecret: process.env.ORCID_CLIENT_SECRET,
+        serpApiKey: process.env.SERP_API_KEY,
       },
       usePubmed: options.usePubmed !== false,
       useOrcid: options.useOrcid !== false,
