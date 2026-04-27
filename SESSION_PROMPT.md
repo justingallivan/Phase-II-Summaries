@@ -93,6 +93,11 @@ The 2026-04-26 security pass closed all P1 findings that didn't require touching
 If a future Codex re-scan flags anything new in the same areas, treat the existing findings doc (`docs/SECURITY_FINDINGS_2026-04-26.md`) as the canonical baseline — only flag deltas vs. that doc.
 
 ### 8. Stretch / housekeeping
+- **Audit raw SQL against Wave 1 tables.** Now that `WAVE1_BACKEND_*` flags are flipped to `dataverse` (2026-04-27), any code that still hits `user_app_access`, `user_preferences`, or `system_settings` via raw `sql\`…\`` is touching the now-secondary store. The live read backend is Dataverse; raw-SQL writes to Postgres will be invisible to the running app. Run:
+  ```bash
+  grep -rn "user_app_access\|user_preferences\|system_settings" pages/api scripts lib --include="*.js" | grep -v "lib/services/.*-service.js" | grep -E "sql\`|FROM |INTO |UPDATE |DELETE FROM"
+  ```
+  Each match should either route through `lib/services/{app-access,user-preferences,settings}-service.js` (the dispatch wrappers) or be explicitly Postgres-only (with a comment explaining why). The `cleanup-concept-evaluator-grants.js` parity drift on 2026-04-27 was caused by exactly this hazard — script ran raw SQL on Postgres, parity test caught the divergence, fix was to route through the dispatch wrapper. Worth one focused pass post-cycle to find any other lurking instances.
 - `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` re-resolve pipeline-state storage (recommend `akoya_request` fields + `wmkf_ai_run` JSON, not a new Postgres table)
 - `docs/ARCHITECTURE_SPINE.md` — write as canonical link target so future design docs stop drifting
 - Optional: echo-prompt test oracle row (mentioned in Connor brief) — small `wmkf_ai_prompt` row that just echoes inputs as outputs, for cross-implementation parity verification
@@ -148,4 +153,5 @@ vercel ls   # Production deploys auto from main; verify Ready
 - **Don't seed the dead-code prompts** in `peer-reviewer.js` (`createThemeSynthesisPrompt`, `createActionItemsPrompt`). They're defined but never imported — confirmed via `grep`. If a future change wires them up, add them to `peer-reviewer-dynamics.js` + the seed script then.
 - **`wmkf_ai_systemprompt`** has no underscore between "system" and "prompt". Easy to fat-finger.
 - **Resist `executeAgent()` design** until a second concrete caller wants the same shape (Reviewer Finder doesn't need it; Dynamics Explorer chat could be a future migration if the abstraction proves clean).
+- **Wave 1 dispatch wrappers are mandatory now.** The `WAVE1_BACKEND_*` flags flipped to `dataverse` on 2026-04-27. Any new script or API route that touches `user_app_access`, `user_preferences`, or `system_settings` MUST go through `lib/services/{app-access,user-preferences,settings}-service.js`. Raw `sql\`…\`` against those tables will land in the now-secondary Postgres store and be invisible to the running app. `node scripts/test-wave1-flag-dispatch.js` is the canary — run it after any change in this area; expect 35/35.
 - **No DEVELOPMENT_LOG.md entry this session.** It's a milestone log; Plan A seeding for two more apps follows an already-shipped pattern and isn't a milestone. The next milestone-worthy event is probably the cycle running cleanly through `phase-i.summary` (post-May-1 entry: "Phase 0 Executor delivered first cycle").
