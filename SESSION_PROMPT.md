@@ -75,14 +75,32 @@ Prompts are seeded; this is now pure wiring. See `docs/REVIEWER_FINDER_FUTURE_AR
 3. Smoke test against a known proposal.
 4. Delete the now-unused legacy `createAnalysisPrompt` / `createDiscoveredReasoningPrompt` from `shared/config/prompts/reviewer-finder.js` (parsers stay).
 
-### 5. Peer Review Summarizer route refactor
+### 5. Reviewer/Review Manager: direct email send via Dynamics
+Both `/api/review-manager/send-emails` and `/api/reviewer-finder/generate-emails` currently produce `.eml` files that staff download → open in their mail client → edit → send manually. With auth now enforced (the caller's `session.user.email` is trustable) and Dynamics email activities verified working (Session 77 — see `Dynamics Email Activities` memory), this should become direct send.
+
+**What's already in place:**
+- `lib/services/dynamics-service.js` exports `resolveSystemUser(email)`, `createEmailActivity`, `addEmailAttachment`, `sendEmail`, `createAndSendEmail` — all working in prod.
+- `/api/test-email` + `scripts/test-dynamics-email.js` are the existing reference call sites.
+- Auth gate gives us `session.user.email` on every request → use as sender via `resolveSystemUser(email)`.
+
+**Migration shape (post-cycle):**
+1. **`/api/review-manager/send-emails`** — replace `.eml` builder with `createAndSendEmail` call per recipient. Attachments (review template PDFs, proposal summaries) flow via `addEmailAttachment`; today the route already fetches them as URLs, so swap the buffer destination from "stuff into .eml MIME" to "POST to Dynamics email activity." Preserve the SSE progress stream + `markAsSent` DB write.
+2. **`/api/reviewer-finder/generate-emails`** — same pattern. Bigger surface: it has Claude personalization + multi-proposal lookup paths.
+3. **UI changes** — replace "download .eml" buttons with "send" + confirmation modal. Preserve template editing UX (subject/body editable before send). Show per-recipient send status from the SSE stream.
+4. **Edge cases** — partial failures (some sends succeed, some fail), retry semantics, dry-run/preview mode for the user to verify before commit. Worth designing before implementing.
+
+**Sequencing:** do `send-emails` first (smaller, fewer code paths). It also has the more obvious quality-of-life win — staff currently have to do the manual download dance for every accepted reviewer email. `generate-emails` second, since it's the bulk-invite path with more complexity.
+
+**Memory pointers:** see `project_reviewer_lifecycle.md` (Phase A: CRM send) and the `Dynamics Email Activities` block in `MEMORY.md` for the working email-send mechanics. The CRM tracking token (`CRM:0309001`-style) prepended to subject is set by Server-Side Sync, not us — design around it.
+
+### 6. Peer Review Summarizer route refactor
 Prompts seeded; route is `pages/api/process-peer-reviews.js`. Smaller and more linear than Reviewer Finder. Two `executePrompt` calls, one of which is conditional on the first's parse output. Good second migration target if Reviewer Finder feels too big.
 
-### 6. Lighter migrations
+### 7. Lighter migrations
 - Phase II Writeup / Q&A — multi-call, high-touch app. Same Plan A pattern can author the prompts now if there's bandwidth.
 - Anything else with prompts in `shared/config/prompts/*.js` follows the same recipe.
 
-### 7. Post-cycle security follow-ups (from 2026-04-26 pass)
+### 8. Post-cycle security follow-ups (from 2026-04-26 pass)
 The 2026-04-26 security pass closed all P1 findings that didn't require touching active upload paths or major dependency bumps. Remaining queue, all explicitly deferred per Justin's threat-model read at the time:
 
 - **Public blob → private + auth proxy** (P1 in original Codex findings, downgraded after Justin assessed leak risk as low). Affects `pages/api/upload-file.js`, `pages/api/upload-handler.js`, `pages/api/reviewer-finder/extract-summary.js`, `pages/api/review-manager/upload-review.js`. Switch blob `access` from `'public'` to `'private'`, add a `/api/blob-proxy?url=…` route that does `requireAppAccess` + signs/streams the file, update callers to use proxy URLs. Manual smoke test of every upload path is mandatory — silent 403 mid-cycle is the bad outcome.
@@ -92,7 +110,7 @@ The 2026-04-26 security pass closed all P1 findings that didn't require touching
 
 If a future Codex re-scan flags anything new in the same areas, treat the existing findings doc (`docs/SECURITY_FINDINGS_2026-04-26.md`) as the canonical baseline — only flag deltas vs. that doc.
 
-### 8. Stretch / housekeeping
+### 9. Stretch / housekeeping
 - **Audit raw SQL against Wave 1 tables.** Now that `WAVE1_BACKEND_*` flags are flipped to `dataverse` (2026-04-27), any code that still hits `user_app_access`, `user_preferences`, or `system_settings` via raw `sql\`…\`` is touching the now-secondary store. The live read backend is Dataverse; raw-SQL writes to Postgres will be invisible to the running app. Run:
   ```bash
   grep -rn "user_app_access\|user_preferences\|system_settings" pages/api scripts lib --include="*.js" | grep -v "lib/services/.*-service.js" | grep -E "sql\`|FROM |INTO |UPDATE |DELETE FROM"
