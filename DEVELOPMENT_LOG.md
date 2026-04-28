@@ -10,6 +10,34 @@ The pre-Session 84 chronological per-session log (everything after the September
 
 ---
 
+## April 2026 — Wave 1 Postgres → Dataverse cutover (Session 112)
+
+**Milestone:** Production cutover. The three Wave 1 tables (`user_app_access`, `user_preferences`, `system_settings`) now read/write through Dataverse on prod traffic. Postgres remains as a failsafe; rollback is `vercel env rm WAVE1_BACKEND_<NAME>` + redeploy.
+**Sessions:** 112 (2026-04-27)
+**Ship state:**
+- All three `WAVE1_BACKEND_*` env vars set to `dataverse` on Vercel production; prod redeployed (`wmkfresearchapps-54h9tcpup-...`, Ready)
+- Parity drift caught + fixed during the flip: `concept-evaluator` grants had been removed from Postgres-only in Session 111, surfaced as pg=16 / dv=17 in `scripts/test-wave1-flag-dispatch.js`. Cleanup script rewritten to route through `lib/services/app-access-service.js`; ran against Dataverse, parity restored to 35/35
+- Raw-SQL audit found 3 admin scripts that still hit those tables directly (`rotate-encryption-key.js`, `backfill-app-access.js`, `manage-preferences.js`); each now hard-exits with a `[wave1-guard]` message unless `--allow-postgres-only` is passed
+- SESSION_PROMPT § 8 captures retirement criteria (14 days clean → drop dispatch wrappers + Postgres tables → Wave 2)
+**Why it matters:** First production cutover of a long-running migration. Validates the dispatch-wrapper pattern + the Postgres-Dataverse byte-for-byte sync invariant. Wave 2 (researcher / publication / proposal data) gets the same shape.
+**Pointers:** `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md`, commits `dd58730`, `fb36ecb`
+
+---
+
+## April 2026 — Security pass (Codex + remediation) (Session 112)
+
+**Milestone:** Closes 7 of 11 P1/P2 findings from a Codex-driven security audit, raising baseline posture before May 1 cycle. Behavior change: production now fails closed when auth config is incomplete (was: silent bypass).
+**Sessions:** 112 (2026-04-26)
+**Ship state:**
+- Codex's earlier-day pass shipped first: HSTS preload + Permissions-Policy + COOP/CORP, edge-compatible CSP nonces, `/auth/*` brought under middleware, CSRF strict mode for cookie-bearing state-changing methods
+- Remediation closed: auth fail-closed + `EMERGENCY_AUTH_BYPASS` escape hatch; decrypted-credentials-to-browser path eliminated (`ApiKeyManager.js` + `ApiSettingsPanel.js` deleted; `/api/api-capabilities` replaces user-stored ORCID/NCBI/SerpAPI keys with server-side env reads); rate-limiter no longer trusts `x-api-key` header; `extract-summary` IDOR gated by ownership check; multipart uploads now stream-aborted at 50MB; log-analysis cron redacts before sending to Claude
+- npm audit: 13 → 5 production vulns (all 7 highs resolved; 5 remaining moderates blocked behind Next.js / next-auth majors and queued post-cycle)
+- 163 → 173 tests; CI lock-file regenerated + `npm ci` verified
+**Deferred per Justin's threat-model read:** public blob privatization, proposal password masking, Dynamics restrictions concurrency fix, the 5 moderate vulns. Tracked in SESSION_PROMPT § 8.
+**Pointers:** `docs/SECURITY_FINDINGS_2026-04-26.md`, `docs/SECURITY_CODE_CHANGES_2026-04-26.md`, commits `36a8ab6`, `a8e8147`
+
+---
+
 ## April 2026 — Concept Evaluator deprecated (Session 110)
 
 **Milestone:** A user-facing app removed from the active set. Page + API + prompt archived; registry entries removed; no user-visible app remains for the concept-stage screening workflow.

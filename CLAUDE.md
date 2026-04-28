@@ -176,10 +176,11 @@ All APIs return consistent structures:
 Located in `shared/components/`:
 - `Layout.js` - Main layout with navigation (filtered by app access)
 - `FileUploaderSimple.js` - File upload component
-- `ApiKeyManager.js` - API key management
 - `ResultsDisplay.js` - Results visualization
-- `RequireAppAccess.js` - Page-level access guard (wraps all 13 app pages)
+- `RequireAppAccess.js` - Page-level access guard
 - `WelcomeModal.js` - First-login welcome modal for new users
+
+(`ApiKeyManager.js` and `ApiSettingsPanel.js` removed in the 2026-04-26 security pass — Claude/ORCID/NCBI/SerpAPI keys are now centralized server-side via env vars; see `/api/api-capabilities` for the boolean availability surface.)
 
 ### Shared Config
 
@@ -388,6 +389,7 @@ Located in `lib/utils/`:
 - `GET /api/cron/spend-check` - AI spend thresholds: daily total + estimated credit balance (hourly); emails via Dynamics on low balance
 
 ### Other
+- `GET /api/api-capabilities` - Boolean availability of optional third-party API integrations (ORCID/NCBI/SerpAPI). Used by UI to enable/disable feature toggles without exposing the underlying credentials to the browser.
 - `POST /api/analyze-funding-gap` - Federal funding analysis
 - `POST /api/process-expenses` - Expense extraction
 - `POST /api/upload-handler` - Vercel Blob upload

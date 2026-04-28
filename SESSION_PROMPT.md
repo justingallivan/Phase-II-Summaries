@@ -1,124 +1,120 @@
-# Session 112 Prompt: Cycle ride-along + post-cycle Executor extensions
+# Session 113 Prompt: Cycle ride-along + post-cycle work begins
 
-## Session 111 Summary
+## Session 112 Summary
 
-A short, mechanical session focused on **Plan A** prompt-row authoring for two more apps (Reviewer Finder, Peer Review Summarizer) plus light housekeeping. No live code was touched — all migrations remain dormant on the Vercel side until post-cycle refactors. Cycle still arrives 2026-05-01 (5 days from now); the explicit hand-off rule from Session 110 — *don't start route refactors under cycle pressure* — was respected.
+A two-day session (2026-04-26 → 2026-04-27) that landed three substantive things: a Codex-driven security pass (7 of 11 P1/P2 findings closed), the Wave 1 Postgres → Dataverse production cutover, and Plan-A prompt seeding for Phase II Writeup. Plus a parity drift caught + fixed during the Wave 1 flip, a raw-SQL audit with fail-closed guards on three admin scripts, and a queued direct-email-send next-session item.
 
 ### What was completed
 
-1. **Reviewer Finder prompt rows seeded on prod Dynamics.** Architecture sketch was reconciled with the actual code: live pipeline has **two** Claude calls (not three as the sketch said) and emits delimited text (not JSON). Templates extracted to `shared/config/prompts/reviewer-finder-dynamics.js`; idempotent seed at `scripts/seed-reviewer-finder-prompts.js`.
-   - `reviewer-finder.analyze` → `ecae2da2-e340-f111-88b4-000d3a306da2` (combined metadata + suggestions + DB queries; 4 vars; 4096 tokens)
-   - `reviewer-finder.score-candidates` → `02fb0aa0-e340-f111-88b5-000d3a306d45` (per-batch relevance scoring; 2 vars; 1024 tokens)
+1. **Security pass — 2026-04-26.** Codex shipped the CSP / CSRF / security-header baseline earlier in the day; this session closed seven additional findings:
+   - **Auth fail-closed** in production (was: silent bypass when config incomplete). `EMERGENCY_AUTH_BYPASS=true` is the only escape hatch. 6 regression tests added.
+   - **Decrypted-credentials-to-browser path eliminated.** Deleted dead `ApiKeyManager.js` (+ CSS module) and `ApiSettingsPanel.js`. Removed `getDecryptedApiKey` from `ProfileContext`. Removed the `includeDecrypted=true` branch from `/api/user-preferences`. Added `/api/api-capabilities` for boolean ORCID/NCBI/SerpAPI availability. `enrich-contacts.js` no longer accepts browser-passed credentials.
+   - **Rate limiter no longer trusts `x-api-key` header / `req.body.apiKey`** — keyed strictly by IP.
+   - **`extract-summary` IDOR fixed** via ownership join through `proposal_searches.user_profile_id`.
+   - **`npm audit fix`** dropped production vulns from 13 (7 high) to 5 (0 high). Remaining 5 moderates blocked behind Next.js / next-auth majors → queued post-cycle.
+   - **Multipart uploads** now stream-aborted at 50MB via Busboy `limits.fileSize` + `'limit'` event in all 3 upload routes.
+   - **Log-analysis cron** redacts auth headers, API keys, connection strings, blob URLs, emails, and password fields before sending to Claude (10-test redactor at `lib/utils/log-redactor.js`).
+   - 4 deferred items (public blob privatization, proposal password masking, Dynamics restrictions concurrency, remaining 5 moderate vulns) tracked in §8.
 
-2. **Peer Review Summarizer prompt rows seeded on prod Dynamics.** Same Plan A shape. The two unused functions in `peer-reviewer.js` (`createThemeSynthesisPrompt`, `createActionItemsPrompt`) are dead code and were skipped. Templates at `shared/config/prompts/peer-reviewer-dynamics.js`; seed at `scripts/seed-peer-review-summarizer-prompts.js`.
-   - `peer-review-summarizer.analyze` → `c28c4dd8-e640-f111-88b5-000d3a306b0f` (combined SUMMARY + QUESTIONS pass; 3 vars; 2500 tokens)
-   - `peer-review-summarizer.questions` → `1b1341dc-e640-f111-88b5-000d3a306d45` (fallback questions-only; 2 vars; 16384 tokens)
+2. **CI lock-file fix.** `npm audit fix --legacy-peer-deps` over-pruned dev-tree entries; `npm ci` rejected the result. Regenerated the lock file in strict mode (no `--legacy-peer-deps`) — works for both `npm install` and `npm ci`.
 
-3. **Architecture doc reconciled.** `docs/REVIEWER_FINDER_FUTURE_ARCHITECTURE.md` rewritten to reflect 2-prompts-with-raw-parseMode reality (was: 3-prompts-JSON). Sequenced plan updated.
+3. **Wave 1 flag flip — 2026-04-27.** All three `WAVE1_BACKEND_*` env vars set to `dataverse` on Vercel production; prod redeployed and verified Ready. Live read/write for `user_app_access`, `user_preferences`, `system_settings` now goes to Dataverse. Postgres is the failsafe.
 
-4. **`concept-evaluator` rows dropped from `user_app_access`.** Session 110 housekeeping leftover. 4 grants removed (Justin id=2, Beth id=5, cnoda id=9, shibler id=13). Postgres-only; Wave 1 Dataverse flag isn't flipped yet, so no Dataverse mirror cleanup needed. Script at `scripts/cleanup-concept-evaluator-grants.js`.
+4. **Parity drift caught + fixed.** Post-flip, `scripts/test-wave1-flag-dispatch.js` surfaced pg=16 / dv=17 for Justin's app grants. Cause: my own Session 111 cleanup script ran raw SQL against Postgres before the dispatch wrappers existed. Rewrote the script to use `lib/services/app-access-service.js`, ran against Dataverse, parity restored to 35/35.
 
-5. **Connor brief drafted** at `docs/CONNOR_BRIEF_PHASE0.md`. Includes pre-send checklist. Not yet sent — wait for ~5 working days of clean cycle runs before sending.
+5. **Raw-SQL audit + fail-closed guards.** Documented the audit grep in §8, then ran it. 14 hits across 6 scripts: 3 intentionally Postgres-only (verify / sync / setup tools), 3 real hazards. Added `[wave1-guard]` blocks to `rotate-encryption-key.js`, `backfill-app-access.js`, `manage-preferences.js` — each hard-exits if the relevant `WAVE1_BACKEND_*` flag is `dataverse` unless `--allow-postgres-only` is passed.
 
-### Commits (2 ahead of origin → all pushed)
+6. **Phase II Writeup prompt seed (Plan A).** Four prompt rows on prod Dynamics covering both `phase-ii-writeup` and `batch-proposal-summaries`:
+   - `phase-ii.summarize` → `5af67f40-9642-f111-88b4-6045bd019e44`
+   - `phase-ii.extract-structured` → `65f67f40-9642-f111-88b4-6045bd019e44`
+   - `phase-ii.qa` → `2040443d-9642-f111-88b4-000d3a306da2`
+   - `phase-ii.refine` → `a6fff63d-9642-f111-88b5-000d3a306d45`
 
-- `34e850e` Seed reviewer-finder.analyze + score-candidates prompt rows
-- `3862593` Seed peer-review-summarizer prompts + housekeeping
+   Templates at `shared/config/prompts/phase-ii-dynamics.js`; seed at `scripts/seed-phase-ii-prompts.js`. Live routes (`process.js`, `qa.js`, `refine.js`) still use legacy generators until post-cycle refactor. Naming uses `phase-ii.<purpose>` since the prompts are shared by two app keys.
 
-### Pattern that emerged across both seeds
+7. **Direct email send queued for next session** (§5 below) — Justin flagged the `.eml` download workflow in Review Manager and Reviewer Finder as the next major UX win, now that auth is enforced and Dynamics email activities are verified working.
 
-Three of three apps approached so far (`phase-i.summary`, both `reviewer-finder.*`, both `peer-review-summarizer.*`) have followed the **same Plan A shape**:
+### Commits (Session 112, all on origin/main)
 
-- Read live Claude callsite + prompt-template function
-- Extract the prompt body verbatim into a `*-dynamics.js` template-string file with `{{var}}` placeholders
-- Convert inline conditionals (`additionalNotes ? ... : ''`) into caller-formatted block variables
-- Write idempotent seed script mirroring `seed-phase-i-summary-prompt.js`
-- `parseMode: "raw"` + single `response_text` output + `target.kind: "none"` (route owns post-parse + persistence)
-- All variables `placement: "user"` / `source: { kind: "override" }`
-- Empty system prompt (preserves single-user-message behavior of legacy code)
-- Dry-run, then execute, then verify
-
-This shape is now repeatable. Future apps (Phase II Writeup, Q&A, etc.) follow the same recipe.
+- `36a8ab6` Security pass 2026-04-26
+- `10bb5ef` SESSION_PROMPT: add post-cycle security follow-up queue
+- `a8e8147` Fix package-lock.json for npm ci compatibility
+- `dd58730` Cleanup script: route via dispatch wrapper, clean Dataverse
+- `9bb4875` SESSION_PROMPT: document Wave 1 dispatch-wrapper hazard
+- `fb36ecb` Wave 1 raw-SQL audit: fail-closed guards on three admin scripts
+- `b53ba0e` Seed phase-ii.* prompt rows (Plan A pattern)
+- `91fd758` SESSION_PROMPT: queue Reviewer/Review Manager direct email send
 
 ## Key state facts
 
-- **Production is fully cycle-ready.** No code changed this session. `phase-i.summary` is still the only live Executor caller; `summarize-v2.js` is its reference call site.
-- **Five `wmkf_ai_prompts` rows exist on prod** — `phase-i.summary` (live), `reviewer-finder.analyze`, `reviewer-finder.score-candidates`, `peer-review-summarizer.analyze`, `peer-review-summarizer.questions` (all dormant pending route refactor).
-- **Concept Evaluator is fully cleaned up** — page archived (Session 110), grants removed (Session 111). Nothing left to do for it.
-- **Today's date: 2026-04-25.** Cycle arrives 2026-05-01 — 5 days.
-- **Wave 1 flag flips still pending.** Justin's call when to flip per `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md`. Orthogonal to this session's work.
+- **Cycle is in 4 days (2026-05-01).** Production is fully ready. `phase-i.summary` Executor path live since Session 110 and verified through CI/build today.
+- **Wave 1 cutover is live.** Three flags `dataverse` on prod Vercel. Retirement criterion: 14 days clean → drop dispatch wrappers + Postgres tables → Wave 2. Currently day 0.
+- **Nine `wmkf_ai_prompts` rows on prod Dynamics:** `phase-i.summary` (live caller), and dormant prompts for reviewer-finder (×2), peer-review-summarizer (×2), phase-ii (×4). Plan A seeding is now done for all major Claude-using apps that aren't being deprecated.
+- **Security posture materially improved.** Auth fails closed in prod; no decrypted credentials reach the browser; npm audit clean of all high-severity findings.
+- **Parity test (`scripts/test-wave1-flag-dispatch.js`) is the canary.** Run after any change in dispatch-wrapper area; expect 35/35.
 
 ## Potential next steps
 
 ### 1. Cycle ride-along (May 1 → mid-May)
-Phase 0 is shipped, smoke-tested, and stable. Cycle itself doesn't require code work. Likely interruptions:
-- A user reports a 500 → check Vercel runtime logs for `executePrompt` failures
-- An odd writeback edge case → run `node scripts/test-execute-prompt.js --restore ""` against the affected request to reset
-- Connor has a question about the contract → point at `docs/EXECUTOR_CONTRACT.md`, especially the "Notes for caller authors" section
-- Spend monitoring catches an anomaly → existing cron handles this
+No code work expected. Watch for:
+- `executePrompt` 500s in Vercel runtime logs
+- Wave 1 anomalies — `requireAppAccess` 403s beyond baseline, user reports of "my settings disappeared," etc.
+- Any spike in Dataverse rate-limiting / latency during peak proposal flow
+- Existing crons handle spend monitoring + log analysis
 
 ### 2. Send the Connor brief
-After ~5 working days of clean cycle runs, follow the pre-send checklist in `docs/CONNOR_BRIEF_PHASE0.md` and send. Offer the echo-prompt test oracle if Connor wants parity verification.
+Send `docs/CONNOR_BRIEF_PHASE0.md` after ~5 working days of clean cycle runs. Pre-send checklist is in the doc.
 
 ### 3. Post-cycle Executor extensions (`docs/EXECUTOR_EXTENSIONS_PLAN.md`)
-Sequenced order from Session 110:
-1. **Multi-PATCH coalescing** (~2 hrs) — correctness fix; unblocks any multi-output prompt. Do first.
-2. **Picklist target type + `scripts/probe-picklist.js`** (~2 hrs) — small; needed for `phase-i.intake-check`.
+Sequenced order:
+1. **Multi-PATCH coalescing** (~2 hrs) — correctness fix; unblocks any multi-output prompt.
+2. **Picklist target type + `scripts/probe-picklist.js`** (~2 hrs) — needed for `phase-i.intake-check`.
 3. **Native PDF input** (`preprocess: pdf_native`) (~half day to day) — biggest; budget compliance needs it.
 
 After all three: author `phase-i.intake-check` (clerical + keywords + priority-fit), test, hand the prompt-row + parent flow to Connor for PA-trigger build.
 
 ### 4. Reviewer Finder route refactor (post-cycle, top user-facing priority)
-Prompts are seeded; this is now pure wiring. See `docs/REVIEWER_FINDER_FUTURE_ARCHITECTURE.md` for the sequenced plan. Steps:
-1. Refactor `pages/api/reviewer-finder/analyze.js` to call `executePrompt('reviewer-finder.analyze', ...)` with the four override variables. Smallest call site; good warm-up.
-2. Refactor `discover.js` / `claude-reviewer-service.js` to use `executePrompt('reviewer-finder.score-candidates', ...)` per batch. Streaming SSE stays at the route level; emit progress events between Executor calls.
-3. Smoke test against a known proposal.
-4. Delete the now-unused legacy `createAnalysisPrompt` / `createDiscoveredReasoningPrompt` from `shared/config/prompts/reviewer-finder.js` (parsers stay).
+Prompts already seeded; this is now pure wiring. Plan in `docs/REVIEWER_FINDER_FUTURE_ARCHITECTURE.md`.
 
 ### 5. Reviewer/Review Manager: direct email send via Dynamics
-Both `/api/review-manager/send-emails` and `/api/reviewer-finder/generate-emails` currently produce `.eml` files that staff download → open in their mail client → edit → send manually. With auth now enforced (the caller's `session.user.email` is trustable) and Dynamics email activities verified working (Session 77 — see `Dynamics Email Activities` memory), this should become direct send.
+Both `/api/review-manager/send-emails` and `/api/reviewer-finder/generate-emails` currently produce `.eml` files for manual download/edit/send. With auth enforced (caller's `session.user.email` is trustable) and Dynamics email activities verified working (Session 77), this should become direct send.
 
 **What's already in place:**
-- `lib/services/dynamics-service.js` exports `resolveSystemUser(email)`, `createEmailActivity`, `addEmailAttachment`, `sendEmail`, `createAndSendEmail` — all working in prod.
+- `lib/services/dynamics-service.js`: `resolveSystemUser(email)`, `createEmailActivity`, `addEmailAttachment`, `sendEmail`, `createAndSendEmail` — all working in prod.
 - `/api/test-email` + `scripts/test-dynamics-email.js` are the existing reference call sites.
-- Auth gate gives us `session.user.email` on every request → use as sender via `resolveSystemUser(email)`.
 
-**Migration shape (post-cycle):**
-1. **`/api/review-manager/send-emails`** — replace `.eml` builder with `createAndSendEmail` call per recipient. Attachments (review template PDFs, proposal summaries) flow via `addEmailAttachment`; today the route already fetches them as URLs, so swap the buffer destination from "stuff into .eml MIME" to "POST to Dynamics email activity." Preserve the SSE progress stream + `markAsSent` DB write.
-2. **`/api/reviewer-finder/generate-emails`** — same pattern. Bigger surface: it has Claude personalization + multi-proposal lookup paths.
-3. **UI changes** — replace "download .eml" buttons with "send" + confirmation modal. Preserve template editing UX (subject/body editable before send). Show per-recipient send status from the SSE stream.
-4. **Edge cases** — partial failures (some sends succeed, some fail), retry semantics, dry-run/preview mode for the user to verify before commit. Worth designing before implementing.
+**Migration shape:**
+1. **`/api/review-manager/send-emails`** — replace `.eml` builder with `createAndSendEmail` per recipient; attachments via `addEmailAttachment`. Preserve SSE progress + `markAsSent` DB write.
+2. **`/api/reviewer-finder/generate-emails`** — same pattern, bigger surface (Claude personalization + multi-proposal lookup).
+3. **UI** — replace "download .eml" with "send" + confirmation modal. Preserve template editing UX. Per-recipient send status from SSE.
+4. **Edge cases** — partial failures, retries, dry-run/preview. Worth designing before implementing.
 
-**Sequencing:** do `send-emails` first (smaller, fewer code paths). It also has the more obvious quality-of-life win — staff currently have to do the manual download dance for every accepted reviewer email. `generate-emails` second, since it's the bulk-invite path with more complexity.
+**Sequencing:** `send-emails` first (smaller, fewer code paths, more obvious UX win). `generate-emails` second.
 
-**Memory pointers:** see `project_reviewer_lifecycle.md` (Phase A: CRM send) and the `Dynamics Email Activities` block in `MEMORY.md` for the working email-send mechanics. The CRM tracking token (`CRM:0309001`-style) prepended to subject is set by Server-Side Sync, not us — design around it.
+**Pointers:** `memory/project_reviewer_lifecycle.md` (Phase A: CRM send), the `Dynamics Email Activities` block in `MEMORY.md`. CRM tracking token (`CRM:0309001`-style) is set by Server-Side Sync.
 
 ### 6. Peer Review Summarizer route refactor
-Prompts seeded; route is `pages/api/process-peer-reviews.js`. Smaller and more linear than Reviewer Finder. Two `executePrompt` calls, one of which is conditional on the first's parse output. Good second migration target if Reviewer Finder feels too big.
+Prompts seeded; route is `pages/api/process-peer-reviews.js`. Two `executePrompt` calls, one conditional on the first's parse output. Smaller migration than Reviewer Finder.
 
 ### 7. Lighter migrations
-- Phase II Writeup / Q&A — multi-call, high-touch app. Same Plan A pattern can author the prompts now if there's bandwidth.
+- Phase II Writeup / Q&A — prompts seeded today. Three call sites (`process.js`, `qa.js`, `refine.js`). Multi-call but mechanical.
 - Anything else with prompts in `shared/config/prompts/*.js` follows the same recipe.
 
 ### 8. Post-cycle security follow-ups (from 2026-04-26 pass)
-The 2026-04-26 security pass closed all P1 findings that didn't require touching active upload paths or major dependency bumps. Remaining queue, all explicitly deferred per Justin's threat-model read at the time:
+The 2026-04-26 security pass closed all P1 findings that didn't require touching active upload paths or major dependency bumps. Remaining queue:
 
-- **Public blob → private + auth proxy** (P1 in original Codex findings, downgraded after Justin assessed leak risk as low). Affects `pages/api/upload-file.js`, `pages/api/upload-handler.js`, `pages/api/reviewer-finder/extract-summary.js`, `pages/api/review-manager/upload-review.js`. Switch blob `access` from `'public'` to `'private'`, add a `/api/blob-proxy?url=…` route that does `requireAppAccess` + signs/streams the file, update callers to use proxy URLs. Manual smoke test of every upload path is mandatory — silent 403 mid-cycle is the bad outcome.
-- **Proposal password masking** (P2). `pages/api/review-manager/reviewers.js` returns `proposalPassword` in the standard GET payload. Mask by default; add a narrowly scoped reveal/update endpoint for explicit user actions. Justin assessed blast radius as low (passwords go via email to external reviewers for SharePoint single-file access).
-- **Dynamics restrictions module-global state** (P2). `lib/services/dynamics-service.js` `activeRestrictions` is process-global and overwritten per request. Real concurrency hazard for Dynamics Explorer. Fix: pass restrictions through an explicit request-context argument or use AsyncLocalStorage.
-- **Remaining 5 moderate npm vulns** (post-`audit fix`). All blocked behind Next.js / next-auth majors. Bundle with the next planned framework upgrade rather than chasing it isolated. Audit list is in the commit message of `36a8ab6`.
+- **Public blob → private + auth proxy** (P1 in original Codex findings, downgraded after Justin assessed leak risk as low). Affects `pages/api/upload-file.js`, `pages/api/upload-handler.js`, `pages/api/reviewer-finder/extract-summary.js`, `pages/api/review-manager/upload-review.js`. Switch blob `access` from `'public'` to `'private'`, add a `/api/blob-proxy?url=…` route that does `requireAppAccess` + signs/streams, update callers. Manual smoke test of every upload path is mandatory.
+- **Proposal password masking** (P2). `pages/api/review-manager/reviewers.js` returns `proposalPassword` in standard GET payload. Mask by default; narrowly scoped reveal endpoint.
+- **Dynamics restrictions module-global state** (P2). `lib/services/dynamics-service.js` `activeRestrictions` is process-global. Real concurrency hazard for Dynamics Explorer. Fix: explicit request-context arg or AsyncLocalStorage.
+- **Remaining 5 moderate npm vulns**. Blocked behind Next.js / next-auth majors. Bundle with the next planned framework upgrade.
 
-If a future Codex re-scan flags anything new in the same areas, treat the existing findings doc (`docs/SECURITY_FINDINGS_2026-04-26.md`) as the canonical baseline — only flag deltas vs. that doc.
+If a future Codex re-scan flags anything new, treat `docs/SECURITY_FINDINGS_2026-04-26.md` as the canonical baseline — flag deltas only.
 
 ### 9. Stretch / housekeeping
-- **Audit raw SQL against Wave 1 tables.** Now that `WAVE1_BACKEND_*` flags are flipped to `dataverse` (2026-04-27), any code that still hits `user_app_access`, `user_preferences`, or `system_settings` via raw `sql\`…\`` is touching the now-secondary store. The live read backend is Dataverse; raw-SQL writes to Postgres will be invisible to the running app. Run:
-  ```bash
-  grep -rn "user_app_access\|user_preferences\|system_settings" pages/api scripts lib --include="*.js" | grep -v "lib/services/.*-service.js" | grep -E "sql\`|FROM |INTO |UPDATE |DELETE FROM"
-  ```
-  Each match should either route through `lib/services/{app-access,user-preferences,settings}-service.js` (the dispatch wrappers) or be explicitly Postgres-only (with a comment explaining why). The `cleanup-concept-evaluator-grants.js` parity drift on 2026-04-27 was caused by exactly this hazard — script ran raw SQL on Postgres, parity test caught the divergence, fix was to route through the dispatch wrapper. Worth one focused pass post-cycle to find any other lurking instances.
-- `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` re-resolve pipeline-state storage (recommend `akoya_request` fields + `wmkf_ai_run` JSON, not a new Postgres table)
-- `docs/ARCHITECTURE_SPINE.md` — write as canonical link target so future design docs stop drifting
-- Optional: echo-prompt test oracle row (mentioned in Connor brief) — small `wmkf_ai_prompt` row that just echoes inputs as outputs, for cross-implementation parity verification
+- **Wave 1 retirement** (when 14 days clean): drop `lib/services/{app-access,user-preferences,settings}-service.js` dispatch wrappers, archive `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md`, drop the three Postgres tables. See the doc's "Retirement criterion" section.
+- `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` re-resolve pipeline-state storage (recommend `akoya_request` fields + `wmkf_ai_run` JSON).
+- `docs/ARCHITECTURE_SPINE.md` — write as canonical link target so future design docs stop drifting.
+- Optional: echo-prompt test oracle row (mentioned in Connor brief) — small `wmkf_ai_prompt` row that just echoes inputs as outputs, for cross-implementation parity verification.
 
 ## Key files reference
 
@@ -126,19 +122,24 @@ If a future Codex re-scan flags anything new in the same areas, treat the existi
 |---|---|
 | `lib/services/execute-prompt.js` | **The Executor.** 10-step Phase 0 implementation. |
 | `docs/EXECUTOR_CONTRACT.md` | Shared spec; Connor builds PA-side `ExecutePrompt` against this. |
-| `docs/EXECUTOR_EXTENSIONS_PLAN.md` | **Read first when starting post-cycle Executor work.** Design-only sketch. |
-| `docs/REVIEWER_FINDER_FUTURE_ARCHITECTURE.md` | **Read first when starting Reviewer Finder route refactor.** Updated this session. |
+| `docs/EXECUTOR_EXTENSIONS_PLAN.md` | **Read first when starting post-cycle Executor work.** |
+| `docs/REVIEWER_FINDER_FUTURE_ARCHITECTURE.md` | **Read first when starting Reviewer Finder route refactor.** |
 | `docs/CONNOR_BRIEF_PHASE0.md` | **Pre-drafted handoff message.** Send after cycle runs cleanly for ~5 working days. |
+| `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md` | **Live rollback playbook.** Rollback = `vercel env rm WAVE1_BACKEND_<NAME>` + redeploy. |
+| `docs/SECURITY_FINDINGS_2026-04-26.md` | Canonical security baseline. |
+| `docs/SECURITY_CODE_CHANGES_2026-04-26.md` | Security pass change log. |
 | `pages/api/phase-i-dynamics/summarize-v2.js` | Reference call site for `executePrompt()` (~145 lines). |
-| `shared/config/prompts/phase-i-dynamics.js` | `phase-i.summary` template source of truth (live). |
-| `shared/config/prompts/reviewer-finder-dynamics.js` | `reviewer-finder.*` template source of truth (dormant). |
-| `shared/config/prompts/peer-reviewer-dynamics.js` | `peer-review-summarizer.*` template source of truth (dormant). |
-| `scripts/seed-phase-i-summary-prompt.js` | Pattern reference for all prompt-row seeds. |
-| `scripts/seed-reviewer-finder-prompts.js` | Idempotent seed for both reviewer-finder rows. |
-| `scripts/seed-peer-review-summarizer-prompts.js` | Idempotent seed for both peer-review-summarizer rows. |
-| `scripts/cleanup-concept-evaluator-grants.js` | One-shot cleanup; safe to re-run (no-op when already clean). |
-| `scripts/test-execute-prompt.js` | End-to-end smoke test. `--force-overwrite`, `--restore ""` options. |
-| `DEVELOPMENT_LOG.md` | Milestone log (NOT per-session). Session 111 did not warrant a milestone entry. |
+| `pages/api/api-capabilities.js` | Boolean availability endpoint (replaces user-stored API keys). |
+| `lib/utils/log-redactor.js` | Deterministic log redaction (10 unit tests). |
+| `lib/utils/auth.js` | Production fail-closed; `EMERGENCY_AUTH_BYPASS=true` is the only escape. |
+| `shared/config/prompts/phase-i-dynamics.js` | `phase-i.summary` template (live). |
+| `shared/config/prompts/reviewer-finder-dynamics.js` | `reviewer-finder.*` templates (dormant). |
+| `shared/config/prompts/peer-reviewer-dynamics.js` | `peer-review-summarizer.*` templates (dormant). |
+| `shared/config/prompts/phase-ii-dynamics.js` | `phase-ii.*` templates (dormant). |
+| `scripts/test-wave1-flag-dispatch.js` | **Wave 1 canary.** Expect 35/35. |
+| `scripts/seed-phase-ii-prompts.js` | Most recent Plan A seed; pattern reference. |
+| `scripts/cleanup-concept-evaluator-grants.js` | Now backend-aware via dispatch (see Session 112 commits). |
+| `DEVELOPMENT_LOG.md` | Milestone log. Session 112 added two entries: Wave 1 cutover + Security pass. |
 
 ## Testing
 
@@ -152,24 +153,28 @@ node scripts/test-execute-prompt.js                  # block-or-write
 node scripts/test-execute-prompt.js --force-overwrite # force, expect cacheHit on rerun
 node scripts/test-execute-prompt.js --restore ""      # reset wmkf_ai_summary
 
+# Wave 1 dispatch parity (canary)
+node scripts/test-wave1-flag-dispatch.js              # expect 35/35
+
 # Re-seed any prompt row if it drifts (all idempotent)
 node scripts/seed-phase-i-summary-prompt.js --execute
 node scripts/seed-reviewer-finder-prompts.js --execute
 node scripts/seed-peer-review-summarizer-prompts.js --execute
+node scripts/seed-phase-ii-prompts.js --execute
 
 # CI suite
-npm run test:ci
+npm run test:ci   # 173 tests (including security headers + log redactor + auth fail-closed)
 
 # Vercel deployment status
-vercel ls   # Production deploys auto from main; verify Ready
+vercel ls --prod   # latest should be wmkfresearchapps-54h9tcpup-... or newer
 ```
 
 ## Session hand-off notes
 
-- **Don't start Executor extensions or route refactors under cycle pressure.** Carried forward from Session 110. Cycle is in 5 days. Even the dormant prompt rows seeded this session are fine; refactoring the routes that consume them is post-cycle work.
-- **Plan A pattern is now the default** for any new Claude-using app: seed the prompt row in `wmkf_ai_prompt` first (ahead of any route refactor), let staff see it in Dynamics, then refactor the route post-cycle. Three apps in, the pattern is mechanical.
-- **Don't seed the dead-code prompts** in `peer-reviewer.js` (`createThemeSynthesisPrompt`, `createActionItemsPrompt`). They're defined but never imported — confirmed via `grep`. If a future change wires them up, add them to `peer-reviewer-dynamics.js` + the seed script then.
+- **Cycle is 4 days out.** Stick to ride-along mode. Don't start route refactors, Executor extensions, or any item from §3-§7 until cycle is settled.
+- **Wave 1 dispatch wrappers are mandatory now.** Any new script or API route that touches `user_app_access`, `user_preferences`, or `system_settings` MUST go through `lib/services/{app-access,user-preferences,settings}-service.js`. Raw `sql\`…\`` against those tables lands in the now-secondary Postgres store and is invisible to the running app. Canary: `scripts/test-wave1-flag-dispatch.js` (expect 35/35).
+- **Plan A pattern is now standard** for any new Claude-using app. Three apps' prompts seeded over Sessions 111-112 (reviewer-finder, peer-review-summarizer, phase-ii); `phase-i.summary` is the live reference. Recipe is mechanical.
+- **Don't seed dead-code prompts.** `proposal-summarizer.js` exports `createRefinementPrompt` and `createQAPrompt` that are dead — refine.js has its own inline `REFINEMENT_PROMPT` and qa.js uses `createQASystemPrompt` instead. Confirmed via grep before seeding.
 - **`wmkf_ai_systemprompt`** has no underscore between "system" and "prompt". Easy to fat-finger.
 - **Resist `executeAgent()` design** until a second concrete caller wants the same shape (Reviewer Finder doesn't need it; Dynamics Explorer chat could be a future migration if the abstraction proves clean).
-- **Wave 1 dispatch wrappers are mandatory now.** The `WAVE1_BACKEND_*` flags flipped to `dataverse` on 2026-04-27. Any new script or API route that touches `user_app_access`, `user_preferences`, or `system_settings` MUST go through `lib/services/{app-access,user-preferences,settings}-service.js`. Raw `sql\`…\`` against those tables will land in the now-secondary Postgres store and be invisible to the running app. `node scripts/test-wave1-flag-dispatch.js` is the canary — run it after any change in this area; expect 35/35.
-- **No DEVELOPMENT_LOG.md entry this session.** It's a milestone log; Plan A seeding for two more apps follows an already-shipped pattern and isn't a milestone. The next milestone-worthy event is probably the cycle running cleanly through `phase-i.summary` (post-May-1 entry: "Phase 0 Executor delivered first cycle").
+- **Two milestone entries in DEVELOPMENT_LOG.md this session** (Wave 1 cutover + Security pass). Both are real production events.
