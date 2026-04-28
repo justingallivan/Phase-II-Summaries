@@ -47,6 +47,20 @@ if (fs.existsSync(envPath)) {
   });
 }
 
+// ─── Wave 1 dispatch guard ────────────────────────────────────────────────
+// As of 2026-04-27 the live read backend for user_preferences is Dataverse
+// (WAVE1_BACKEND_PREFS=dataverse on prod). This script rotates encryption
+// of the Postgres copy only — running it post-flip rotates a store the app
+// no longer reads from. If you genuinely want to rotate the Postgres copy
+// (e.g., during Wave 1 retirement / dual-write window), pass
+// --allow-postgres-only explicitly.
+if (process.env.WAVE1_BACKEND_PREFS === 'dataverse' && !process.argv.includes('--allow-postgres-only')) {
+  console.error('[wave1-guard] WAVE1_BACKEND_PREFS=dataverse — this script touches Postgres only.');
+  console.error('[wave1-guard] Encryption rotation for the live (Dataverse) store is not implemented here.');
+  console.error('[wave1-guard] If you really mean to rotate the Postgres copy, pass --allow-postgres-only.');
+  process.exit(2);
+}
+
 const { sql } = require('@vercel/postgres');
 
 // Encryption constants (must match lib/utils/encryption.js)

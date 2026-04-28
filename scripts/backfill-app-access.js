@@ -39,6 +39,20 @@ if (fs.existsSync(envPath)) {
   process.exit(1);
 }
 
+// ─── Wave 1 dispatch guard ────────────────────────────────────────────────
+// As of 2026-04-27 the live read backend for user_app_access is Dataverse
+// (WAVE1_BACKEND_APP_ACCESS=dataverse on prod). Backfilling Postgres only
+// would not affect what users actually see. If you really mean to backfill
+// the Postgres copy (e.g., during Wave 1 retirement work), pass
+// --allow-postgres-only explicitly. For Dataverse-side backfill, use the
+// dispatch wrapper in lib/services/app-access-service.js.
+if (process.env.WAVE1_BACKEND_APP_ACCESS === 'dataverse' && !process.argv.includes('--allow-postgres-only')) {
+  console.error('[wave1-guard] WAVE1_BACKEND_APP_ACCESS=dataverse — this script touches Postgres only.');
+  console.error('[wave1-guard] To grant apps in the live store, use lib/services/app-access-service.js#grantApps.');
+  console.error('[wave1-guard] If you really mean to write to Postgres, pass --allow-postgres-only.');
+  process.exit(2);
+}
+
 const { sql } = require('@vercel/postgres');
 
 const ALL_APP_KEYS = [

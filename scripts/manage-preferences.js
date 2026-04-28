@@ -30,6 +30,20 @@ if (fs.existsSync(envPath)) {
   });
 }
 
+// ─── Wave 1 dispatch guard ────────────────────────────────────────────────
+// As of 2026-04-27 the live read backend for user_preferences is Dataverse
+// (WAVE1_BACKEND_PREFS=dataverse on prod). Listing/deleting Postgres prefs
+// post-flip won't affect what users actually see. For live-store admin
+// work, use lib/services/user-preferences-service.js or the
+// /api/user-preferences route. If you really mean to manage the Postgres
+// copy (e.g., during Wave 1 retirement work), pass --allow-postgres-only.
+if (process.env.WAVE1_BACKEND_PREFS === 'dataverse' && !process.argv.includes('--allow-postgres-only')) {
+  console.error('[wave1-guard] WAVE1_BACKEND_PREFS=dataverse — this script touches Postgres only.');
+  console.error('[wave1-guard] For live-store admin work, use lib/services/user-preferences-service.js.');
+  console.error('[wave1-guard] If you really mean to manage the Postgres copy, pass --allow-postgres-only.');
+  process.exit(2);
+}
+
 const { sql } = require('@vercel/postgres');
 
 // Parse args
