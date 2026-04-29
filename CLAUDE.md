@@ -324,7 +324,8 @@ Located in `lib/utils/`:
 
 ### Review Manager
 - `GET/PATCH /api/review-manager/reviewers` - Accepted reviewers by cycle/proposal, status/notes/URL updates
-- `POST /api/review-manager/send-emails` - Generate .eml files with attachments (SSE streaming)
+- `POST /api/review-manager/render-emails` - Preview-only: render per-recipient subject/body drafts. No Dynamics calls, no DB writes.
+- `POST /api/review-manager/send-emails` - Direct Dynamics send (SSE streaming). Sender resolves from session, regardingobjectid → akoya_request, per-recipient try/catch, lifecycle timestamps update only for sent rows.
 - `POST /api/review-manager/upload-review` - Upload completed review documents (Vercel Blob)
 
 ### Concept Evaluator
