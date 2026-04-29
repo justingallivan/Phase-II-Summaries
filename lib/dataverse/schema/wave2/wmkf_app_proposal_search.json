@@ -10,7 +10,7 @@
     "schemaName": "wmkf_ProposalTitle",
     "displayName": "Proposal Title",
     "description": "The proposal title that was analyzed. Primary name attribute.",
-    "maxLength": 1000,
+    "maxLength": 850,
     "requiredLevel": "ApplicationRequired"
   },
   "attributes": [

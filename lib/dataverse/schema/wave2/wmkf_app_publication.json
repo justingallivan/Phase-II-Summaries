@@ -9,8 +9,8 @@
   "primaryNameAttribute": {
     "schemaName": "wmkf_Title",
     "displayName": "Title",
-    "description": "Publication title. Primary name attribute (Memo because long titles overflow single-line).",
-    "maxLength": 4000,
+    "description": "Publication title. Primary name attribute; capped at 850 (Dataverse primary-attribute limit).",
+    "maxLength": 850,
     "requiredLevel": "ApplicationRequired"
   },
   "attributes": [
