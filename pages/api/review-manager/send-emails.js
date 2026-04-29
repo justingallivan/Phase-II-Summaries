@@ -1,32 +1,35 @@
 /**
- * Review Manager - Send Emails
+ * Review Manager - Send Emails (direct via Dynamics)
  *
  * POST /api/review-manager/send-emails
  *
- * Generates .eml files for selected reviewers using specified template type
- * (materials, followup, thankyou). Uses SSE streaming for progress.
+ * Sends per-recipient emails via Dynamics email activities. Accepts
+ * already-rendered drafts (subject/body per recipient) so the UI can show a
+ * preview/edit step before send. Links each email to the proposal's
+ * akoya_request via regardingobjectid so it shows in the request's CRM
+ * timeline. Updates lifecycle timestamps only for successfully-sent rows.
  *
  * Request body:
- *   - suggestionIds: number[] — reviewer suggestion IDs
- *   - templateType: 'materials' | 'followup' | 'thankyou'
- *   - template: { subject, body } — the template content
- *   - settings: { signature, proposalUrl, reviewerFormLink, grantCycle }
- *   - attachmentUrls: string[] — URLs of attachments to include (optional)
- *   - markAsSent: boolean — whether to update DB timestamps
+ *   - drafts: Array<{ suggestionId, subject, body }> — pre-rendered per recipient
+ *   - templateType: 'materials' | 'followup' | 'thankyou' — drives DB status update
+ *   - attachmentUrls: string[] — additional attachment URLs (optional)
+ *   - markAsSent: boolean — whether to update DB timestamps (default true)
+ *
+ * SSE events:
+ *   - progress { stage, message, current?, total? }
+ *   - email_sent { suggestionId, candidateName, candidateEmail, emailId }
+ *   - email_failed { suggestionId, candidateName, candidateEmail, error }
+ *   - result { sent: [...], failed: [...], stats: { sent, failed, skipped, total } }
+ *   - complete { message, sent, failed }
+ *   - error { message }
  */
 
 import { sql } from '@vercel/postgres';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
-import {
-  generateEmlContent,
-  generateEmlContentWithAttachments,
-  replacePlaceholders,
-  buildTemplateData,
-  createFilename,
-} from '../../../lib/utils/email-generator';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { safeFetch, isAllowedUrl } from '../../../lib/utils/safe-fetch';
+import { DynamicsService } from '../../../lib/services/dynamics-service';
 
 const limiter = nextRateLimiter({ max: 10 });
 
@@ -44,10 +47,24 @@ export default async function handler(req, res) {
   if (!access) return;
   const userProfileId = access.profileId;
 
+  // Sender must resolve to a Dynamics systemuser. azureEmail is the
+  // canonical accessor (matches /api/test-email).
+  const fromEmail = access.session?.user?.azureEmail;
+  if (!fromEmail) {
+    return res.status(400).json({
+      error: 'Could not determine sender email from your session. Please sign out and back in.',
+    });
+  }
+
   const allowed = await limiter(req, res);
   if (allowed !== true) return;
 
-  // Set SSE headers
+  // DynamicsService is fail-closed; this endpoint operates with full access
+  // (resolving akoya_request GUIDs, creating email activities) so opt out
+  // explicitly. Other server endpoints (grant-reporting, expertise-finder,
+  // phase-i-dynamics) follow the same pattern.
+  DynamicsService.bypassRestrictions('review-manager-send');
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -59,47 +76,39 @@ export default async function handler(req, res) {
 
   try {
     const {
-      suggestionIds,
+      drafts,
       templateType = 'materials',
-      template,
-      settings = {},
       attachmentUrls = [],
       markAsSent = true,
     } = req.body;
 
-    if (!suggestionIds || !Array.isArray(suggestionIds) || suggestionIds.length === 0) {
-      sendEvent('error', { message: 'suggestionIds array is required' });
+    if (!Array.isArray(drafts) || drafts.length === 0) {
+      sendEvent('error', { message: 'drafts array is required' });
       return res.end();
     }
-    if (!template || !template.subject || !template.body) {
-      sendEvent('error', { message: 'template with subject and body is required' });
-      return res.end();
+    for (const d of drafts) {
+      if (!d || typeof d.suggestionId !== 'number' || !d.subject || !d.body) {
+        sendEvent('error', { message: 'each draft must have suggestionId, subject, body' });
+        return res.end();
+      }
     }
 
-    sendEvent('progress', { stage: 'starting', message: `Generating ${templateType} emails...`, total: suggestionIds.length });
+    sendEvent('progress', {
+      stage: 'starting',
+      message: `Preparing ${drafts.length} email(s)...`,
+      total: drafts.length,
+    });
 
-    // Fetch reviewer data for all suggestion IDs
+    // Refetch authoritative recipient data from Postgres — never trust
+    // client-supplied email/request_number for routing.
+    const suggestionIds = drafts.map(d => d.suggestionId);
     const reviewerData = await sql`
       SELECT
         rs.id as suggestion_id,
-        rs.proposal_id,
-        rs.proposal_title,
-        rs.proposal_abstract,
-        rs.proposal_authors,
-        rs.proposal_institution,
-        rs.proposal_url,
-        rs.proposal_password,
-        rs.co_investigators,
-        rs.co_investigator_count,
-        rs.summary_blob_url,
+        rs.request_number,
         rs.grant_cycle_id,
         r.name,
-        r.primary_affiliation as affiliation,
         r.email,
-        gc.name as cycle_name,
-        gc.program_name,
-        gc.review_deadline,
-        gc.custom_fields,
         gc.review_template_blob_url,
         gc.additional_attachments
       FROM reviewer_suggestions rs
@@ -114,203 +123,217 @@ export default async function handler(req, res) {
       return res.end();
     }
 
-    // Fetch shared attachments (review template, etc.)
+    const rowBySuggestionId = new Map(reviewerData.rows.map(r => [r.suggestion_id, r]));
+
+    // Batched akoya_request GUID lookup so each email can be linked to its
+    // proposal in the CRM timeline. Failures here are non-fatal — emails still
+    // send, just without the regarding link.
+    const distinctRequestNumbers = Array.from(
+      new Set(reviewerData.rows.map(r => r.request_number).filter(Boolean))
+    );
+    const guidByRequestNumber = await resolveRequestGuids(distinctRequestNumbers, sendEvent);
+
+    // Fetch shared attachments once. Same shape as before — review template,
+    // grant cycle additional attachments, and any caller-supplied URLs.
+    sendEvent('progress', { stage: 'fetching_attachments', message: 'Fetching attachments...' });
     const attachmentCache = new Map();
     const sharedAttachments = [];
 
     for (const url of attachmentUrls) {
       if (!url) continue;
       try {
-        const attachment = await fetchAttachment(url, attachmentCache);
-        if (attachment) sharedAttachments.push(attachment);
+        const att = await fetchAttachment(url, attachmentCache);
+        if (att) sharedAttachments.push(att);
       } catch (err) {
         console.warn('Failed to fetch attachment:', url, err.message);
       }
     }
 
-    // Also fetch grant cycle attachments (review template + additional) if available
     const firstRow = reviewerData.rows[0];
     if (firstRow.review_template_blob_url && !attachmentCache.has(firstRow.review_template_blob_url)) {
       try {
-        const templateAttachment = await fetchAttachment(firstRow.review_template_blob_url, attachmentCache);
-        if (templateAttachment) sharedAttachments.push(templateAttachment);
+        const att = await fetchAttachment(firstRow.review_template_blob_url, attachmentCache);
+        if (att) sharedAttachments.push(att);
       } catch (err) {
         console.warn('Failed to fetch review template:', err.message);
       }
     }
-
-    // Fetch additional attachments from grant cycle
     if (firstRow.additional_attachments && Array.isArray(firstRow.additional_attachments)) {
-      for (const att of firstRow.additional_attachments) {
-        const attUrl = att.blobUrl || att.url;
-        if (attUrl && !attachmentCache.has(attUrl)) {
+      for (const a of firstRow.additional_attachments) {
+        const url = a.blobUrl || a.url;
+        if (url && !attachmentCache.has(url)) {
           try {
-            const additional = await fetchAttachment(attUrl, attachmentCache);
-            if (additional) sharedAttachments.push(additional);
+            const att = await fetchAttachment(url, attachmentCache);
+            if (att) sharedAttachments.push(att);
           } catch (err) {
-            console.warn('Failed to fetch additional attachment:', attUrl, err.message);
+            console.warn('Failed to fetch additional attachment:', url, err.message);
           }
         }
       }
     }
 
-    sendEvent('progress', { stage: 'generating', message: `Processing ${reviewerData.rows.length} reviewers...` });
+    sendEvent('progress', {
+      stage: 'sending',
+      message: `Sending ${drafts.length} email(s) from ${fromEmail}...`,
+      total: drafts.length,
+    });
 
-    const emails = [];
-    let generated = 0;
-    let skipped = 0;
+    const sent = [];
+    const failed = [];
+    const skipped = [];
+    let processed = 0;
 
-    for (const row of reviewerData.rows) {
+    for (const draft of drafts) {
+      processed++;
+      const row = rowBySuggestionId.get(draft.suggestionId);
+
+      if (!row) {
+        failed.push({
+          suggestionId: draft.suggestionId,
+          candidateName: '(unknown)',
+          candidateEmail: null,
+          error: 'Suggestion not found or not owned by you',
+        });
+        sendEvent('email_failed', failed[failed.length - 1]);
+        continue;
+      }
+
       if (!row.email) {
-        skipped++;
+        skipped.push({
+          suggestionId: row.suggestion_id,
+          candidateName: row.name,
+          candidateEmail: null,
+          reason: 'no_email',
+        });
         sendEvent('progress', {
-          stage: 'generating',
-          current: generated + skipped,
-          total: reviewerData.rows.length,
+          stage: 'sending',
+          current: processed,
+          total: drafts.length,
           message: `Skipped ${row.name} (no email)`,
         });
         continue;
       }
 
-      // Build template data
-      const candidate = {
-        name: row.name,
-        affiliation: row.affiliation,
-        email: row.email,
-      };
-      const proposal = {
-        title: row.proposal_title,
-        abstract: row.proposal_abstract,
-        authors: row.proposal_authors,
-        institution: row.proposal_institution,
-        coInvestigators: row.co_investigators,
-        coInvestigatorCount: row.co_investigator_count,
-      };
-      const templateSettings = {
-        signature: settings.signature || '',
-        proposalUrl: row.proposal_url || settings.proposalUrl || '',
-        proposalPassword: row.proposal_password || settings.proposalPassword || '',
-        reviewDueDate: settings.reviewDueDate || row.review_deadline,
-        reviewerFormLink: settings.reviewerFormLink || '',
-        grantCycle: {
-          programName: row.program_name || '',
-          reviewDeadline: row.review_deadline,
-          customFields: { ...(row.custom_fields || {}), ...(settings.customFields || {}) },
-        },
-      };
+      const regardingId = row.request_number ? guidByRequestNumber.get(row.request_number) : null;
 
-      const templateData = buildTemplateData(candidate, proposal, templateSettings);
-      const subject = replacePlaceholders(template.subject, templateData);
-      const body = replacePlaceholders(template.body, templateData);
-      const from = settings.fromEmail || 'noreply@example.com';
+      try {
+        const { emailId } = await DynamicsService.createAndSendEmail({
+          subject: draft.subject,
+          body: plainTextToHtml(draft.body),
+          from: fromEmail,
+          to: row.email,
+          regardingId: regardingId || undefined,
+          regardingType: regardingId ? 'akoya_request' : undefined,
+          attachments: sharedAttachments,
+        });
 
-      // Generate EML
-      const hasAttachments = sharedAttachments.length > 0;
-      const emlContent = hasAttachments
-        ? generateEmlContentWithAttachments({
-            from,
-            to: row.email,
-            subject,
-            body,
-            attachments: sharedAttachments,
-          })
-        : generateEmlContent({ from, to: row.email, subject, body });
-
-      const filename = `${templateType}_${createFilename(row.name)}`;
-
-      emails.push({
-        suggestionId: row.suggestion_id,
-        candidateName: row.name,
-        candidateEmail: row.email,
-        filename,
-        subject,
-        content: emlContent,
-      });
-
-      generated++;
-      sendEvent('email_generated', {
-        index: generated,
-        candidateName: row.name,
-        candidateEmail: row.email,
-        suggestionId: row.suggestion_id,
-        filename,
-        subject,
-      });
-
-      sendEvent('progress', {
-        stage: 'generating',
-        current: generated + skipped,
-        total: reviewerData.rows.length,
-        message: `Generated email for ${row.name}`,
-      });
+        sent.push({
+          suggestionId: row.suggestion_id,
+          candidateName: row.name,
+          candidateEmail: row.email,
+          emailId,
+          regardingLinked: Boolean(regardingId),
+        });
+        sendEvent('email_sent', sent[sent.length - 1]);
+        sendEvent('progress', {
+          stage: 'sending',
+          current: processed,
+          total: drafts.length,
+          message: `Sent to ${row.name}`,
+        });
+      } catch (err) {
+        console.error(`Failed to send to ${row.name} <${row.email}>:`, err.message);
+        failed.push({
+          suggestionId: row.suggestion_id,
+          candidateName: row.name,
+          candidateEmail: row.email,
+          error: err.message,
+        });
+        sendEvent('email_failed', failed[failed.length - 1]);
+        sendEvent('progress', {
+          stage: 'sending',
+          current: processed,
+          total: drafts.length,
+          message: `Failed to send to ${row.name}`,
+        });
+      }
     }
 
-    // Update database timestamps if markAsSent
-    if (markAsSent && generated > 0) {
+    if (markAsSent && sent.length > 0) {
       sendEvent('progress', { stage: 'updating_database', message: 'Updating tracking data...' });
-
-      const generatedIds = emails.map(e => e.suggestionId);
+      const sentIds = sent.map(s => s.suggestionId);
       const now = new Date().toISOString();
 
-      if (templateType === 'materials') {
-        await sql`
-          UPDATE reviewer_suggestions
-          SET materials_sent_at = ${now},
-              review_status = CASE
-                WHEN review_status IS NULL OR review_status = 'accepted'
-                THEN 'materials_sent'
-                ELSE review_status
-              END
-          WHERE id = ANY(${generatedIds})
-            AND user_profile_id = ${userProfileId}
-        `;
-      } else if (templateType === 'followup') {
-        await sql`
-          UPDATE reviewer_suggestions
-          SET reminder_sent_at = ${now},
-              reminder_count = COALESCE(reminder_count, 0) + 1,
-              review_status = CASE
-                WHEN review_status IN ('materials_sent', 'accepted')
-                THEN 'under_review'
-                ELSE review_status
-              END
-          WHERE id = ANY(${generatedIds})
-            AND user_profile_id = ${userProfileId}
-        `;
-      } else if (templateType === 'thankyou') {
-        await sql`
-          UPDATE reviewer_suggestions
-          SET thankyou_sent_at = ${now},
-              review_status = 'complete'
-          WHERE id = ANY(${generatedIds})
-            AND user_profile_id = ${userProfileId}
-        `;
+      try {
+        if (templateType === 'materials') {
+          await sql`
+            UPDATE reviewer_suggestions
+            SET materials_sent_at = ${now},
+                review_status = CASE
+                  WHEN review_status IS NULL OR review_status = 'accepted'
+                  THEN 'materials_sent'
+                  ELSE review_status
+                END
+            WHERE id = ANY(${sentIds})
+              AND user_profile_id = ${userProfileId}
+          `;
+        } else if (templateType === 'followup') {
+          await sql`
+            UPDATE reviewer_suggestions
+            SET reminder_sent_at = ${now},
+                reminder_count = COALESCE(reminder_count, 0) + 1,
+                review_status = CASE
+                  WHEN review_status IN ('materials_sent', 'accepted')
+                  THEN 'under_review'
+                  ELSE review_status
+                END
+            WHERE id = ANY(${sentIds})
+              AND user_profile_id = ${userProfileId}
+          `;
+        } else if (templateType === 'thankyou') {
+          await sql`
+            UPDATE reviewer_suggestions
+            SET thankyou_sent_at = ${now},
+                review_status = 'complete'
+            WHERE id = ANY(${sentIds})
+              AND user_profile_id = ${userProfileId}
+          `;
+        }
+      } catch (err) {
+        console.error('DB update after send failed (emails were sent):', err.message);
+        sendEvent('progress', {
+          stage: 'updating_database',
+          message: `Warning: emails sent but DB update failed: ${err.message}`,
+        });
       }
     }
 
     sendEvent('result', {
-      emails: emails.map(e => ({
-        suggestionId: e.suggestionId,
-        candidateName: e.candidateName,
-        candidateEmail: e.candidateEmail,
-        filename: e.filename,
-        subject: e.subject,
-        content: e.content,
-      })),
-      stats: { generated, skipped, total: reviewerData.rows.length },
+      sent,
+      failed,
+      skipped,
+      stats: {
+        sent: sent.length,
+        failed: failed.length,
+        skipped: skipped.length,
+        total: drafts.length,
+      },
     });
 
     sendEvent('complete', {
-      message: `Generated ${generated} ${templateType} email(s)`,
-      generated,
-      skipped,
+      message: `Sent ${sent.length} of ${drafts.length} ${templateType} email(s)`
+        + (failed.length ? `; ${failed.length} failed` : '')
+        + (skipped.length ? `; ${skipped.length} skipped (no email)` : ''),
+      sent: sent.length,
+      failed: failed.length,
+      skipped: skipped.length,
     });
 
     res.end();
   } catch (error) {
     console.error('Review Manager send-emails error:', error);
     sendEvent('error', {
-      message: BASE_CONFIG.ERROR_MESSAGES.EMAIL_GENERATION_FAILED,
+      message: BASE_CONFIG.ERROR_MESSAGES?.EMAIL_GENERATION_FAILED || 'Failed to send emails',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
     res.end();
@@ -318,24 +341,69 @@ export default async function handler(req, res) {
 }
 
 /**
- * Fetch a URL and return as an attachment object.
- * Uses safeFetch for SSRF protection (host allowlist).
+ * Resolve akoya_request GUIDs from request numbers in a single batched query.
+ * Returns Map<requestNumber, guid>. Missing rows mean the email will send
+ * without a regarding link (graceful degrade).
  */
+async function resolveRequestGuids(requestNumbers, sendEvent) {
+  const map = new Map();
+  if (requestNumbers.length === 0) return map;
+
+  try {
+    sendEvent('progress', {
+      stage: 'resolving_requests',
+      message: `Looking up ${requestNumbers.length} request(s) in Dynamics...`,
+    });
+
+    const filter = requestNumbers
+      .map(n => `akoya_requestnum eq '${String(n).replace(/'/g, "''")}'`)
+      .join(' or ');
+
+    const { records } = await DynamicsService.queryRecords('akoya_requests', {
+      select: 'akoya_requestid,akoya_requestnum',
+      filter,
+      top: requestNumbers.length,
+    });
+
+    for (const r of records) {
+      if (r.akoya_requestnum && r.akoya_requestid) {
+        map.set(r.akoya_requestnum, r.akoya_requestid);
+      }
+    }
+  } catch (err) {
+    console.warn('Request GUID resolution failed; emails will send without regarding link:', err.message);
+  }
+  return map;
+}
+
+// Dynamics email activity `description` is rendered as HTML, so plain-text
+// templates (with `\n` line breaks) lose their formatting. Escape HTML special
+// chars, then convert newlines to <br>. Bare URLs become anchor tags so links
+// stay clickable.
+function plainTextToHtml(text) {
+  if (!text) return '';
+  const escaped = String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const linked = escaped.replace(
+    /(https?:\/\/[^\s<]+)/g,
+    (m) => `<a href="${m}">${m}</a>`
+  );
+  return linked.replace(/\r\n|\r|\n/g, '<br>');
+}
+
 async function fetchAttachment(url, cache) {
   if (cache.has(url)) return cache.get(url);
-
   if (!isAllowedUrl(url)) {
     console.warn('fetchAttachment blocked non-allowed URL:', url);
     return null;
   }
-
   const response = await safeFetch(url);
   if (!response.ok) return null;
 
   const buffer = Buffer.from(await response.arrayBuffer());
   const contentType = response.headers.get('content-type') || 'application/octet-stream';
-
-  // Extract filename from URL
   const urlPath = new URL(url).pathname;
   const filename = urlPath.split('/').pop() || 'attachment';
 

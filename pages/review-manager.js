@@ -131,9 +131,10 @@ const ATTACHMENTS_STORAGE_KEY = 'review_manager_attachments';
 function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEmailsSent }) {
   const [templateType, setTemplateType] = useState('materials');
   const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
-  const [step, setStep] = useState('compose'); // compose | progress | download
+  const [step, setStep] = useState('compose'); // compose | preview | sending | sent
   const [progress, setProgress] = useState({ current: 0, total: 0, message: '' });
-  const [generatedEmails, setGeneratedEmails] = useState([]);
+  const [drafts, setDrafts] = useState([]); // [{ suggestionId, candidateName, candidateEmail, requestNumber, subject, body, skipped? }]
+  const [sentResults, setSentResults] = useState({ sent: [], failed: [], skipped: [] });
   const [error, setError] = useState(null);
   const [emailFields, setEmailFields] = useState({
     reviewDueDate: '',
@@ -149,7 +150,8 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
     if (isOpen) {
       setStep('compose');
       setProgress({ current: 0, total: 0, message: '' });
-      setGeneratedEmails([]);
+      setDrafts([]);
+      setSentResults({ sent: [], failed: [], skipped: [] });
       setError(null);
     }
   }, [isOpen]);
@@ -224,14 +226,13 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
 
   const currentTemplate = templates[templateType];
 
-  const handleGenerate = async () => {
-    setStep('progress');
-    setProgress({ current: 0, total: reviewers.length, message: 'Starting...' });
+  const handlePreview = async () => {
     setError(null);
-    setGeneratedEmails([]);
+    setDrafts([]);
+    setProgress({ current: 0, total: 0, message: 'Rendering previews...' });
 
     try {
-      const response = await fetch('/api/review-manager/send-emails', {
+      const response = await fetch('/api/review-manager/render-emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -243,13 +244,62 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
             proposalUrl: settings.proposalUrl || '',
             proposalPassword: settings.proposalPassword || '',
             reviewDueDate: emailFields.reviewDueDate || settings.reviewDueDate || '',
-            fromEmail: settings.fromEmail || '',
             customFields: {
               proposalSendDate: emailFields.proposalSendDate || '',
               commitDate: emailFields.commitDate || '',
               honorarium: emailFields.honorarium || '',
             },
           },
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to render previews');
+      }
+
+      setDrafts(data.drafts || []);
+      setStep('preview');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const updateDraft = (suggestionId, field, value) => {
+    setDrafts(prev => prev.map(d =>
+      d.suggestionId === suggestionId ? { ...d, [field]: value } : d
+    ));
+  };
+
+  const handleSend = async () => {
+    const sendable = drafts.filter(d => !d.skipped && d.candidateEmail);
+    if (sendable.length === 0) {
+      setError('No recipients with email to send to');
+      return;
+    }
+
+    const ok = window.confirm(
+      `Send ${sendable.length} email${sendable.length !== 1 ? 's' : ''} now via Dynamics? `
+        + 'This will create email activities on the linked requests and cannot be undone.'
+    );
+    if (!ok) return;
+
+    setStep('sending');
+    setProgress({ current: 0, total: sendable.length, message: 'Starting...' });
+    setError(null);
+    setSentResults({ sent: [], failed: [], skipped: [] });
+
+    try {
+      const response = await fetch('/api/review-manager/send-emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          drafts: sendable.map(d => ({
+            suggestionId: d.suggestionId,
+            subject: d.subject,
+            body: d.body,
+          })),
+          templateType,
           attachmentUrls: attachments.map(a => a.url),
           markAsSent: true,
         }),
@@ -276,16 +326,22 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
               const data = JSON.parse(line.slice(6));
               if (currentEvent === 'progress') {
                 setProgress(prev => ({ ...prev, ...data }));
-              } else if (currentEvent === 'email_generated') {
-                setProgress(prev => ({ ...prev, current: data.index }));
+              } else if (currentEvent === 'email_sent') {
+                setSentResults(prev => ({ ...prev, sent: [...prev.sent, data] }));
+              } else if (currentEvent === 'email_failed') {
+                setSentResults(prev => ({ ...prev, failed: [...prev.failed, data] }));
               } else if (currentEvent === 'result') {
-                setGeneratedEmails(data.emails || []);
+                setSentResults({
+                  sent: data.sent || [],
+                  failed: data.failed || [],
+                  skipped: data.skipped || [],
+                });
               } else if (currentEvent === 'complete') {
-                setStep('download');
+                setStep('sent');
                 if (onEmailsSent) onEmailsSent();
               } else if (currentEvent === 'error') {
                 setError(data.message);
-                setStep('compose');
+                setStep('preview');
               }
             } catch (e) { /* parse error, ignore */ }
             currentEvent = null;
@@ -294,50 +350,7 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
       }
     } catch (err) {
       setError(err.message);
-      setStep('compose');
-    }
-  };
-
-  const downloadEmail = (email) => {
-    const blob = new Blob([email.content], { type: 'message/rfc822' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = email.filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const downloadAllAsZip = async () => {
-    try {
-      if (generatedEmails.length === 0) return;
-
-      const missingContent = generatedEmails.filter(e => !e.content);
-      if (missingContent.length > 0) {
-        console.error('Emails missing content:', missingContent.map(e => e.filename));
-        alert(`${missingContent.length} email(s) are missing content.`);
-        return;
-      }
-
-      const JSZip = (await import('jszip')).default;
-      const zip = new JSZip();
-      for (const email of generatedEmails) {
-        zip.file(email.filename, email.content);
-      }
-      const content = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(content);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${templateType}-emails-${new Date().toISOString().split('T')[0]}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Error creating ZIP:', error);
-      alert(`Failed to create ZIP file: ${error.message}`);
+      setStep('preview');
     }
   };
 
@@ -531,48 +544,131 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
             </div>
           )}
 
-          {step === 'progress' && (
-            <div className="space-y-4 text-center py-8">
-              <div className="w-12 h-12 border-4 border-gray-200 border-t-gray-600 rounded-full animate-spin mx-auto" />
-              <p className="text-gray-700 font-medium">{progress.message}</p>
-              {progress.total > 0 && (
-                <div className="w-full bg-gray-200 rounded-full h-2 max-w-md mx-auto">
-                  <div
-                    className="bg-gray-700 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${(progress.current / progress.total) * 100}%` }}
-                  />
+          {step === 'preview' && (
+            <div className="space-y-4">
+              {error && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
+              <div className="bg-blue-50 rounded-lg p-3 text-sm text-blue-800">
+                Review and personalize each email below. Edits here are sent as-is to each
+                recipient. Attachments and the sender are locked at this step.
+              </div>
+              {drafts.filter(d => d.skipped).length > 0 && (
+                <div className="bg-orange-50 rounded-lg p-3 text-sm text-orange-800">
+                  {drafts.filter(d => d.skipped).length} reviewer(s) will be skipped (no email on file).
                 </div>
               )}
-              <p className="text-sm text-gray-500">{progress.current} / {progress.total}</p>
+              <div className="space-y-3">
+                {drafts.map((d) => (
+                  <div key={d.suggestionId} className={`border rounded-lg p-3 ${d.skipped ? 'bg-gray-50 opacity-60' : 'bg-white'}`}>
+                    <div className="flex items-baseline justify-between mb-2">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{d.candidateName}</p>
+                        <p className="text-xs text-gray-500">
+                          {d.candidateEmail || 'no email on file'}
+                          {d.requestNumber && <span className="ml-2">· request {d.requestNumber}</span>}
+                        </p>
+                      </div>
+                      {d.skipped && (
+                        <span className="text-xs text-orange-700 font-medium">Will be skipped</span>
+                      )}
+                    </div>
+                    {!d.skipped && (
+                      <>
+                        <input
+                          type="text"
+                          value={d.subject}
+                          onChange={e => updateDraft(d.suggestionId, 'subject', e.target.value)}
+                          className="w-full mb-2 px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-400"
+                          placeholder="Subject"
+                        />
+                        <textarea
+                          value={d.body}
+                          onChange={e => updateDraft(d.suggestionId, 'body', e.target.value)}
+                          rows={8}
+                          className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-gray-400 font-mono"
+                        />
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
-          {step === 'download' && (
+          {step === 'sending' && (
+            <div className="space-y-4 py-8">
+              <div className="text-center space-y-3">
+                <div className="w-12 h-12 border-4 border-gray-200 border-t-gray-600 rounded-full animate-spin mx-auto" />
+                <p className="text-gray-700 font-medium">{progress.message || 'Sending...'}</p>
+                {progress.total > 0 && (
+                  <div className="w-full bg-gray-200 rounded-full h-2 max-w-md mx-auto">
+                    <div
+                      className="bg-gray-700 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                    />
+                  </div>
+                )}
+                <p className="text-sm text-gray-500">{progress.current} / {progress.total}</p>
+              </div>
+              {(sentResults.sent.length > 0 || sentResults.failed.length > 0) && (
+                <div className="border-t border-gray-200 pt-3 space-y-1 max-h-48 overflow-y-auto">
+                  {sentResults.sent.map(s => (
+                    <div key={`s-${s.suggestionId}`} className="flex items-center gap-2 text-sm text-green-700">
+                      <span>✓</span><span>{s.candidateName}</span><span className="text-gray-400 text-xs">{s.candidateEmail}</span>
+                    </div>
+                  ))}
+                  {sentResults.failed.map(f => (
+                    <div key={`f-${f.suggestionId}`} className="flex items-center gap-2 text-sm text-red-700">
+                      <span>✗</span><span>{f.candidateName}</span><span className="text-red-500 text-xs">{f.error}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 'sent' && (
             <div className="space-y-4">
               <div className="text-center py-4">
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 ${
+                  sentResults.failed.length === 0 ? 'bg-green-100' : 'bg-yellow-100'
+                }`}>
+                  <svg className={`w-6 h-6 ${sentResults.failed.length === 0 ? 'text-green-600' : 'text-yellow-600'}`}
+                       fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
                 <p className="text-lg font-medium text-gray-900">
-                  {generatedEmails.length} email{generatedEmails.length !== 1 ? 's' : ''} generated
+                  {sentResults.sent.length} sent
+                  {sentResults.failed.length > 0 && `, ${sentResults.failed.length} failed`}
+                  {sentResults.skipped.length > 0 && `, ${sentResults.skipped.length} skipped`}
                 </p>
               </div>
-
-              <div className="space-y-2">
-                {generatedEmails.map((email, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{email.candidateName}</p>
-                      <p className="text-xs text-gray-500">{email.candidateEmail}</p>
+              <div className="space-y-1">
+                {sentResults.sent.map(s => (
+                  <div key={`s-${s.suggestionId}`} className="flex items-center justify-between p-2 bg-green-50 rounded text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-green-600">✓</span>
+                      <span className="font-medium text-gray-900">{s.candidateName}</span>
+                      <span className="text-gray-500 text-xs">{s.candidateEmail}</span>
                     </div>
-                    <button
-                      onClick={() => downloadEmail(email)}
-                      className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                      Download
-                    </button>
+                    {s.regardingLinked && <span className="text-xs text-green-700">linked to request</span>}
+                  </div>
+                ))}
+                {sentResults.failed.map(f => (
+                  <div key={`f-${f.suggestionId}`} className="p-2 bg-red-50 rounded text-sm">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-red-600">✗</span>
+                      <span className="font-medium text-gray-900">{f.candidateName}</span>
+                      <span className="text-gray-500 text-xs">{f.candidateEmail}</span>
+                    </div>
+                    <p className="text-xs text-red-700 ml-6">{f.error}</p>
+                  </div>
+                ))}
+                {sentResults.skipped.map(s => (
+                  <div key={`sk-${s.suggestionId}`} className="flex items-center gap-2 p-2 bg-gray-50 rounded text-sm text-gray-600">
+                    <span>—</span>
+                    <span className="font-medium">{s.candidateName}</span>
+                    <span className="text-xs">skipped (no email)</span>
                   </div>
                 ))}
               </div>
@@ -585,8 +681,9 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+            disabled={step === 'sending'}
           >
-            {step === 'download' ? 'Close' : 'Cancel'}
+            {step === 'sent' ? 'Close' : 'Cancel'}
           </button>
           <div className="flex gap-2">
             {step === 'compose' && (
@@ -597,15 +694,23 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
                 >
                   Save Template
                 </button>
-                <Button onClick={handleGenerate}>
-                  Generate {reviewers.filter(r => r.email).length} Email{reviewers.filter(r => r.email).length !== 1 ? 's' : ''}
+                <Button onClick={handlePreview}>
+                  Preview {reviewers.filter(r => r.email).length} Email{reviewers.filter(r => r.email).length !== 1 ? 's' : ''}
                 </Button>
               </>
             )}
-            {step === 'download' && generatedEmails.length > 0 && (
-              <Button onClick={downloadAllAsZip}>
-                Download All (.zip)
-              </Button>
+            {step === 'preview' && (
+              <>
+                <button
+                  onClick={() => setStep('compose')}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-300 transition-colors"
+                >
+                  Back
+                </button>
+                <Button onClick={handleSend}>
+                  Send {drafts.filter(d => !d.skipped).length} Email{drafts.filter(d => !d.skipped).length !== 1 ? 's' : ''}
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -1152,7 +1257,7 @@ function ReviewManagerPage() {
   const [selectedCycleId, setSelectedCycleId] = useState('all');
   const [selectedProposal, setSelectedProposal] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [settings, setSettings] = useState({ signature: '', fromEmail: '' });
+  const [settings, setSettings] = useState({ signature: '' });
 
   const refreshTrigger = useRef(0);
 
@@ -1243,27 +1348,18 @@ function ReviewManagerPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </summary>
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">From Email</label>
-                <input
-                  type="email"
-                  value={settings.fromEmail || ''}
-                  onChange={e => handleSettingsChange('fromEmail', e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Signature</label>
-                <textarea
-                  value={settings.signature || ''}
-                  onChange={e => handleSettingsChange('signature', e.target.value)}
-                  placeholder="Your name and title"
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-                />
-              </div>
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Signature</label>
+              <textarea
+                value={settings.signature || ''}
+                onChange={e => handleSettingsChange('signature', e.target.value)}
+                placeholder="Your name and title"
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-400 focus:border-transparent"
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                Emails are sent from your signed-in Microsoft account.
+              </p>
             </div>
           </details>
         </Card>

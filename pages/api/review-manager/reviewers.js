@@ -18,7 +18,16 @@ export default async function handler(req, res) {
   if (!access) return;
   const sessionProfileId = access.profileId;
 
-  if (req.method === 'GET') return handleGet(req, res, sessionProfileId);
+  // Dev-mode fallback: when auth is bypassed (AUTH_REQUIRED=false), accept
+  // userProfileId from the request so the page can scope reads to the
+  // currently-selected dev profile. PATCH stays session-only.
+  let getProfileId = sessionProfileId;
+  if (!getProfileId && access.session?.authBypassed) {
+    const q = req.query?.userProfileId;
+    if (q) getProfileId = parseInt(q, 10) || null;
+  }
+
+  if (req.method === 'GET') return handleGet(req, res, getProfileId);
   if (req.method === 'PATCH') return handlePatch(req, res, sessionProfileId);
   return res.status(405).json({ error: 'Method not allowed' });
 }
