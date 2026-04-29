@@ -10,6 +10,20 @@ The pre-Session 84 chronological per-session log (everything after the September
 
 ---
 
+## April 2026 — Wave 2 schema reshape: align with Connor's wmkf_potentialreviewers (Session 115)
+
+**Milestone:** Wave 2 schema fully landed in prod with a deliberate model pivot. Connor's existing `wmkf_potentialreviewers` becomes the canonical lead/person record (1:1 with `contact` once promoted); our `wmkf_app_reviewer_suggestion` is the lifecycle ledger keyed `(potentialreviewer, request)`; our `wmkf_app_researcher` is the bibliometric sidecar (h-index, citations) on a different update cadence. Tables are empty and ready for adapter wiring.
+**Sessions:** 115 (2026-04-29)
+**Ship state:**
+- Connor's table extended (lookup → contact + 1:1 alt-key + email alt-key); old `wmkf_requestlookup` column dropped after he removed the field from the "Potential Reviewer" main form via the maker portal (Web API PATCH on Active-layer systemforms silently no-ops in our env, even with System Customizer)
+- Engine extended: `wave{N}-existing/` directory loads before `wave{N}/`; `extensions-on-existing` spec kind handles attributes + relationships + alt-keys on already-created entities
+- Two original schemas had primary-attribute lengths >850 (Dataverse's hard cap); fixed. Dependency ordering fixed via `wmkf_app_z_publication_author.json` rename so its lookup target loads first
+- 6 duplicate emails on `wmkf_potentialreviewers` cleaned up by Connor before the email alt-key would apply
+**Why it matters:** Replaces the "save-candidates writes a researcher row, no contact link" Postgres model with a CRM-aligned one (lead → contact → suggestion lifecycle). Removes the contacts-pollution risk of auto-creating contacts for every suggested-but-never-contacted candidate. Forms the data foundation for the Reviewer Finder cutover (next session).
+**Pointers:** commits `46c7d26` (initial wave 2), `852bd1a` (reshape); `lib/dataverse/schema/wave2-existing/`, `scripts/apply-dataverse-schema.js`
+
+---
+
 ## April 2026 — Wave 1 Postgres → Dataverse cutover (Session 112)
 
 **Milestone:** Production cutover. The three Wave 1 tables (`user_app_access`, `user_preferences`, `system_settings`) now read/write through Dataverse on prod traffic. Postgres remains as a failsafe; rollback is `vercel env rm WAVE1_BACKEND_<NAME>` + redeploy.
