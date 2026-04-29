@@ -1,0 +1,28 @@
+{
+  "name": "wmkf_potentialreviewers-extensions",
+  "kind": "extensions-on-existing",
+  "entityLogicalName": "wmkf_potentialreviewers",
+  "relationships": [
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_potentialreviewers_contact",
+      "referencedEntity": "contact",
+      "lookupSchemaName": "wmkf_Contact",
+      "lookupDisplayName": "Contact",
+      "lookupDescription": "The promoted CRM contact for this reviewer. Populated when staff first reaches out — until then null. 1:1 with the potential-reviewer row.",
+      "required": "None"
+    }
+  ],
+  "alternateKeys": [
+    {
+      "schemaName": "wmkf_contact_unique",
+      "displayName": "Contact (1:1)",
+      "keyAttributes": ["wmkf_contact"]
+    },
+    {
+      "schemaName": "wmkf_emailaddress_unique",
+      "displayName": "Email Address",
+      "keyAttributes": ["wmkf_emailaddress"]
+    }
+  ]
+}

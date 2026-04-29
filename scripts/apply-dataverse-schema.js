@@ -56,12 +56,27 @@ function loadSolutionManifest() {
 }
 
 function loadWaveSchemas(wave) {
-  const dir = path.join(__dirname, '..', 'lib', 'dataverse', 'schema', `wave${wave}`);
-  if (!fs.existsSync(dir)) throw new Error(`No schema directory for wave ${wave}: ${dir}`);
-  return fs.readdirSync(dir)
-    .filter((f) => f.endsWith('.json'))
-    .sort()
-    .map((f) => ({ file: f, spec: JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) }));
+  // Existing-entity extensions in `wave{N}-existing/` are applied first so
+  // their relationships/alt-keys are available when new-entity specs reference
+  // them (e.g., a new entity's lookup pointing at an existing-table column).
+  const baseDir = path.join(__dirname, '..', 'lib', 'dataverse', 'schema');
+  const dirs = [
+    { dir: path.join(baseDir, `wave${wave}-existing`), required: false },
+    { dir: path.join(baseDir, `wave${wave}`), required: true },
+  ];
+  const specs = [];
+  for (const { dir, required } of dirs) {
+    if (!fs.existsSync(dir)) {
+      if (required) throw new Error(`No schema directory for wave ${wave}: ${dir}`);
+      continue;
+    }
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort();
+    for (const f of files) {
+      specs.push({ file: f, spec: JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) });
+    }
+  }
+  if (specs.length === 0) throw new Error(`No schema files found for wave ${wave}`);
+  return specs;
 }
 
 function resourceUrl(target) {
@@ -83,10 +98,20 @@ function tag(created) { return created ? '✓ created' : '· exists  '; }
 async function applySpec(client, spec) {
   console.log(`\n── ${spec.name} (${spec.kind}) ──`);
 
-  if (spec.kind === 'attributes-on-existing') {
+  if (spec.kind === 'attributes-on-existing' || spec.kind === 'extensions-on-existing') {
+    const target = spec.entityLogicalName;
     for (const attr of spec.attributes || []) {
-      const r = await ensureAttribute(client, spec.entityLogicalName, attr);
-      console.log(`  ${tag(r.created)}  attr  ${spec.entityLogicalName}.${attr.schemaName}`);
+      const r = await ensureAttribute(client, target, attr);
+      console.log(`  ${tag(r.created)}  attr  ${target}.${attr.schemaName}`);
+    }
+    for (const rel of spec.relationships || []) {
+      const body = { ...rel, referencingEntity: target };
+      const r = await ensureLookupRelationship(client, body);
+      console.log(`  ${tag(r.created)}  rel   ${rel.schemaName}  (${rel.referencedEntity} → ${target})`);
+    }
+    for (const key of spec.alternateKeys || []) {
+      const r = await ensureAlternateKey(client, target, key);
+      console.log(`  ${tag(r.created)}  key   ${key.schemaName}  [${key.keyAttributes.join(', ')}]`);
     }
     return;
   }

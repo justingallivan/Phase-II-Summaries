@@ -4,7 +4,7 @@
   "schemaName": "wmkf_AppResearcher",
   "displayName": "App Researcher",
   "displayCollectionName": "App Researchers",
-  "description": "Bibliometric/contact records for external researchers surfaced by the Reviewer Finder. Optional lookup to a foundation contact when promoted.",
+  "description": "Bibliometric snapshot for an external researcher (h-index, citations, scholar/ORCID metadata). 1:1 sidecar to wmkf_potentialreviewers — that table holds the canonical person identity; this one holds the metrics that change over time and need refresh.",
   "ownershipType": "OrganizationOwned",
   "primaryNameAttribute": {
     "schemaName": "wmkf_Name",
@@ -151,12 +151,12 @@
   "relationships": [
     {
       "kind": "N:1",
-      "schemaName": "wmkf_appresearcher_contact",
-      "referencedEntity": "contact",
-      "lookupSchemaName": "wmkf_Contact",
-      "lookupDisplayName": "Foundation Contact",
-      "lookupDescription": "Set when this researcher has been promoted to a foundation contact record.",
-      "required": "None"
+      "schemaName": "wmkf_appresearcher_potentialreviewer",
+      "referencedEntity": "wmkf_potentialreviewers",
+      "lookupSchemaName": "wmkf_PotentialReviewer",
+      "lookupDisplayName": "Potential Reviewer",
+      "lookupDescription": "1:1 link to the canonical person record in wmkf_potentialreviewers. Required — every researcher snapshot belongs to a potential reviewer.",
+      "required": "ApplicationRequired"
     }
   ],
   "alternateKeys": [
@@ -164,6 +164,11 @@
       "schemaName": "wmkf_orcid",
       "displayName": "ORCID",
       "keyAttributes": ["wmkf_orcid"]
+    },
+    {
+      "schemaName": "wmkf_potentialreviewer_unique",
+      "displayName": "Potential Reviewer (1:1)",
+      "keyAttributes": ["wmkf_potentialreviewer"]
     }
   ]
 }

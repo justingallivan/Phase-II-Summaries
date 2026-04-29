@@ -4,7 +4,7 @@
   "schemaName": "wmkf_AppReviewerSuggestion",
   "displayName": "App Reviewer Suggestion",
   "displayCollectionName": "App Reviewer Suggestions",
-  "description": "One row per (reviewer-contact, request) candidate. Tracks the full outreach lifecycle: invitation, response, materials, reminders, review receipt, thank-you. UserOwned (the staff member who suggested the candidate) but org-readable.",
+  "description": "One row per (potential-reviewer, request) candidate. Tracks the full outreach lifecycle: invitation, response, materials, reminders, review receipt, thank-you. The canonical person identity lives on wmkf_potentialreviewers (which is 1:1 with contact once promoted). UserOwned (the staff member who suggested the candidate) but org-readable.",
   "ownershipType": "UserOwned",
   "primaryNameAttribute": {
     "schemaName": "wmkf_SuggestionLabel",
@@ -185,21 +185,12 @@
   "relationships": [
     {
       "kind": "N:1",
-      "schemaName": "wmkf_appreviewersuggestion_reviewercontact",
-      "referencedEntity": "contact",
-      "lookupSchemaName": "wmkf_ReviewerContact",
-      "lookupDisplayName": "Reviewer Contact",
-      "lookupDescription": "The foundation contact being invited to review.",
+      "schemaName": "wmkf_appreviewersuggestion_potentialreviewer",
+      "referencedEntity": "wmkf_potentialreviewers",
+      "lookupSchemaName": "wmkf_PotentialReviewer",
+      "lookupDisplayName": "Potential Reviewer",
+      "lookupDescription": "The candidate being suggested. 1:1 with a contact once they're promoted.",
       "required": "ApplicationRequired"
-    },
-    {
-      "kind": "N:1",
-      "schemaName": "wmkf_appreviewersuggestion_researchersource",
-      "referencedEntity": "wmkf_appresearcher",
-      "lookupSchemaName": "wmkf_ResearcherSource",
-      "lookupDisplayName": "Researcher Source",
-      "lookupDescription": "Optional bibliometric record that surfaced this candidate.",
-      "required": "None"
     },
     {
       "kind": "N:1",
@@ -213,9 +204,9 @@
   ],
   "alternateKeys": [
     {
-      "schemaName": "wmkf_reviewercontact_request",
-      "displayName": "Reviewer Contact + Request",
-      "keyAttributes": ["wmkf_reviewercontact", "wmkf_request"]
+      "schemaName": "wmkf_potentialreviewer_request",
+      "displayName": "Potential Reviewer + Request",
+      "keyAttributes": ["wmkf_potentialreviewer", "wmkf_request"]
     }
   ]
 }
