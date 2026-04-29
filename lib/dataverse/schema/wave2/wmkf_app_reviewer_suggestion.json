@@ -1,0 +1,221 @@
+{
+  "name": "wmkf_app_reviewer_suggestion",
+  "kind": "new-entity",
+  "schemaName": "wmkf_AppReviewerSuggestion",
+  "displayName": "App Reviewer Suggestion",
+  "displayCollectionName": "App Reviewer Suggestions",
+  "description": "One row per (reviewer-contact, request) candidate. Tracks the full outreach lifecycle: invitation, response, materials, reminders, review receipt, thank-you. UserOwned (the staff member who suggested the candidate) but org-readable.",
+  "ownershipType": "UserOwned",
+  "primaryNameAttribute": {
+    "schemaName": "wmkf_SuggestionLabel",
+    "displayName": "Suggestion Label",
+    "description": "Synthetic label combining contact name + request number for picker display.",
+    "maxLength": 500,
+    "requiredLevel": "ApplicationRequired"
+  },
+  "attributes": [
+    {
+      "type": "String",
+      "schemaName": "wmkf_GrantCycleCode",
+      "displayName": "Grant Cycle Code",
+      "description": "Soft reference to the cycle's fiscal year code. Cached for query speed even though derivable from the request.",
+      "maxLength": 50
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ProgramArea",
+      "displayName": "Program Area",
+      "maxLength": 100
+    },
+    {
+      "type": "Double",
+      "schemaName": "wmkf_RelevanceScore",
+      "displayName": "Relevance Score",
+      "description": "AI-assigned match score (0.0 - 1.0).",
+      "minValue": 0,
+      "maxValue": 1,
+      "precision": 4
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_MatchReason",
+      "displayName": "Match Reason",
+      "description": "Why this candidate was suggested.",
+      "maxLength": 50000
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_Sources",
+      "displayName": "Sources",
+      "description": "Comma-separated list of databases the candidate was sourced from (PubMed, ORCID, etc.).",
+      "maxLength": 500
+    },
+    {
+      "type": "Picklist",
+      "schemaName": "wmkf_ReviewStatus",
+      "displayName": "Review Status",
+      "description": "Where the reviewer is in the lifecycle.",
+      "options": [
+        { "value": 100000000, "label": "Accepted" },
+        { "value": 100000001, "label": "Materials Sent" },
+        { "value": 100000002, "label": "Under Review" },
+        { "value": 100000003, "label": "Review Received" },
+        { "value": 100000004, "label": "Complete" }
+      ]
+    },
+    {
+      "type": "Picklist",
+      "schemaName": "wmkf_ResponseType",
+      "displayName": "Response Type",
+      "description": "Reviewer's response to the initial invitation.",
+      "options": [
+        { "value": 100000000, "label": "Accepted" },
+        { "value": 100000001, "label": "Declined" },
+        { "value": 100000002, "label": "No Response" }
+      ]
+    },
+    {
+      "type": "Boolean",
+      "schemaName": "wmkf_Selected",
+      "displayName": "Selected",
+      "description": "Whether the staff member selected this candidate from the suggestion list.",
+      "default": false
+    },
+    {
+      "type": "Boolean",
+      "schemaName": "wmkf_Invited",
+      "displayName": "Invited",
+      "description": "Whether an invitation has been sent.",
+      "default": false
+    },
+    {
+      "type": "Boolean",
+      "schemaName": "wmkf_Accepted",
+      "displayName": "Accepted",
+      "description": "Whether the reviewer accepted the invitation.",
+      "default": false
+    },
+    {
+      "type": "Boolean",
+      "schemaName": "wmkf_Declined",
+      "displayName": "Declined",
+      "description": "Whether the reviewer declined the invitation.",
+      "default": false
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_EmailSentAt",
+      "displayName": "Email Sent At",
+      "description": "When the initial invitation was sent."
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_EmailOpenedAt",
+      "displayName": "Email Opened At"
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_ResponseReceivedAt",
+      "displayName": "Response Received At"
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_MaterialsSentAt",
+      "displayName": "Materials Sent At"
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_ReminderSentAt",
+      "displayName": "Reminder Sent At",
+      "description": "Timestamp of the most recent reminder."
+    },
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_ReminderCount",
+      "displayName": "Reminder Count",
+      "minValue": 0,
+      "maxValue": 100
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_ReviewReceivedAt",
+      "displayName": "Review Received At"
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_ThankyouSentAt",
+      "displayName": "Thank-You Sent At"
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ReviewBlobUrl",
+      "displayName": "Review Blob URL",
+      "format": "Url",
+      "maxLength": 500
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ReviewFilename",
+      "displayName": "Review Filename",
+      "maxLength": 255
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ProposalUrl",
+      "displayName": "Proposal URL",
+      "description": "SharePoint URL or other access link for this proposal's materials. Cached on the suggestion so reviewers see consistent values.",
+      "format": "Url",
+      "maxLength": 500
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ProposalPassword",
+      "displayName": "Proposal Password",
+      "description": "Optional access password sent with the proposal materials.",
+      "maxLength": 100
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_Notes",
+      "displayName": "Notes",
+      "description": "Free-form notes for the staff owner.",
+      "maxLength": 100000
+    }
+  ],
+  "relationships": [
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_appreviewersuggestion_reviewercontact",
+      "referencedEntity": "contact",
+      "lookupSchemaName": "wmkf_ReviewerContact",
+      "lookupDisplayName": "Reviewer Contact",
+      "lookupDescription": "The foundation contact being invited to review.",
+      "required": "ApplicationRequired"
+    },
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_appreviewersuggestion_researchersource",
+      "referencedEntity": "wmkf_appresearcher",
+      "lookupSchemaName": "wmkf_ResearcherSource",
+      "lookupDisplayName": "Researcher Source",
+      "lookupDescription": "Optional bibliometric record that surfaced this candidate.",
+      "required": "None"
+    },
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_appreviewersuggestion_request",
+      "referencedEntity": "akoya_request",
+      "lookupSchemaName": "wmkf_Request",
+      "lookupDisplayName": "Request",
+      "lookupDescription": "The proposal under review.",
+      "required": "ApplicationRequired"
+    }
+  ],
+  "alternateKeys": [
+    {
+      "schemaName": "wmkf_reviewercontact_request",
+      "displayName": "Reviewer Contact + Request",
+      "keyAttributes": ["wmkf_reviewercontact", "wmkf_request"]
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "name": "wmkf_app_grant_cycle",
+  "kind": "new-entity",
+  "schemaName": "wmkf_AppGrantCycle",
+  "displayName": "App Grant Cycle",
+  "displayCollectionName": "App Grant Cycles",
+  "description": "Grant review cycles backing the Reviewer Finder. One row per fiscal-year board meeting cycle. Alt-keyed on fiscal year code so it joins to akoya_request.akoya_fiscalyear.",
+  "ownershipType": "OrganizationOwned",
+  "primaryNameAttribute": {
+    "schemaName": "wmkf_DisplayName",
+    "displayName": "Display Name",
+    "description": "Human-readable cycle name, e.g. 'June 2026 Board Meeting'.",
+    "maxLength": 255,
+    "requiredLevel": "ApplicationRequired"
+  },
+  "attributes": [
+    {
+      "type": "String",
+      "schemaName": "wmkf_FiscalYearCode",
+      "displayName": "Fiscal Year Code",
+      "description": "Matches akoya_request.akoya_fiscalyear (e.g. 'June 2026'). Alternate key.",
+      "maxLength": 50,
+      "requiredLevel": "ApplicationRequired"
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_MeetingDate",
+      "displayName": "Meeting Date",
+      "description": "Denormalized copy of the board-meeting date for requests in this cycle.",
+      "format": "DateOnly",
+      "behavior": "DateOnly"
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_SummaryPages",
+      "displayName": "Summary Pages",
+      "description": "Max page count for reviewer summaries (e.g. '2').",
+      "maxLength": 50
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_ReviewReturnDeadline",
+      "displayName": "Review Return Deadline",
+      "description": "Date by which reviewers must submit their reviews.",
+      "format": "DateOnly",
+      "behavior": "DateOnly"
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ReviewTemplateUrl",
+      "displayName": "Review Template URL",
+      "description": "Vercel Blob URL of the review template attached to outgoing emails.",
+      "maxLength": 500
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ReviewTemplateFilename",
+      "displayName": "Review Template Filename",
+      "maxLength": 255
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_AdditionalAttachments",
+      "displayName": "Additional Attachments",
+      "description": "JSON array of additional attachment {blobUrl,filename} objects.",
+      "maxLength": 50000
+    },
+    {
+      "type": "Boolean",
+      "schemaName": "wmkf_IsActive",
+      "displayName": "Is Active",
+      "description": "Whether the cycle should appear in the active picker.",
+      "default": true
+    }
+  ],
+  "relationships": [],
+  "alternateKeys": [
+    {
+      "schemaName": "wmkf_fiscalyearcode",
+      "displayName": "Fiscal Year Code",
+      "keyAttributes": ["wmkf_fiscalyearcode"]
+    }
+  ]
+}

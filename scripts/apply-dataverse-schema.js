@@ -156,7 +156,7 @@ async function applySpec(client, spec) {
     console.log(`  ${tag(sol.created)}  solution  ${sol.uniquename}`);
   }
 
-  console.log('\n━━━ Wave 1 artifacts ━━━');
+  console.log(`\n━━━ Wave ${args.wave} artifacts ━━━`);
   for (const { file, spec } of specs) {
     await applySpec(client, spec);
   }

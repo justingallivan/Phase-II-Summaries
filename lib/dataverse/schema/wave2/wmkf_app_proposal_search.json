@@ -1,0 +1,92 @@
+{
+  "name": "wmkf_app_proposal_search",
+  "kind": "new-entity",
+  "schemaName": "wmkf_AppProposalSearch",
+  "displayName": "App Proposal Search",
+  "displayCollectionName": "App Proposal Searches",
+  "description": "Per-user record of a Reviewer Finder analysis run. Owner-scoped (UserOwned) but readable org-wide so staff can see each other's searches.",
+  "ownershipType": "UserOwned",
+  "primaryNameAttribute": {
+    "schemaName": "wmkf_ProposalTitle",
+    "displayName": "Proposal Title",
+    "description": "The proposal title that was analyzed. Primary name attribute.",
+    "maxLength": 1000,
+    "requiredLevel": "ApplicationRequired"
+  },
+  "attributes": [
+    {
+      "type": "String",
+      "schemaName": "wmkf_ProposalHash",
+      "displayName": "Proposal Hash",
+      "description": "Content hash for dedupe of repeated searches.",
+      "maxLength": 64
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_AuthorInstitution",
+      "displayName": "Author Institution",
+      "maxLength": 255
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_RequestNumber",
+      "displayName": "Request Number",
+      "description": "Soft reference to akoya_request.akoya_requestnum when the hard lookup is not set.",
+      "maxLength": 20
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_GrantCycleCode",
+      "displayName": "Grant Cycle Code",
+      "description": "Soft reference; resolves to wmkf_appgrantcycle via fiscal year alt-key.",
+      "maxLength": 50
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ClaudeSuggestions",
+      "displayName": "Claude Suggestions",
+      "description": "JSON-as-text. AI-suggested candidates from the analysis pass.",
+      "maxLength": 1000000
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_SearchQueries",
+      "displayName": "Search Queries",
+      "description": "JSON-as-text. The query strings used during discovery.",
+      "maxLength": 100000
+    },
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_VerifiedCount",
+      "displayName": "Verified Count",
+      "minValue": 0,
+      "maxValue": 100000
+    },
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_DiscoveredCount",
+      "displayName": "Discovered Count",
+      "minValue": 0,
+      "maxValue": 100000
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_SummaryBlobUrl",
+      "displayName": "Summary Blob URL",
+      "format": "Url",
+      "maxLength": 500
+    }
+  ],
+  "relationships": [
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_appproposalsearch_request",
+      "referencedEntity": "akoya_request",
+      "lookupSchemaName": "wmkf_Request",
+      "lookupDisplayName": "Request",
+      "lookupDescription": "Hard link to the akoya_request when this search corresponds to a known proposal.",
+      "required": "None"
+    }
+  ],
+  "alternateKeys": []
+}
