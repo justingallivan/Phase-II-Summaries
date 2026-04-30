@@ -552,7 +552,11 @@ function ProposalPickerCard({ onProposalLoaded, onError }) {
                   {p.projectLeader && <span>PI: {p.projectLeader}</span>}
                   {p.programArea && <span>{p.programArea}</span>}
                   {p.meetingDateFormatted && <span>Meeting: {p.meetingDateFormatted}</span>}
-                  <span>{p.reviewerSlotsFilled}/{p.reviewerSlotsTotal} reviewer slots filled</span>
+                  <span>
+                    {p.reviewerSlotsFilled === 0
+                      ? 'no reviewers invited yet'
+                      : `${p.reviewerSlotsFilled} invited`}
+                  </span>
                 </div>
               </div>
               <button
