@@ -14,6 +14,7 @@
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
+import { ClaudeReviewerService } from '../../../lib/services/claude-reviewer-service';
 
 const limiter = nextRateLimiter({ max: 10 });
 
@@ -227,8 +228,6 @@ export default async function handler(req, res) {
         stage: 'reasoning',
         message: `Generating reasoning for ${discoveryResults.discovered.length} discovered candidates...`
       });
-
-      const { ClaudeReviewerService } = require('../../../lib/services/claude-reviewer-service');
 
       enhancedDiscovered = await ClaudeReviewerService.generateDiscoveredReasoning(
         analysisResult.proposalInfo,

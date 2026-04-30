@@ -17,6 +17,7 @@ import { requireAppAccess } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 import { safeFetch } from '../../../lib/utils/safe-fetch';
+import { ClaudeReviewerService } from '../../../lib/services/claude-reviewer-service';
 
 const limiter = nextRateLimiter({ max: 10 });
 
@@ -136,9 +137,6 @@ export default async function handler(req, res) {
       message: 'Analyzing proposal with Claude...',
       textLength: text.length
     });
-
-    // Import and run Claude analysis
-    const { ClaudeReviewerService } = require('../../../lib/services/claude-reviewer-service');
 
     const result = await ClaudeReviewerService.analyzeProposal(text, apiKey, {
       additionalNotes: additionalNotes || '',
