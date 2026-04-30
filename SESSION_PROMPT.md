@@ -1,132 +1,120 @@
-# Session 116 Prompt: Build Wave 2 adapters + wire save-candidates
+# Session 117 Prompt: save-candidates Dataverse cutover + post-May-1 D26 validation
 
-## Session 115 Summary
+## Session 116 Summary
 
-Wave 2 schema landed in prod and was reshaped to match Connor's existing `wmkf_potentialreviewers` table as the canonical lead/person record. Most of the session was design negotiation with Connor (live) — the resulting model is a clear separation between his lead-capture table and our lifecycle ledger / bibliometric sidecar. No adapter work yet — the schema/design loop took the whole session.
+Built the **Wave 2 adapter trio**, then pivoted (with Justin) to a much bigger architectural shift: the Reviewer Finder entry path is moving from PDF-upload to a Dataverse-native picker driven by program-director assignment. End-to-end: backend resolver, status filter, SharePoint fetch endpoint, picker UI in `NewSearchTab`. Browser-validated as Justin in real auth. The save-candidates Postgres → Dataverse cutover is queued for next session — adapters are ready, picker now provides the `akoya_requestid`, just need to thread it through.
 
 ### What was completed
 
-1. **Wave 2 schema applied to prod (`46c7d26`).** First execute against prod surfaced two real bugs in the original schemas:
-   - Primary-name attributes on two tables were 1000 / 4000 chars long; Dataverse caps primary attributes at 850. Both lowered to 850.
-   - File-load order matters: `wmkf_app_publication_author.json` had a lookup → `wmkf_appresearcher` but sorted alphabetically before it. Renamed to `wmkf_app_z_publication_author.json` so it loads after researcher.
-   After fixes, all 6 wave-2 entities created cleanly and the run is idempotent.
+1. **Wave 2 adapter trio (`2627a03`).** Three thin Dataverse adapters: `potential-reviewer.js` (upsert by email alt-key, fill-empty merge), `researcher.js` (1:1 bibliometric sidecar; metrics overwrite, other fields fill-empty), `reviewer-suggestion.js` (lifecycle ledger, upsert by potentialreviewer+request alt-key). All three use `DynamicsService.queryRecords/.createRecord/.updateRecord`. Latent bug fix: `queryRecords` returns `{ records, ... }` not a flat array — adapters were indexing `[0]` on the wrapper, caught before any wired calls.
 
-2. **Wave 2 schema reshape (`852bd1a`)** — major design pivot driven by Connor input:
-   - Connor pointed out his existing `wmkf_potentialreviewers` table was already designed as the lead/person record (firstname, email, address, expertise, source picklist, "why chosen" memo) — purpose-built for what we were rebuilding. Final model:
-     ```
-     wmkf_potentialreviewers (1) ─ 1:1 ─ contact
-             │
-             │ 1:N
-             ▼
-     wmkf_app_reviewer_suggestion (N) ─── (1) akoya_request
-     ```
-   - Connor's table = lead capture (one row per *person*, not per request). Promoted to `contact` only when staff actually reaches out.
-   - Our `wmkf_app_reviewer_suggestion` = lifecycle ledger (one row per (person, proposal)). Holds relevance score, match reason, sources, lifecycle timestamps, picklists.
-   - Our `wmkf_app_researcher` = bibliometric sidecar (h-index, citations, scholar id) — separate from person identity because metrics update on a different cadence (Justin's call).
+2. **PD-filtered proposal picker — backend (`a83a240`).** Three new files form the foundation:
+   - `lib/services/program-director-resolver.js` — `azureEmail → systemuser.systemuserid`, cached 10 min (1 min on miss).
+   - `lib/utils/cycle-code.js` — meeting-date ↔ cycle code (`Jxx`/`Dxx`) helpers + OData filter-range builder. Validated: `2026-06-04 → J26`, etc.
+   - `pages/api/reviewer-finder/my-proposals.js` — GET endpoint. No `cycleCode` → distinct cycle codes the PD has work in. With `cycleCode` → proposals in that cycle.
+   - `scripts/smoke-my-proposals.js` — direct-Dynamics smoke (no auth). Validated: Justin → systemuser `29b0de0d-…`, 15 cycles in history, 99 J26 proposals, 49 D26 proposals.
 
-3. **Schema changes applied (all in `852bd1a`):**
-   - **Connor's `wmkf_potentialreviewers`:** added `wmkf_contact` lookup → `contact` (nullable until promotion), alt-key on `wmkf_contact` (1:1), alt-key on `wmkf_emailaddress` (idempotency for our upserts). Connor dropped his old `wmkf_requestlookup` column (which was per-request, doesn't fit the new per-person model). Connor cleaned up 6 duplicate emails before the alt-key would apply.
-   - **Our 3 wave-2 tables (all empty):** dropped + recreated with reshaped lookups. Suggestion table now uses `wmkf_potentialreviewer` lookup (instead of `wmkf_reviewercontact` → contact); alt-key is `(potentialreviewer, request)`. Researcher table's lookup repointed `contact → wmkf_potentialreviewers` with required-1:1 alt-key.
+3. **Actionable status filter (`800d92f`).** Default mode shows only proposals that need reviewers found: `akoya_requeststatus = 'Phase II Pending' AND wmkf_phaseiistatus IS NULL`. A Phase II picklist value (Recommended/Not Recommended) means reviews came back and the post-review disposition is set — reviewer-finding is done. `?status=all` widens to every Phase II Pending in the cycle (for revisiting prior work). Concepts and Phase I-declined always excluded. Validated against J26: actionable returned 0 (all 6 reviewed); all returned the 6 Phase II Pending.
 
-4. **Engine extensions (in `852bd1a`):**
-   - `apply-dataverse-schema.js` now loads from a `wave{N}-existing/` directory before `wave{N}/`, so existing-table extensions apply before new entities reference them.
-   - New `extensions-on-existing` spec kind handles attributes + relationships + alt-keys on already-created entities (kept `attributes-on-existing` alias for backward compat).
+4. **SharePoint → Blob proposal loader (`f955b21`).** `pages/api/reviewer-finder/load-proposal.js` takes an `akoya_requestid`, walks all plausible SharePoint buckets (active + 3 archives via `lib/utils/sharepoint-buckets.js`), classifies files using Grant Reporting's `classifyFile`, picks the proposal best-guess (Project Narrative > Phase II > anything classified proposal), downloads via `GraphService.downloadFileByPath`, uploads to Vercel Blob, returns the blob URL. Smoke-tested file listing against request 1002379: 22 files including the canonical `Phase II/Project Narrative.pdf`.
 
-5. **One-off scripts:**
-   - `scripts/wave2-reshape-drop.js` — drops our 3 empty wave-2 entities + Connor's old request-lookup column. Idempotent.
-   - `scripts/wave2-remove-formfield.js` — programmatic form-XML edit + publish to remove the lookup field from the "Potential Reviewer" main form so the column drop wasn't dependency-blocked. **Did not work in our environment** — PATCH on `/systemforms` against the Active solution layer silently returns 204 without applying changes (even on simple fields like `description`). Connor handled it via the maker portal instead. Kept the script for reference.
+5. **Picker UI in NewSearchTab (`e90082d`).** Added `ProposalPickerCard` component to `pages/reviewer-finder.js`. Mode toggle "From My Proposals" (default) / "Upload PDF" (legacy) lives above the file uploader. Picker auto-selects newest cycle, has a "Show completed too" toggle, lists proposals with PI/applicant/program/meeting-date/reviewer-counts. On pick, calls `load-proposal`, then feeds the returned blob URL into the existing `handleFilesUploaded` so analyze/discover work unchanged. Confirmation banner shows loaded filename + request number; "Clear" lets the user pick another. Build clean.
+
+6. **Picker label polish (`8d3d8c0`, `9333c86`).** Justin caught two issues live:
+   - `5/5 slots filled` was misleading — we need 3 confirmed reviewers, not 5; the 5 slots are over-invite buffer for declines. Changed to `N invited`.
+   - Better: surface accepted/declined counts from Postgres `reviewer_suggestions` (the existing source of truth from Reviewer Manager). Final display: `5 invited · 2 accepted · 1 declined · goal: 3` (parts elided when 0). Falls back to slot population if no Postgres rows exist (legacy proposals).
+
+7. **Browser validation in real auth.** Hit a Next 16 + Turbopack issue: `pages/api/auth/[...nextauth].js` catch-all wasn't being served (every NextAuth route → 404). Fixed by stopping dev, removing `.next/`, restarting. Justin successfully signed in and clicked through the picker.
 
 ### Commits
 
-- `46c7d26` — Wave 2 schema fixes: cap primary attrs at 850, fix lookup ordering
-- `852bd1a` — Wave 2 reshape: align with wmkf_potentialreviewers as canonical person
-- (Session-end commit will follow)
-
-## What's set up for next session
-
-Wave 2 schema is **fully applied and idempotent** in prod. Verified:
-
-| Surface | State |
-|---|---|
-| `wmkf_potentialreviewers.wmkf_contact` lookup | Created (nullable) |
-| `wmkf_potentialreviewers.wmkf_contact_unique` alt-key | Created (1:1) |
-| `wmkf_potentialreviewers.wmkf_emailaddress_unique` alt-key | Created |
-| `wmkf_potentialreviewers.wmkf_requestlookup` column | Dropped |
-| `wmkf_app_reviewer_suggestion` | Recreated, lookups + picklists + alt-key |
-| `wmkf_app_researcher` | Recreated, 1:1 to potentialreviewers |
-| `wmkf_app_publication_author` | Recreated, lookups to pub + researcher |
-
-Tables are empty. Old Postgres `reviewer_suggestions` (333 rows) archives in place — backfill is a follow-on, not blocking.
+- `2627a03` — Wave 2 adapters: potential-reviewer / researcher / reviewer-suggestion
+- `a83a240` — PD-filtered proposal picker: resolver, cycle-code helpers, my-proposals API
+- `800d92f` — my-proposals: actionable filter (Phase II Pending + no disposition)
+- `f955b21` — Add /api/reviewer-finder/load-proposal — fetch proposal from SharePoint to Blob
+- `e90082d` — Reviewer Finder UI: 'From My Proposals' picker as default entry path
+- `8d3d8c0` — Picker: 'N invited' instead of 'N/5 slots filled'
+- `9333c86` — Picker: show invited/accepted/declined counts (postgres-backed)
 
 ## Potential next steps
 
-### 1. Build the adapter trio + wire `save-candidates` (the original Session 115 plan, just delayed)
+### 1. save-candidates Dataverse cutover (the original session 115 ask, still queued)
 
-Three thin adapters under `lib/dataverse/adapters/`:
+The picker now provides `sourceProposal.requestId` on the loaded file object. Thread it through:
+- Pass `requestId` from `uploadedFiles[0].sourceProposal.requestId` into the save-candidates POST body.
+- Update `pages/api/reviewer-finder/save-candidates.js` to use the wave-2 adapters when a `requestId` is present:
+  1. `potentialReviewer = await upsertByEmail({ name, email, affiliation, expertise, whyChosen })`
+  2. `researcher = await upsertByPotentialReviewer(potentialReviewer.id, { hIndex, totalCitations, orcid, ... })`
+  3. `suggestion = await upsert({ potentialReviewerId, requestId, relevanceScore, matchReason, sources, programArea, suggestionLabel })`
+- Decide on dual-write vs. cutover. Per Wave 2 policy memory: Dataverse-only writes; Postgres archives in place. But `my-candidates` (read) is still Postgres-backed, so until that flips, dual-writing keeps the Reviewer Manager UI working. Recommend: dual-write through this transition, repoint `my-candidates` next.
+- Smoke test against a real D26 proposal once one reaches Phase II Pending (post May 1).
 
-- **`potential-reviewer.js`** — upsert by email alt-key (`wmkf_emailaddress`). Methods: `upsertByEmail({ name, email, affiliation, expertise, source, whyChosen })`, `getByEmail(email)`, `setContactLink(potentialReviewerId, contactId)` (called at promotion time).
-- **`researcher.js`** — bibliometric sidecar, 1:1 with potentialreviewer. Methods: `upsertByPotentialReviewer(prId, { hIndex, totalCitations, googleScholarId, orcidUrl, lastChecked })`. Alt-key on `wmkf_potentialreviewer`.
-- **`reviewer-suggestion.js`** — the lifecycle ledger. Upsert by `(potentialreviewer, request)` alt-key. Methods: `upsert({ potentialReviewerId, requestId, relevanceScore, matchReason, sources, programArea })` for save-candidates flow; later additions for the lifecycle transitions (`markInvited`, `markAccepted`, `markMaterialsSent`, etc.) as we wire them.
+### 2. Post-May-1 D26 validation
 
-Then wire `pages/api/reviewer-finder/save-candidates.js`:
+Phase I submissions open May 1 (in 2 days from session 116). Once D26 starts moving:
+- Confirm `akoya_requeststatus = 'Phase II Pending'` is the actual value (not "Phase II Submitted" or similar) on real new D26 rows.
+- Confirm `wmkf_phaseiistatus IS NULL` is right for "no reviews yet" — that's a correlation observation from J26's done state, not a formal contract.
+- Watch for proposals where the picker would show 0 invited even though staff has assigned reviewers via the 5-slot pattern (legacy users not using our tool yet).
 
-1. Resolve `request_number` (already on every Postgres `reviewer_suggestions` row) → `akoya_request` GUID via Dynamics lookup.
-2. For each candidate: upsert potential-reviewer (by email), upsert researcher snapshot, upsert suggestion linking the two + request. Cutover (Dataverse-only writes per Wave 2 policy); old Postgres table archives in place.
-3. Smoke test against prod with a real `request_number` (e.g., 1002386 from the `reviewer_suggestions` data).
+### 3. my-candidates read-side migration
 
-### 2. Promotion path — when a candidate is reached out to
+Once writes are flowing into Dataverse, repoint `pages/api/reviewer-finder/my-candidates.js` at the new tables. Joins via potentialreviewer for person info + researcher for bibliometrics. Postgres becomes archive-only.
 
-Per Connor: at first invitation, the potential-reviewer row should be promoted to a `contact`. Either find an existing contact by email or create a new one, then set `wmkf_potentialreviewers.wmkf_contact` lookup. Probably hooks into the next Reviewer Finder action (the one that queues a candidate for outreach) — out of scope for save-candidates, but worth queuing as a follow-on.
+### 4. Backfill Postgres → Dataverse (low priority)
 
-### 3. Read-side migration — `my-candidates`
+333 rows in `reviewer_suggestions`. One-shot migration. Save-candidates already cuts new writes over so this is for historical visibility, not blocking.
 
-Once writes are flowing into Dataverse, repoint the read endpoint (`/api/reviewer-finder/my-candidates`) at the new tables. Joins via potentialreviewer for person info + researcher for bibliometrics.
+### 5. Promotion path — potentialreviewer → contact
 
-### 4. Backfill Postgres → Dataverse
-
-333 rows in Postgres `reviewer_suggestions`. Each has `request_number`, researcher metadata, and lifecycle timestamps. One-shot migration script. Low priority since save-candidates already cuts new writes over.
-
-## Hand-off notes
-
-- **`scripts/wave2-remove-formfield.js` doesn't work in our environment** but is left in the repo. PATCH on `/systemforms` returns 204 silently without applying changes when targeting the Active solution layer. Suspect it's a privilege gap on `prvWriteSystemForm` or similar even with `System Customizer`. If we need form edits in the future, default to maker portal unless we figure this out.
-- **Connor's app-user roles right now:** the four permanent ones plus `WMKF AI Elevated TEMP` and `System Customizer`. Per `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md` Connor will strip the temp roles once we're confident no further schema applies are queued. Can ping him after the adapter work.
-- **6 emails were duplicated in `wmkf_potentialreviewers`** before the alt-key was added; Connor cleaned them up. If save-candidates ever finds an unexpected duplicate, query `wmkf_potentialreviewers?$apply=groupby((wmkf_emailaddress),aggregate($count as c))&$filter=c gt 1` to spot recurrences.
-- **Custom-lookup `@odata.bind` casing reminder** (still applies to wave 2 lookups): use the lookup's **SchemaName** (PascalCase like `wmkf_PotentialReviewer`), not the logical name. The new lookups live on suggestion (`wmkf_PotentialReviewer`, `wmkf_Request`) and researcher (`wmkf_PotentialReviewer`).
+Per Connor: at first invitation, the potential-reviewer row should be promoted to a CRM `contact`. `setContactLink(potentialReviewerId, contactId)` is already in the adapter; needs to be hooked into Reviewer Manager's send-emails flow. Probably also wants a "find or create contact by email" step before the link.
 
 ## Key files reference
 
 | File | Status | Purpose |
 |---|---|---|
-| `lib/dataverse/schema/wave2-existing/wmkf_potentialreviewers-extensions.json` | new (`852bd1a`) | Connor's table extensions: contact lookup + 2 alt-keys |
-| `lib/dataverse/schema/wave2/wmkf_app_reviewer_suggestion.json` | reshaped (`852bd1a`) | Lookup → potentialreviewers; alt-key (potentialreviewer, request) |
-| `lib/dataverse/schema/wave2/wmkf_app_researcher.json` | reshaped (`852bd1a`) | 1:1 to potentialreviewers; bibliometric sidecar |
-| `scripts/apply-dataverse-schema.js` | extended (`852bd1a`) | `wave{N}-existing/` loader + `extensions-on-existing` kind |
-| `scripts/wave2-reshape-drop.js` | new (`852bd1a`) | Idempotent drops for the wave-2 entities + the old request lookup |
-| `scripts/wave2-remove-formfield.js` | new (`852bd1a`) | Form-XML edit script (kept for reference; doesn't work in our env) |
+| `lib/dataverse/adapters/potential-reviewer.js` | new (`2627a03`) | Connor's lead/person table — upsert by email |
+| `lib/dataverse/adapters/researcher.js` | new (`2627a03`) | Bibliometric sidecar, 1:1 with potentialreviewer |
+| `lib/dataverse/adapters/reviewer-suggestion.js` | new (`2627a03`) | Lifecycle ledger, upsert by (potentialreviewer, request) |
+| `lib/services/program-director-resolver.js` | new (`a83a240`) | azureEmail → systemuserid, cached |
+| `lib/utils/cycle-code.js` | new (`a83a240`) | Meeting-date ↔ Jxx/Dxx + OData filter range |
+| `pages/api/reviewer-finder/my-proposals.js` | new (`a83a240`, `800d92f`, `9333c86`) | GET cycles or proposals; default actionable filter; postgres counts |
+| `pages/api/reviewer-finder/load-proposal.js` | new (`f955b21`) | SharePoint → Blob fetch by requestId |
+| `pages/reviewer-finder.js` | modified (`e90082d`, `8d3d8c0`, `9333c86`) | ProposalPickerCard + entry-mode toggle in NewSearchTab |
+| `scripts/smoke-my-proposals.js` | new (`a83a240`) | Direct-Dynamics smoke test (no auth) |
+
+## Hand-off notes
+
+- **Test reviewer state (still applies from session 114).** Suggestion 914 (`Justin Gallivan Test`, justingallivan@me.com) on request 1002379 has the full lifecycle populated. Don't be surprised by it.
+- **`.env.local` is in real-auth mode.** Browser sign-in works. To go back to dev-bypass, set `AUTH_REQUIRED=false`.
+- **Next 16 + Turbopack + NextAuth catch-all gotcha.** If `/api/auth/csrf` etc. start returning 404, stop dev, `rm -rf .next`, restart. The `[...nextauth].js` route occasionally fails to compile after extended dev sessions.
+- **`fetchReviewerCounts` in my-proposals scopes by `selected = true` only, not by user.** Two PDs collaborating on the same request would see merged counts; acceptable today since each request has one lead PD per the schema.
+- **Pre-J26 historical proposals will show partial data.** Picker falls back to slot population when no Postgres rows exist — see `project_reviewer_history_data_quality.md` memory.
+- **Adapter wiring caveat:** the load-proposal endpoint passes `sourceProposal.requestId` through to the loaded file object on the client. The save-candidates handler needs an explicit code path to read it from the request body — UI doesn't currently include it. That's the first wiring step.
+
+## Memory updates this session
+
+- `project_reviewer_finder_dataverse_entry_path.md` (NEW) — strategic direction for replacing the PDF entry path.
+- `project_akoya_request_pd_fields.md` (NEW) — `wmkf_programdirector` is the lead PD field; `ownerid` is the integration service account, not the PD.
+- `project_grant_phasing_evolution.md` (NEW) — reviewer-finding only at Phase II; concepts going away; next cycle's one-package model with internal Phase I/II labels.
+- `project_reviewer_count_invariant.md` (NEW) — 3 confirmed reviewers per proposal; the 5 slots are over-invite buffer.
+- `project_reviewer_history_data_quality.md` (NEW) — pre-J26 proposals have no Postgres rows; zeros aren't "0 invited", they're "unknown."
 
 ## Testing
 
 ```bash
-# Verify wave 2 schema is live in prod (should show all · exists)
-node scripts/apply-dataverse-schema.js --target=prod --wave=2 --execute
+# Backend smoke (no auth):
+node scripts/smoke-my-proposals.js                          # cycles list
+node scripts/smoke-my-proposals.js jgallivan@wmkeck.org J26 # actionable in J26
+node scripts/smoke-my-proposals.js jgallivan@wmkeck.org J26 all  # all in J26
 
-# Confirm Connor's table extensions
-node -e "require('./lib/dataverse/client').loadEnvLocal(); (async () => {
-  const { getAccessToken, createClient } = require('./lib/dataverse/client');
-  const url = process.env.DYNAMICS_URL;
-  const token = await getAccessToken(url);
-  const c = createClient({ resourceUrl: url, token });
-  const r = await c.get(\"/EntityDefinitions(LogicalName='wmkf_potentialreviewers')/Keys?\$select=SchemaName,KeyAttributes\");
-  for (const k of r.body.value) console.log(' -', k.SchemaName, k.KeyAttributes);
-})();"
+# Browser (real auth):
+npm run dev                              # auth on; if NextAuth 404s, rm -rf .next first
+# Sign in as a Dynamics user, navigate to /reviewer-finder.
+# Default tab "From My Proposals" should auto-select most recent cycle and
+# show actionable proposals (or empty state). Toggle "Show completed too"
+# to see all Phase II Pending. "Use this proposal" loads the Project
+# Narrative from SharePoint via blob and feeds the existing analyze flow.
 
-# Probe a request_number → akoya_request GUID lookup (groundwork for save-candidates)
-node -e "require('./lib/dataverse/client').loadEnvLocal(); (async () => {
-  const { getAccessToken, createClient } = require('./lib/dataverse/client');
-  const url = process.env.DYNAMICS_URL;
-  const token = await getAccessToken(url);
-  const c = createClient({ resourceUrl: url, token });
-  const r = await c.get(\"/akoya_requests?\$select=akoya_requestid,akoya_requestnumber&\$filter=akoya_requestnumber eq '1002386'&\$top=1\");
-  console.log(r.body.value);
-})();"
+# Build check:
+npx next build
 ```

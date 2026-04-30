@@ -211,6 +211,7 @@ Located in `lib/services/`:
 - `notification-service.js` - Unified notifications (DB alerts + future Graph API email)
 - `maintenance-service.js` - Database/blob cleanup operations with audit trail
 - `prompt-resolver.js` - Fetches Claude prompt templates from Dynamics (scratch `wmkf_ai_run` row for now; will move to `wmkf_prompt_template` when Connor creates it). 5-min in-memory cache, `{{var}}` interpolation. On Dynamics failure, falls back to a bundled `.js` module (60s cache TTL so the next call retries Dynamics). Set `PROMPT_RESOLVER_STRICT=true` to disable fallback (prompt-dev loop).
+- `program-director-resolver.js` - Bridges the authenticated user to a Dynamics `systemuser`. `resolveByEmail(azureEmail)` returns `{ systemuserid, fullName }` cached 10 min (1 min on miss). Used by Reviewer Finder's PD-filtered proposal picker; filter target is `_wmkf_programdirector_value` on `akoya_request`.
 
 ### Utility Classes
 
@@ -219,6 +220,7 @@ Located in `lib/utils/`:
 - `health-checker.js` - Reusable health check logic (7 services incl. Microsoft Graph)
 - `file-loader.js` - Shared FileRef loader (upload/SharePoint → PDF/DOCX text) used by Grant Reporting and Phase I Dynamics
 - `sharepoint-buckets.js` - `getRequestSharePointBuckets(requestId, requestNumber)` — walks active + archive libraries for a request
+- `cycle-code.js` - Grant cycle code helpers (`Jxx`/`Dxx` from June/December meeting dates). `meetingDateToCycleCode(d)`, `parseCycleCode(s)`, `cycleCodeToOdataFilter(code, field)` for Dataverse range queries.
 
 ---
 
@@ -321,6 +323,8 @@ Located in `lib/utils/`:
 - `POST /api/reviewer-finder/enrich-contacts` - Contact lookup (streaming)
 - `POST /api/reviewer-finder/generate-emails` - Generate .eml files (see `docs/REVIEWER_FINDER.md`)
 - `POST /api/reviewer-finder/extract-summary` - Extract summary pages
+- `GET /api/reviewer-finder/my-proposals` - Dataverse-native picker. No `cycleCode` → distinct cycle codes (Jxx/Dxx) the authenticated PD has work in. With `?cycleCode=Jxx` → proposals in that cycle. `?status=actionable` (default) filters to Phase II Pending + no disposition; `?status=all` widens.
+- `POST /api/reviewer-finder/load-proposal` - Given an `akoya_request` GUID, walks SharePoint buckets, picks the proposal best-guess (or `fileKey` override), uploads to Vercel Blob, returns the blob URL for the existing analyze pipeline.
 
 ### Review Manager
 - `GET/PATCH /api/review-manager/reviewers` - Accepted reviewers by cycle/proposal, status/notes/URL updates
