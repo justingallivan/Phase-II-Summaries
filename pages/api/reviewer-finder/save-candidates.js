@@ -10,6 +10,9 @@ import { sql } from '@vercel/postgres';
 import { DatabaseService } from '../../../lib/services/database-service';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
+import * as potentialReviewerAdapter from '../../../lib/dataverse/adapters/potential-reviewer';
+import * as researcherAdapter from '../../../lib/dataverse/adapters/researcher';
+import * as reviewerSuggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
 
 /**
  * Find existing researcher using multi-field matching.
@@ -78,7 +81,7 @@ export default async function handler(req, res) {
   if (!access) return;
 
   try {
-    const { proposalId, proposalTitle, proposalAbstract, proposalAuthors, proposalInstitution, programArea, summaryBlobUrl, grantCycleId, userProfileId, candidates } = req.body;
+    const { proposalId, proposalTitle, proposalAbstract, proposalAuthors, proposalInstitution, programArea, summaryBlobUrl, grantCycleId, userProfileId, requestId, grantCycleCode, candidates } = req.body;
 
     if (!proposalId) {
       return res.status(400).json({ error: 'proposalId is required' });
@@ -89,7 +92,9 @@ export default async function handler(req, res) {
     }
 
     let savedCount = 0;
+    let dataverseSavedCount = 0;
     const errors = [];
+    const dataverseErrors = [];
 
     for (const candidate of candidates) {
       try {
@@ -270,6 +275,63 @@ export default async function handler(req, res) {
         }
 
         savedCount++;
+
+        // Dual-write to Dataverse when the proposal is a Dynamics akoya_request.
+        // Postgres remains source of truth for now; Dataverse failures are logged
+        // but do not fail the candidate save.
+        if (requestId) {
+          try {
+            const candidateEmailForDv = candidate.email || candidate.contactEnrichment?.email || null;
+            const candidateAffiliationForDv = candidate.affiliation || candidate.contactEnrichment?.affiliation || null;
+            const expertiseForDv = Array.isArray(candidate.expertiseAreas)
+              ? candidate.expertiseAreas.filter(Boolean).join('; ')
+              : (candidate.expertise || null);
+
+            const { id: potentialReviewerId } = await potentialReviewerAdapter.upsertByEmail({
+              name: candidate.name,
+              email: candidateEmailForDv,
+              affiliation: candidateAffiliationForDv,
+              expertise: expertiseForDv,
+              whyChosen: matchReason || null,
+            });
+
+            await researcherAdapter.upsertByPotentialReviewer(potentialReviewerId, {
+              name: candidate.name,
+              normalizedName,
+              email: candidateEmailForDv,
+              emailSource: candidate.contactEnrichment?.emailSource || null,
+              orcid: candidateOrcid,
+              orcidUrl: candidate.orcidUrl || candidate.contactEnrichment?.orcidUrl || null,
+              googleScholarId: candidateGoogleScholarId,
+              googleScholarUrl: candidate.googleScholarUrl || candidate.contactEnrichment?.googleScholarUrl || null,
+              hIndex: candidate.hIndex ?? null,
+              i10Index: candidate.i10Index ?? null,
+              totalCitations: candidate.totalCitations ?? null,
+              affiliation: candidateAffiliationForDv,
+              department: candidate.department || candidate.contactEnrichment?.department || null,
+              website: candidateWebsite,
+              facultyPageUrl: candidate.facultyPageUrl || candidate.contactEnrichment?.facultyPageUrl || null,
+              keywords: expertiseForDv,
+            });
+
+            await reviewerSuggestionAdapter.upsert({
+              potentialReviewerId,
+              requestId,
+              suggestionLabel: proposalTitle ? `${proposalTitle} — ${candidate.name}` : null,
+              grantCycleCode: grantCycleCode || null,
+              programArea: programArea || null,
+              relevanceScore,
+              matchReason,
+              sources: sources.join(','),
+              selected: true,
+            });
+
+            dataverseSavedCount++;
+          } catch (dvError) {
+            console.error(`Dataverse dual-write failed for ${candidate.name}:`, dvError.message);
+            dataverseErrors.push({ name: candidate.name, error: dvError.message });
+          }
+        }
       } catch (candidateError) {
         console.error(`Error saving candidate ${candidate.name}:`, candidateError.message);
         errors.push({ name: candidate.name, error: candidateError.message });
@@ -280,7 +342,12 @@ export default async function handler(req, res) {
       success: true,
       savedCount,
       totalRequested: candidates.length,
-      errors: errors.length > 0 ? errors : undefined
+      errors: errors.length > 0 ? errors : undefined,
+      dataverse: requestId ? {
+        attempted: savedCount,
+        savedCount: dataverseSavedCount,
+        errors: dataverseErrors.length > 0 ? dataverseErrors : undefined,
+      } : undefined,
     });
 
   } catch (error) {

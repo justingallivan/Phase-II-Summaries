@@ -1062,6 +1062,8 @@ function NewSearchTab({ apiCapabilities, onCandidatesSaved, searchState, setSear
           summaryBlobUrl: analysisResult?.summaryBlobUrl || null,
           grantCycleId: currentCycleInfo?.id || null,
           userProfileId: userProfileId || null,
+          requestId: uploadedFiles[0]?.sourceProposal?.requestId || null,
+          grantCycleCode: uploadedFiles[0]?.sourceProposal?.cycleCode || null,
           candidates: selected
         })
       });
