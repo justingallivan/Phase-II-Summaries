@@ -23,6 +23,7 @@
  *     since they never need outside reviewers.
  */
 
+import { sql } from '@vercel/postgres';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
 import { resolveByEmail } from '../../../lib/services/program-director-resolver';
@@ -148,13 +149,24 @@ async function listProposalsInCycle(res, pd, cycleCode, status) {
     orderby: 'wmkf_meetingdate asc',
   });
 
+  // Fetch Postgres-tracked invite/accept counts in one query, keyed by
+  // request_number. Postgres remains the source of truth for lifecycle
+  // state until the wave-2 ledger backfill happens. A request with no
+  // saved candidates won't have a row — treated as 0/0.
+  const requestNumbers = records.map((r) => r.akoya_requestnum).filter(Boolean);
+  const counts = await fetchReviewerCounts(requestNumbers, pd.systemuserid);
+
   const proposals = records.map((r) => {
     const slotsFilled = ['1', '2', '3', '4', '5'].filter(
       (n) => r[`_wmkf_potentialreviewer${n}_value`]
     ).length;
+    const c = counts[r.akoya_requestnum] || { invited: 0, accepted: 0, declined: 0 };
     return {
       requestId: r.akoya_requestid,
       requestNumber: r.akoya_requestnum,
+      reviewerInvited: c.invited,
+      reviewerAccepted: c.accepted,
+      reviewerDeclined: c.declined,
       meetingDate: r.wmkf_meetingdate,
       meetingDateFormatted: r.wmkf_meetingdate_formatted || null,
       abstract: r.wmkf_abstract || null,
@@ -176,4 +188,42 @@ async function listProposalsInCycle(res, pd, cycleCode, status) {
     status,
     proposals,
   });
+}
+
+/**
+ * Aggregate reviewer-suggestion lifecycle counts (invited / accepted /
+ * declined) by request_number, scoped to the current PD's saved suggestions.
+ * Postgres remains the source of truth until the wave-2 ledger backfill.
+ *
+ * Note: user_profile_id on reviewer_suggestions is the Postgres user id, not
+ * the Dynamics systemuserid — so we don't filter by user here. Two PDs
+ * working the same request would see merged counts; acceptable today since
+ * each request has one lead PD.
+ */
+async function fetchReviewerCounts(requestNumbers /* eslint-disable-line no-unused-vars */, _systemuserid) {
+  if (!requestNumbers || requestNumbers.length === 0) return {};
+  try {
+    const result = await sql`
+      SELECT
+        request_number,
+        COUNT(*) FILTER (WHERE invited = true OR email_sent_at IS NOT NULL) AS invited,
+        COUNT(*) FILTER (WHERE accepted = true OR response_type = 'accepted') AS accepted,
+        COUNT(*) FILTER (WHERE declined = true OR response_type = 'declined') AS declined
+      FROM reviewer_suggestions
+      WHERE selected = true AND request_number = ANY(${requestNumbers})
+      GROUP BY request_number
+    `;
+    const out = {};
+    for (const row of result.rows) {
+      out[row.request_number] = {
+        invited: Number(row.invited) || 0,
+        accepted: Number(row.accepted) || 0,
+        declined: Number(row.declined) || 0,
+      };
+    }
+    return out;
+  } catch (err) {
+    console.error('fetchReviewerCounts failed:', err.message);
+    return {};
+  }
 }

@@ -553,9 +553,19 @@ function ProposalPickerCard({ onProposalLoaded, onError }) {
                   {p.programArea && <span>{p.programArea}</span>}
                   {p.meetingDateFormatted && <span>Meeting: {p.meetingDateFormatted}</span>}
                   <span>
-                    {p.reviewerSlotsFilled === 0
-                      ? 'no reviewers invited yet'
-                      : `${p.reviewerSlotsFilled} invited`}
+                    {(() => {
+                      // Prefer Postgres-tracked counts (lifecycle ledger); fall
+                      // back to slot population if no candidates saved yet.
+                      const invited = p.reviewerInvited ?? p.reviewerSlotsFilled;
+                      const accepted = p.reviewerAccepted ?? 0;
+                      const declined = p.reviewerDeclined ?? 0;
+                      if (invited === 0) return 'no reviewers invited yet';
+                      const parts = [`${invited} invited`];
+                      if (accepted > 0) parts.push(`${accepted} accepted`);
+                      if (declined > 0) parts.push(`${declined} declined`);
+                      parts.push('goal: 3');
+                      return parts.join(' · ');
+                    })()}
                   </span>
                 </div>
               </div>
