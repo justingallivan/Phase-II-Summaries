@@ -10,6 +10,20 @@ The pre-Session 84 chronological per-session log (everything after the September
 
 ---
 
+## April 2026 — Reviewer Finder save + read paths cut over to Dataverse (Session 117)
+
+**Milestone:** First user-app surface running end-to-end on the Wave 2 schema. New saves dual-write to Dataverse via the three adapters; My Candidates reads/edits/deletes go through Dataverse only. Postgres still receives writes for safety but is functionally archive-only for Reviewer Finder display.
+**Sessions:** 117 (2026-04-30)
+**Ship state:**
+- `save-candidates` dual-writes per-candidate via `potentialreviewer.upsertByEmail` → `researcher.upsertByPotentialReviewer` → `reviewerSuggestion.upsert`. Per-candidate failure isolation; Postgres still source of truth, Dataverse failures logged + surfaced under `response.dataverse`
+- `my-candidates` GET/PATCH/DELETE fully Dataverse-backed. Default scope: requests where authenticated user is lead PD (resolved via `program-director-resolver`). Override knobs: `?requestId=<guid>` / `?requestNumber=<num>` for collaborator lookup, `?cycleCode=Jxx` to narrow. PATCH routes to suggestion / potentialreviewer / researcher adapters; DELETE soft-flips `wmkf_selected = false`. PI/institution edits intentionally rejected (those belong on `akoya_request`)
+- Adapter extensions: `findByRequest`, `findByPD` (queryAllRecords-paginated to handle PDs with >500 historical requests), `updateLifecycle`, `softDelete`, `bulkUpdateByRequest`; person/researcher `update` methods with the same 100-char `wmkf_organizationname` clamp
+- Bug fixes uncovered during validation: `claude-reviewer-service.js` converted from CJS `require()` to ESM `import` (Next 16 + Turbopack interop returned undefined for `usage-logger`'s named exports under CJS); `bypassRestrictions('<endpoint>')` mandatory at handler entry — `DynamicsService` fails closed otherwise; `akoya_request` proposal title field is `akoya_title`, not the assumed `akoya_name`
+**Why it matters:** Real production-shape exercise of Connor's table model end-to-end (lead → bibliometric sidecar → lifecycle ledger). Validates the "all org-visible, dashboards filter by PD" pattern in a working surface, not a smoke test. Sets the template for the rest of the user apps that still talk to Postgres.
+**Pointers:** `docs/REVIEWER_ARCHITECTURE.md`, `docs/REVIEWER_FINDER_DATAVERSE_CUTOVER_PLAN.md`; commits `b440173` (save dual-write), `9215d03` (validation fixes), `f66cdad` (read cutover), `992126c` (pagination), `cc5f710` (next-steps plan)
+
+---
+
 ## April 2026 — Wave 2 schema reshape: align with Connor's wmkf_potentialreviewers (Session 115)
 
 **Milestone:** Wave 2 schema fully landed in prod with a deliberate model pivot. Connor's existing `wmkf_potentialreviewers` becomes the canonical lead/person record (1:1 with `contact` once promoted); our `wmkf_app_reviewer_suggestion` is the lifecycle ledger keyed `(potentialreviewer, request)`; our `wmkf_app_researcher` is the bibliometric sidecar (h-index, citations) on a different update cadence. Tables are empty and ready for adapter wiring.
