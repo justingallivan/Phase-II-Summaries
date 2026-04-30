@@ -1,576 +1,407 @@
 /**
- * API Route: /api/reviewer-finder/my-candidates
+ * API Route: /api/reviewer-finder/my-candidates  (Dataverse-backed)
  *
- * GET: Fetch all saved candidates grouped by proposal
- * PATCH: Update candidate status (invited, accepted, notes, email tracking)
- * DELETE: Remove a saved candidate
+ * GET    — Saved candidates grouped by request.
+ *           Default scope: requests where the authenticated user is the lead
+ *           Program Director (`akoya_request._wmkf_programdirector_value`).
+ *           Overrides:
+ *             ?requestId=<guid>      collaborator lookup, ignores PD filter
+ *             ?requestNumber=<num>   same, by request number
+ *             ?cycleCode=Jxx|Dxx     narrow within PD scope
+ *             mode=proposals         distinct request list (for picker modals)
+ *
+ * PATCH  — Per-suggestion lifecycle/researcher/person edits, or bulk-by-request
+ *           updates (programArea, grantCycleCode). PI / institution edits are
+ *           intentionally not supported here — those belong on `akoya_request`.
+ *
+ * DELETE — Soft-delete a single suggestion (sets wmkf_selected = false).
+ *
+ * No per-user filtering at the row level: Dataverse data is org-visible. The
+ * default GET scope is a UX convenience layered on top.
  */
 
-import { sql } from '@vercel/postgres';
 import { requireAppAccess } from '../../../lib/utils/auth';
-import { BASE_CONFIG } from '../../../shared/config/baseConfig';
-import { proxifyBlobUrl } from '../../../lib/utils/blob-proxy';
+import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { resolveByEmail as resolvePD } from '../../../lib/services/program-director-resolver';
+import { meetingDateToCycleCode, cycleCodeToLabel } from '../../../lib/utils/cycle-code';
+import * as suggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
+import * as potentialReviewerAdapter from '../../../lib/dataverse/adapters/potential-reviewer';
+import * as researcherAdapter from '../../../lib/dataverse/adapters/researcher';
 
-export default async function handler(req, res) {
-  // Require authentication + app access, extract profile ID
-  const access = await requireAppAccess(req, res, 'reviewer-finder');
-  if (!access) return;
-  const sessionProfileId = access.profileId;
+const REQUEST_FIELDS = [
+  'akoya_requestid',
+  'akoya_requestnum',
+  'akoya_title',
+  'wmkf_meetingdate',
+  'wmkf_abstract',
+  '_akoya_applicantid_value',
+  '_wmkf_projectleader_value',
+  '_wmkf_grantprogram_value',
+  '_wmkf_programareaserved_value',
+  '_wmkf_programdirector_value',
+];
 
-  if (req.method === 'GET') {
-    return handleGet(req, res, sessionProfileId);
-  } else if (req.method === 'PATCH') {
-    return handlePatch(req, res, sessionProfileId);
-  } else if (req.method === 'DELETE') {
-    return handleDelete(req, res, sessionProfileId);
-  } else {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+function projectRequest(r) {
+  if (!r) return null;
+  return {
+    requestId: r.akoya_requestid,
+    requestNumber: r.akoya_requestnum,
+    title: r.akoya_title || null,
+    abstract: r.wmkf_abstract || null,
+    meetingDate: r.wmkf_meetingdate || null,
+    cycleCode: r.wmkf_meetingdate ? meetingDateToCycleCode(r.wmkf_meetingdate) : null,
+    cycleLabel: r.wmkf_meetingdate ? cycleCodeToLabel(meetingDateToCycleCode(r.wmkf_meetingdate)) : null,
+    applicant: r._akoya_applicantid_value_formatted || null,
+    projectLeader: r._wmkf_projectleader_value_formatted || null,
+    grantProgram: r._wmkf_grantprogram_value_formatted || null,
+    programArea: r._wmkf_programareaserved_value_formatted || null,
+    programDirectorId: r._wmkf_programdirector_value || null,
+  };
 }
 
-async function handleGet(req, res, sessionProfileId) {
+export default async function handler(req, res) {
+  const access = await requireAppAccess(req, res, 'reviewer-finder');
+  if (!access) return;
+
+  // Trusted internal endpoint — no field/table masking applies.
+  DynamicsService.bypassRestrictions('my-candidates');
+
+  if (req.method === 'GET') return handleGet(req, res, access);
+  if (req.method === 'PATCH') return handlePatch(req, res, access);
+  if (req.method === 'DELETE') return handleDelete(req, res, access);
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
+// ───────── GET ─────────
+
+async function handleGet(req, res, access) {
   try {
-    const { cycleId, mode } = req.query;
+    const { mode, requestId, requestNumber, cycleCode } = req.query;
 
-    // Mode: return all proposals (for Add Researcher modal)
-    // Proposals are stored inline in reviewer_suggestions, get unique proposals
     if (mode === 'proposals') {
-      const parsedCycleId = cycleId && cycleId !== 'all' ? parseInt(cycleId, 10) : null;
+      return handleProposalsList(req, res, access, { cycleCode });
+    }
 
-      let proposalsResult;
-      if (parsedCycleId) {
-        proposalsResult = await sql`
-          SELECT DISTINCT ON (rs.proposal_id)
-            rs.proposal_id,
-            rs.proposal_title as title,
-            rs.grant_cycle_id,
-            gc.name as cycle_name,
-            gc.short_code as cycle_short_code,
-            MIN(rs.suggested_at) as created_at
-          FROM reviewer_suggestions rs
-          LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
-          WHERE rs.grant_cycle_id = ${parsedCycleId}
-          GROUP BY rs.proposal_id, rs.proposal_title, rs.grant_cycle_id, gc.name, gc.short_code
-          ORDER BY rs.proposal_id, MIN(rs.suggested_at) DESC
-        `;
-      } else {
-        proposalsResult = await sql`
-          SELECT DISTINCT ON (rs.proposal_id)
-            rs.proposal_id,
-            rs.proposal_title as title,
-            rs.grant_cycle_id,
-            gc.name as cycle_name,
-            gc.short_code as cycle_short_code,
-            MIN(rs.suggested_at) as created_at
-          FROM reviewer_suggestions rs
-          LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
-          GROUP BY rs.proposal_id, rs.proposal_title, rs.grant_cycle_id, gc.name, gc.short_code
-          ORDER BY rs.proposal_id, MIN(rs.suggested_at) DESC
-          LIMIT 100
-        `;
+    let suggestions = [];
+    let requestById = {};
+
+    if (requestId || requestNumber) {
+      const request = await fetchRequestByIdOrNumber({ requestId, requestNumber });
+      if (!request) {
+        return res.status(200).json({ success: true, proposals: [], totalCandidates: 0 });
       }
-
-      return res.status(200).json({
-        success: true,
-        proposals: proposalsResult.rows.map(p => ({
-          id: p.proposal_id,  // Use proposal_id as the identifier
-          title: p.title,
-          proposalHash: p.proposal_id,
-          grantCycleId: p.grant_cycle_id,
-          cycleName: p.cycle_name,
-          cycleShortCode: p.cycle_short_code,
-          createdAt: p.created_at
-        }))
-      });
-    }
-
-    // Use authenticated user's profile ID for filtering
-    const profileId = sessionProfileId;
-
-    // Build query based on cycleId and userProfileId filters
-    let result;
-    if (cycleId === 'unassigned') {
-      // Only unassigned proposals (grant_cycle_id IS NULL)
-      result = await sql`
-        SELECT
-          rs.id as suggestion_id,
-          rs.proposal_id,
-          rs.proposal_title,
-          rs.proposal_abstract,
-          rs.proposal_authors,
-          rs.proposal_institution,
-          rs.request_number,
-          rs.program_area,
-          rs.summary_blob_url,
-          rs.grant_cycle_id,
-          rs.user_profile_id,
-          rs.relevance_score,
-          rs.match_reason,
-          rs.sources,
-          rs.selected,
-          rs.invited,
-          rs.accepted,
-          rs.declined,
-          rs.notes,
-          rs.email_sent_at,
-          rs.response_type,
-          rs.response_received_at,
-          rs.suggested_at,
-          r.id as researcher_id,
-          r.name,
-          r.primary_affiliation as affiliation,
-          r.email,
-          r.website,
-          r.h_index,
-          r.total_citations,
-          NULL as cycle_name,
-          NULL as cycle_short_code
-        FROM reviewer_suggestions rs
-        JOIN researchers r ON rs.researcher_id = r.id
-        WHERE rs.selected = true
-          AND rs.grant_cycle_id IS NULL
-          AND rs.user_profile_id = ${profileId}
-        ORDER BY rs.suggested_at DESC
-      `;
-    } else if (cycleId && cycleId !== 'all') {
-      // Filter by specific cycle
-      result = await sql`
-        SELECT
-          rs.id as suggestion_id,
-          rs.proposal_id,
-          rs.proposal_title,
-          rs.proposal_abstract,
-          rs.proposal_authors,
-          rs.proposal_institution,
-          rs.request_number,
-          rs.program_area,
-          rs.summary_blob_url,
-          rs.grant_cycle_id,
-          rs.user_profile_id,
-          rs.relevance_score,
-          rs.match_reason,
-          rs.sources,
-          rs.selected,
-          rs.invited,
-          rs.accepted,
-          rs.declined,
-          rs.notes,
-          rs.email_sent_at,
-          rs.response_type,
-          rs.response_received_at,
-          rs.suggested_at,
-          r.id as researcher_id,
-          r.name,
-          r.primary_affiliation as affiliation,
-          r.email,
-          r.website,
-          r.h_index,
-          r.total_citations,
-          gc.name as cycle_name,
-          gc.short_code as cycle_short_code
-        FROM reviewer_suggestions rs
-        JOIN researchers r ON rs.researcher_id = r.id
-        LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
-        WHERE rs.selected = true
-          AND rs.grant_cycle_id = ${parseInt(cycleId, 10)}
-          AND rs.user_profile_id = ${profileId}
-        ORDER BY rs.suggested_at DESC
-      `;
+      requestById = { [request.requestId]: request };
+      const rows = await suggestionAdapter.findByRequest(request.requestId, { selectedOnly: true });
+      suggestions = rows;
     } else {
-      // Get all saved candidates (cycleId === 'all' or not specified)
-      result = await sql`
-        SELECT
-          rs.id as suggestion_id,
-          rs.proposal_id,
-          rs.proposal_title,
-          rs.proposal_abstract,
-          rs.proposal_authors,
-          rs.proposal_institution,
-          rs.request_number,
-          rs.program_area,
-          rs.summary_blob_url,
-          rs.grant_cycle_id,
-          rs.user_profile_id,
-          rs.relevance_score,
-          rs.match_reason,
-          rs.sources,
-          rs.selected,
-          rs.invited,
-          rs.accepted,
-          rs.declined,
-          rs.notes,
-          rs.email_sent_at,
-          rs.response_type,
-          rs.response_received_at,
-          rs.suggested_at,
-          r.id as researcher_id,
-          r.name,
-          r.primary_affiliation as affiliation,
-          r.email,
-          r.website,
-          r.h_index,
-          r.total_citations,
-          gc.name as cycle_name,
-          gc.short_code as cycle_short_code
-        FROM reviewer_suggestions rs
-        JOIN researchers r ON rs.researcher_id = r.id
-        LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
-        WHERE rs.selected = true
-          AND rs.user_profile_id = ${profileId}
-        ORDER BY rs.suggested_at DESC
-      `;
+      const pd = await resolvePD(access.session?.user?.email);
+      if (!pd?.systemuserid) {
+        return res.status(200).json({ success: true, proposals: [], totalCandidates: 0, programDirector: null });
+      }
+      const result = await suggestionAdapter.findByPD(pd.systemuserid, { cycleCode });
+      suggestions = result.suggestions;
+      requestById = result.requestById;
     }
 
-    // Group by proposal
-    const proposals = {};
-    for (const row of result.rows) {
-      if (!proposals[row.proposal_id]) {
-        proposals[row.proposal_id] = {
-          proposalId: row.proposal_id,
-          proposalTitle: row.proposal_title,
-          proposalAbstract: row.proposal_abstract,
-          proposalAuthors: row.proposal_authors,
-          proposalInstitution: row.proposal_institution,
-          requestNumber: row.request_number,
-          programArea: row.program_area,
-          summaryBlobUrl: proxifyBlobUrl(row.summary_blob_url),
-          grantCycleId: row.grant_cycle_id,
-          grantCycleName: row.cycle_name,
-          grantCycleShortCode: row.cycle_short_code,
-          userProfileId: row.user_profile_id,
-          candidates: []
+    if (suggestions.length === 0) {
+      return res.status(200).json({ success: true, proposals: [], totalCandidates: 0 });
+    }
+
+    // Hydrate person + researcher rows for every distinct potentialreviewer ID
+    // referenced by the suggestions. One batched query each.
+    const personIds = [...new Set(suggestions.map((s) => s._wmkf_potentialreviewer_value).filter(Boolean))];
+    const [personById, researcherByPerson] = await Promise.all([
+      fetchPotentialReviewers(personIds),
+      fetchResearchersByPerson(personIds),
+    ]);
+
+    // Group by request
+    const byRequest = {};
+    for (const s of suggestions) {
+      const reqId = s._wmkf_request_value;
+      const request = requestById[reqId];
+      if (!request) continue; // suggestion's request wasn't in scope
+      if (!byRequest[reqId]) {
+        byRequest[reqId] = {
+          proposalId: request.requestId,
+          proposalTitle: request.title || `Request ${request.requestNumber || ''}`.trim(),
+          proposalAbstract: request.abstract,
+          proposalAuthors: request.projectLeader || request.applicant,
+          proposalInstitution: null, // not directly on akoya_request; intentionally unmapped here
+          requestNumber: request.requestNumber,
+          programArea: request.programArea,
+          grantCycleCode: request.cycleCode,
+          grantCycleLabel: request.cycleLabel,
+          meetingDate: request.meetingDate,
+          candidates: [],
         };
       }
-      proposals[row.proposal_id].candidates.push({
-        suggestionId: row.suggestion_id,
-        researcherId: row.researcher_id,
-        name: row.name,
-        affiliation: row.affiliation,
-        email: row.email,
-        website: row.website,
-        hIndex: row.h_index,
-        totalCitations: row.total_citations,
-        relevanceScore: row.relevance_score,
-        reasoning: row.match_reason,
-        sources: row.sources,
-        invited: row.invited,
-        accepted: row.accepted,
-        declined: row.declined,
-        notes: row.notes,
-        emailSentAt: row.email_sent_at,
-        responseType: row.response_type,
-        responseReceivedAt: row.response_received_at,
-        savedAt: row.suggested_at
+      const person = personById[s._wmkf_potentialreviewer_value] || {};
+      const researcher = researcherByPerson[s._wmkf_potentialreviewer_value] || null;
+      byRequest[reqId].candidates.push({
+        suggestionId: s.wmkf_appreviewersuggestionid,
+        researcherId: researcher?.wmkf_appresearcherid || null,
+        potentialReviewerId: s._wmkf_potentialreviewer_value || null,
+        name: person.wmkf_name || null,
+        affiliation: researcher?.wmkf_primaryaffiliation || person.wmkf_organizationname || null,
+        email: person.wmkf_emailaddress || null,
+        website: researcher?.wmkf_website || null,
+        hIndex: researcher?.wmkf_hindex ?? null,
+        totalCitations: researcher?.wmkf_totalcitations ?? null,
+        relevanceScore: s.wmkf_relevancescore,
+        reasoning: s.wmkf_matchreason,
+        sources: typeof s.wmkf_sources === 'string'
+          ? s.wmkf_sources.split(',').map((x) => x.trim()).filter(Boolean)
+          : (s.wmkf_sources || []),
+        invited: !!s.wmkf_invited,
+        accepted: !!s.wmkf_accepted,
+        declined: !!s.wmkf_declined,
+        notes: s.wmkf_notes || null,
+        emailSentAt: s.wmkf_emailsentat || null,
+        responseType: s.wmkf_responsetype || null,
+        responseReceivedAt: s.wmkf_responsereceivedat || null,
+        savedAt: s.createdon,
       });
     }
 
     return res.status(200).json({
       success: true,
-      proposals: Object.values(proposals),
-      totalCandidates: result.rows.length
+      proposals: Object.values(byRequest),
+      totalCandidates: suggestions.length,
     });
   } catch (error) {
     console.error('Get my candidates error:', error);
     return res.status(500).json({
       error: 'Failed to fetch candidates',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-      timestamp: new Date().toISOString()
     });
   }
 }
 
-async function handlePatch(req, res, sessionProfileId) {
+// `mode=proposals` — distinct request list, used by modals that need to assign
+// a researcher to one of the user's existing proposals.
+async function handleProposalsList(req, res, access, { cycleCode }) {
   try {
+    const pd = await resolvePD(access.session?.user?.email);
+    if (!pd?.systemuserid) {
+      return res.status(200).json({ success: true, proposals: [] });
+    }
+    const { requestById } = await suggestionAdapter.findByPD(pd.systemuserid, { cycleCode });
+    const proposals = Object.values(requestById).map((r) => ({
+      id: r.requestId,
+      proposalHash: r.requestId,
+      title: r.title || `Request ${r.requestNumber || ''}`.trim(),
+      cycleCode: r.cycleCode,
+      cycleLabel: r.cycleLabel,
+      requestNumber: r.requestNumber,
+      meetingDate: r.meetingDate,
+    })).sort((a, b) => (b.meetingDate || '').localeCompare(a.meetingDate || ''));
+    return res.status(200).json({ success: true, proposals });
+  } catch (error) {
+    console.error('Proposals list error:', error);
+    return res.status(500).json({ error: 'Failed to fetch proposals' });
+  }
+}
+
+async function fetchRequestByIdOrNumber({ requestId, requestNumber }) {
+  if (requestId) {
+    try {
+      const r = await DynamicsService.getRecord('akoya_requests', requestId, { select: REQUEST_FIELDS.join(',') });
+      return projectRequest(r);
+    } catch (e) {
+      return null;
+    }
+  }
+  if (requestNumber) {
+    const safe = String(requestNumber).replace(/'/g, "''");
+    const { records } = await DynamicsService.queryRecords('akoya_requests', {
+      select: REQUEST_FIELDS.join(','),
+      filter: `akoya_requestnum eq '${safe}'`,
+      top: 1,
+    });
+    return records[0] ? projectRequest(records[0]) : null;
+  }
+  return null;
+}
+
+async function fetchPotentialReviewers(ids) {
+  if (!ids?.length) return {};
+  const out = {};
+  const CHUNK = 25;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    const orChain = chunk.map((id) => `wmkf_potentialreviewersid eq ${id}`).join(' or ');
+    const { records } = await DynamicsService.queryRecords('wmkf_potentialreviewerses', {
+      select: 'wmkf_potentialreviewersid,wmkf_name,wmkf_emailaddress,wmkf_organizationname,wmkf_areaofexpertise',
+      filter: orChain,
+      top: 500,
+    });
+    for (const p of records) out[p.wmkf_potentialreviewersid] = p;
+  }
+  return out;
+}
+
+async function fetchResearchersByPerson(personIds) {
+  if (!personIds?.length) return {};
+  const out = {};
+  const CHUNK = 25;
+  for (let i = 0; i < personIds.length; i += CHUNK) {
+    const chunk = personIds.slice(i, i + CHUNK);
+    const orChain = chunk.map((id) => `_wmkf_potentialreviewer_value eq ${id}`).join(' or ');
+    const { records } = await DynamicsService.queryRecords('wmkf_appresearchers', {
+      select: 'wmkf_appresearcherid,_wmkf_potentialreviewer_value,wmkf_primaryaffiliation,wmkf_website,wmkf_hindex,wmkf_totalcitations,wmkf_orcid,wmkf_googlescholarid',
+      filter: orChain,
+      top: 500,
+    });
+    for (const r of records) out[r._wmkf_potentialreviewer_value] = r;
+  }
+  return out;
+}
+
+// ───────── PATCH ─────────
+
+async function handlePatch(req, res /* access unused but reserved for audit */) {
+  try {
+    const body = req.body || {};
     const {
       suggestionId,
-      proposalId,       // For bulk cycle/program assignment
-      grantCycleId,     // Assign to cycle (null to unassign)
-      programArea,      // Program area assignment
-      proposalAuthors,  // PI name (proposal-level)
-      proposalInstitution, // Institution (proposal-level)
-      // Suggestion fields (existing)
+      proposalId, // request guid for bulk updates
+      // Bulk fields
+      grantCycleCode,
+      programArea,
+      // Per-suggestion lifecycle fields
       invited,
       accepted,
       declined,
       notes,
-      // Email tracking fields
       emailSentAt,
       responseType,
       responseReceivedAt,
-      // Researcher fields (new)
+      // Person/researcher fields
       name,
       affiliation,
       email,
       website,
-      hIndex
-    } = req.body;
+      hIndex,
+    } = body;
 
-    // Handle bulk updates by proposalId (cycle or program area)
-    if (proposalId !== undefined) {
+    // ── Bulk by request (proposalId) ──
+    if (proposalId !== undefined && suggestionId === undefined) {
       const updates = {};
+      if (grantCycleCode !== undefined) updates.grantCycleCode = grantCycleCode;
+      if (programArea !== undefined) updates.programArea = programArea;
 
-      // Handle cycle assignment
-      if (grantCycleId !== undefined) {
-        const cycleValue = grantCycleId === null ? null : parseInt(grantCycleId, 10);
-        await sql`
-          UPDATE reviewer_suggestions
-          SET grant_cycle_id = ${cycleValue}
-          WHERE proposal_id = ${proposalId} AND selected = true
-            AND user_profile_id = ${sessionProfileId}
-        `;
-        await sql`
-          UPDATE proposal_searches
-          SET grant_cycle_id = ${cycleValue}
-          WHERE proposal_title = (
-            SELECT proposal_title FROM reviewer_suggestions WHERE proposal_id = ${proposalId} LIMIT 1
-          )
-        `;
-        updates.grantCycleId = cycleValue;
-      }
-
-      // Handle program area assignment
-      if (programArea !== undefined) {
-        await sql`
-          UPDATE reviewer_suggestions
-          SET program_area = ${programArea}
-          WHERE proposal_id = ${proposalId} AND selected = true
-            AND user_profile_id = ${sessionProfileId}
-        `;
-        updates.programArea = programArea;
-      }
-
-      // Handle PI name update
-      if (proposalAuthors !== undefined) {
-        await sql`
-          UPDATE reviewer_suggestions
-          SET proposal_authors = ${proposalAuthors || null}
-          WHERE proposal_id = ${proposalId} AND selected = true
-            AND user_profile_id = ${sessionProfileId}
-        `;
-        updates.proposalAuthors = proposalAuthors;
-      }
-
-      // Handle institution update
-      if (proposalInstitution !== undefined) {
-        await sql`
-          UPDATE reviewer_suggestions
-          SET proposal_institution = ${proposalInstitution || null}
-          WHERE proposal_id = ${proposalId} AND selected = true
-            AND user_profile_id = ${sessionProfileId}
-        `;
-        updates.proposalInstitution = proposalInstitution;
-      }
-
-      if (Object.keys(updates).length > 0) {
-        return res.status(200).json({
-          success: true,
-          message: 'Proposal updated',
-          updated: { proposalId, ...updates }
+      // PI / institution edits are intentionally rejected — those live on
+      // akoya_request and editing them here would create a divergent snapshot.
+      const rejected = [];
+      if (body.proposalAuthors !== undefined) rejected.push('proposalAuthors');
+      if (body.proposalInstitution !== undefined) rejected.push('proposalInstitution');
+      if (rejected.length) {
+        return res.status(400).json({
+          error: 'Editing PI / institution is not supported here',
+          rejectedFields: rejected,
+          hint: 'These fields belong on akoya_request and are managed in CRM.',
         });
       }
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: 'No supported fields to update' });
+      }
+      const updated = await suggestionAdapter.bulkUpdateByRequest(proposalId, updates);
+      return res.status(200).json({
+        success: true,
+        message: 'Proposal updated',
+        updated: { proposalId, ...updates, suggestionsUpdated: updated },
+      });
     }
 
     if (!suggestionId) {
-      return res.status(400).json({ error: 'suggestionId is required' });
+      return res.status(400).json({ error: 'suggestionId or proposalId is required' });
     }
 
-    // Verify the suggestion belongs to the authenticated user
-    const ownerCheck = await sql`
-      SELECT id FROM reviewer_suggestions
-      WHERE id = ${suggestionId}
-        AND user_profile_id = ${sessionProfileId}
-    `;
-    if (ownerCheck.rows.length === 0) {
-      return res.status(403).json({ error: 'Not authorized to modify this candidate' });
-    }
-
-    // Check if we have any researcher fields to update
-    const hasResearcherFields = name !== undefined || affiliation !== undefined ||
-      email !== undefined || website !== undefined || hIndex !== undefined;
-
-    // Check if we have any suggestion fields to update
-    const hasSuggestionFields = invited !== undefined || accepted !== undefined || declined !== undefined || notes !== undefined ||
-      emailSentAt !== undefined || responseType !== undefined || responseReceivedAt !== undefined;
-
-    if (!hasResearcherFields && !hasSuggestionFields) {
-      return res.status(400).json({ error: 'No fields to update' });
-    }
-
-    let researcherId = null;
-
-    // If updating researcher fields, get the researcherId first
-    if (hasResearcherFields) {
-      const suggestionResult = await sql`
-        SELECT researcher_id FROM reviewer_suggestions WHERE id = ${suggestionId}
-      `;
-
-      if (suggestionResult.rows.length === 0) {
-        return res.status(404).json({ error: 'Suggestion not found' });
-      }
-
-      researcherId = suggestionResult.rows[0].researcher_id;
-
-      // Update researcher fields
-      if (name !== undefined) {
-        await sql`
-          UPDATE researchers
-          SET name = ${name}, normalized_name = ${name.toLowerCase()}
-          WHERE id = ${researcherId}
-        `;
-      }
-      if (affiliation !== undefined) {
-        await sql`
-          UPDATE researchers
-          SET primary_affiliation = ${affiliation}
-          WHERE id = ${researcherId}
-        `;
-      }
-      if (email !== undefined) {
-        // When email is manually edited, track the source as 'manual'
-        await sql`
-          UPDATE researchers
-          SET email = ${email || null},
-              email_source = 'manual',
-              contact_enriched_at = NOW()
-          WHERE id = ${researcherId}
-        `;
-      }
-      if (website !== undefined) {
-        await sql`
-          UPDATE researchers
-          SET website = ${website || null}
-          WHERE id = ${researcherId}
-        `;
-      }
-      if (hIndex !== undefined) {
-        await sql`
-          UPDATE researchers
-          SET h_index = ${hIndex}
-          WHERE id = ${researcherId}
-        `;
-      }
-    }
-
-    // Update suggestion fields (existing logic)
-    if (invited !== undefined) {
-      await sql`
-        UPDATE reviewer_suggestions
-        SET invited = ${invited}
-        WHERE id = ${suggestionId}
-      `;
-    }
-    if (accepted !== undefined) {
-      await sql`
-        UPDATE reviewer_suggestions
-        SET accepted = ${accepted}
-        WHERE id = ${suggestionId}
-      `;
-    }
-    if (declined !== undefined) {
-      await sql`
-        UPDATE reviewer_suggestions
-        SET declined = ${declined}
-        WHERE id = ${suggestionId}
-      `;
-    }
-    if (notes !== undefined) {
-      await sql`
-        UPDATE reviewer_suggestions
-        SET notes = ${notes}
-        WHERE id = ${suggestionId}
-      `;
-    }
-
-    // Email tracking fields
+    // ── Per-suggestion ──
+    const lifecycle = {};
+    if (invited !== undefined) lifecycle.invited = invited;
+    if (accepted !== undefined) lifecycle.accepted = accepted;
+    if (declined !== undefined) lifecycle.declined = declined;
+    if (notes !== undefined) lifecycle.notes = notes;
     if (emailSentAt !== undefined) {
-      // Accept ISO string, null, or 'now' for current timestamp
-      const sentValue = emailSentAt === 'now' ? new Date().toISOString() : emailSentAt;
-      await sql`
-        UPDATE reviewer_suggestions
-        SET email_sent_at = ${sentValue}
-        WHERE id = ${suggestionId}
-      `;
+      lifecycle.emailSentAt = emailSentAt === 'now' ? new Date().toISOString() : emailSentAt;
     }
-    if (responseType !== undefined) {
-      // Valid values: 'accepted', 'declined', 'no_response', 'bounced', null
-      await sql`
-        UPDATE reviewer_suggestions
-        SET response_type = ${responseType}
-        WHERE id = ${suggestionId}
-      `;
-    }
+    if (responseType !== undefined) lifecycle.responseType = responseType;
     if (responseReceivedAt !== undefined) {
-      // Accept ISO string, null, or 'now' for current timestamp
-      const receivedValue = responseReceivedAt === 'now' ? new Date().toISOString() : responseReceivedAt;
-      await sql`
-        UPDATE reviewer_suggestions
-        SET response_received_at = ${receivedValue}
-        WHERE id = ${suggestionId}
-      `;
+      lifecycle.responseReceivedAt = responseReceivedAt === 'now' ? new Date().toISOString() : responseReceivedAt;
+    }
+
+    const hasLifecycle = Object.keys(lifecycle).length > 0;
+    const hasResearcher = name !== undefined || affiliation !== undefined || email !== undefined ||
+      website !== undefined || hIndex !== undefined;
+
+    if (!hasLifecycle && !hasResearcher) {
+      return res.status(400).json({ error: 'No supported fields to update' });
+    }
+
+    if (hasLifecycle) {
+      await suggestionAdapter.updateLifecycle(suggestionId, lifecycle);
+    }
+
+    // For person/researcher edits we need the linked potentialreviewer + researcher IDs.
+    if (hasResearcher) {
+      const sug = await suggestionAdapter.findById(suggestionId);
+      const personId = sug?._wmkf_potentialreviewer_value;
+      if (!personId) {
+        return res.status(404).json({ error: 'Linked potential reviewer not found for this suggestion' });
+      }
+
+      const personUpdates = {};
+      if (name !== undefined) personUpdates.name = name;
+      if (email !== undefined) personUpdates.email = email;
+      if (affiliation !== undefined) personUpdates.affiliation = affiliation;
+      if (Object.keys(personUpdates).length > 0) {
+        await potentialReviewerAdapter.update(personId, personUpdates);
+      }
+
+      const researcherUpdates = {};
+      if (affiliation !== undefined) researcherUpdates.affiliation = affiliation;
+      if (website !== undefined) researcherUpdates.website = website;
+      if (hIndex !== undefined) researcherUpdates.hIndex = hIndex;
+      if (email !== undefined) researcherUpdates.email = email;
+      if (Object.keys(researcherUpdates).length > 0) {
+        const researcher = await researcherAdapter.getByPotentialReviewer(personId);
+        if (researcher) {
+          await researcherAdapter.updateById(researcher.wmkf_appresearcherid, researcherUpdates);
+        }
+      }
     }
 
     return res.status(200).json({
       success: true,
       message: 'Candidate updated',
-      updated: {
-        suggestionId,
-        researcherId,
-        fields: {
-          ...(name !== undefined && { name }),
-          ...(affiliation !== undefined && { affiliation }),
-          ...(email !== undefined && { email }),
-          ...(website !== undefined && { website }),
-          ...(hIndex !== undefined && { hIndex }),
-          ...(invited !== undefined && { invited }),
-          ...(accepted !== undefined && { accepted }),
-          ...(declined !== undefined && { declined }),
-          ...(notes !== undefined && { notes }),
-          ...(emailSentAt !== undefined && { emailSentAt }),
-          ...(responseType !== undefined && { responseType }),
-          ...(responseReceivedAt !== undefined && { responseReceivedAt })
-        }
-      }
+      updated: { suggestionId, ...lifecycle, ...(hasResearcher && { name, affiliation, email, website, hIndex }) },
     });
   } catch (error) {
     console.error('Update candidate error:', error);
     return res.status(500).json({
       error: 'Failed to update candidate',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-      timestamp: new Date().toISOString()
     });
   }
 }
 
-async function handleDelete(req, res, sessionProfileId) {
-  try {
-    const { suggestionId } = req.body;
+// ───────── DELETE ─────────
 
+async function handleDelete(req, res /* access */) {
+  try {
+    const { suggestionId } = req.body || {};
     if (!suggestionId) {
       return res.status(400).json({ error: 'suggestionId is required' });
     }
-
-    // Verify ownership and soft-delete (only if owned by this user or legacy unscoped data)
-    const result = await sql`
-      UPDATE reviewer_suggestions
-      SET selected = false
-      WHERE id = ${suggestionId}
-        AND user_profile_id = ${sessionProfileId}
-    `;
-
-    if (result.rowCount === 0) {
-      return res.status(403).json({ error: 'Not authorized to remove this candidate' });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: 'Candidate removed'
-    });
+    await suggestionAdapter.softDelete(suggestionId);
+    return res.status(200).json({ success: true, message: 'Candidate removed' });
   } catch (error) {
     console.error('Delete candidate error:', error);
     return res.status(500).json({
       error: 'Failed to remove candidate',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-      timestamp: new Date().toISOString()
     });
   }
 }
