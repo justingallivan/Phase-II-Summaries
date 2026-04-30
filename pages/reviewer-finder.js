@@ -378,6 +378,199 @@ function CandidateCard({ candidate, selected, onSelect }) {
   );
 }
 
+// Proposal picker — fetches the authenticated PD's proposals from Dynamics
+// and loads the chosen one's Project Narrative from SharePoint into Vercel
+// Blob, then hands the blob URL back via onProposalLoaded so the parent
+// flow treats it like an upload.
+function ProposalPickerCard({ onProposalLoaded, onError }) {
+  const [cycles, setCycles] = useState(null);
+  const [cyclesError, setCyclesError] = useState(null);
+  const [selectedCycle, setSelectedCycle] = useState(null);
+  const [statusMode, setStatusMode] = useState('actionable');
+  const [proposals, setProposals] = useState(null);
+  const [proposalsError, setProposalsError] = useState(null);
+  const [pdName, setPdName] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [loadingProposalId, setLoadingProposalId] = useState(null);
+
+  // Load the cycle list on mount.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const r = await fetch('/api/reviewer-finder/my-proposals');
+        const data = await r.json();
+        if (cancelled) return;
+        if (!r.ok) {
+          setCyclesError(data.error || `Failed to load cycles (${r.status})`);
+          return;
+        }
+        setCycles(data.cycles || []);
+        setPdName(data.programDirector?.fullName || null);
+        // Auto-select the most recent cycle.
+        if (data.cycles && data.cycles.length > 0) {
+          setSelectedCycle(data.cycles[0].code);
+        }
+      } catch (err) {
+        if (!cancelled) setCyclesError(err.message || 'Failed to load cycles');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Load proposals whenever cycle or statusMode changes.
+  useEffect(() => {
+    if (!selectedCycle) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setProposals(null);
+        setProposalsError(null);
+        const params = new URLSearchParams({ cycleCode: selectedCycle, status: statusMode });
+        const r = await fetch(`/api/reviewer-finder/my-proposals?${params}`);
+        const data = await r.json();
+        if (cancelled) return;
+        if (!r.ok) {
+          setProposalsError(data.error || `Failed to load proposals (${r.status})`);
+          return;
+        }
+        setProposals(data.proposals || []);
+      } catch (err) {
+        if (!cancelled) setProposalsError(err.message || 'Failed to load proposals');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedCycle, statusMode]);
+
+  const handlePick = async (proposal) => {
+    setLoadingProposalId(proposal.requestId);
+    try {
+      const r = await fetch('/api/reviewer-finder/load-proposal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId: proposal.requestId }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        const msg = data.error || `Failed to load proposal (${r.status})`;
+        if (onError) onError(msg);
+        return;
+      }
+      onProposalLoaded({
+        url: data.blobUrl,
+        name: data.filename,
+        size: data.size,
+        mimeType: data.contentType,
+        sourceProposal: {
+          requestId: proposal.requestId,
+          requestNumber: proposal.requestNumber,
+          applicant: proposal.applicant,
+          projectLeader: proposal.projectLeader,
+          programArea: proposal.programArea,
+          meetingDate: proposal.meetingDate,
+          cycleCode: selectedCycle,
+        },
+      });
+    } catch (err) {
+      if (onError) onError(err.message || 'Failed to load proposal');
+    } finally {
+      setLoadingProposalId(null);
+    }
+  };
+
+  if (cyclesError) {
+    return (
+      <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">
+        {cyclesError}
+      </div>
+    );
+  }
+  if (loading || !cycles) {
+    return <div className="text-sm text-gray-500">Loading your proposals…</div>;
+  }
+  if (cycles.length === 0) {
+    return (
+      <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded p-3">
+        No proposals found in Dynamics for {pdName || 'your account'}.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3 text-sm flex-wrap">
+        <span className="text-gray-600">{pdName ? `${pdName} —` : ''} cycle:</span>
+        <select
+          value={selectedCycle || ''}
+          onChange={(e) => setSelectedCycle(e.target.value)}
+          className="px-3 py-1.5 bg-purple-50 text-purple-700 rounded font-medium border-0 cursor-pointer pr-8"
+        >
+          {cycles.map((c) => (
+            <option key={c.code} value={c.code}>
+              {c.code} ({c.count})
+            </option>
+          ))}
+        </select>
+        <label className="ml-2 inline-flex items-center gap-2 text-gray-600 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={statusMode === 'all'}
+            onChange={(e) => setStatusMode(e.target.checked ? 'all' : 'actionable')}
+          />
+          <span>Show completed too</span>
+        </label>
+      </div>
+
+      {proposalsError && (
+        <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">
+          {proposalsError}
+        </div>
+      )}
+
+      {proposals && proposals.length === 0 && !proposalsError && (
+        <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded p-3">
+          {statusMode === 'actionable'
+            ? `No proposals in ${selectedCycle} need reviewers right now. Toggle "Show completed too" to see all Phase II Pending.`
+            : `No Phase II Pending proposals in ${selectedCycle}.`}
+        </div>
+      )}
+
+      {proposals && proposals.length > 0 && (
+        <div className="border rounded divide-y">
+          {proposals.map((p) => (
+            <div key={p.requestId} className="p-3 flex items-center justify-between gap-3 hover:bg-gray-50">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-mono text-xs text-gray-500">#{p.requestNumber}</span>
+                  <span className="text-gray-400">·</span>
+                  <span className="font-medium truncate">{p.applicant || '—'}</span>
+                </div>
+                <div className="text-xs text-gray-600 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                  {p.projectLeader && <span>PI: {p.projectLeader}</span>}
+                  {p.programArea && <span>{p.programArea}</span>}
+                  {p.meetingDateFormatted && <span>Meeting: {p.meetingDateFormatted}</span>}
+                  <span>{p.reviewerSlotsFilled}/{p.reviewerSlotsTotal} reviewer slots filled</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handlePick(p)}
+                disabled={loadingProposalId !== null}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white text-sm rounded whitespace-nowrap"
+              >
+                {loadingProposalId === p.requestId ? 'Loading…' : 'Use this proposal'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // New Search Tab content
 function NewSearchTab({ apiCapabilities, onCandidatesSaved, searchState, setSearchState, userProfileId }) {
   // Use lifted state from parent (persists across tab switches)
@@ -400,6 +593,11 @@ function NewSearchTab({ apiCapabilities, onCandidatesSaved, searchState, setSear
     ...prev,
     selectedCandidates: typeof candidatesOrFn === 'function' ? candidatesOrFn(prev.selectedCandidates) : candidatesOrFn
   }));
+
+  // Entry mode: 'crm' (Dataverse-native picker) or 'upload' (legacy PDF upload).
+  // Default 'crm'; falls back to 'upload' if the user prefers or if Dynamics is
+  // unavailable. See project_reviewer_finder_dataverse_entry_path memory.
+  const [entryMode, setEntryMode] = useState('crm');
 
   // Local state (OK to reset on tab switch)
   const [additionalNotes, setAdditionalNotes] = useState('');
@@ -1137,11 +1335,57 @@ function NewSearchTab({ apiCapabilities, onCandidatesSaved, searchState, setSear
           </div>
         </div>
 
-        <FileUploaderSimple
-          onFilesUploaded={handleFilesUploaded}
-          multiple={false}
-          accept=".pdf"
-        />
+        {/* Entry mode toggle: pick from CRM (new default) vs upload PDF (legacy) */}
+        <div className="mb-3 inline-flex rounded border bg-gray-50 p-0.5 text-sm">
+          <button
+            type="button"
+            onClick={() => setEntryMode('crm')}
+            className={`px-3 py-1 rounded ${entryMode === 'crm' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+          >
+            From My Proposals
+          </button>
+          <button
+            type="button"
+            onClick={() => setEntryMode('upload')}
+            className={`px-3 py-1 rounded ${entryMode === 'upload' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+          >
+            Upload PDF
+          </button>
+        </div>
+
+        {entryMode === 'crm' ? (
+          <ProposalPickerCard
+            onProposalLoaded={(file) => {
+              handleFilesUploaded([file]);
+              setError(null);
+            }}
+            onError={(msg) => setError(msg)}
+          />
+        ) : (
+          <FileUploaderSimple
+            onFilesUploaded={handleFilesUploaded}
+            multiple={false}
+            accept=".pdf"
+          />
+        )}
+
+        {entryMode === 'crm' && uploadedFiles.length > 0 && (
+          <div className="mt-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded p-2 flex items-center justify-between">
+            <span>
+              Loaded: <span className="font-medium">{uploadedFiles[0].name}</span>
+              {uploadedFiles[0].sourceProposal && (
+                <span className="text-gray-600"> — request #{uploadedFiles[0].sourceProposal.requestNumber}</span>
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={() => setUploadedFiles([])}
+              className="text-xs text-gray-500 hover:text-gray-700"
+            >
+              Clear
+            </button>
+          </div>
+        )}
 
         <div className="mt-4 space-y-4">
           <div>
