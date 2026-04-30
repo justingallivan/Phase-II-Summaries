@@ -94,7 +94,7 @@ async function handleGet(req, res, access) {
       const rows = await suggestionAdapter.findByRequest(request.requestId, { selectedOnly: true });
       suggestions = rows;
     } else {
-      const pd = await resolvePD(access.session?.user?.email);
+      const pd = await resolvePD(access.session?.user?.azureEmail);
       if (!pd?.systemuserid) {
         return res.status(200).json({ success: true, proposals: [], totalCandidates: 0, programDirector: null });
       }
@@ -182,7 +182,7 @@ async function handleGet(req, res, access) {
 // a researcher to one of the user's existing proposals.
 async function handleProposalsList(req, res, access, { cycleCode }) {
   try {
-    const pd = await resolvePD(access.session?.user?.email);
+    const pd = await resolvePD(access.session?.user?.azureEmail);
     if (!pd?.systemuserid) {
       return res.status(200).json({ success: true, proposals: [] });
     }
