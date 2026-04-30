@@ -4,10 +4,11 @@
  * Validates resolver + cycle filter + projection by hitting Dynamics directly.
  *
  * Usage:
- *   node scripts/smoke-my-proposals.js [email]              # list cycles
- *   node scripts/smoke-my-proposals.js [email] [cycleCode]  # list proposals in cycle
+ *   node scripts/smoke-my-proposals.js [email]                       # list cycles
+ *   node scripts/smoke-my-proposals.js [email] [cycleCode]           # actionable in cycle
+ *   node scripts/smoke-my-proposals.js [email] [cycleCode] all       # all Phase II in cycle
  *
- * Defaults to jgallivan@wmkeck.org and J26 if not specified.
+ * Defaults to jgallivan@wmkeck.org if email not specified.
  */
 
 require('./../lib/dataverse/client').loadEnvLocal();
@@ -70,7 +71,12 @@ require('./../lib/dataverse/client').loadEnvLocal();
     console.error(`Invalid cycle code: ${cycleCode}`);
     process.exit(1);
   }
-  const filter = `_wmkf_programdirector_value eq ${pd.systemuserid} and ${cycleFilter}`;
+  const status = process.argv[4] === 'all' ? 'all' : 'actionable';
+  const statusFilter = status === 'actionable'
+    ? `akoya_requeststatus eq 'Phase II Pending' and wmkf_phaseiistatus eq null`
+    : `akoya_requeststatus eq 'Phase II Pending'`;
+  const filter = `_wmkf_programdirector_value eq ${pd.systemuserid} and ${cycleFilter} and ${statusFilter}`;
+  console.log(`Filter mode: ${status}\n`);
   const { records } = await DynamicsService.queryAllRecords('akoya_requests', {
     select: [
       'akoya_requestid',

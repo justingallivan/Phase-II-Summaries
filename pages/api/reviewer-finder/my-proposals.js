@@ -12,6 +12,15 @@
  * Filter: `_wmkf_programdirector_value eq {systemuserId}` — primary PD only.
  *   `wmkf_programdirector2` (secondary) does not assign reviewers; see memory
  *   `project_akoya_request_pd_fields.md`.
+ *
+ * Status filter (cycle mode):
+ *   ?status=actionable (default) — proposals that need reviewers found:
+ *     `akoya_requeststatus eq 'Phase II Pending'` AND `wmkf_phaseiistatus eq null`
+ *     (a Phase II picklist value means the post-review disposition is in;
+ *     reviewer-finding is done — see memory `project_grant_phasing_evolution.md`)
+ *   ?status=all — every Phase II Pending proposal in the cycle, plus already-
+ *     dispositioned ones. Concepts and Phase I-declined are always excluded
+ *     since they never need outside reviewers.
  */
 
 import { requireAppAccess } from '../../../lib/utils/auth';
@@ -50,7 +59,8 @@ export default async function handler(req, res) {
     if (!cycleCode) {
       return await listCycles(res, pd);
     }
-    return await listProposalsInCycle(res, pd, String(cycleCode));
+    const status = req.query.status === 'all' ? 'all' : 'actionable';
+    return await listProposalsInCycle(res, pd, String(cycleCode), status);
   } catch (err) {
     console.error('my-proposals error:', err);
     return res.status(500).json({
@@ -102,13 +112,20 @@ async function listCycles(res, pd) {
   });
 }
 
-async function listProposalsInCycle(res, pd, cycleCode) {
+async function listProposalsInCycle(res, pd, cycleCode, status) {
   const cycleFilter = cycleCodeToOdataFilter(cycleCode);
   if (!cycleFilter) {
     return res.status(400).json({ error: `Invalid cycleCode: ${cycleCode}` });
   }
 
-  const filter = `_wmkf_programdirector_value eq ${pd.systemuserid} and ${cycleFilter}`;
+  // Always exclude concept and Phase I-declined — they never need outside
+  // reviewers. Phase II Pending is the gate; for "actionable" we further
+  // require no post-review disposition.
+  const statusFilter = status === 'actionable'
+    ? `akoya_requeststatus eq 'Phase II Pending' and wmkf_phaseiistatus eq null`
+    : `akoya_requeststatus eq 'Phase II Pending'`;
+
+  const filter = `_wmkf_programdirector_value eq ${pd.systemuserid} and ${cycleFilter} and ${statusFilter}`;
   const { records } = await DynamicsService.queryAllRecords('akoya_requests', {
     select: [
       'akoya_requestid',
@@ -156,6 +173,7 @@ async function listProposalsInCycle(res, pd, cycleCode) {
     success: true,
     programDirector: { systemuserid: pd.systemuserid, fullName: pd.fullName },
     cycleCode: cycleCode.toUpperCase(),
+    status,
     proposals,
   });
 }
