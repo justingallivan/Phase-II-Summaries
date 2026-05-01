@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import HelpButton from '../shared/components/HelpButton';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
+import ReviewFormFields from '../shared/components/external/ReviewFormFields';
 import { useProfile } from '../shared/context/ProfileContext';
 
 // ─── Status Pipeline ────────────────────────────────────────────────────────
@@ -101,6 +102,91 @@ function StatusBadge({ status }) {
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${info.color}`}>
       {info.label}
     </span>
+  );
+}
+
+// ─── Magic-link Token State ─────────────────────────────────────────────────
+
+const TOKEN_STATE_INFO = {
+  not_minted: { label: 'Not sent', color: 'bg-gray-100 text-gray-600' },
+  active:     { label: 'Active',   color: 'bg-blue-100 text-blue-800' },
+  revoked:    { label: 'Revoked',  color: 'bg-red-100 text-red-800' },
+  expired:    { label: 'Expired',  color: 'bg-orange-100 text-orange-800' },
+};
+
+function TokenStateBadge({ state, expiresAt, firstAccessedAt }) {
+  const info = TOKEN_STATE_INFO[state] || TOKEN_STATE_INFO.not_minted;
+  const tooltip = [
+    expiresAt && `Expires ${new Date(expiresAt).toLocaleDateString()}`,
+    firstAccessedAt && `Opened ${new Date(firstAccessedAt).toLocaleDateString()}`,
+  ].filter(Boolean).join(' · ');
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${info.color}`}
+      title={tooltip || undefined}
+    >
+      {info.label}
+      {state === 'active' && firstAccessedAt && (
+        <span className="ml-1 text-[10px] opacity-75">opened</span>
+      )}
+    </span>
+  );
+}
+
+function TokenActionsMenu({ reviewer, onRegenerate, onRevoke, onMarkReceivedNoFile }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  const isActive = reviewer.tokenState === 'active';
+  const hasReview = !!(reviewer.reviewReceivedAt);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+        title="Reviewer link actions"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 text-sm">
+          <button
+            onClick={() => { setOpen(false); onRegenerate(); }}
+            className="w-full text-left px-3 py-2 hover:bg-gray-50"
+          >
+            {reviewer.tokenState === 'not_minted' ? 'Generate link & copy' : 'Regenerate link & copy'}
+          </button>
+          {isActive && (
+            <button
+              onClick={() => { setOpen(false); onRevoke(); }}
+              className="w-full text-left px-3 py-2 hover:bg-gray-50 text-red-700"
+            >
+              Revoke link
+            </button>
+          )}
+          {!hasReview && (
+            <button
+              onClick={() => { setOpen(false); onMarkReceivedNoFile(); }}
+              className="w-full text-left px-3 py-2 hover:bg-gray-50"
+            >
+              Mark received (no file)
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -735,73 +821,117 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
 // ─── Review Upload Modal ────────────────────────────────────────────────────
 
 function UploadReviewModal({ isOpen, onClose, reviewer, onUploaded }) {
-  const [file, setFile] = useState(null);
+  const formRef = useRef(null);
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState(null);
+  const [errors, setErrors] = useState(null);
 
   if (!isOpen || !reviewer) return null;
 
-  const handleUpload = async () => {
-    if (!file) return;
+  const prefill = {
+    affiliation: reviewer.reviewerAffiliation || reviewer.affiliation || '',
+    impact: reviewer.reviewerImpact ?? null,
+    risk: reviewer.reviewerRisk ?? null,
+    overallRating: reviewer.reviewerOverallRating ?? null,
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setErrors(null);
+
+    const formData = new FormData(formRef.current);
+    formData.append('suggestionId', reviewer.suggestionId);
+
+    const fileEntries = formData.getAll('files').filter(f => f && f.size > 0);
+    if (fileEntries.length === 0) {
+      setErrors(['Please attach at least one file.']);
+      return;
+    }
+
     setUploading(true);
-    setError(null);
-
     try {
-      const formData = new FormData();
-      formData.append('suggestionId', reviewer.suggestionId);
-      formData.append('file', file);
-
       const response = await fetch('/api/review-manager/upload-review', {
         method: 'POST',
         body: formData,
       });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Upload failed');
-
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) {
+        setErrors(data.errors || [data.reason || 'Upload failed.']);
+        return;
+      }
       if (onUploaded) onUploaded(reviewer.suggestionId, data);
       onClose();
     } catch (err) {
-      setError(err.message);
+      setErrors([err.message || 'Network error.']);
     } finally {
       setUploading(false);
     }
   };
 
+  const reviewOnFile = !!(reviewer.reviewSharePointFolder || reviewer.reviewBlobUrl);
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-md w-full shadow-2xl">
-        <div className="px-6 py-4 border-b border-gray-200">
+      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
           <h2 className="text-lg font-semibold text-gray-900">Upload Review</h2>
           <p className="text-sm text-gray-500 mt-1">for {reviewer.name}</p>
         </div>
-        <div className="p-6 space-y-4">
-          {error && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Review Document</label>
-            <input
-              type="file"
-              onChange={e => setFile(e.target.files[0] || null)}
-              accept=".pdf,.doc,.docx,.txt,.md"
-              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
-            />
-          </div>
-
-          {reviewer.reviewBlobUrl && (
+        <form ref={formRef} onSubmit={handleSubmit} className="p-6 space-y-5">
+          {reviewOnFile && (
             <div className="p-3 bg-yellow-50 rounded-lg">
               <p className="text-sm text-yellow-800">
-                A review file already exists: <strong>{reviewer.reviewFilename}</strong>. Uploading a new file will replace it.
+                A review is already on file
+                {reviewer.reviewFilename ? <> (<strong>{reviewer.reviewFilename}</strong>)</> : null}.
+                Uploading replaces it.
               </p>
             </div>
           )}
-        </div>
-        <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
-          <Button onClick={handleUpload} disabled={!file || uploading}>
-            {uploading ? 'Uploading...' : 'Upload'}
-          </Button>
-        </div>
+
+          <div>
+            <label htmlFor="rm-files" className="block text-sm font-semibold text-gray-900">
+              Review file(s) <span className="text-red-600">*</span>
+            </label>
+            <p className="text-xs text-gray-500 mt-1">
+              Up to 5 files. PDF, DOCX, or DOC. Max 25 MB each.
+            </p>
+            <input
+              id="rm-files"
+              name="files"
+              type="file"
+              accept=".pdf,.doc,.docx"
+              multiple
+              required
+              disabled={uploading}
+              className="mt-2 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
+            />
+          </div>
+
+          <ReviewFormFields initialValues={prefill} disabled={uploading} idPrefix="rm" />
+
+          {errors && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
+              <p className="font-semibold">Please fix the following:</p>
+              <ul className="list-disc list-inside mt-1 space-y-0.5">
+                {errors.map((err, i) => (<li key={i}>{err}</li>))}
+              </ul>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={uploading}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+            >
+              Cancel
+            </button>
+            <Button type="submit" disabled={uploading}>
+              {uploading ? 'Uploading…' : 'Upload'}
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -983,6 +1113,73 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
     }
   };
 
+  // ── External-link lifecycle actions ─────────────────────────────────────
+  // These hit the Phase 5 staff endpoints. All are no-ops in dev when the
+  // suggestion has never had a token minted (regenerate is the entry point);
+  // revoke + mark-received are 404-tolerant on the backend.
+  const handleRegenerateToken = async (suggestionId) => {
+    try {
+      const resp = await fetch('/api/review-manager/regenerate-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suggestionId }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) {
+        alert(`Could not generate a new link: ${data.reason || resp.status}`);
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(data.url);
+        alert(`Link copied to clipboard. Expires ${new Date(data.expiresAt).toLocaleDateString()}.`);
+      } catch {
+        // Clipboard can fail on insecure contexts — show the URL anyway.
+        prompt('Reviewer link (copy manually):', data.url);
+      }
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      alert(`Network error generating link: ${err.message}`);
+    }
+  };
+
+  const handleRevokeToken = async (suggestionId) => {
+    if (!confirm('Revoke this reviewer\'s magic link? They will no longer be able to use it.')) return;
+    try {
+      const resp = await fetch('/api/review-manager/revoke-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suggestionId }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) {
+        alert(`Revoke failed: ${data.reason || resp.status}`);
+        return;
+      }
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      alert(`Network error: ${err.message}`);
+    }
+  };
+
+  const handleMarkReceivedNoFile = async (suggestionId) => {
+    if (!confirm('Mark this review as received without a file? Use this for informal feedback or paper reviews you do not plan to scan.')) return;
+    try {
+      const resp = await fetch('/api/review-manager/mark-received-no-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suggestionId }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) {
+        alert(`Could not mark received: ${data.reason || resp.status}`);
+        return;
+      }
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      alert(`Network error: ${err.message}`);
+    }
+  };
+
   const updateStatus = async (suggestionId, newStatus) => {
     try {
       await fetch('/api/review-manager/reviewers', {
@@ -1107,6 +1304,7 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reviewer</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Link</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Action</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -1137,6 +1335,9 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
                     {r.reminderCount > 0 && (
                       <span className="text-xs text-gray-400 ml-1">({r.reminderCount} reminder{r.reminderCount !== 1 ? 's' : ''})</span>
                     )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <TokenStateBadge state={r.tokenState} expiresAt={r.tokenExpiresAt} firstAccessedAt={r.proposalFirstAccessedAt} />
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500">
                     {lastAction ? formatDate(lastAction) : '—'}
@@ -1192,8 +1393,8 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
                           </svg>
                         </button>
                       )}
-                      {/* Download review if received */}
-                      {r.reviewBlobUrl && (
+                      {/* Download legacy Vercel-Blob review (pre-Phase-5) */}
+                      {r.reviewBlobUrl && !r.reviewSharePointFolder && (
                         <a
                           href={r.reviewBlobUrl}
                           target="_blank"
@@ -1206,6 +1407,24 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
                           </svg>
                         </a>
                       )}
+                      {/* SharePoint review marker (Phase 5+) */}
+                      {r.reviewSharePointFolder && (
+                        <span
+                          className="p-1.5 text-green-600"
+                          title={`Review in SharePoint${r.reviewFilename ? `: ${r.reviewFilename}` : ''}`}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                          </svg>
+                        </span>
+                      )}
+                      {/* Magic-link actions menu */}
+                      <TokenActionsMenu
+                        reviewer={r}
+                        onRegenerate={() => handleRegenerateToken(r.suggestionId)}
+                        onRevoke={() => handleRevokeToken(r.suggestionId)}
+                        onMarkReceivedNoFile={() => handleMarkReceivedNoFile(r.suggestionId)}
+                      />
                     </div>
                   </td>
                 </tr>

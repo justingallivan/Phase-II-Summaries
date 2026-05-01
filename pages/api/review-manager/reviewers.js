@@ -57,6 +57,16 @@ const RESPONSE_TYPE_BY_VALUE = {
   100000002: 'no_response',
 };
 
+function deriveTokenState(s) {
+  if (!s.wmkf_externaltokenhash) return 'not_minted';
+  if (s.wmkf_externaltokenrevoked === true) return 'revoked';
+  if (s.wmkf_externaltokenexpires) {
+    const expires = new Date(s.wmkf_externaltokenexpires).getTime();
+    if (Number.isFinite(expires) && expires <= Date.now()) return 'expired';
+  }
+  return 'active';
+}
+
 function projectRequest(r) {
   if (!r) return null;
   const cycleCode = r.wmkf_meetingdate ? meetingDateToCycleCode(r.wmkf_meetingdate) : null;
@@ -200,6 +210,21 @@ async function handleGet(req, res, access) {
         reviewBlobUrl: s.wmkf_reviewbloburl || null,
         reviewFilename: s.wmkf_reviewfilename || null,
         thankyouSentAt: s.wmkf_thankyousentat || null,
+        // External magic-link token state. `tokenState` collapses the four
+        // raw fields into one of: not_minted | active | revoked | expired,
+        // which is what the UI actually wants to render.
+        tokenIssuedAt: s.wmkf_externaltokenissued || null,
+        tokenExpiresAt: s.wmkf_externaltokenexpires || null,
+        tokenRevoked: s.wmkf_externaltokenrevoked === true,
+        tokenState: deriveTokenState(s),
+        proposalFirstAccessedAt: s.wmkf_proposalfirstaccessed || null,
+        reviewSharePointFolder: s.wmkf_reviewsharepointfolder || null,
+        reviewUploadedByStaff: s.wmkf_reviewuploadedbystaff === true,
+        // Structured review form values (numeric picklist or null)
+        reviewerAffiliation: s.wmkf_revieweraffiliation || null,
+        reviewerImpact: s.wmkf_reviewerimpact ?? null,
+        reviewerRisk: s.wmkf_reviewerrisk ?? null,
+        reviewerOverallRating: s.wmkf_revieweroverallrating ?? null,
       });
     }
 
