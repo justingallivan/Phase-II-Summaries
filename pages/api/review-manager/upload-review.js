@@ -1,130 +1,171 @@
 /**
- * Review Manager - Upload Review Document (Dataverse-backed)
- *
  * POST /api/review-manager/upload-review
  *
- * Accepts a multipart upload of a completed review document. The blob still
- * lives in Vercel Blob; the metadata (URL, filename, received timestamp,
- * status='review_received') goes onto the Dataverse suggestion via
- * `suggestionAdapter.updateLifecycle`.
+ * Staff path for landing a completed review on the canonical suggestion row.
+ * Shares the same core (`writeReviewFiles`) as the public token-authenticated
+ * endpoint so the two flows can never drift on validation, file layout, or
+ * Dataverse writes.
  *
- * suggestionId is now a Dataverse GUID (string).
+ * Multipart body:
+ *   - suggestionId           (string)  required
+ *   - files                  (file[])  1..5
+ *   - affiliation            (string)  required (review form field)
+ *   - impact, risk, overallRating  (numeric strings)  required
+ *
+ * Replaces the previous Vercel Blob path. Existing rows whose review still
+ * lives at `wmkf_reviewbloburl` keep working — the UI fetch logic falls back
+ * to that field when `wmkf_reviewsharepointfolder` is null.
  */
 
-import { put } from '@vercel/blob';
-import { requireAppAccess } from '../../../lib/utils/auth';
-import { DynamicsService } from '../../../lib/services/dynamics-service';
-import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
-import * as suggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
 import Busboy from 'busboy';
+import { requireAppAccess } from '../../../lib/utils/auth';
+import { writeReviewFiles } from '../../../lib/services/review-upload';
+import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
+const MAX_FILES = 5;
 
 export const config = {
-  api: {
-    bodyParser: false, // busboy needs the raw stream
-  },
+  api: { bodyParser: false },
 };
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.setHeader('Allow', 'POST');
+    return res.status(405).json({ ok: false, reason: 'method_not_allowed' });
   }
 
   const access = await requireAppAccess(req, res, 'review-manager');
   if (!access) return;
 
-  return bypassDynamicsRestrictions('review-manager-upload', async () => {
   try {
-    const { fields, fileData, fileName, fileContentType } = await parseFormData(req);
+    let parsed;
+    try {
+      parsed = await parseMultipart(req);
+    } catch (e) {
+      if (e.code === 'FILE_TOO_LARGE') {
+        return res.status(413).json({
+          ok: false,
+          reason: 'file_too_large',
+          errors: [`Each file must be under ${MAX_FILE_BYTES / 1024 / 1024} MB.`],
+        });
+      }
+      if (e.code === 'TOO_MANY_FILES') {
+        return res.status(413).json({
+          ok: false,
+          reason: 'too_many_files',
+          errors: [`Max ${MAX_FILES} files per upload.`],
+        });
+      }
+      throw e;
+    }
 
+    const { files, fields } = parsed;
     const suggestionId = fields.suggestionId;
     if (!suggestionId) {
-      return res.status(400).json({ error: 'suggestionId is required' });
+      return res.status(400).json({ ok: false, reason: 'validation', errors: ['suggestionId is required.'] });
     }
-    if (!fileData || !fileName) {
-      return res.status(400).json({ error: 'file is required' });
-    }
-
-    // Verify suggestion exists + is accepted before accepting the upload.
-    const sug = await suggestionAdapter.findById(suggestionId);
-    if (!sug || !sug.wmkf_accepted) {
-      return res.status(404).json({ error: 'Reviewer suggestion not found or not accepted' });
+    if (files.length === 0) {
+      return res.status(400).json({ ok: false, reason: 'validation', errors: ['At least one file is required.'] });
     }
 
-    // Use the request GUID as the blob folder so multiple reviewers' uploads
-    // for the same proposal are co-located.
-    const requestId = sug._wmkf_request_value || 'unknown';
-    const blobPath = `reviews/${requestId}/${suggestionId}_${fileName}`;
+    // The shared core revalidates the structured fields against the schema;
+    // strip the suggestionId before passing through so it isn't treated as
+    // form data.
+    const { suggestionId: _ignored, ...structuredData } = fields;
 
-    const blob = await put(blobPath, fileData, {
-      access: 'public',
-      contentType: fileContentType || 'application/octet-stream',
-    });
+    const result = await bypassDynamicsRestrictions('review-manager-upload', () =>
+      writeReviewFiles({
+        suggestionId,
+        files,
+        structuredData,
+        opts: { source: 'staff_upload', performedBy: access.profileId },
+      }),
+    );
 
-    await suggestionAdapter.updateLifecycle(suggestionId, {
-      reviewBlobUrl: blob.url,
-      reviewFilename: fileName,
-      reviewReceivedAt: new Date().toISOString(),
-      reviewStatus: 'review_received',
-    });
+    if (!result.ok) {
+      const status = result.reason === 'validation' ? 400
+        : result.reason === 'not_found' ? 404
+        : 500;
+      return res.status(status).json(result);
+    }
 
     return res.status(200).json({
-      success: true,
-      message: 'Review uploaded successfully',
-      blobUrl: blob.url,
-      filename: fileName,
+      ok: true,
+      folder: result.folder,
+      files: result.files.map(f => ({ name: f.name, size: f.size })),
     });
   } catch (error) {
-    if (error?.code === 'FILE_TOO_LARGE') {
-      return res.status(413).json({
-        error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB.`,
-      });
-    }
-    console.error('Review upload error:', error);
+    console.error('[review-manager upload-review] error:', error);
     return res.status(500).json({
-      error: 'Failed to upload review',
+      ok: false,
+      reason: 'server_error',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-      timestamp: new Date().toISOString(),
     });
   }
-  });
 }
 
-function parseFormData(req) {
+function parseMultipart(req) {
   return new Promise((resolve, reject) => {
-    const busboy = Busboy({ headers: req.headers, limits: { fileSize: MAX_FILE_SIZE, files: 1 } });
+    let busboy;
+    try {
+      busboy = Busboy({
+        headers: req.headers,
+        limits: { fileSize: MAX_FILE_BYTES, files: MAX_FILES, fieldSize: 4096, fields: 50 },
+      });
+    } catch (e) {
+      return reject(e);
+    }
+
+    const files = [];
     const fields = {};
-    let fileData = null;
-    let fileName = null;
-    let fileContentType = null;
     let aborted = false;
 
-    busboy.on('file', (fieldname, file, info) => {
+    busboy.on('file', (_fieldname, fileStream, info) => {
+      if (aborted) {
+        fileStream.resume();
+        return;
+      }
       const chunks = [];
-      fileName = info.filename;
-      fileContentType = info.mimeType;
-      file.on('data', (chunk) => chunks.push(chunk));
-      file.on('limit', () => {
+      let truncated = false;
+      fileStream.on('data', chunk => chunks.push(chunk));
+      fileStream.on('limit', () => {
+        truncated = true;
         aborted = true;
-        file.resume();
         const err = new Error('FILE_TOO_LARGE');
         err.code = 'FILE_TOO_LARGE';
         reject(err);
       });
-      file.on('end', () => {
-        if (!aborted) fileData = Buffer.concat(chunks);
+      fileStream.on('end', () => {
+        if (aborted || truncated) return;
+        files.push({
+          filename: info.filename,
+          buffer: Buffer.concat(chunks),
+          mimeType: info.mimeType,
+        });
       });
     });
 
-    busboy.on('field', (name, val) => { fields[name] = val; });
+    busboy.on('filesLimit', () => {
+      aborted = true;
+      const err = new Error('TOO_MANY_FILES');
+      err.code = 'TOO_MANY_FILES';
+      reject(err);
+    });
 
-    busboy.on('finish', () => {
-      if (aborted) return;
-      resolve({ fields, fileData, fileName, fileContentType });
+    busboy.on('field', (name, value) => {
+      const numeric = Number(value);
+      fields[name] = value !== '' && !Number.isNaN(numeric) && /^-?\d+$/.test(value)
+        ? numeric
+        : value;
     });
 
     busboy.on('error', reject);
+    busboy.on('finish', () => {
+      if (aborted) return;
+      resolve({ files, fields });
+    });
+
     req.pipe(busboy);
   });
 }

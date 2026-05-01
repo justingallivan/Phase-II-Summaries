@@ -106,4 +106,29 @@ describe('validateReviewForm', () => {
     expect(r.ok).toBe(false);
     expect(r.errors.length).toBeGreaterThanOrEqual(3);
   });
+
+  describe('partial mode', () => {
+    test('accepts entirely missing input', () => {
+      const r = validateReviewForm({}, { partial: true });
+      expect(r.ok).toBe(true);
+      expect(r.dataverseValues).toEqual({});
+    });
+
+    test('accepts null/undefined input', () => {
+      expect(validateReviewForm(null, { partial: true })).toEqual({ ok: true, dataverseValues: {} });
+      expect(validateReviewForm(undefined, { partial: true })).toEqual({ ok: true, dataverseValues: {} });
+    });
+
+    test('still validates types/ranges of present values', () => {
+      const r = validateReviewForm({ impact: 7 }, { partial: true });
+      expect(r.ok).toBe(false);
+      expect(r.errors[0]).toMatch(/invalid choice/);
+    });
+
+    test('writes only the fields that were provided', () => {
+      const r = validateReviewForm({ overallRating: 4 }, { partial: true });
+      expect(r.ok).toBe(true);
+      expect(r.dataverseValues).toEqual({ wmkf_revieweroverallrating: 4 });
+    });
+  });
 });
