@@ -10,7 +10,7 @@ import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
 import { loadModelOverrides } from '../../lib/services/model-override-loader';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { requireAppAccess } from '../../lib/utils/auth';
-import { logUsage } from '../../lib/utils/usage-logger';
+import { LLMClient } from '../../lib/services/llm-client';
 import { createQASystemPrompt } from '../../shared/config/prompts/proposal-summarizer';
 
 export const config = {
@@ -90,25 +90,10 @@ export default async function handler(req, res) {
 
     sendEvent('thinking', { message: 'Analyzing your question...' });
 
-    const startTime = Date.now();
     const model = getModelForApp('qa');
 
-    // Call Claude with streaming and web search
-    const response = await callClaudeStreaming(apiKey, model, systemPrompt, conversationMessages, sendEvent);
-
-    // Log usage (with cache token metrics for accurate cost calculation)
-    if (response.usage) {
-      logUsage({
-        userProfileId,
-        appName: 'qa',
-        model: response.model || model,
-        inputTokens: response.usage.input_tokens,
-        outputTokens: response.usage.output_tokens,
-        cacheCreationTokens: response.usage.cache_creation_input_tokens || 0,
-        cacheReadTokens: response.usage.cache_read_input_tokens || 0,
-        latencyMs: Date.now() - startTime,
-      });
-    }
+    // LLMClient handles usage logging (incl. cache tokens) internally now.
+    const response = await callClaudeStreaming(apiKey, model, systemPrompt, conversationMessages, sendEvent, userProfileId);
 
     sendEvent('complete', {
       // Let client know if the turn was paused (response may be incomplete)
@@ -123,147 +108,77 @@ export default async function handler(req, res) {
 }
 
 /**
- * Call Claude API with streaming, relay text deltas to client via SSE.
- * Supports web_search server-side tool (executed by the API automatically).
- * Retries once on 429.
+ * Call Claude API with streaming + web_search, relay text deltas + final
+ * citation sources to the client. Cache tokens land in usage logging.
  */
-async function callClaudeStreaming(apiKey, model, systemPrompt, messages, sendEvent, retryCount = 0) {
-  const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey.trim(),
-      'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION,
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 4096,
-      temperature: 0.4,
-      system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
-      messages,
-      stream: true,
-      tools: [
-        {
-          type: 'web_search_20260209',
-          name: 'web_search',
-          max_uses: 3,
-        },
-        // code_execution is auto-injected by web_search_20260209 for dynamic filtering
-      ],
-    }),
+async function callClaudeStreaming(apiKey, model, systemPrompt, messages, sendEvent, userProfileId) {
+  const claude = new LLMClient({
+    apiKey,
+    model,
+    appName: 'qa',
+    userProfileId,
+    // The wrapper's default 3 retries on 429/529 supersedes the old "retry
+    // once on 429" — the route's UX is identical otherwise.
   });
 
-  // Handle non-streaming errors
-  if (!response.ok) {
-    const errorText = await response.text();
-
-    // Retry once on 429
-    if (response.status === 429 && retryCount === 0) {
-      const retryAfter = parseInt(response.headers.get('retry-after') || '5', 10);
-      const delay = Math.min(retryAfter * 1000, 30000);
-      sendEvent('thinking', { message: 'Rate limited, retrying...' });
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return callClaudeStreaming(apiKey, model, systemPrompt, messages, sendEvent, 1);
-    }
-
-    console.error(`Claude API error ${response.status}:`, errorText.substring(0, 500));
-    throw new Error(getApiErrorMessage(response.status, errorText));
-  }
-
-  // Parse streaming response
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let usage = null;
-  let responseModel = null;
+  const sources = [];
   let sentSearchEvent = false;
-  const sources = []; // Collect web search source URLs for citations
-  let stopReason = null;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop(); // keep incomplete line in buffer
-
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const data = line.slice(6).trim();
-      if (data === '[DONE]') continue;
-
-      let event;
-      try {
-        event = JSON.parse(data);
-      } catch {
-        continue;
+  const r = await claude.stream({
+    system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+    messages,
+    maxTokens: 4096,
+    temperature: 0.4,
+    tools: [
+      { type: 'web_search_20260209', name: 'web_search', max_uses: 3 },
+      // code_execution auto-injected by web_search_20260209 for dynamic filtering
+    ],
+    onTextDelta: (text) => sendEvent('text_delta', { text }),
+    onEvent: (event) => {
+      // Web search "Searching..." progress signal
+      if (event.type === 'content_block_start' &&
+          event.content_block?.type === 'server_tool_use' && !sentSearchEvent) {
+        sendEvent('thinking', { message: 'Searching the web...' });
+        sentSearchEvent = true;
       }
-
-      switch (event.type) {
-        case 'message_start':
-          if (event.message?.model) responseModel = event.message.model;
-          if (event.message?.usage) usage = { ...event.message.usage };
-          break;
-
-        case 'content_block_start':
-          // Detect web search tool use
-          if (event.content_block?.type === 'server_tool_use' && !sentSearchEvent) {
-            sendEvent('thinking', { message: 'Searching the web...' });
-            sentSearchEvent = true;
-          }
-          // Extract source URLs from web search results
-          if (event.content_block?.type === 'web_search_tool_result') {
-            const results = event.content_block.content;
-            if (Array.isArray(results)) {
-              for (const r of results) {
-                if (r.type === 'web_search_result' && r.url) {
-                  // Deduplicate by URL
-                  if (!sources.some(s => s.url === r.url)) {
-                    sources.push({ url: r.url, title: r.title || '' });
-                  }
-                }
-              }
+      // Source URLs from web_search_tool_result blocks
+      if (event.type === 'content_block_start' &&
+          event.content_block?.type === 'web_search_tool_result') {
+        const results = event.content_block.content;
+        if (Array.isArray(results)) {
+          for (const x of results) {
+            if (x.type === 'web_search_result' && x.url && !sources.some(s => s.url === x.url)) {
+              sources.push({ url: x.url, title: x.title || '' });
             }
           }
-          break;
-
-        case 'content_block_delta':
-          if (event.delta?.type === 'text_delta' && event.delta.text) {
-            // Check for inline citations attached to text deltas
-            if (event.delta.citations) {
-              for (const cite of event.delta.citations) {
-                if (cite.url && !sources.some(s => s.url === cite.url)) {
-                  sources.push({
-                    url: cite.url,
-                    title: cite.title || '',
-                    cited_text: cite.cited_text || '',
-                  });
-                }
-              }
-            }
-            sendEvent('text_delta', { text: event.delta.text });
-          }
-          break;
-
-        case 'message_delta':
-          if (event.usage) {
-            usage = { ...usage, ...event.usage };
-          }
-          if (event.delta?.stop_reason) {
-            stopReason = event.delta.stop_reason;
-          }
-          break;
+        }
       }
-    }
-  }
+      // Inline citations on text_delta events
+      if (event.type === 'content_block_delta' && event.delta?.citations) {
+        for (const cite of event.delta.citations) {
+          if (cite.url && !sources.some(s => s.url === cite.url)) {
+            sources.push({ url: cite.url, title: cite.title || '', cited_text: cite.cited_text || '' });
+          }
+        }
+      }
+    },
+  });
 
-  // Send collected sources to client if any were found
   if (sources.length > 0) {
     sendEvent('sources', { sources });
   }
 
-  return { usage, model: responseModel, stopReason };
+  // Match legacy return shape so the caller's logUsage block keeps working.
+  return {
+    usage: {
+      input_tokens: r.usage.inputTokens,
+      output_tokens: r.usage.outputTokens,
+      cache_creation_input_tokens: r.usage.cacheCreationTokens,
+      cache_read_input_tokens: r.usage.cacheReadTokens,
+    },
+    model: r.model,
+    stopReason: r.stopReason,
+  };
 }
 
 function getApiErrorMessage(status, responseText) {

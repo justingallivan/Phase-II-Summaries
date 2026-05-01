@@ -23,7 +23,8 @@ import { buildSystemPrompt, TOOL_DEFINITIONS, TABLE_ANNOTATIONS } from '../../..
 import { getModelForApp, getFallbackModelForApp } from '../../../shared/config/baseConfig';
 import { loadModelOverrides } from '../../../lib/services/model-override-loader';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
-import { logUsage, estimateCostCents } from '../../../lib/utils/usage-logger';
+import { estimateCostCents } from '../../../lib/utils/usage-logger';
+import { LLMClient } from '../../../lib/services/llm-client';
 
 export const config = {
   api: {
@@ -363,176 +364,30 @@ function summarizeToolResult(content) {
  * @returns {Promise<{content, model, usage}>}
  */
 async function callClaude({ apiKey, model, fallbackModel, systemPrompt, messages, tools, userProfileId, onTextDelta }) {
-  const startTime = Date.now();
-
-  const body = {
+  const claude = new LLMClient({
+    apiKey,
     model,
-    max_tokens: 2048,
+    fallbackModel,
+    appName: 'dynamics-explorer',
+    userProfileId,
+  });
+  const r = await claude.stream({
     system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
     messages,
     tools,
-    stream: true,
-  };
-
-  const callHeaders = {
-    'Content-Type': 'application/json',
-    'x-api-key': apiKey,
-    'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION,
-  };
-
-  let resp = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-    method: 'POST',
-    headers: callHeaders,
-    body: JSON.stringify(body),
+    maxTokens: 2048,
+    onTextDelta,
   });
-
-  // Rate limit: wait and retry once
-  if (resp.status === 429) {
-    const retryAfter = parseInt(resp.headers.get('retry-after') || '30', 10);
-    const waitMs = Math.min(retryAfter, 60) * 1000;
-    console.log(`[DynExp] Rate limited, waiting ${waitMs / 1000}s before retry...`);
-    await new Promise(resolve => setTimeout(resolve, waitMs));
-    resp = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-      method: 'POST',
-      headers: callHeaders,
-      body: JSON.stringify(body),
-    });
-  }
-
-  // Overloaded: try fallback model
-  if (resp.status === 529 && fallbackModel && fallbackModel !== model) {
-    body.model = fallbackModel;
-    resp = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-      method: 'POST',
-      headers: callHeaders,
-      body: JSON.stringify(body),
-    });
-  }
-
-  if (!resp.ok) {
-    const errorBody = await resp.text();
-    throw new Error(`Claude API error (${resp.status}): ${errorBody}`);
-  }
-
-  // Parse the SSE stream from Claude
-  return await parseClaudeStream(resp, { startTime, userProfileId, onTextDelta });
-}
-
-/**
- * Parse Claude's SSE stream into a response object identical to the non-streaming format.
- * Streams text_delta to onTextDelta callback when no tool_use blocks are detected.
- */
-async function parseClaudeStream(resp, { startTime, userProfileId, onTextDelta }) {
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  // Accumulate content blocks as they stream in
-  const contentBlocks = []; // [{type, text/id/name/input}]
-  let currentBlockIndex = -1;
-  let hasToolUse = false;
-  let bufferedTextDeltas = []; // text deltas buffered before we know if tools follow
-  let responseModel = '';
-  let usage = {};
-  let textStreamingStarted = false;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop(); // keep incomplete line
-
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const data = line.slice(6);
-      if (data === '[DONE]') continue;
-
-      let event;
-      try { event = JSON.parse(data); } catch { continue; }
-
-      switch (event.type) {
-        case 'message_start':
-          responseModel = event.message?.model || '';
-          if (event.message?.usage) {
-            usage.input_tokens = event.message.usage.input_tokens;
-            // Cache tokens are only reported in message_start (not message_delta).
-            // Without these copies they stay undefined and log as 0 — which is how
-            // we ended up with "cache is firing but never recorded" in the DB.
-            usage.cache_creation_input_tokens = event.message.usage.cache_creation_input_tokens;
-            usage.cache_read_input_tokens = event.message.usage.cache_read_input_tokens;
-          }
-          break;
-
-        case 'content_block_start':
-          currentBlockIndex = event.index;
-          if (event.content_block.type === 'text') {
-            contentBlocks[currentBlockIndex] = { type: 'text', text: '' };
-          } else if (event.content_block.type === 'tool_use') {
-            hasToolUse = true;
-            contentBlocks[currentBlockIndex] = {
-              type: 'tool_use',
-              id: event.content_block.id,
-              name: event.content_block.name,
-              input: '',
-            };
-            // If we had been buffering text deltas, discard streaming —
-            // the full text will be in the response content blocks
-            bufferedTextDeltas = [];
-          }
-          break;
-
-        case 'content_block_delta':
-          if (event.delta?.type === 'text_delta' && contentBlocks[event.index]) {
-            const text = event.delta.text;
-            contentBlocks[event.index].text += text;
-            if (!hasToolUse && onTextDelta) {
-              // Stream text to client in real-time
-              onTextDelta(text);
-              textStreamingStarted = true;
-            }
-          } else if (event.delta?.type === 'input_json_delta' && contentBlocks[event.index]) {
-            contentBlocks[event.index].input += event.delta.partial_json;
-          }
-          break;
-
-        case 'content_block_stop':
-          // Parse tool input JSON when block ends
-          if (contentBlocks[event.index]?.type === 'tool_use') {
-            try {
-              contentBlocks[event.index].input = JSON.parse(contentBlocks[event.index].input || '{}');
-            } catch {
-              contentBlocks[event.index].input = {};
-            }
-          }
-          break;
-
-        case 'message_delta':
-          if (event.usage) {
-            usage.output_tokens = event.usage.output_tokens;
-          }
-          break;
-      }
-    }
-  }
-
-  logUsage({
-    userProfileId,
-    appName: 'dynamics-explorer',
-    model: responseModel,
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    cacheCreationTokens: usage.cache_creation_input_tokens || 0,
-    cacheReadTokens: usage.cache_read_input_tokens || 0,
-    latencyMs: Date.now() - startTime,
-  });
-
   return {
-    content: contentBlocks.filter(Boolean),
-    model: responseModel,
-    usage,
-    _textStreamed: textStreamingStarted, // flag so the caller knows text was already sent
+    content: r.content,
+    model: r.model,
+    usage: {
+      input_tokens: r.usage.inputTokens,
+      output_tokens: r.usage.outputTokens,
+      cache_creation_input_tokens: r.usage.cacheCreationTokens,
+      cache_read_input_tokens: r.usage.cacheReadTokens,
+    },
+    _textStreamed: r.textStreamed, // flag so the caller knows text was already sent
   };
 }
 
@@ -1870,64 +1725,26 @@ async function generateExcelExport(records, selectStr, tableName, filename, tota
  * No tools, no text streaming — just returns raw text and usage.
  */
 async function callClaudeBatch({ systemPrompt, userMessage, userProfileId }) {
-  const apiKey = process.env.CLAUDE_API_KEY;
-  const model = getModelForApp('dynamics-explorer');
-
-  const body = {
-    model,
-    max_tokens: 4096,
+  const claude = new LLMClient({
+    apiKey: process.env.CLAUDE_API_KEY,
+    model: getModelForApp('dynamics-explorer'),
+    appName: 'dynamics-explorer-export',
+    userProfileId,
+  });
+  const r = await claude.complete({
     system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: userMessage }],
-  };
-
-  const callHeaders = {
-    'Content-Type': 'application/json',
-    'x-api-key': apiKey,
-    'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION,
-  };
-
-  const startTime = Date.now();
-
-  let resp = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-    method: 'POST',
-    headers: callHeaders,
-    body: JSON.stringify(body),
+    maxTokens: 4096,
   });
-
-  // Rate limit: wait and retry once
-  if (resp.status === 429) {
-    const retryAfter = parseInt(resp.headers.get('retry-after') || '30', 10);
-    const waitMs = Math.min(retryAfter, 60) * 1000;
-    console.log(`[DynExp Export] Rate limited, waiting ${waitMs / 1000}s...`);
-    await new Promise(resolve => setTimeout(resolve, waitMs));
-    resp = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-      method: 'POST',
-      headers: callHeaders,
-      body: JSON.stringify(body),
-    });
-  }
-
-  if (!resp.ok) {
-    const errorBody = await resp.text();
-    throw new Error(`Claude API error (${resp.status}): ${errorBody.substring(0, 200)}`);
-  }
-
-  const data = await resp.json();
-  const text = data.content?.find(b => b.type === 'text')?.text || '';
-  const usage = data.usage || {};
-
-  logUsage({
-    userProfileId,
-    appName: 'dynamics-explorer-export',
-    model: data.model || model,
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    cacheCreationTokens: usage.cache_creation_input_tokens || 0,
-    cacheReadTokens: usage.cache_read_input_tokens || 0,
-    latencyMs: Date.now() - startTime,
-  });
-
-  return { text, usage };
+  return {
+    text: r.text,
+    usage: {
+      input_tokens: r.usage.inputTokens,
+      output_tokens: r.usage.outputTokens,
+      cache_creation_input_tokens: r.usage.cacheCreationTokens,
+      cache_read_input_tokens: r.usage.cacheReadTokens,
+    },
+  };
 }
 
 /**

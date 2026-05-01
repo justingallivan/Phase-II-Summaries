@@ -3,7 +3,7 @@ import { BASE_CONFIG, KECK_GUIDELINES, getModelForApp, loadModelOverrides } from
 import { createPhaseISummarizationPrompt } from '../../shared/config/prompts/phase-i-summaries';
 import { createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer';
 import { requireAppAccess } from '../../lib/utils/auth';
-import { logUsage } from '../../lib/utils/usage-logger';
+import { LLMClient } from '../../lib/services/llm-client';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { safeFetch } from '../../lib/utils/safe-fetch';
 
@@ -118,41 +118,17 @@ async function generatePhaseISummary(text, filename, apiKey, summaryLength, summ
     // Use Phase I specific prompt
     const prompt = createPhaseISummarizationPrompt(text, summaryLength, summaryLevel, KECK_GUIDELINES);
 
-    const startTime = Date.now();
-    const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey.trim(),
-        'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
-      },
-      body: JSON.stringify({
-        model: getModelForApp('batch-phase-i'),
-        max_tokens: BASE_CONFIG.MODEL_PARAMS.DEFAULT_MAX_TOKENS,
-        temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
-        messages: [{
-          role: 'user',
-          content: prompt
-        }]
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Claude API error:', errorText);
-      throw new Error(`Claude API error ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    logUsage({
-      userProfileId,
+    const claude = new LLMClient({
+      apiKey,
+      model: getModelForApp('batch-phase-i'),
       appName: 'batch-phase-i',
-      model: data.model,
-      inputTokens: data.usage?.input_tokens,
-      outputTokens: data.usage?.output_tokens,
-      latencyMs: Date.now() - startTime,
+      userProfileId,
     });
-    const summaryText = data.content[0].text;
+    const { text: summaryText } = await claude.complete({
+      messages: [{ role: 'user', content: prompt }],
+      maxTokens: BASE_CONFIG.MODEL_PARAMS.DEFAULT_MAX_TOKENS,
+      temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
+    });
 
     // Create formatted markdown version for Phase I
     const formatted = enhancePhaseIFormatting(summaryText, filename, coverData);
@@ -180,37 +156,19 @@ async function extractStructuredData(text, filename, summary, apiKey, userProfil
   try {
     const extractionPrompt = createStructuredDataExtractionPrompt(text, filename);
 
-    const startTime = Date.now();
-    const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey.trim(),
-        'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
-      },
-      body: JSON.stringify({
-        model: getModelForApp('batch-phase-i'),
-        max_tokens: 1000,
-        temperature: 0.1,
-        messages: [{
-          role: 'user',
-          content: extractionPrompt
-        }]
-      })
+    const claude = new LLMClient({
+      apiKey,
+      model: getModelForApp('batch-phase-i'),
+      appName: 'batch-phase-i',
+      userProfileId,
+    });
+    const { text: jsonText } = await claude.complete({
+      messages: [{ role: 'user', content: extractionPrompt }],
+      maxTokens: 1000,
+      temperature: 0.1,
     });
 
-    if (response.ok) {
-      const data = await response.json();
-      logUsage({
-        userProfileId,
-        appName: 'batch-phase-i',
-        model: data.model,
-        inputTokens: data.usage?.input_tokens,
-        outputTokens: data.usage?.output_tokens,
-        latencyMs: Date.now() - startTime,
-      });
-      const jsonText = data.content[0].text;
-
+    if (jsonText) {
       try {
         const parsed = JSON.parse(jsonText);
         return {

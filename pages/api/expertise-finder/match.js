@@ -20,6 +20,7 @@ import { BASE_CONFIG, getModelForApp, getFallbackModelForApp } from '../../../sh
 import { loadModelOverrides } from '../../../lib/services/model-override-loader';
 import { createMatchingPrompt, SYSTEM_PROMPT } from '../../../shared/config/prompts/expertise-finder';
 import { logUsage, estimateCostCents } from '../../../lib/utils/usage-logger';
+import { LLMClient } from '../../../lib/services/llm-client';
 import { safeFetch } from '../../../lib/utils/safe-fetch';
 import { createHash } from 'crypto';
 
@@ -180,28 +181,21 @@ export default async function handler(req, res) {
 }
 
 async function callClaude(apiKey, model, prompt) {
-  const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey.trim(),
-      'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION,
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 4096,
-      temperature: 0.2,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+  // appName intentionally omitted — the route logs usage itself so it can
+  // record `modelUsed` (which may be the fallback) instead of the requested
+  // model and reflect the route-level retry semantics.
+  const claude = new LLMClient({ apiKey, model });
+  const r = await claude.complete({
+    system: SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: prompt }],
+    maxTokens: 4096,
+    temperature: 0.2,
   });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Claude API error (${response.status}): ${errorBody}`);
-  }
-
-  return response.json();
+  return {
+    content: r.content,
+    usage: { input_tokens: r.usage.inputTokens, output_tokens: r.usage.outputTokens },
+    model: r.model,
+  };
 }
 
 export const config = {

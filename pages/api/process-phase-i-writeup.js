@@ -3,7 +3,7 @@ import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/co
 import { createPhaseIWriteupPrompt } from '../../shared/config/prompts/phase-i-writeup';
 import { createStructuredDataExtractionPrompt } from '../../shared/config/prompts/proposal-summarizer';
 import { requireAppAccess } from '../../lib/utils/auth';
-import { logUsage } from '../../lib/utils/usage-logger';
+import { LLMClient } from '../../lib/services/llm-client';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { safeFetch } from '../../lib/utils/safe-fetch';
 
@@ -116,41 +116,17 @@ async function generatePhaseIWriteup(text, filename, institution, apiKey, userPr
   try {
     const prompt = createPhaseIWriteupPrompt(text, institution);
 
-    const startTime = Date.now();
-    const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey.trim(),
-        'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
-      },
-      body: JSON.stringify({
-        model: getModelForApp('phase-i-writeup'),
-        max_tokens: BASE_CONFIG.MODEL_PARAMS.DEFAULT_MAX_TOKENS,
-        temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
-        messages: [{
-          role: 'user',
-          content: prompt
-        }]
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Claude API error:', errorText);
-      throw new Error(`Claude API error ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    logUsage({
-      userProfileId,
+    const claude = new LLMClient({
+      apiKey,
+      model: getModelForApp('phase-i-writeup'),
       appName: 'phase-i-writeup',
-      model: data.model,
-      inputTokens: data.usage?.input_tokens,
-      outputTokens: data.usage?.output_tokens,
-      latencyMs: Date.now() - startTime,
+      userProfileId,
     });
-    const writeupText = data.content[0].text;
+    const { text: writeupText } = await claude.complete({
+      messages: [{ role: 'user', content: prompt }],
+      maxTokens: BASE_CONFIG.MODEL_PARAMS.DEFAULT_MAX_TOKENS,
+      temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
+    });
 
     // Create formatted markdown version
     const formatted = enhanceFormatting(writeupText, filename);
@@ -173,40 +149,17 @@ async function extractStructuredData(text, filename, writeup, apiKey, userProfil
   try {
     const extractionPrompt = createStructuredDataExtractionPrompt(text, filename);
 
-    const startTime = Date.now();
-    const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey.trim(),
-        'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
-      },
-      body: JSON.stringify({
-        model: getModelForApp('phase-i-writeup'),
-        max_tokens: 1000,
-        temperature: 0.2,
-        messages: [{
-          role: 'user',
-          content: extractionPrompt
-        }]
-      })
-    });
-
-    if (!response.ok) {
-      console.error('Structured data extraction failed');
-      return {};
-    }
-
-    const data = await response.json();
-    logUsage({
-      userProfileId,
+    const claude = new LLMClient({
+      apiKey,
+      model: getModelForApp('phase-i-writeup'),
       appName: 'phase-i-writeup',
-      model: data.model,
-      inputTokens: data.usage?.input_tokens,
-      outputTokens: data.usage?.output_tokens,
-      latencyMs: Date.now() - startTime,
+      userProfileId,
     });
-    const jsonText = data.content[0].text;
+    const { text: jsonText } = await claude.complete({
+      messages: [{ role: 'user', content: extractionPrompt }],
+      maxTokens: 1000,
+      temperature: 0.2,
+    });
 
     // Try to parse JSON
     try {

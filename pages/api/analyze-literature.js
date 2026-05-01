@@ -15,7 +15,7 @@ import {
   createComparisonPrompt
 } from '../../shared/config/prompts/literature-analyzer';
 import { requireAppAccess } from '../../lib/utils/auth';
-import { logUsage } from '../../lib/utils/usage-logger';
+import { LLMClient } from '../../lib/services/llm-client';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { safeFetch } from '../../lib/utils/safe-fetch';
 
@@ -215,53 +215,22 @@ function sendEvent(res, event, data) {
 async function extractPaperInfo(base64Pdf, apiKey, userProfileId) {
   const prompt = createPaperExtractionPrompt();
 
-  const startTime = Date.now();
-  const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey.trim(),
-      'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
-    },
-    body: JSON.stringify({
-      model: getModelForApp('literature-analyzer', 'visionModel'),
-      max_tokens: 4000,
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'document',
-            source: {
-              type: 'base64',
-              media_type: 'application/pdf',
-              data: base64Pdf
-            }
-          },
-          {
-            type: 'text',
-            text: prompt
-          }
-        ]
-      }]
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Claude Vision API error:', errorText);
-    throw new Error(`Claude API error ${response.status}`);
-  }
-
-  const data = await response.json();
-  logUsage({
-    userProfileId,
+  const claude = new LLMClient({
+    apiKey,
+    model: getModelForApp('literature-analyzer', 'visionModel'),
     appName: 'literature-analyzer',
-    model: data.model,
-    inputTokens: data.usage?.input_tokens,
-    outputTokens: data.usage?.output_tokens,
-    latencyMs: Date.now() - startTime,
+    userProfileId,
   });
-  const responseText = data.content[0].text;
+  const { text: responseText } = await claude.complete({
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Pdf } },
+        { type: 'text', text: prompt },
+      ],
+    }],
+    maxTokens: 4000,
+  });
 
   // Parse JSON response
   try {
@@ -288,41 +257,17 @@ async function extractPaperInfo(base64Pdf, apiKey, userProfileId) {
 async function generateSynthesis(papers, focusTopic, apiKey, userProfileId) {
   const prompt = createSynthesisPrompt(papers, focusTopic);
 
-  const startTime = Date.now();
-  const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey.trim(),
-      'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
-    },
-    body: JSON.stringify({
-      model: getModelForApp('literature-analyzer'),
-      max_tokens: 6000,
-      temperature: 0.3,
-      messages: [{
-        role: 'user',
-        content: prompt
-      }]
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Claude API error (synthesis):', errorText);
-    throw new Error(`Claude API error ${response.status}`);
-  }
-
-  const data = await response.json();
-  logUsage({
-    userProfileId,
+  const claude = new LLMClient({
+    apiKey,
+    model: getModelForApp('literature-analyzer'),
     appName: 'literature-analyzer',
-    model: data.model,
-    inputTokens: data.usage?.input_tokens,
-    outputTokens: data.usage?.output_tokens,
-    latencyMs: Date.now() - startTime,
+    userProfileId,
   });
-  const responseText = data.content[0].text;
+  const { text: responseText } = await claude.complete({
+    messages: [{ role: 'user', content: prompt }],
+    maxTokens: 6000,
+    temperature: 0.3,
+  });
 
   // Parse JSON response
   try {
@@ -347,41 +292,17 @@ async function generateSynthesis(papers, focusTopic, apiKey, userProfileId) {
 async function generateComparisonData(papers, comparisonType, apiKey, userProfileId) {
   const prompt = createComparisonPrompt(papers, comparisonType);
 
-  const startTime = Date.now();
-  const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey.trim(),
-      'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
-    },
-    body: JSON.stringify({
-      model: getModelForApp('literature-analyzer'),
-      max_tokens: 4000,
-      temperature: 0.3,
-      messages: [{
-        role: 'user',
-        content: prompt
-      }]
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Claude API error (comparison):', errorText);
-    throw new Error(`Claude API error ${response.status}`);
-  }
-
-  const data = await response.json();
-  logUsage({
-    userProfileId,
+  const claude = new LLMClient({
+    apiKey,
+    model: getModelForApp('literature-analyzer'),
     appName: 'literature-analyzer',
-    model: data.model,
-    inputTokens: data.usage?.input_tokens,
-    outputTokens: data.usage?.output_tokens,
-    latencyMs: Date.now() - startTime,
+    userProfileId,
   });
-  const responseText = data.content[0].text;
+  const { text: responseText } = await claude.complete({
+    messages: [{ role: 'user', content: prompt }],
+    maxTokens: 4000,
+    temperature: 0.3,
+  });
 
   // Parse JSON response
   try {

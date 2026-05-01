@@ -28,6 +28,7 @@ import {
 } from '../../shared/config/prompts/multi-perspective-evaluator';
 import { requireAppAccess } from '../../lib/utils/auth';
 import { logUsage } from '../../lib/utils/usage-logger';
+import { LLMClient } from '../../lib/services/llm-client';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { safeFetch } from '../../lib/utils/safe-fetch';
 
@@ -544,40 +545,35 @@ async function callClaudeWithRetry(requestBody, apiKey, modelType = 'model', use
     }
 
     try {
-      const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey.trim(),
-          'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
-        },
-        body: JSON.stringify({
-          ...requestBody,
-          model: primaryModel
-        })
+      // Use LLMClient with retries disabled — this route owns its own retry
+      // loop with custom isRetryableError() semantics. The wrapper still
+      // gives us safeFetch + abort + redaction.
+      const claude = new LLMClient({ apiKey, model: primaryModel, maxRetries: 0 });
+      let r;
+      try {
+        r = await claude.complete(toCompleteOpts(requestBody));
+      } catch (err) {
+        // Wrapper throws on non-2xx; treat as Claude API error for retry logic.
+        const status = err.status || 0;
+        const isRetryable = isRetryableError(status, err.message || '');
+        if (!isRetryable) throw err;
+        lastError = err;
+        continue;
+      }
+      logUsage({
+        userProfileId,
+        appName: 'multi-perspective-evaluator',
+        model: r.model,
+        inputTokens: r.usage.inputTokens,
+        outputTokens: r.usage.outputTokens,
+        latencyMs: Date.now() - startTime,
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        logUsage({
-          userProfileId,
-          appName: 'multi-perspective-evaluator',
-          model: data.model,
-          inputTokens: data.usage?.input_tokens,
-          outputTokens: data.usage?.output_tokens,
-          latencyMs: Date.now() - startTime,
-        });
-        return { data, usedFallback: false, model: primaryModel };
-      }
-
-      const errorText = await response.text();
-      console.error(`[MultiPerspective] API error (attempt ${attempt + 1}):`, response.status, errorText.substring(0, 200));
-
-      if (!isRetryableError(response.status, errorText)) {
-        throw new Error(`Claude API error ${response.status}: ${errorText.substring(0, 200)}`);
-      }
-
-      lastError = new Error(`Claude API error ${response.status}`);
+      // Match legacy return shape: { data: <raw API response> }
+      return {
+        data: { content: r.content, model: r.model, usage: { input_tokens: r.usage.inputTokens, output_tokens: r.usage.outputTokens } },
+        usedFallback: false,
+        model: primaryModel,
+      };
     } catch (error) {
       if (error.message && !error.message.includes('Claude API error')) {
         throw error;
@@ -589,36 +585,38 @@ async function callClaudeWithRetry(requestBody, apiKey, modelType = 'model', use
   // All retries failed, try fallback model
   console.log(`[MultiPerspective] Primary model (${primaryModel}) failed, trying fallback (${fallbackModel})...`);
 
-  const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey.trim(),
-      'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
-    },
-    body: JSON.stringify({
-      ...requestBody,
-      model: fallbackModel
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[MultiPerspective] Fallback model also failed:', errorText.substring(0, 200));
-    throw lastError || new Error(`Claude API error ${response.status}`);
+  const fallback = new LLMClient({ apiKey, model: fallbackModel, maxRetries: 0 });
+  let r;
+  try {
+    r = await fallback.complete(toCompleteOpts(requestBody));
+  } catch (err) {
+    console.error('[MultiPerspective] Fallback model also failed:', err.message?.substring(0, 200));
+    throw lastError || err;
   }
-
-  const data = await response.json();
   logUsage({
     userProfileId,
     appName: 'multi-perspective-evaluator',
-    model: data.model,
-    inputTokens: data.usage?.input_tokens,
-    outputTokens: data.usage?.output_tokens,
+    model: r.model,
+    inputTokens: r.usage.inputTokens,
+    outputTokens: r.usage.outputTokens,
     latencyMs: Date.now() - startTime,
   });
   console.log(`[MultiPerspective] Fallback model succeeded`);
-  return { data, usedFallback: true, model: fallbackModel };
+  return {
+    data: { content: r.content, model: r.model, usage: { input_tokens: r.usage.inputTokens, output_tokens: r.usage.outputTokens } },
+    usedFallback: true,
+    model: fallbackModel,
+  };
+}
+
+// Translate a legacy Anthropic body into LLMClient.complete() opts.
+function toCompleteOpts(body) {
+  const opts = { messages: body.messages };
+  if (body.max_tokens != null) opts.maxTokens = body.max_tokens;
+  if (body.temperature != null) opts.temperature = body.temperature;
+  if (body.system != null) opts.system = body.system;
+  if (body.tools) opts.tools = body.tools;
+  return opts;
 }
 
 /**

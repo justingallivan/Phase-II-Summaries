@@ -18,6 +18,7 @@
 import { verifyCronSecret } from '../../../lib/utils/cron-auth';
 import NotificationService from '../../../lib/services/notification-service';
 import { redactLogText, redactErrorList } from '../../../lib/utils/log-redactor';
+import { LLMClient } from '../../../lib/services/llm-client';
 
 const ERROR_THRESHOLD = 10; // minimum errors to trigger AI analysis
 const LOOKBACK_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -83,30 +84,26 @@ export default async function handler(req, res) {
       .join('\n');
 
     // Send to Claude Haiku for root-cause analysis
-    const analysisResponse = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': process.env.CLAUDE_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
+    let analysis = 'AI analysis unavailable';
+    try {
+      const claude = new LLMClient({
+        apiKey: process.env.CLAUDE_API_KEY,
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
+        appName: 'cron-log-analysis',
+      });
+      const { text } = await claude.complete({
         messages: [{
           role: 'user',
           content: `You are a server ops assistant. Analyze these ${errors.length} error log entries from a Next.js application on Vercel. Identify patterns, probable root causes, and suggest fixes. Be concise.\n\n${errorSummary}`,
         }],
-      }),
-    });
-
-    let analysis = 'AI analysis unavailable';
-    if (analysisResponse.ok) {
-      const aiResult = await analysisResponse.json();
+        maxTokens: 1024,
+      });
       // Redact again on the way out — Claude responses occasionally echo
       // input substrings, and the analysis is stored in alerts that may be
       // read by less-privileged dashboards.
-      analysis = redactLogText(aiResult.content?.[0]?.text || 'No analysis returned');
+      analysis = redactLogText(text || 'No analysis returned');
+    } catch (err) {
+      console.warn('[cron/log-analysis] Claude analysis failed:', err.message);
     }
 
     // Create alert with analysis

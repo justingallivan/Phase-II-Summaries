@@ -253,9 +253,10 @@ const analysisPrompt = createDocumentAnalysisPrompt(
   TEXT_LIMITS.LARGE
 );
 
-const analysis = await claudeClient.sendMessage(analysisPrompt, {
+const { text: analysis } = await claude.complete({
+  messages: [{ role: 'user', content: analysisPrompt }],
   maxTokens: 2500,
-  temperature: TEMPERATURE_SETTINGS.BALANCED
+  temperature: TEMPERATURE_SETTINGS.BALANCED,
 });
 ```
 

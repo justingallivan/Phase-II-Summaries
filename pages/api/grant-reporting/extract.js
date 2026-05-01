@@ -29,6 +29,7 @@ import {
   GRANT_REPORT_PROMPT_VERSION,
 } from '../../../shared/config/prompts/grant-reporting';
 import { logUsage, estimateCostCents } from '../../../lib/utils/usage-logger';
+import { LLMClient } from '../../../lib/services/llm-client';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { loadFile, httpError } from '../../../lib/utils/file-loader';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
@@ -428,30 +429,17 @@ async function callClaudeWithFallback({ apiKey, model, fallback, prompt, tempera
 }
 
 async function callClaude({ apiKey, model, prompt, temperature, maxTokens }) {
-  const resp = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey.trim(),
-      'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION,
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: maxTokens,
-      temperature,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+  // Route handles its own usage logging (multiple modelUsed branches), so the
+  // wrapper has no appName.
+  const claude = new LLMClient({ apiKey, model });
+  const r = await claude.complete({
+    messages: [{ role: 'user', content: prompt }],
+    maxTokens,
+    temperature,
   });
-
-  if (!resp.ok) {
-    const errorBody = await resp.text();
-    throw new Error(`Claude API error (${resp.status}): ${errorBody}`);
-  }
-
-  const data = await resp.json();
   return {
-    text: data.content?.[0]?.text || '',
-    usage: data.usage || null,
+    text: r.text || '',
+    usage: { input_tokens: r.usage.inputTokens, output_tokens: r.usage.outputTokens },
   };
 }
 

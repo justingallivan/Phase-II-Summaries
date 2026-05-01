@@ -1,4 +1,4 @@
-import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
+import { LLMClient } from '../../lib/services/llm-client';
 import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
 import { loadModelOverrides } from '../../lib/services/model-override-loader';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
@@ -60,20 +60,18 @@ export default async function handler(req, res) {
 
     const userProfileId = access.profileId;
 
-    // Initialize Claude client
-    const claudeClient = createClaudeClient(apiKey, {
+    const claude = new LLMClient({
+      apiKey,
       model: getModelForApp('refine'),
-      defaultMaxTokens: 3000,
-      defaultTemperature: 0.3,
       appName: 'refine',
       userProfileId,
     });
 
-    // Generate refined summary
     const prompt = REFINEMENT_PROMPT(currentSummary, feedback);
-    const refinedSummary = await claudeClient.sendMessage(prompt, {
+    const { text: refinedSummary } = await claude.complete({
+      messages: [{ role: 'user', content: prompt }],
       maxTokens: 3000,
-      temperature: 0.3
+      temperature: 0.3,
     });
     
     res.status(200).json({ 

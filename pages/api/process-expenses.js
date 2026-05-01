@@ -1,4 +1,4 @@
-import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
+import { LLMClient } from '../../lib/services/llm-client';
 import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
@@ -164,8 +164,8 @@ export default async function handler(req, res) {
       })}\n\n`);
     };
 
-    // Initialize Claude client with Haiku for expense processing (simple task)
-    const claudeClient = createClaudeClient(apiKey, {
+    const claudeClient = new LLMClient({
+      apiKey,
       model: getModelForApp('expense-reporter'),
       appName: 'expense-reporter',
       userProfileId,
@@ -218,9 +218,10 @@ export default async function handler(req, res) {
           }];
 
           // Send to Claude with vision capabilities
-          const response = await claudeClient.sendMessageWithVision(messages, {
+          const { text: response } = await claudeClient.complete({
+            messages,
             maxTokens: 1000,
-            temperature: 0.2
+            temperature: 0.2,
           });
 
           // Parse the JSON response
@@ -288,9 +289,10 @@ export default async function handler(req, res) {
 
           // Send to Claude for analysis
           const prompt = createExpenseExtractionPrompt(text, file.filename, 'pdf');
-          const response = await claudeClient.sendMessage(prompt, {
+          const { text: response } = await claudeClient.complete({
+            messages: [{ role: 'user', content: prompt }],
             maxTokens: 1000,
-            temperature: 0.2
+            temperature: 0.2,
           });
 
           // Parse the JSON response

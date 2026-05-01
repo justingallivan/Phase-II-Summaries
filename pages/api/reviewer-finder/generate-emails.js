@@ -29,7 +29,7 @@ import {
 import { createPersonalizationPrompt } from '../../../shared/config/prompts/email-reviewer';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
-import { logUsage } from '../../../lib/utils/usage-logger';
+import { LLMClient } from '../../../lib/services/llm-client';
 import { BASE_CONFIG, getModelForApp } from '../../../shared/config/baseConfig';
 import { safeFetch, isAllowedUrl } from '../../../lib/utils/safe-fetch';
 
@@ -473,48 +473,17 @@ export default async function handler(req, res) {
 async function personalizeWithClaude(candidate, proposalInfo, baseBody, apiKey, userProfileId) {
   const prompt = createPersonalizationPrompt(candidate, proposalInfo, baseBody);
 
-  const startTime = Date.now();
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: getModelForApp('email-personalization'),
-      max_tokens: 512,
-      temperature: 0.3, // Low temperature for consistent, professional output
-      messages: [
-        {
-          role: 'user',
-          content: prompt
-        }
-      ]
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Claude API error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-
-  logUsage({
-    userProfileId,
+  const claude = new LLMClient({
+    apiKey,
+    model: getModelForApp('email-personalization'),
     appName: 'reviewer-finder-emails',
-    model: data.model,
-    inputTokens: data.usage?.input_tokens,
-    outputTokens: data.usage?.output_tokens,
-    latencyMs: Date.now() - startTime,
+    userProfileId,
+  });
+  const r = await claude.complete({
+    messages: [{ role: 'user', content: prompt }],
+    maxTokens: 512,
+    temperature: 0.3, // Low temperature for consistent, professional output
   });
 
-  const textContent = data.content?.find(c => c.type === 'text');
-
-  if (textContent && textContent.text) {
-    return textContent.text.trim();
-  }
-
-  return null;
+  return r.text ? r.text.trim() : null;
 }

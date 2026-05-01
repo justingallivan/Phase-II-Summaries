@@ -1,4 +1,4 @@
-import { createClaudeClient } from '../../shared/api/handlers/claudeClient';
+import { LLMClient } from '../../lib/services/llm-client';
 import { createFileProcessor } from '../../shared/api/handlers/fileProcessor';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { createFundingExtractionPrompt, createFundingAnalysisPrompt } from '../../shared/config/prompts/funding-gap-analyzer';
@@ -71,8 +71,8 @@ export default async function handler(req, res) {
       console.log('Progress:', message);
     };
 
-    // Initialize Claude client and file processor
-    const claudeClient = createClaudeClient(apiKey, {
+    const claudeClient = new LLMClient({
+      apiKey,
       model: getModelForApp('funding-analysis'),
       appName: 'funding-analysis',
       userProfileId,
@@ -113,10 +113,11 @@ export default async function handler(req, res) {
         let extractionResponse;
 
         try {
-          extractionResponse = await claudeClient.sendMessage(extractionPrompt, {
+          ({ text: extractionResponse } = await claudeClient.complete({
+            messages: [{ role: 'user', content: extractionPrompt }],
             maxTokens: 1000,
-            temperature: 0.3
-          });
+            temperature: 0.3,
+          }));
         } catch (claudeError) {
           console.error('Claude API error during extraction:', claudeError);
           throw new Error(`Claude API error: ${claudeError.message}`);
@@ -360,10 +361,11 @@ export default async function handler(req, res) {
 
         let analysisResponse;
         try {
-          analysisResponse = await claudeClient.sendMessage(analysisPrompt, {
+          ({ text: analysisResponse } = await claudeClient.complete({
+            messages: [{ role: 'user', content: analysisPrompt }],
             maxTokens: 4000,
-            temperature: 0.4
-          });
+            temperature: 0.4,
+          }));
           sendProgress(`Analysis complete for ${file.filename}`, baseProgress + 75);
         } catch (claudeError) {
           console.error('Claude API error during analysis:', claudeError);

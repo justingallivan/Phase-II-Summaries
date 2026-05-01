@@ -3,7 +3,7 @@ import mammoth from 'mammoth';
 import { BASE_CONFIG, getModelForApp, loadModelOverrides } from '../../shared/config';
 import { createPeerReviewAnalysisPrompt, createPeerReviewQuestionsPrompt } from '../../shared/config/prompts/peer-reviewer';
 import { requireAppAccess } from '../../lib/utils/auth';
-import { logUsage } from '../../lib/utils/usage-logger';
+import { LLMClient } from '../../lib/services/llm-client';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { safeFetch } from '../../lib/utils/safe-fetch';
 
@@ -208,41 +208,17 @@ async function analyzePeerReviews(reviewTexts, apiKey, userProfileId) {
     // Generate comprehensive analysis
     const analysisPrompt = createPeerReviewAnalysisPrompt(validTexts);
 
-    const startTime = Date.now();
-    const response = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey.trim(),
-        'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
-      },
-      body: JSON.stringify({
-        model: getModelForApp('peer-review-summarizer'),
-        max_tokens: BASE_CONFIG.MODEL_PARAMS.REFINEMENT_MAX_TOKENS, // Use higher token limit for comprehensive analysis
-        temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
-        messages: [{
-          role: 'user',
-          content: analysisPrompt
-        }]
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Claude API error:', errorText);
-      throw new Error(`Claude API error ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    logUsage({
-      userProfileId,
+    const claude = new LLMClient({
+      apiKey,
+      model: getModelForApp('peer-review-summarizer'),
       appName: 'peer-review-summarizer',
-      model: data.model,
-      inputTokens: data.usage?.input_tokens,
-      outputTokens: data.usage?.output_tokens,
-      latencyMs: Date.now() - startTime,
+      userProfileId,
     });
-    const analysisText = data.content[0].text;
+    const { text: analysisText } = await claude.complete({
+      messages: [{ role: 'user', content: analysisPrompt }],
+      maxTokens: BASE_CONFIG.MODEL_PARAMS.REFINEMENT_MAX_TOKENS,
+      temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
+    });
     console.log('Raw Claude response length:', analysisText.length);
     console.log('First 500 chars:', analysisText.substring(0, 500));
 
@@ -314,37 +290,14 @@ async function analyzePeerReviews(reviewTexts, apiKey, userProfileId) {
       try {
         const questionsPrompt = createPeerReviewQuestionsPrompt(validTexts);
 
-        const questionsStartTime = Date.now();
-        const questionsResponse = await fetch(BASE_CONFIG.CLAUDE.API_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey.trim(),
-            'anthropic-version': BASE_CONFIG.CLAUDE.ANTHROPIC_VERSION
-          },
-          body: JSON.stringify({
-            model: getModelForApp('peer-review-summarizer'),
-            max_tokens: BASE_CONFIG.MODEL_PARAMS.DEFAULT_MAX_TOKENS,
-            temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
-            messages: [{
-              role: 'user',
-              content: questionsPrompt
-            }]
-          })
+        const { text: rawQuestions } = await claude.complete({
+          messages: [{ role: 'user', content: questionsPrompt }],
+          maxTokens: BASE_CONFIG.MODEL_PARAMS.DEFAULT_MAX_TOKENS,
+          temperature: BASE_CONFIG.MODEL_PARAMS.SUMMARIZATION_TEMPERATURE,
         });
+        let questionsContent = rawQuestions.trim();
+        {
 
-        if (questionsResponse.ok) {
-          const questionsData = await questionsResponse.json();
-          logUsage({
-            userProfileId,
-            appName: 'peer-review-summarizer',
-            model: questionsData.model,
-            inputTokens: questionsData.usage?.input_tokens,
-            outputTokens: questionsData.usage?.output_tokens,
-            latencyMs: Date.now() - questionsStartTime,
-          });
-          let questionsContent = questionsData.content[0].text.trim();
-          
           // Clean up any partial headers that might be at the beginning
           const headerFragments = [
             ', Concerns, and Issues Raised by Reviewers',
