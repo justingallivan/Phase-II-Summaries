@@ -10,6 +10,24 @@ The pre-Session 84 chronological per-session log (everything after the September
 
 ---
 
+## May 2026 — Wave 2 architectural arc: ALS restrictions + canonical LLM client + shared auth policy (Session 120)
+
+**Milestone:** Three platform-level refactors landed in one session. Per-request Dynamics restriction context replaces module-state globals (real concurrency-leak fix under Fluid Compute). One canonical `LLMClient` replaces `shared/api/handlers/claudeClient.js` plus 14 ad-hoc `fetch` sites — the first time the app's Anthropic call surface has a single, observable, abort-bound, redacted code path. Middleware fail-open auth gap closed via shared edge-compatible policy module.
+**Sessions:** 120 (2026-05-01)
+**Ship state:**
+- `lib/services/dynamics-context.js`: `AsyncLocalStorage`-backed `withDynamicsContext` / `bypassDynamicsRestrictions`. 13 API entry points + 2 library callers wrapped. The static `setRestrictions`/`bypassRestrictions` on `DynamicsService` are deprecated shims with one-shot warnings; module globals stay as the script fallback during the long-tail migration. Regression test pins the fix with two interleaved tasks.
+- `lib/services/llm-client.js`: `complete()` + `stream()` with `safeFetch` (SSRF allowlist), real `AbortController`-bound timeout (cancels the underlying socket, not just the Promise), retry on 429/529 with `retry-after` honoured, single fallback-model swap on 529, structured `logUsage` on success and failure (cache tokens preserved), API-key redaction in thrown errors, normalized response shape across unary and streaming. Streaming preserves the dynamics-explorer/chat semantic (text deltas suppressed once tool_use detected) and `onEvent` exposes raw SSE for web_search citations. 22 call sites migrated; `shared/api/handlers/claudeClient.js` deleted.
+- `lib/utils/auth-policy.js`: edge-compatible `isAuthRequired()` shared between `middleware.js` and `lib/utils/auth.js`. Closes a real production gap — middleware previously used `process.env.AUTH_REQUIRED !== 'true'` (fails OPEN if missing in prod) while the API path's `isAuthRequired()` already failed CLOSED. Misconfig warnings memoized so middleware can't spam logs.
+- Side-effect: structured-data extraction calls in `process.js`, `process-phase-i*.js`, `process-legacy.js` were silently un-logged before; routing them through LLMClient with `appName` closed an observability gap on per-app token spend.
+- Deferred Wave 1 housekeeping: removed `pages/reviewer-finder.js` onboarding flow + `AddResearcherModal` (~613 lines net subtraction). Both Postgres-only legacy paths obsoleted by save-candidates Dataverse-only.
+- 26 new tests (5 ALS + 11 LLMClient + 10 auth-policy). Full suite 189/190.
+
+**Why it matters:** Closes the architectural debt Codex flagged in `CODE_REVIEW_RESPONSE_2026-04-30.md`. Before today, two requests on the same Fluid Compute instance could leak Dynamics restrictions into each other; the LLM call surface was four divergent patterns with no abort, no SSRF guard on most paths, and gaps in usage logging; middleware and API auth disagreed on misconfigured prod in the worst direction. All three are now framework-level invariants instead of per-route concerns. Sets the shape for any future architectural pieces that want a request-scoped context (the LLM wrapper inherits cleanly).
+
+**Pointers:** `docs/CODE_REVIEW_RESPONSE_2026-04-30.md` (waves plan + addenda); commits `2140e86` (#5 ALS restrictions), `9f6844a` (#6 LLMClient), `3a1d463` (#7 auth-policy), `adbffe7` (housekeeping); `lib/services/dynamics-context.js`, `lib/services/llm-client.js`, `lib/utils/auth-policy.js`
+
+---
+
 ## April 2026 — Review Manager fully on Dataverse + 333-row historical backfill (Session 118)
 
 **Milestone:** Reviewer-lifecycle stack — the Reviewer Finder save path, My Candidates read/edit/delete, and now all four Review Manager endpoints — runs end-to-end on Dataverse. Postgres `reviewer_suggestions` is no longer in the read path of any user surface. 333 pre-picker historical rows were migrated through the same three-adapter chain `save-candidates` uses, with full lifecycle state preserved.

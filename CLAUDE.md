@@ -212,11 +212,14 @@ Located in `lib/services/`:
 - `maintenance-service.js` - Database/blob cleanup operations with audit trail
 - `prompt-resolver.js` - Fetches Claude prompt templates from Dynamics (scratch `wmkf_ai_run` row for now; will move to `wmkf_prompt_template` when Connor creates it). 5-min in-memory cache, `{{var}}` interpolation. On Dynamics failure, falls back to a bundled `.js` module (60s cache TTL so the next call retries Dynamics). Set `PROMPT_RESOLVER_STRICT=true` to disable fallback (prompt-dev loop).
 - `program-director-resolver.js` - Bridges the authenticated user to a Dynamics `systemuser`. `resolveByEmail(azureEmail)` returns `{ systemuserid, fullName }` cached 10 min (1 min on miss). Used by Reviewer Finder's PD-filtered proposal picker; filter target is `_wmkf_programdirector_value` on `akoya_request`.
+- `llm-client.js` - Canonical Anthropic API wrapper (`complete()` + `stream()`). `safeFetch` SSRF allowlist + real `AbortController`-bound timeout + retry on 429/529 with retry-after honoured + single fallback-model swap on 529 + `logUsage` on success/failure (cache tokens preserved) + API-key redaction in errors. Streaming preserves the dynamics-explorer/chat semantic — text deltas forward to `onTextDelta` only when no tool_use is detected; `onEvent` exposes raw SSE events for cases like web_search citation collection. Replaces the deleted `shared/api/handlers/claudeClient.js` and 14 ad-hoc fetch sites.
+- `dynamics-context.js` - AsyncLocalStorage-backed restriction context. `withDynamicsContext({ restrictions, requestId }, fn)` / `bypassDynamicsRestrictions(requestId, fn)` — every request gets its own isolated restriction store, threaded through awaits. `DynamicsService.checkRestriction` reads from the store; the legacy `setRestrictions`/`bypassRestrictions` static methods on DynamicsService are deprecated shims kept temporarily for unmigrated scripts.
 
 ### Utility Classes
 
 Located in `lib/utils/`:
 - `cron-auth.js` - Vercel cron secret verification
+- `auth-policy.js` - Edge-compatible `isAuthRequired()` shared between `middleware.js` and `lib/utils/auth.js`. Reads only `process.env`, no Node-only imports. Production fails closed unless `EMERGENCY_AUTH_BYPASS=true`. Misconfig warnings memoized once per process.
 - `health-checker.js` - Reusable health check logic (7 services incl. Microsoft Graph)
 - `file-loader.js` - Shared FileRef loader (upload/SharePoint → PDF/DOCX text) used by Grant Reporting and Phase I Dynamics
 - `sharepoint-buckets.js` - `getRequestSharePointBuckets(requestId, requestNumber)` — walks active + archive libraries for a request
@@ -438,4 +441,4 @@ Located in `lib/utils/`:
 
 ---
 
-Last Updated: April 2026
+Last Updated: May 2026
