@@ -100,8 +100,12 @@ export default async function handler(req, res) {
             // Upload extracted pages to Vercel Blob
             const timestamp = Date.now();
             summaryFilename = `summary_${timestamp}.pdf`;
+            // Private — server-side intermediate artifact. The Dataverse-native
+            // save-candidates path no longer persists this URL; the deprecated
+            // generate-emails .eml flow that fetched it via raw HTTP only sees
+            // legacy Postgres rows whose blobs were uploaded as public.
             const blob = await put(summaryFilename, extraction.buffer, {
-              access: 'public',
+              access: 'private',
               contentType: 'application/pdf'
             });
             summaryBlobUrl = blob.url;

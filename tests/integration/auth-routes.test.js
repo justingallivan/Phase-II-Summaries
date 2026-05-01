@@ -91,8 +91,18 @@ jest.mock('../../lib/services/database-service', () => ({
 }));
 
 // Dynamics service
+// DynamicsService is used via static methods (bypassRestrictions / setRestrictions /
+// executeQuery / etc.). The mock must provide them on the class itself, not on
+// instances — otherwise routes that call DynamicsService.bypassRestrictions(...)
+// at handler entry throw "is not a function".
 jest.mock('../../lib/services/dynamics-service', () => ({
-  DynamicsService: jest.fn().mockImplementation(() => ({})),
+  DynamicsService: {
+    bypassRestrictions: jest.fn(),
+    setRestrictions: jest.fn(),
+    executeQuery: jest.fn(() => Promise.resolve({ value: [] })),
+    resolveLogicalName: jest.fn((name) => name),
+    checkRestriction: jest.fn(),
+  },
 }));
 
 // Graph service

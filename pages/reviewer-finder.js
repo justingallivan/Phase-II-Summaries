@@ -2192,16 +2192,6 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete, onNa
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editForm, setEditForm] = useState({});
-  // Proposal association state
-  const [showAssociateForm, setShowAssociateForm] = useState(false);
-  const [grantCycles, setGrantCycles] = useState([]);
-  const [proposals, setProposals] = useState([]);
-  const [selectedCycleId, setSelectedCycleId] = useState('');
-  const [selectedProposalId, setSelectedProposalId] = useState('');
-  const [matchReason, setMatchReason] = useState('');
-  const [isLoadingCycles, setIsLoadingCycles] = useState(false);
-  const [isLoadingProposals, setIsLoadingProposals] = useState(false);
-  const [isAssociating, setIsAssociating] = useState(false);
 
   useEffect(() => {
     if (!researcherId) return;
@@ -2245,58 +2235,11 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete, onNa
   // Handle escape key to close (but not when editing)
   useEffect(() => {
     const handleEscape = (e) => {
-      if (e.key === 'Escape' && !isEditing && !showDeleteConfirm && !showAssociateForm) onClose();
+      if (e.key === 'Escape' && !isEditing && !showDeleteConfirm) onClose();
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [onClose, isEditing, showDeleteConfirm, showAssociateForm]);
-
-  // Fetch grant cycles when association form is shown
-  useEffect(() => {
-    if (!showAssociateForm) return;
-
-    const fetchCycles = async () => {
-      setIsLoadingCycles(true);
-      try {
-        const response = await fetch('/api/reviewer-finder/grant-cycles');
-        const result = await response.json();
-        if (result.success && result.cycles) {
-          setGrantCycles(result.cycles);
-        }
-      } catch (err) {
-        console.error('Failed to fetch grant cycles:', err);
-      } finally {
-        setIsLoadingCycles(false);
-      }
-    };
-
-    fetchCycles();
-  }, [showAssociateForm]);
-
-  // Fetch proposals when cycle is selected
-  useEffect(() => {
-    if (!selectedCycleId) {
-      setProposals([]);
-      return;
-    }
-
-    const fetchProposals = async () => {
-      setIsLoadingProposals(true);
-      try {
-        const response = await fetch(`/api/reviewer-finder/my-candidates?mode=proposals&cycleId=${selectedCycleId}`);
-        const result = await response.json();
-        if (result.success && result.proposals) {
-          setProposals(result.proposals);
-        }
-      } catch (err) {
-        console.error('Failed to fetch proposals:', err);
-      } finally {
-        setIsLoadingProposals(false);
-      }
-    };
-
-    fetchProposals();
-  }, [selectedCycleId]);
+  }, [onClose, isEditing, showDeleteConfirm]);
 
   if (!researcherId) return null;
 
@@ -2409,78 +2352,11 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete, onNa
     setError(null);
   };
 
-  const handleAssociateWithProposal = async () => {
-    if (!selectedProposalId) {
-      setError('Please select a proposal');
-      return;
-    }
-
-    setIsAssociating(true);
-    setError(null);
-
-    try {
-      // Get proposal details from the selected proposal
-      const selectedProposal = proposals.find(p => p.id === selectedProposalId);
-
-      const response = await fetch('/api/reviewer-finder/save-candidates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          proposalId: selectedProposalId,
-          proposalTitle: selectedProposal?.title || 'Unknown Proposal',
-          grantCycleId: selectedCycleId ? parseInt(selectedCycleId) : null,
-          candidates: [{
-            researcherId: researcherId,
-            name: data.researcher.name,
-            affiliation: data.researcher.affiliation,
-            email: data.researcher.email,
-            website: data.researcher.website,
-            hIndex: data.researcher.hIndex,
-            reasoning: matchReason || 'Manually associated',
-            relevanceScore: 1.0,
-            sources: ['manual']
-          }]
-        })
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to associate with proposal');
-      }
-
-      // Refresh data to show new association
-      const refreshResponse = await fetch(`/api/reviewer-finder/researchers?id=${researcherId}`);
-      const refreshedData = await refreshResponse.json();
-      setData(refreshedData);
-
-      // Reset form
-      setShowAssociateForm(false);
-      setSelectedCycleId('');
-      setSelectedProposalId('');
-      setMatchReason('');
-
-      if (onUpdate) onUpdate();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsAssociating(false);
-    }
-  };
-
-  const handleCancelAssociate = () => {
-    setShowAssociateForm(false);
-    setSelectedCycleId('');
-    setSelectedProposalId('');
-    setMatchReason('');
-    setError(null);
-  };
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
       onClick={(e) => {
-        if (e.target === e.currentTarget && !isEditing && !showDeleteConfirm && !showAssociateForm) onClose();
+        if (e.target === e.currentTarget && !isEditing && !showDeleteConfirm) onClose();
       }}
     >
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
@@ -2845,97 +2721,7 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete, onNa
                   <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
                     Proposal Associations ({data.proposals?.length || 0})
                   </h3>
-                  {!showAssociateForm && !isEditing && (
-                    <button
-                      onClick={() => setShowAssociateForm(true)}
-                      className="text-xs text-green-600 hover:text-green-700 hover:underline"
-                    >
-                      + Add to Proposal
-                    </button>
-                  )}
                 </div>
-
-                {/* Associate with Proposal Form */}
-                {showAssociateForm && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-3">
-                    <h4 className="text-sm font-medium text-green-800 mb-3">Associate with Proposal</h4>
-                    <div className="space-y-3">
-                      <div>
-                        <label className="text-xs text-gray-600">Grant Cycle</label>
-                        <select
-                          value={selectedCycleId}
-                          onChange={(e) => {
-                            setSelectedCycleId(e.target.value);
-                            setSelectedProposalId('');
-                          }}
-                          className="w-full border border-gray-300 rounded px-3 py-2 text-sm mt-1"
-                          disabled={isLoadingCycles}
-                        >
-                          <option value="">-- Select a grant cycle --</option>
-                          {grantCycles.map(c => (
-                            <option key={c.id} value={c.id}>
-                              {c.name} ({c.shortCode})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {selectedCycleId && (
-                        <div>
-                          <label className="text-xs text-gray-600">Proposal</label>
-                          <select
-                            value={selectedProposalId}
-                            onChange={(e) => setSelectedProposalId(e.target.value)}
-                            className="w-full border border-gray-300 rounded px-3 py-2 text-sm mt-1"
-                            disabled={isLoadingProposals}
-                          >
-                            <option value="">-- Select a proposal --</option>
-                            {proposals.map(p => (
-                              <option key={p.id} value={p.id}>
-                                {p.title || 'Untitled Proposal'}
-                              </option>
-                            ))}
-                          </select>
-                          {isLoadingProposals && (
-                            <p className="text-xs text-gray-400 mt-1">Loading proposals...</p>
-                          )}
-                          {!isLoadingProposals && proposals.length === 0 && (
-                            <p className="text-xs text-gray-400 mt-1">No proposals in this cycle.</p>
-                          )}
-                        </div>
-                      )}
-
-                      {selectedProposalId && (
-                        <div>
-                          <label className="text-xs text-gray-600">Match Reason (optional)</label>
-                          <textarea
-                            value={matchReason}
-                            onChange={(e) => setMatchReason(e.target.value)}
-                            className="w-full border border-gray-300 rounded px-3 py-2 text-sm mt-1 min-h-[60px]"
-                            placeholder="Why is this reviewer a good match for this proposal?"
-                          />
-                        </div>
-                      )}
-
-                      <div className="flex gap-2 pt-2">
-                        <button
-                          onClick={handleAssociateWithProposal}
-                          disabled={!selectedProposalId || isAssociating}
-                          className="px-3 py-1.5 text-sm text-white bg-green-600 rounded hover:bg-green-700 disabled:opacity-50"
-                        >
-                          {isAssociating ? 'Saving...' : 'Associate'}
-                        </button>
-                        <button
-                          onClick={handleCancelAssociate}
-                          disabled={isAssociating}
-                          className="px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-300 rounded hover:bg-gray-50"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {data.proposals && data.proposals.length > 0 ? (
                   <div className="space-y-3">
@@ -2995,11 +2781,11 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete, onNa
                       </div>
                     ))}
                   </div>
-                ) : !showAssociateForm ? (
+                ) : (
                   <p className="text-gray-500 text-sm italic">
                     Not associated with any proposals yet.
                   </p>
-                ) : null}
+                )}
               </section>
 
               {/* Timestamps */}

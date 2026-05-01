@@ -78,8 +78,11 @@ export default async function handler(req, res) {
 
     // Upload to Vercel Blob
     const filename = `summary_${proposalId}_${Date.now()}.pdf`;
+    // Private — server-side intermediate artifact. The deprecated
+    // generate-emails .eml flow used to fetch this via raw HTTP; the active
+    // review-manager/send-emails path attaches cycle-level templates instead.
     const blob = await put(filename, Buffer.from(extraction.buffer), {
-      access: 'public',
+      access: 'private',
       contentType: 'application/pdf'
     });
 

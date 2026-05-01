@@ -1,91 +1,43 @@
 /**
  * API Route: /api/reviewer-finder/save-candidates
  *
- * Saves selected candidates to the database for a proposal.
- * Creates researcher records if they don't exist, then links them
- * to the proposal via the reviewer_suggestions table.
+ * Saves selected candidates to Dataverse for a proposal. Writes go to
+ * three adapters (potential reviewer → researcher overlay → reviewer
+ * suggestion), keyed by email and request GUID.
+ *
+ * Requires `requestId` (Dataverse akoya_request GUID). Postgres is no
+ * longer written — Review Manager and My Candidates both read from
+ * Dataverse, and the Postgres reviewer tables are scheduled for archival.
  */
 
-import { sql } from '@vercel/postgres';
-import { DatabaseService } from '../../../lib/services/database-service';
 import { requireAppAccess } from '../../../lib/utils/auth';
-import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 import * as potentialReviewerAdapter from '../../../lib/dataverse/adapters/potential-reviewer';
 import * as researcherAdapter from '../../../lib/dataverse/adapters/researcher';
 import * as reviewerSuggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
-
-/**
- * Find existing researcher using multi-field matching.
- * Check order (first match wins):
- * 1. ORCID match (most reliable unique identifier)
- * 2. Email match (after enrichment provides it)
- * 3. Google Scholar ID match
- * 4. Normalized name match (fallback)
- *
- * Returns { id, matchedBy } or null if no match found.
- */
-async function findExistingResearcher(candidate, normalizedName) {
-  // Extract identifiers from candidate or contactEnrichment
-  const orcid = candidate.orcid || candidate.contactEnrichment?.orcid || null;
-  const email = candidate.email || candidate.contactEnrichment?.email || null;
-  const googleScholarId = candidate.googleScholarId || candidate.contactEnrichment?.googleScholarId || null;
-
-  // 1. Try ORCID match (most reliable)
-  if (orcid) {
-    const result = await sql`
-      SELECT id FROM researchers WHERE orcid = ${orcid} LIMIT 1
-    `;
-    if (result.rows.length > 0) {
-      return { id: result.rows[0].id, matchedBy: 'orcid' };
-    }
-  }
-
-  // 2. Try email match
-  if (email) {
-    const result = await sql`
-      SELECT id FROM researchers WHERE email = ${email} LIMIT 1
-    `;
-    if (result.rows.length > 0) {
-      return { id: result.rows[0].id, matchedBy: 'email' };
-    }
-  }
-
-  // 3. Try Google Scholar ID match
-  if (googleScholarId) {
-    const result = await sql`
-      SELECT id FROM researchers WHERE google_scholar_id = ${googleScholarId} LIMIT 1
-    `;
-    if (result.rows.length > 0) {
-      return { id: result.rows[0].id, matchedBy: 'google_scholar_id' };
-    }
-  }
-
-  // 4. Fall back to normalized name match
-  const result = await sql`
-    SELECT id FROM researchers WHERE normalized_name = ${normalizedName} LIMIT 1
-  `;
-  if (result.rows.length > 0) {
-    return { id: result.rows[0].id, matchedBy: 'normalized_name' };
-  }
-
-  return null;
-}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Require authentication + app access
   const access = await requireAppAccess(req, res, 'reviewer-finder');
   if (!access) return;
 
-  try {
-    const { proposalId, proposalTitle, proposalAbstract, proposalAuthors, proposalInstitution, programArea, summaryBlobUrl, grantCycleId, userProfileId, requestId, grantCycleCode, candidates } = req.body;
+  // Trusted internal writeback — no field/table masking applies.
+  DynamicsService.bypassRestrictions('save-candidates');
 
-    if (!proposalId) {
-      return res.status(400).json({ error: 'proposalId is required' });
+  try {
+    const {
+      proposalTitle,
+      programArea,
+      requestId,
+      grantCycleCode,
+      candidates,
+    } = req.body;
+
+    if (!requestId) {
+      return res.status(400).json({ error: 'requestId is required (Dataverse akoya_request GUID)' });
     }
 
     if (!candidates || !Array.isArray(candidates) || candidates.length === 0) {
@@ -93,18 +45,10 @@ export default async function handler(req, res) {
     }
 
     let savedCount = 0;
-    let dataverseSavedCount = 0;
     const errors = [];
-    const dataverseErrors = [];
-
-    // Trusted internal writeback — no field/table masking applies.
-    if (requestId) {
-      DynamicsService.bypassRestrictions('save-candidates');
-    }
 
     for (const candidate of candidates) {
       try {
-        // Step 1: Find or create researcher
         const normalizedName = candidate.name
           .toLowerCase()
           .replace(/^(dr\.?|prof\.?|professor)\s+/i, '')
@@ -112,85 +56,25 @@ export default async function handler(req, res) {
           .replace(/\s+/g, ' ')
           .trim();
 
-        // Extract all identifiers from candidate or contactEnrichment
         const candidateEmail = candidate.email || candidate.contactEnrichment?.email || null;
-        const candidateWebsite = candidate.website || candidate.contactEnrichment?.website || null;
+        const candidateAffiliation = candidate.affiliation || candidate.contactEnrichment?.affiliation || null;
         const candidateOrcid = candidate.orcid || candidate.contactEnrichment?.orcid || null;
         const candidateGoogleScholarId = candidate.googleScholarId || candidate.contactEnrichment?.googleScholarId || null;
+        const candidateWebsite = candidate.website || candidate.contactEnrichment?.website || null;
 
-        // Check if researcher exists using multi-field matching
-        const existingResearcher = await findExistingResearcher(candidate, normalizedName);
+        const expertiseForDv = Array.isArray(candidate.expertiseAreas)
+          ? candidate.expertiseAreas.filter(Boolean).join('; ')
+          : (candidate.expertise || null);
 
-        let researcherId;
-
-        if (existingResearcher) {
-          researcherId = existingResearcher.id;
-
-          // Merge new data into existing record (only update null fields)
-          await sql`
-            UPDATE researchers
-            SET
-              email = COALESCE(${candidateEmail}, email),
-              website = COALESCE(${candidateWebsite}, website),
-              orcid = COALESCE(${candidateOrcid}, orcid),
-              google_scholar_id = COALESCE(${candidateGoogleScholarId}, google_scholar_id),
-              h_index = COALESCE(${candidate.hIndex || null}, h_index),
-              total_citations = COALESCE(${candidate.totalCitations || null}, total_citations),
-              last_updated = CURRENT_TIMESTAMP
-            WHERE id = ${researcherId}
-          `;
-        } else {
-          // Create new researcher with all available data
-          const insertResult = await sql`
-            INSERT INTO researchers (
-              name,
-              normalized_name,
-              primary_affiliation,
-              email,
-              website,
-              orcid,
-              google_scholar_id,
-              h_index,
-              total_citations
-            )
-            VALUES (
-              ${candidate.name},
-              ${normalizedName},
-              ${candidate.affiliation || null},
-              ${candidateEmail},
-              ${candidateWebsite},
-              ${candidateOrcid},
-              ${candidateGoogleScholarId},
-              ${candidate.hIndex || null},
-              ${candidate.totalCitations || null}
-            )
-            RETURNING id
-          `;
-          researcherId = insertResult.rows[0].id;
-        }
-
-        // Step 2: Determine source array
         const sources = [];
-        if (candidate.isClaudeSuggestion || candidate.source === 'claude_suggestion') {
-          sources.push('claude');
-        }
-        if (candidate.verificationSource === 'pubmed' || candidate.source === 'pubmed') {
-          sources.push('pubmed');
-        }
-        if (candidate.source === 'arxiv') {
-          sources.push('arxiv');
-        }
-        if (candidate.source === 'biorxiv') {
-          sources.push('biorxiv');
-        }
-        if (sources.length === 0) {
-          sources.push(candidate.source || 'unknown');
-        }
+        if (candidate.isClaudeSuggestion || candidate.source === 'claude_suggestion') sources.push('claude');
+        if (candidate.verificationSource === 'pubmed' || candidate.source === 'pubmed') sources.push('pubmed');
+        if (candidate.source === 'arxiv') sources.push('arxiv');
+        if (candidate.source === 'biorxiv') sources.push('biorxiv');
+        if (sources.length === 0) sources.push(candidate.source || 'unknown');
 
-        // Step 3: Calculate relevance score
         const relevanceScore = candidate.verificationConfidence || candidate.relevanceScore || 0.5;
 
-        // Step 4: Build match reason
         let matchReason = candidate.reasoning || candidate.generatedReasoning || '';
         if (candidate.hasInstitutionCOI) {
           matchReason += ' [Institution COI: Same institution as proposal PI]';
@@ -199,145 +83,46 @@ export default async function handler(req, res) {
           matchReason += ' [Coauthor COI: Has co-authored with proposal authors]';
         }
 
-        // Step 5: Insert/update reviewer suggestion
-        // Parse grantCycleId (may be string from request body)
-        // Always use authenticated user's profile ID; fall back to body value only if auth bypassed
-        const cycleIdValue = grantCycleId ? parseInt(grantCycleId, 10) : null;
-        const profileIdValue = access.profileId || (userProfileId ? parseInt(userProfileId, 10) : null);
+        const { id: potentialReviewerId } = await potentialReviewerAdapter.upsertByEmail({
+          name: candidate.name,
+          email: candidateEmail,
+          affiliation: candidateAffiliation,
+          expertise: expertiseForDv,
+          whyChosen: matchReason || null,
+        });
 
-        await sql`
-          INSERT INTO reviewer_suggestions (
-            proposal_id,
-            proposal_title,
-            proposal_abstract,
-            proposal_authors,
-            proposal_institution,
-            program_area,
-            summary_blob_url,
-            grant_cycle_id,
-            user_profile_id,
-            researcher_id,
-            relevance_score,
-            match_reason,
-            sources,
-            selected
-          )
-          VALUES (
-            ${proposalId},
-            ${proposalTitle || 'Untitled Proposal'},
-            ${proposalAbstract || null},
-            ${proposalAuthors || null},
-            ${proposalInstitution || null},
-            ${programArea || null},
-            ${summaryBlobUrl || null},
-            ${cycleIdValue},
-            ${profileIdValue},
-            ${researcherId},
-            ${relevanceScore},
-            ${matchReason},
-            ${sources},
-            true
-          )
-          ON CONFLICT (proposal_id, researcher_id)
-          DO UPDATE SET
-            selected = true,
-            proposal_abstract = COALESCE(${proposalAbstract}, reviewer_suggestions.proposal_abstract),
-            proposal_authors = COALESCE(${proposalAuthors}, reviewer_suggestions.proposal_authors),
-            proposal_institution = COALESCE(${proposalInstitution}, reviewer_suggestions.proposal_institution),
-            program_area = COALESCE(${programArea}, reviewer_suggestions.program_area),
-            summary_blob_url = COALESCE(${summaryBlobUrl}, reviewer_suggestions.summary_blob_url),
-            grant_cycle_id = COALESCE(${cycleIdValue}, reviewer_suggestions.grant_cycle_id),
-            user_profile_id = COALESCE(${profileIdValue}, reviewer_suggestions.user_profile_id),
-            relevance_score = ${relevanceScore},
-            match_reason = ${matchReason},
-            sources = ${sources},
-            suggested_at = CURRENT_TIMESTAMP
-        `;
+        await researcherAdapter.upsertByPotentialReviewer(potentialReviewerId, {
+          name: candidate.name,
+          normalizedName,
+          email: candidateEmail,
+          emailSource: candidate.contactEnrichment?.emailSource || null,
+          orcid: candidateOrcid,
+          orcidUrl: candidate.orcidUrl || candidate.contactEnrichment?.orcidUrl || null,
+          googleScholarId: candidateGoogleScholarId,
+          googleScholarUrl: candidate.googleScholarUrl || candidate.contactEnrichment?.googleScholarUrl || null,
+          hIndex: candidate.hIndex ?? null,
+          i10Index: candidate.i10Index ?? null,
+          totalCitations: candidate.totalCitations ?? null,
+          affiliation: candidateAffiliation,
+          department: candidate.department || candidate.contactEnrichment?.department || null,
+          website: candidateWebsite,
+          facultyPageUrl: candidate.facultyPageUrl || candidate.contactEnrichment?.facultyPageUrl || null,
+          keywords: expertiseForDv,
+        });
 
-        // Step 6: Save keywords/tags for the researcher
-        // Add expertise areas from Claude analysis
-        if (candidate.expertiseAreas && Array.isArray(candidate.expertiseAreas)) {
-          for (const area of candidate.expertiseAreas) {
-            if (area && area.trim()) {
-              await DatabaseService.addKeywordWithRelevance(
-                researcherId,
-                area.trim(),
-                0.9,  // High relevance - Claude identified these
-                'claude'
-              );
-            }
-          }
-        }
-
-        // Add discovery source as a tag
-        const discoverySource = candidate.source || candidate.verificationSource;
-        if (discoverySource && discoverySource !== 'unknown' && discoverySource !== 'claude_suggestion') {
-          await DatabaseService.addKeywordWithRelevance(
-            researcherId,
-            `source:${discoverySource}`,
-            1.0,
-            discoverySource
-          );
-        }
+        await reviewerSuggestionAdapter.upsert({
+          potentialReviewerId,
+          requestId,
+          suggestionLabel: proposalTitle ? `${proposalTitle} — ${candidate.name}` : null,
+          grantCycleCode: grantCycleCode || null,
+          programArea: programArea || null,
+          relevanceScore,
+          matchReason,
+          sources: sources.join(','),
+          selected: true,
+        });
 
         savedCount++;
-
-        // Dual-write to Dataverse when the proposal is a Dynamics akoya_request.
-        // Postgres remains source of truth for now; Dataverse failures are logged
-        // but do not fail the candidate save.
-        if (requestId) {
-          try {
-            const candidateEmailForDv = candidate.email || candidate.contactEnrichment?.email || null;
-            const candidateAffiliationForDv = candidate.affiliation || candidate.contactEnrichment?.affiliation || null;
-            const expertiseForDv = Array.isArray(candidate.expertiseAreas)
-              ? candidate.expertiseAreas.filter(Boolean).join('; ')
-              : (candidate.expertise || null);
-
-            const { id: potentialReviewerId } = await potentialReviewerAdapter.upsertByEmail({
-              name: candidate.name,
-              email: candidateEmailForDv,
-              affiliation: candidateAffiliationForDv,
-              expertise: expertiseForDv,
-              whyChosen: matchReason || null,
-            });
-
-            await researcherAdapter.upsertByPotentialReviewer(potentialReviewerId, {
-              name: candidate.name,
-              normalizedName,
-              email: candidateEmailForDv,
-              emailSource: candidate.contactEnrichment?.emailSource || null,
-              orcid: candidateOrcid,
-              orcidUrl: candidate.orcidUrl || candidate.contactEnrichment?.orcidUrl || null,
-              googleScholarId: candidateGoogleScholarId,
-              googleScholarUrl: candidate.googleScholarUrl || candidate.contactEnrichment?.googleScholarUrl || null,
-              hIndex: candidate.hIndex ?? null,
-              i10Index: candidate.i10Index ?? null,
-              totalCitations: candidate.totalCitations ?? null,
-              affiliation: candidateAffiliationForDv,
-              department: candidate.department || candidate.contactEnrichment?.department || null,
-              website: candidateWebsite,
-              facultyPageUrl: candidate.facultyPageUrl || candidate.contactEnrichment?.facultyPageUrl || null,
-              keywords: expertiseForDv,
-            });
-
-            await reviewerSuggestionAdapter.upsert({
-              potentialReviewerId,
-              requestId,
-              suggestionLabel: proposalTitle ? `${proposalTitle} — ${candidate.name}` : null,
-              grantCycleCode: grantCycleCode || null,
-              programArea: programArea || null,
-              relevanceScore,
-              matchReason,
-              sources: sources.join(','),
-              selected: true,
-            });
-
-            dataverseSavedCount++;
-          } catch (dvError) {
-            console.error(`Dataverse dual-write failed for ${candidate.name}:`, dvError.message);
-            dataverseErrors.push({ name: candidate.name, error: dvError.message });
-          }
-        }
       } catch (candidateError) {
         console.error(`Error saving candidate ${candidate.name}:`, candidateError.message);
         errors.push({ name: candidate.name, error: candidateError.message });
@@ -349,11 +134,6 @@ export default async function handler(req, res) {
       savedCount,
       totalRequested: candidates.length,
       errors: errors.length > 0 ? errors : undefined,
-      dataverse: requestId ? {
-        attempted: savedCount,
-        savedCount: dataverseSavedCount,
-        errors: dataverseErrors.length > 0 ? dataverseErrors : undefined,
-      } : undefined,
     });
 
   } catch (error) {

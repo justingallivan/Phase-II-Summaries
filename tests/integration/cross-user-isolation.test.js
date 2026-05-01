@@ -1,15 +1,24 @@
 /**
  * Cross-user data isolation tests.
  *
- * Verifies that user-scoped DB queries correctly filter by profileId,
- * so User A's data is inaccessible to User B.
+ * Two routes, two different isolation models after the Session 117/118
+ * Dataverse cutover:
  *
- * We test the two email-generation routes that look up reviewer_suggestions:
- * - /api/reviewer-finder/generate-emails  (lookupProposalInfoForCandidates)
- * - /api/review-manager/send-emails       (reviewer data join)
+ * - /api/reviewer-finder/generate-emails — still Postgres-backed for proposal
+ *   info lookup, so the original "user_profile_id filter" property still
+ *   applies. We assert that User B cannot read User A's proposal info via
+ *   suggestionId, and that any markAsSent UPDATE filters on user_profile_id.
  *
- * The test mocks `sql` to inspect the profileId passed in the queries and
- * returns empty results when the profileId doesn't match the "owner".
+ * - /api/review-manager/send-emails — fully Dataverse-backed since Session 118.
+ *   Reviewer data is fetched via the suggestion adapter (`findById`), which
+ *   does not filter by user_profile_id (Dataverse has no per-user scoping for
+ *   suggestions — they're scoped to a request, and any review-manager user
+ *   can fetch any suggestion). The cross-user isolation property has shifted
+ *   from "User B's query returns no rows" to "the sender identity is taken
+ *   from the session, not from request body" — i.e. User B cannot send mail
+ *   *as* User A even if they hold a User A suggestion ID. We assert that the
+ *   route rejects the send when the session lacks an azureEmail (which is
+ *   how an unverified sender would manifest).
  */
 
 import {
@@ -85,57 +94,45 @@ describe('/api/review-manager/send-emails cross-user isolation', () => {
   let handler;
 
   beforeAll(async () => {
+    // The Dataverse-backed handler imports DynamicsService at module load.
+    // Mock with the static-method shape the handler actually uses.
+    jest.doMock('../../lib/services/dynamics-service', () => ({
+      DynamicsService: {
+        bypassRestrictions: jest.fn(),
+        setRestrictions: jest.fn(),
+        executeQuery: jest.fn(() => Promise.resolve({ value: [] })),
+        getRecord: jest.fn(() => Promise.resolve(null)),
+      },
+    }));
     const mod = await import('../../pages/api/review-manager/send-emails');
     handler = mod.default;
   });
 
-  it('User B gets 0 results for User A suggestion IDs', async () => {
-    // Mock User B — has access to review-manager
+  it('rejects send when session has no azureEmail (sender identity must come from session)', async () => {
+    // Mock User B with review-manager access but no azureEmail in the session —
+    // this is the auth-layer property that replaces the old Postgres-filter
+    // isolation: sender identity is derived from session, not request body.
     mockAuthenticatedUser(USER_B_PROFILE, ['review-manager']);
-
-    // Override sql mock: the reviewer data query filters by user_profile_id,
-    // so when User B (profileId=2) queries for suggestion owned by User A,
-    // it should return empty rows.
-    const { sql: mockSql } = require('@vercel/postgres');
-    mockSql.mockImplementation((...args) => {
-      const queryText = Array.isArray(args[0]) ? args[0].join(' ') : '';
-
-      // App access queries
-      if (queryText.includes('user_app_access')) {
-        return Promise.resolve({ rows: [{ app_key: 'review-manager' }], rowCount: 1 });
-      }
-      if (queryText.includes('dynamics_user_roles')) {
-        return Promise.resolve({ rows: [], rowCount: 0 });
-      }
-      if (queryText.includes('is_active')) {
-        return Promise.resolve({ rows: [{ is_active: true }], rowCount: 1 });
-      }
-
-      // reviewer_suggestions query: return empty for User B
-      if (queryText.includes('reviewer_suggestions')) {
-        return Promise.resolve({ rows: [], rowCount: 0 });
-      }
-
-      return Promise.resolve({ rows: [], rowCount: 0 });
-    });
 
     const req = createMockReq({
       method: 'POST',
       body: {
-        suggestionIds: [SUGGESTION_OWNED_BY_A],
+        drafts: [{
+          suggestionId: 'suggestion-owned-by-user-a',
+          subject: 'Test',
+          body: 'Test body',
+        }],
         templateType: 'materials',
-        template: { subject: 'Test', body: 'Test body' },
-        settings: {},
       },
     });
     const res = createMockRes();
 
     await handler(req, res);
 
-    // The handler uses SSE, so check the write calls for error or empty results
-    const writeCalls = res.write.mock.calls.map(c => c[0]).join('');
-    // Should contain an error event about no reviewers found
-    expect(writeCalls).toContain('No reviewers found');
+    expect(res.statusCode).toBe(400);
+    expect(res._data).toMatchObject({
+      error: expect.stringMatching(/sender email/i),
+    });
   });
 });
 
