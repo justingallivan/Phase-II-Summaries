@@ -10,6 +10,23 @@ The pre-Session 84 chronological per-session log (everything after the September
 
 ---
 
+## April 2026 — Review Manager fully on Dataverse + 333-row historical backfill (Session 118)
+
+**Milestone:** Reviewer-lifecycle stack — the Reviewer Finder save path, My Candidates read/edit/delete, and now all four Review Manager endpoints — runs end-to-end on Dataverse. Postgres `reviewer_suggestions` is no longer in the read path of any user surface. 333 pre-picker historical rows were migrated through the same three-adapter chain `save-candidates` uses, with full lifecycle state preserved.
+**Sessions:** 118 (2026-04-30)
+**Ship state:**
+- `scripts/backfill-postgres-to-dataverse.js`: idempotent dry-run-first migrator. 333/333 rows succeeded; 59 with lifecycle (timestamps, blob URLs, status) carried via `updateLifecycle`. 4 quantum-chimera test rows without `request_number` skipped (already dual-written via save-candidates)
+- All four Review Manager endpoints rewritten: `reviewers` (PD-scoped accepted suggestions via new `findAcceptedByPD`); `send-emails` (Dataverse recipient pull + contact promotion via new `contact.js` adapter — find-or-create + `setContactLink`; cycle-level template/attachments still Postgres-by-shortCode); `upload-review` (blob upload unchanged, lifecycle to Dataverse); `render-emails` (Dataverse recipient + proposal data, cycle config from Postgres). UI sweep: `selectedCycleId` → `selectedCycleCode`, GUID-string `suggestionId` flows through cleanly
+- Adapter additions: picklist optionset translation (`responseType`, `reviewStatus` strings → Edm.Int32) in `updateLifecycle`; `wmkf_areaofexpertise` added to 100-char clamp map; `findAcceptedByPD`; `reminderCount` mapping; `contact.js` (findByEmail, findOrCreateByEmail). Adapters now use explicit `.js` import for raw-Node ESM compatibility
+- Validation pass against real auth uncovered + fixed 5 drive-by bugs: `saveProposalFields` missing `onRefresh`; per-templateType email attachments (materials PDF was bleeding into thank-you sends); `formatReviewDeadline` UTC-vs-local-day off-by-one for YYYY-MM-DD strings; `wmkf_organizationname` not projected into `proposal.institution`; trailing-space cleanup on the same field
+- Two external dependencies surfaced and tracked, not blocked-on: `# WMK: Research Review App Suite` role lacks `AppendTo` on Contact at BU level (contact promotion creates orphan contacts but can't link them) — `docs/PENDING_ADMIN_REQUESTS.md` §4; external reviewer file access (proposal share URLs throw expired-link errors; review uploads still in Vercel Blob) — needs Connor consult on a staging/library permission model
+
+**Why it matters:** First user-app surface where Postgres has no read consumers. The dual-write in `save-candidates` is now the only Postgres tether — its removal becomes a single-commit cleanup once another smoke session goes by. Five end-to-end phases (read / patch / send / upload / thank-you) validated against real auth on the J26 Quantum Chimera test set.
+
+**Pointers:** `docs/REVIEWER_FINDER_DATAVERSE_CUTOVER_PLAN.md`; commits `a4961db` (Workstream 3 backfill), `ef233a0` (Workstream 2 Review Manager migration), `ada645d` (validation fixes)
+
+---
+
 ## April 2026 — Reviewer Finder save + read paths cut over to Dataverse (Session 117)
 
 **Milestone:** First user-app surface running end-to-end on the Wave 2 schema. New saves dual-write to Dataverse via the three adapters; My Candidates reads/edits/deletes go through Dataverse only. Postgres still receives writes for safety but is functionally archive-only for Reviewer Finder display.

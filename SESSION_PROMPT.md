@@ -1,70 +1,94 @@
-# Session 118 Prompt: Reviewer Finder Dataverse cutover — Workstream 3 (backfill) → 2 (Review Manager)
+# Session 119 Prompt: Reviewer Finder cutover endgame — drop Postgres dual-write, then archive
 
-## Session 117 Summary
+## Session 118 Summary
 
-Two big surfaces of Reviewer Finder are now Dataverse-backed end-to-end. **Save-candidates dual-writes** to all three Wave 2 tables; **My Candidates** reads, edits, and soft-deletes go through Dataverse only. Postgres still receives saves (dual-write) but is functionally archive-only for the Reviewer Finder UI. Validated against real auth in browser using request `54e2b88b…` (Quantum Chimera, J26).
+Reviewer-lifecycle stack is now Dataverse-native end-to-end. 333 historical rows migrated. Review Manager rewritten across all four endpoints + UI. Five-phase real-auth validation passed; five drive-by bugs found and fixed along the way. Two external dependencies surfaced and tracked.
 
 ### What was completed
 
-1. **save-candidates dual-write (`b440173`).** Postgres save unchanged; appended a per-candidate Dataverse write block that runs after `savedCount++`. Each candidate flows through `potentialReviewer.upsertByEmail` → `researcher.upsertByPotentialReviewer` → `reviewerSuggestion.upsert`. Per-candidate try/catch — Dataverse failures log to console and surface under `response.dataverse.errors` but never fail the Postgres-backed save. UI now passes `requestId` + `grantCycleCode` from `uploadedFiles[0].sourceProposal` so the Dataverse write knows which request to link.
+1. **Workstream 3 — historical backfill (`a4961db`).** `scripts/backfill-postgres-to-dataverse.js` — idempotent, dry-run-first. Reads each `reviewer_suggestions` row with a `request_number`, resolves `request_number` → `akoya_request` GUID and `grant_cycle_id` → `cycleCode`, then runs the three-adapter chain (`potentialReviewer.upsertByEmail` → `researcher.upsertByPotentialReviewer` → `reviewerSuggestion.upsert`) with lifecycle state preserved via `updateLifecycle`. 333/333 succeeded; 59 carried lifecycle. The 4 quantum-chimera test rows without `request_number` were skipped (already dual-written in Session 117).
 
-2. **Validation fixes (`9215d03`).** Three issues uncovered while exercising the dual-write end-to-end:
-   - `claude-reviewer-service.js` had `const { logUsage } = require('../utils/usage-logger')`. Under Next 16 + Turbopack, that interop returns `undefined` for ESM modules with only named exports (no default). Converted the whole file to ESM (`import`/`export`); updated the two callers (`analyze.js`, `discover.js`) to import at the top instead of inline `require()`.
-   - `DynamicsService` fails closed when `activeRestrictions === null`. Earlier saves accidentally worked because some other call had set state on the same dev process. Added explicit `DynamicsService.bypassRestrictions('save-candidates')` at handler entry.
-   - `wmkf_potentialreviewers.wmkf_organizationname` is capped at 100 chars by Dynamics. Czechtizky's full affiliation exceeded it. Added a defensive clamp in the `potential-reviewer` adapter (researcher's `wmkf_primaryaffiliation` is uncapped, so the full string still lands there).
+   Adapter fixes uncovered live:
+   - `wmkf_responsetype` and `wmkf_reviewstatus` are picklist optionsets (Edm.Int32), not strings. Added `RESPONSE_TYPE_MAP` / `REVIEW_STATUS_MAP` translation in `updateLifecycle` so callers can keep passing legacy string codes.
+   - `reminderCount` → `wmkf_remindercount` added to lifecycle map.
+   - `wmkf_areaofexpertise` capped at 100 chars (added to `FIELD_MAX` clamp map on `potential-reviewer`).
+   - All three adapters: explicit `.js` extension on `dynamics-service` import (raw-Node ESM compatibility — Next handles both forms).
 
-3. **my-candidates full Dataverse cutover (`f66cdad`).** GET, PATCH, DELETE all rewritten. Default scope: suggestions on requests where the authenticated user is lead PD (resolved via `program-director-resolver` from `session.user.azureEmail`). Overrides: `?requestId=<guid>` / `?requestNumber=<num>` for collaborator lookup (bypasses PD filter — matches the "all org-visible, dashboards filter" pattern), `?cycleCode=Jxx` to narrow within scope. `mode=proposals` returns the distinct request list for picker modals. PATCH routes to suggestion / potentialreviewer / researcher adapters depending on field; PI / institution edits intentionally rejected with 400 (those belong on `akoya_request`). DELETE soft-flips `wmkf_selected = false`.
-   - Adapter extensions: `reviewer-suggestion.{findById, findByRequest, findByPD, updateLifecycle, softDelete, bulkUpdateByRequest}`; `potential-reviewer.update`; `researcher.updateById` (auto-touches `wmkf_lastchecked`; advances `wmkf_metricsupdatedat` only when a metric field is in the payload).
-   - Cycle helper added: `cycleCodeToLabel('J26') → 'June 2026'`.
-   - Field correction: proposal title is `akoya_title`, not the assumed `akoya_name`.
-   - `summaryBlobUrl` dropped from response — that was a Postgres-only save-time artifact; SharePoint is the source of truth for proposal PDFs in the Dataverse world.
+2. **Workstream 2 — full Review Manager Dataverse migration (`ef233a0`).** All four endpoints rewritten to read/write Dataverse; Postgres still serves cycle-level config (review template blob, additional attachments, deadline, custom fields) by `short_code` lookup, which remains ground-truth for cycle definitions.
+   - `/api/review-manager/reviewers`: PD-scoped accepted suggestions via new `findAcceptedByPD` adapter method. `?cycleCode=Jxx` narrows; `?proposalId=` / `?requestNumber=` overrides PD filter for collaborator views. PATCH routes `reviewStatus` / `notes` / `proposalUrl` / `proposalPassword` through `updateLifecycle` or `bulkUpdateByRequest`. The `'complete'` branch fetches existing record to set `reviewReceivedAt` only if not already populated.
+   - `/api/review-manager/send-emails`: recipients hydrated from Dataverse (suggestion → potentialReviewer + akoya_request); cycle-level attachments still from Postgres `grant_cycles` by `cycleCode`. Suggestion's `_wmkf_request_value` is the regarding link directly. After successful send: contact promotion via new `contact.js` adapter (find-or-create by email, setContactLink on the potentialReviewer). Lifecycle bumps logic checks current optionset value (100000000 = accepted, 100000001 = materials_sent, etc.) instead of legacy string codes.
+   - `/api/review-manager/upload-review`: kept Vercel Blob upload path; lifecycle write through suggestion adapter. Blob folder keyed by request GUID.
+   - `/api/review-manager/render-emails`: preview-only; recipient + proposal data from Dataverse so previews match send. `coInvestigators` dropped (Postgres-only, not migrated).
+   - `pages/review-manager.js`: `selectedCycleId` → `selectedCycleCode`, drop `userProfileId` query param, GUID `suggestionId` flows through cleanly.
 
-4. **Pagination fix (`992126c`).** Initial my-candidates UI was empty in real auth despite smoke success. Cause: `findByPD`'s `akoya_request` query used `queryRecords` with implicit 500-row cap; an active PD has hundreds of historical requests, the test request fell outside the first 500. Switched to `queryAllRecords` (paginated). After the fix: 4 candidates appear; PATCH (notes/invited) and DELETE both confirmed end-to-end against Dataverse.
+3. **Validation against real auth (`ada645d`).** Five phases ran clean against the J26 Quantum Chimera test set (request `54e2b88b…`, with the Justin Gallivan Test reviewer row used as the safe send target).
+   - **Phase 1 (read)**: cycle filter + proposal detail render — 20 accepted suggestions across 99 historical PD requests.
+   - **Phase 2 (PATCH)**: notes, status dropdown, bulk URL/password.
+   - **Phase 3 (send-emails materials)**: email arrived, lifecycle bumped, contact promotion failed in a known-tracked way (see below).
+   - **Phase 4 (upload-review)**: blob upload + status to `review_received`.
+   - **Phase 5 (thank-you)**: email sent (no stray PDF), status to `complete`.
 
-5. **Architecture doc for Connor (`b440173`).** `docs/REVIEWER_ARCHITECTURE.md` — three-table mental model (potentialreviewer / appresearcher / appreviewersuggestion), keys, lifecycle, slot-vs-suggestion duality.
+   Five drive-by bugs found and fixed during validation:
+   - `saveProposalFields` was missing `onRefresh()` after PATCH — UI showed stale URL/password until full reload. Pre-existing bug.
+   - Email modal attachments were shared across all template types via one localStorage bucket, causing the materials PDF to bleed into the thank-you send. Now per-template-type with backward-compat for legacy flat-array storage.
+   - `formatReviewDeadline` parsed pure `YYYY-MM-DD` strings as UTC midnight; user-picked "April 30" rendered as "April 29" in any timezone west of UTC. Fixed by parsing pure-date strings as local-time calendar dates.
+   - `proposal.institution` was hardcoded null in render-emails; now reads `akoya_request.wmkf_organizationname` (trimmed). Also threaded through reviewers GET so the proposal-detail header shows institution.
+   - Trailing-space data quality issue on `wmkf_organizationname` masked by `.trim()` at projection time.
 
-6. **Cutover plan for remaining work (`cc5f710`).** `docs/REVIEWER_FINDER_DATAVERSE_CUTOVER_PLAN.md` — three workstreams left (contact promotion, full Review Manager migration, historical backfill) with implementation outlines, recommended order, and hand-off context.
+### External dependencies tracked, not blocking
+
+- **Contact promotion AppendTo permission** (`docs/PENDING_ADMIN_REQUESTS.md` §4, `project_contact_promotion_permission.md`). The integration App User (`# WMK: Research Review App Suite`) can create a CRM contact but lacks `AppendTo` privilege on Contact at BusinessUnitLevel — so `setContactLink` 403s. Today: orphan contacts are created in CRM but the link from `wmkf_potentialreviewer` to contact stays null. Failure is wrapped in try/catch; emails ship and lifecycle updates fire normally. After admin grants the privilege, no code change needed — next send retries naturally and find-by-email reuses any orphan contacts created during the gap.
+- **External reviewer file access** (`project_external_reviewer_file_access.md`). Proposal share URLs throw "expired link" errors for non-authenticated reviewers; review uploads still land in Vercel Blob instead of SharePoint. These are one architectural problem — how to expose Foundation-controlled documents to external parties without authentication. Needs Connor consult on a staging/library permission model before either piece of work proceeds.
 
 ### Commits
 
-- `b440173` — save-candidates: dual-write to Dataverse via Wave 2 adapters (+ docs/REVIEWER_ARCHITECTURE.md)
-- `9215d03` — save-candidates dual-write: ESM conversion, bypassRestrictions, org-name clamp + smoke scripts
-- `f66cdad` — my-candidates: full Dataverse cutover (GET/PATCH/DELETE)
-- `992126c` — my-candidates: paginate PD-scope query
-- `cc5f710` — Document remaining Reviewer Finder Dataverse cutover work
+- `a4961db` — Workstream 3: backfill 333 Postgres reviewer_suggestions to Dataverse
+- `ef233a0` — Workstream 2: full Review Manager Dataverse migration
+- `ada645d` — Review Manager validation fixes
 
 ## Potential next steps
 
-Work order is defined in `docs/REVIEWER_FINDER_DATAVERSE_CUTOVER_PLAN.md`. Justin confirmed at session end: **3 → 2 → (1 folded into 2b)**.
+### 1. Drop Postgres dual-write from save-candidates.js (do first; small, unblocks #2)
 
-### 1. Workstream 3 — Postgres → Dataverse historical backfill (do first)
+`pages/api/reviewer-finder/save-candidates.js` still writes to Postgres (lines ~108-282) and then dual-writes to Dataverse (lines ~285-340). The Dataverse write is the source of truth now — Review Manager and My Candidates both read only from Dataverse. The Postgres write serves no consumer.
 
-333 rows in `reviewer_suggestions` from pre-picker usage. Build `scripts/backfill-postgres-to-dataverse.js` that runs each row through the same three-adapter chain `save-candidates` uses, with `request_number` → `akoya_request` GUID resolution and `grant_cycle_id` → `cycleCode` mapping. Idempotent (the `(potentialreviewer, request)` upsert handles re-runs). Dry-run mode first; report rows that can't be migrated (no request_number, etc.). Lifecycle state on the Postgres rows (`materials_sent_at`, `review_status`) preserved via `updateLifecycle` after upsert.
+Steps:
+1. Remove the entire Postgres block — keep only the `requestId`-gated Dataverse path.
+2. Drop the `requireAppAccess` `userProfileId`-gated grant_cycle_id / user_profile_id fallback (those were Postgres-only).
+3. Update `lib/services/database-service.js` calls (`addKeywordWithRelevance` for Postgres researcher_keywords) — keep or drop? Today they preserve expertise tags in Postgres for nothing. Drop.
+4. Run a smoke save through the picker; verify save lands only in Dataverse and the UI flow stays clean.
+5. Verify build, commit, push.
 
-Why first: Workstream 2 flips Review Manager to Dataverse-only reads. Without the backfill, in-flight pre-picker reviews vanish from the UI.
+Effort: 30 min. Low risk — read paths are already proven Dataverse-only.
 
-Effort: half a session.
+### 2. Drop legacy "create cycle and assign all unassigned" UI flow
 
-### 2. Workstream 2 — Full Review Manager Dataverse migration
+`pages/reviewer-finder.js` has a flow that creates a Postgres `grant_cycles` row and bulk-assigns all unassigned `reviewer_suggestions` to it. With the picker baking cycle codes at save time, this is moot. Audit and remove.
 
-Three endpoints + UI sweep. Expected ~1.5–2× the my-candidates work.
+Effort: 30-45 min depending on how entangled the UI is.
 
-- **2a `/api/review-manager/reviewers`** (read + status PATCH): same shape as my-candidates, scoped to suggestions where `wmkf_accepted = true`. Adapter addition: `findAcceptedByPD`. PATCH writes through `updateLifecycle` (most fields already mapped — verify parity for `proposal_password`, `proposal_url`, `review_blob_url`, `review_filename`).
-- **2b `/api/review-manager/send-emails`**: pull recipient data from Dataverse, lifecycle timestamps via `updateLifecycle`. **Fold contact promotion in here** (Workstream 1) — after a successful send, find-or-create `contact` by email, then `potentialReviewer.setContactLink`. Need new `lib/dataverse/adapters/contact.js`. Type guard at line 90 (`typeof d.suggestionId !== 'number'`) needs relaxing — IDs are GUIDs now.
-- **2c `/api/review-manager/upload-review`**: Vercel Blob upload unchanged; status fields go through `updateLifecycle`.
-- **2d `/api/review-manager/render-emails`**: preview-only, pull templates from Dataverse for parity with send.
-- **2e UI sweep** in `pages/review-manager.js`: `suggestionId` becomes a GUID; remove any int-coerce logic; replace `grant_cycle_id` (numeric FK) with `grantCycleCode` (string).
+### 3. Archive Postgres reviewer tables (do this in a dedicated session)
 
-Effort: 1.5–2 sessions.
+After #1 and #2 land and a few days pass with no Postgres writes:
+- Snapshot `reviewer_suggestions`, `researchers`, `grant_cycles`, `proposal_searches`, `researcher_keywords`, `researcher_publications` to a backup table or pg_dump file.
+- Drop the original tables.
+- Remove or guard scripts that reference them (`debug-reviewer-finder.js`, `cleanup-database.js`, etc.).
 
-### 3. Cleanup once 2 + 3 are done
+Don't combine with #1/#2 — needs its own dedicated context for safety.
 
-- Drop the dual-write block from `save-candidates.js` — write Dataverse only.
-- Drop `cycleId` (numeric) and `userProfileId` query params from UI calls.
-- Archive or drop Postgres tables: `reviewer_suggestions`, `researchers`, `grant_cycles`, `proposal_searches`, `researcher_keywords`, `researcher_publications`. Keep a snapshot.
-- Remove the legacy "create cycle and assign all unassigned" UI flow (moot — picker bakes cycles at save time).
+### 4. (External) Wait for Contact AppendTo grant
 
-### 4. Post-May-1 D26 readiness check (independent)
+Once `# WMK: Research Review App Suite` gets `AppendTo` on Contact at BU level, the next send-emails call will populate `_wmkf_contact_value` automatically. Verify with the snippet in `docs/PENDING_ADMIN_REQUESTS.md` §4.
+
+### 5. (External) Connor consult — external reviewer file access
+
+Needed before:
+- Migrating `upload-review` from Vercel Blob to SharePoint
+- Replacing the proposal-URL share mechanism
+
+Out of scope until that conversation happens.
+
+### 6. (Independent) Post-May-1 D26 readiness check
 
 Phase I opens 2026-05-01. Once D26 starts moving:
 - Confirm `akoya_requeststatus = 'Phase II Pending'` is the actual value on real new D26 rows.
@@ -75,47 +99,54 @@ Phase I opens 2026-05-01. Once D26 starts moving:
 
 | File | Status | Purpose |
 |---|---|---|
-| `pages/api/reviewer-finder/save-candidates.js` | modified (`b440173`, `9215d03`) | Dual-write Postgres + Dataverse on save |
-| `pages/api/reviewer-finder/my-candidates.js` | rewrite (`f66cdad`, `992126c`) | Dataverse-backed GET/PATCH/DELETE; PD-scope default + collaborator overrides |
-| `lib/dataverse/adapters/reviewer-suggestion.js` | extended (`f66cdad`, `992126c`) | Find/update/softDelete/bulk + paginated PD scope |
-| `lib/dataverse/adapters/potential-reviewer.js` | extended (`9215d03`, `f66cdad`) | `update` for staff edits + 100-char org-name clamp |
-| `lib/dataverse/adapters/researcher.js` | extended (`f66cdad`) | `updateById` with metric-aware timestamp logic |
-| `lib/utils/cycle-code.js` | extended (`f66cdad`) | `cycleCodeToLabel('J26') → 'June 2026'` |
-| `lib/services/claude-reviewer-service.js` | ESM-converted (`9215d03`) | All `require()` → `import` to fix Turbopack interop |
-| `pages/api/reviewer-finder/{analyze,discover}.js` | modified (`9215d03`) | Top-level import of ClaudeReviewerService |
-| `docs/REVIEWER_ARCHITECTURE.md` | new (`b440173`) | 3-table mental model for Connor |
-| `docs/REVIEWER_FINDER_DATAVERSE_CUTOVER_PLAN.md` | new (`cc5f710`) | Workstreams 1/2/3 with implementation outlines + hand-off context |
-| `scripts/smoke-{recent-suggestions,suggestions-by-request,find-by-name,my-candidates}.js` | new (`9215d03`, `f66cdad`) | Direct-Dataverse smoke helpers (no auth) |
+| `scripts/backfill-postgres-to-dataverse.js` | new (`a4961db`) | One-shot Postgres → Dataverse migration with dry-run mode |
+| `lib/dataverse/adapters/contact.js` | new (`ef233a0`) | findByEmail / findOrCreateByEmail; used by send-emails for contact promotion |
+| `lib/dataverse/adapters/reviewer-suggestion.js` | extended | `findAcceptedByPD`, picklist string→Edm.Int32 translation, `reminderCount` mapping, `wmkf_organizationname` projection |
+| `lib/dataverse/adapters/potential-reviewer.js` | extended | `wmkf_areaofexpertise` 100-char clamp |
+| `lib/dataverse/adapters/researcher.js` | unchanged this session | (touched only for `.js` import compat) |
+| `pages/api/review-manager/reviewers.js` | rewrite (`ef233a0`) | Dataverse-backed GET + PATCH, picklist code → string translation on read |
+| `pages/api/review-manager/send-emails.js` | rewrite (`ef233a0`) | Dataverse recipient pull + contact promotion + lifecycle via updateLifecycle |
+| `pages/api/review-manager/upload-review.js` | rewrite (`ef233a0`) | Blob upload + Dataverse lifecycle write |
+| `pages/api/review-manager/render-emails.js` | rewrite (`ef233a0`, `ada645d`) | Dataverse recipient + proposal data; institution from `wmkf_organizationname` |
+| `pages/review-manager.js` | UI sweep (`ef233a0`, `ada645d`) | `selectedCycleCode`, GUID `suggestionId`, per-template attachments, onRefresh fix |
+| `lib/utils/email-generator.js` | bug fix (`ada645d`) | YYYY-MM-DD parsed as local time, not UTC midnight |
+| `docs/PENDING_ADMIN_REQUESTS.md` | extended | New §4 on Contact AppendTo |
+| `scripts/smoke-review-manager.js` | new (`ef233a0`) | Direct-Dataverse smoke for findAcceptedByPD |
 
 ## Hand-off notes
 
-- **`bypassRestrictions('<endpoint>')` is mandatory** at handler entry whenever the handler will hit Dataverse. Forgetting this returns "Restrictions not initialized — cannot execute query" silently the first time, then accidentally works on subsequent calls within the same dev process. High-value gotcha.
-- **Field name corrections** baked in this session: proposal title is `akoya_title` (not `akoya_name`); request number is `akoya_requestnum` (not `akoya_requestnumber`).
-- **`wmkf_organizationname` cap = 100 chars**, server-enforced. The `clamp` helper in `potential-reviewer.js` truncates with ellipsis. Add other field caps to that map only as we hit them; don't speculate.
-- **`access.session?.user?.azureEmail`** is the canonical email accessor (NOT `access.session?.user?.email`). NextAuth populates both in some shapes but the codebase standardizes on `azureEmail`.
-- **`findByPD` always uses `queryAllRecords`**, not `queryRecords` with `top:`. Active PDs exceed 500 historical requests; the cap drops requests silently and surfaces as empty-UI bugs that look like auth or session issues.
-- **Test request:** `54e2b88b-04b9-f011-bbd3-6045bd02b4cc` (Quantum Chimera, J26) has 4 saved suggestions with full bibliometric chain. Use this for any future smoke before broadening to D26.
-- **`.env.local` is in real-auth mode.** If NextAuth catch-all 404s, stop dev → `rm -rf .next` → restart. Same fix applies to "weird minified errors" caused by running `npx next build` against an active dev server (corrupts `.next/`).
-- **Next 16 + Turbopack CJS-requires-ESM is unreliable.** Whenever you see `<x> is not a function` for a known-good import, suspect this. Conversion to top-level ESM `import` is the durable fix.
+- **Postgres is now genuinely stale** for reviewer_suggestions lifecycle. Today's PATCHes (status changes, notes, materials_sent, review_received, complete) only landed in Dataverse. The dual-write in save-candidates is the last tether and is dropping next session.
+- **"Last action" timestamps are event-driven**, not state-driven. Manual status flips via the dropdown intentionally do NOT stamp `materialsSentAt` / `reviewReceivedAt` / etc. Only the actual workflow actions (send email, upload file, mark complete) touch those fields. Confirmed with Justin this is the correct behavior — preserves audit clarity over "we sent X at time T" vs "I clicked the dropdown at time T".
+- **`bypassRestrictions('<endpoint>')` is mandatory** at handler entry on every Dataverse-touching endpoint — DynamicsService fails closed otherwise. Forgetting this returns "Restrictions not initialized" silently the first time, then accidentally works on subsequent calls within the same dev process.
+- **Picklist optionset values** are now translated in two places: (1) `reviewer-suggestion` adapter `updateLifecycle` translates string → int on write; (2) `pages/api/review-manager/reviewers.js` translates int → string on read for the UI. Don't drift these maps.
+- **Per-template email attachments** are stored as `{ materials: [...], followup: [...], thankyou: [...] }` in localStorage key `review_manager_attachments`. Legacy flat-array values load as the materials bucket (backward-compat). Defensive `Array.isArray` guard at the read site prevents the Turbopack-state-restoration bug we hit during validation.
+- **Test request:** `54e2b88b-04b9-f011-bbd3-6045bd02b4cc` (Quantum Chimera, J26). The Justin Gallivan Test reviewer row on this proposal is the safe send target — email lands in justingallivan@me.com.
+- **Restart dev server** (`pkill -f "next dev" && rm -rf .next && npm run dev`) when Turbopack hot-reload state preservation breaks weird useState shape changes — we hit this once during validation when changing `useState([])` to `useState({...})`.
 
 ## Memory updates this session
 
-No new memory files. Existing memories about the Reviewer Finder Dataverse entry path, akoya_request PD fields, reviewer count invariant, and reviewer history data quality continue to apply.
+- `project_contact_promotion_permission.md` (new) — AppendTo permission gap, what it blocks, what it doesn't, no code change needed once granted
+- `project_external_reviewer_file_access.md` (new) — proposal URL + review upload as one design problem; Connor consult required
 
 ## Testing
 
 ```bash
 # Backend smoke (no auth):
-node scripts/smoke-my-candidates.js jgallivan@wmkeck.org J26      # PD-scoped J26
+node scripts/smoke-my-candidates.js jgallivan@wmkeck.org J26
+node scripts/smoke-review-manager.js jgallivan@wmkeck.org J26
 node scripts/smoke-suggestions-by-request.js 54e2b88b-04b9-f011-bbd3-6045bd02b4cc
-node scripts/smoke-find-by-name.js Coley                          # name lookup across 3 tables
-node scripts/smoke-recent-suggestions.js 5                        # most recent saves
 
-# Browser (real auth) — picker → analyze → save → My Candidates → edit → delete:
-npm run dev                    # if NextAuth 404s, rm -rf .next first
-# Sign in. /reviewer-finder → "From My Proposals" → pick J26 proposal →
-# analyze → discover → save 2-3 candidates. Switch to My Candidates tab.
-# Edit a note, toggle invited, delete one. Refresh. Verify persisted state.
+# Backfill is idempotent — safe to re-run with --dry-run any time to spot-check
+# parity, but DO NOT re-run live: today's PATCHes happened in Dataverse only,
+# so a live re-run would push stale Postgres data over the new Dataverse state.
+node scripts/backfill-postgres-to-dataverse.js --dry-run
+
+# Browser (real auth) — full Review Manager flow:
+npm run dev
+# Sign in. /review-manager → pick J26 cycle → click into Quantum Chimera →
+# verify reviewers list, edit a note, change a status. Open the email modal,
+# pick Materials, render preview, send to Justin Gallivan Test row only.
+# Then upload a small PDF as a review for the same row, then send Thank-you.
 
 # Build check:
 npx next build
