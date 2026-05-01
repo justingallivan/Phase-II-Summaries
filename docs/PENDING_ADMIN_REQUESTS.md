@@ -155,11 +155,12 @@ This uses site-scoped permissions (`Sites.Selected`), not tenant-wide access. Th
 
 ---
 
-## Section 4: Contact AppendTo Privilege (Dynamics Admin)
+## Section 4: Contact AppendTo Privilege (Dynamics Admin) — DONE 2026-05-01
 
 **Goal:** Allow the app to set the `wmkf_contact` lookup on `wmkf_potentialreviewer` rows. Required for Reviewer Finder's contact-promotion flow (when staff first sends materials to a reviewer, that reviewer is promoted to a real CRM contact).
 
 **Date Added:** 2026-04-30
+**Date Resolved:** 2026-05-01 — Connor granted AppendTo on Contact at BusinessUnit level. Verified end-to-end with a test send to `justingallivan@me.com`: `_wmkf_contact_value` populated correctly on the matching `wmkf_potentialreviewer` row.
 
 ### Current Behavior (Verified 2026-04-30)
 
@@ -209,7 +210,7 @@ console.log(records[0]);})();"
 |-------|--------|--------|
 | Azure AD Admin | Add `Sites.Read.All`, `Files.Read.All`, `Mail.Send` to "WMK: Research Review App Suite" + grant consent | Pending |
 | Dynamics Admin | Assign "Email Sender" role (or equivalent privileges) to the app's application user | Pending |
-| Dynamics Admin | Add **AppendTo (BusinessUnit) on Contact** to the app's security role | **Pending** (added 2026-04-30) |
+| Dynamics Admin | Add **AppendTo (BusinessUnit) on Contact** to the app's security role | **Done** (2026-05-01) |
 | IT Admin | Grant `Sites.ReadWrite.Selected` on akoyaGO site to "WMK: Research Review App Suite" | **Done** (2026-04-15) |
 
 Once all are complete, we'll have:
