@@ -12,6 +12,7 @@
 
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
 
 // Map dropdown codes to program name matching patterns
 const PROGRAM_PATTERNS = {
@@ -33,10 +34,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'fiscalYear is required' });
   }
 
+  return bypassDynamicsRestrictions('expertise-finder-proposals', async () => {
   try {
-    // Allow all tables — we're not in Dynamics Explorer context
-    DynamicsService.bypassRestrictions();
-
     const result = await DynamicsService.queryAllRecords('akoya_requests', {
       select: [
         'akoya_requestid', 'akoya_requestnum', 'akoya_title', 'akoya_fiscalyear',
@@ -83,4 +82,5 @@ export default async function handler(req, res) {
       details: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
+  });
 }

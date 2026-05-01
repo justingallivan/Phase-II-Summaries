@@ -37,6 +37,7 @@ import { requireAppAccess } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { safeFetch, isAllowedUrl } from '../../../lib/utils/safe-fetch';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
 import { meetingDateToCycleCode } from '../../../lib/utils/cycle-code';
 import * as suggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
 import * as contactAdapter from '../../../lib/dataverse/adapters/contact';
@@ -76,7 +77,7 @@ export default async function handler(req, res) {
   const allowed = await limiter(req, res);
   if (allowed !== true) return;
 
-  DynamicsService.bypassRestrictions('review-manager-send');
+  return bypassDynamicsRestrictions('review-manager-send', async () => {
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -359,6 +360,7 @@ export default async function handler(req, res) {
     });
     res.end();
   }
+  });
 }
 
 async function loadCycleConfigs(cycleCodes) {

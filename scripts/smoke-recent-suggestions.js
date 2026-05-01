@@ -12,7 +12,8 @@ require('./../lib/dataverse/client').loadEnvLocal();
 (async () => {
   const count = parseInt(process.argv[2], 10) || 5;
   const { DynamicsService } = await import('../lib/services/dynamics-service.js');
-  DynamicsService.bypassRestrictions('smoke');
+  const { bypassDynamicsRestrictions } = await import('../lib/services/dynamics-context.js');
+  return bypassDynamicsRestrictions('smoke', async () => {
 
   const { records: suggestions } = await DynamicsService.queryRecords('wmkf_appreviewersuggestions', {
     select: [
@@ -81,6 +82,7 @@ require('./../lib/dataverse/client').loadEnvLocal();
       console.log('  researcher: (not found)');
     }
   }
+  });
 })().catch((e) => {
   console.error('Smoke failed:', e.message);
   process.exit(1);

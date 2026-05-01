@@ -26,6 +26,7 @@
 import { sql } from '@vercel/postgres';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
 import { resolveByEmail } from '../../../lib/services/program-director-resolver';
 import { meetingDateToCycleCode, cycleCodeToOdataFilter } from '../../../lib/utils/cycle-code';
 
@@ -45,8 +46,7 @@ export default async function handler(req, res) {
   }
 
   // Read-only Dynamics queries; bypass field/table restrictions for this trusted endpoint.
-  DynamicsService.bypassRestrictions('reviewer-finder-my-proposals');
-
+  return bypassDynamicsRestrictions('reviewer-finder-my-proposals', async () => {
   try {
     const pd = await resolveByEmail(azureEmail);
     if (!pd) {
@@ -69,6 +69,7 @@ export default async function handler(req, res) {
       details: process.env.NODE_ENV === 'development' ? err.message : undefined,
     });
   }
+  });
 }
 
 async function listCycles(res, pd) {

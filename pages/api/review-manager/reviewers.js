@@ -22,6 +22,7 @@
 
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
 import { resolveByEmail as resolvePD } from '../../../lib/services/program-director-resolver';
 import { meetingDateToCycleCode, cycleCodeToLabel } from '../../../lib/utils/cycle-code';
 import * as suggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
@@ -79,11 +80,11 @@ export default async function handler(req, res) {
   const access = await requireAppAccess(req, res, 'review-manager');
   if (!access) return;
 
-  DynamicsService.bypassRestrictions('review-manager-reviewers');
-
-  if (req.method === 'GET') return handleGet(req, res, access);
-  if (req.method === 'PATCH') return handlePatch(req, res, access);
-  return res.status(405).json({ error: 'Method not allowed' });
+  return bypassDynamicsRestrictions('review-manager-reviewers', async () => {
+    if (req.method === 'GET') return handleGet(req, res, access);
+    if (req.method === 'PATCH') return handlePatch(req, res, access);
+    return res.status(405).json({ error: 'Method not allowed' });
+  });
 }
 
 async function handleGet(req, res, access) {

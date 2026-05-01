@@ -15,6 +15,7 @@ import * as potentialReviewerAdapter from '../../../lib/dataverse/adapters/poten
 import * as researcherAdapter from '../../../lib/dataverse/adapters/researcher';
 import * as reviewerSuggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -25,8 +26,7 @@ export default async function handler(req, res) {
   if (!access) return;
 
   // Trusted internal writeback — no field/table masking applies.
-  DynamicsService.bypassRestrictions('save-candidates');
-
+  return bypassDynamicsRestrictions('save-candidates', async () => {
   try {
     const {
       proposalTitle,
@@ -144,4 +144,5 @@ export default async function handler(req, res) {
       timestamp: new Date().toISOString()
     });
   }
+  });
 }

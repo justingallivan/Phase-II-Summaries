@@ -28,6 +28,7 @@ import { logUsage } from '../../../lib/utils/usage-logger';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { loadFile } from '../../../lib/utils/file-loader';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
 
 const APP_KEY = 'batch-phase-i-summaries';
 const limiter = nextRateLimiter({ max: 5 });
@@ -65,10 +66,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'fileRef is required' });
   }
 
+  return bypassDynamicsRestrictions('phase-i-dynamics', async () => {
   try {
-    // DynamicsService guards queries behind setRestrictions(); this endpoint
-    // only reads/writes akoya_request by ID, so an empty restriction set is fine.
-    DynamicsService.bypassRestrictions('phase-i-dynamics');
+    // This endpoint only reads/writes akoya_request by ID — restrictions don't apply.
 
     // ─── Pre-flight: don't clobber existing wmkf_ai_summary ─────────────────
     // User-initiated flows should never silently overwrite prior analyses.
@@ -217,6 +217,7 @@ export default async function handler(req, res) {
       details: process.env.NODE_ENV === 'development' ? err.message : undefined,
     });
   }
+  });
 }
 
 // Returns true when the audit row was successfully created. Failures are

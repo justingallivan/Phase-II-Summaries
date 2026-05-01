@@ -18,9 +18,10 @@ require('./../lib/dataverse/client').loadEnvLocal();
   const cycleCode = process.argv[3];
 
   const { DynamicsService } = await import('../lib/services/dynamics-service.js');
+  const { bypassDynamicsRestrictions } = await import('../lib/services/dynamics-context.js');
   const { meetingDateToCycleCode, cycleCodeToOdataFilter } = await import('../lib/utils/cycle-code.js');
 
-  DynamicsService.bypassRestrictions('smoke');
+  return bypassDynamicsRestrictions('smoke', async () => {
 
   // Inline resolveByEmail: smoke script can't import `program-director-resolver`
   // because that module imports `./dynamics-service` without an extension —
@@ -102,6 +103,7 @@ require('./../lib/dataverse/client').loadEnvLocal();
       `  ${r.akoya_requestnum}  ${(r._akoya_applicantid_value_formatted || '?').padEnd(36)}  PI: ${(r._wmkf_projectleader_value_formatted || '?').padEnd(28)}  ${slots}/5  status: ${status}`,
     );
   }
+  });
 })().catch((e) => {
   console.error(e);
   process.exit(1);

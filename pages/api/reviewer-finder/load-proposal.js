@@ -19,6 +19,7 @@
 import { put } from '@vercel/blob';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
 import { GraphService } from '../../../lib/services/graph-service';
 import { getRequestSharePointBuckets } from '../../../lib/utils/sharepoint-buckets';
 import { classifyFile } from '../grant-reporting/lookup-grant';
@@ -66,8 +67,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'requestId is required' });
   }
 
-  DynamicsService.bypassRestrictions('reviewer-finder-load-proposal');
-
+  return bypassDynamicsRestrictions('reviewer-finder-load-proposal', async () => {
   try {
     // 1. Resolve request_number for SharePoint folder lookup.
     const request = await DynamicsService.getRecord('akoya_requests', requestId, {
@@ -161,4 +161,5 @@ export default async function handler(req, res) {
       details: process.env.NODE_ENV === 'development' ? err.message : undefined,
     });
   }
+  });
 }

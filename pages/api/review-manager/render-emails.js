@@ -30,6 +30,7 @@ import {
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
 import { meetingDateToCycleCode } from '../../../lib/utils/cycle-code';
 import * as suggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
 
@@ -51,8 +52,7 @@ export default async function handler(req, res) {
   const allowed = await limiter(req, res);
   if (allowed !== true) return;
 
-  DynamicsService.bypassRestrictions('review-manager-render');
-
+  return bypassDynamicsRestrictions('review-manager-render', async () => {
   try {
     const {
       suggestionIds,
@@ -170,6 +170,7 @@ export default async function handler(req, res) {
       details: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
+  });
 }
 
 async function loadCycleConfigs(cycleCodes) {

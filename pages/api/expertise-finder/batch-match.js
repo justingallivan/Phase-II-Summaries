@@ -23,6 +23,7 @@ import { createMatchingPrompt, SYSTEM_PROMPT } from '../../../shared/config/prom
 import { logUsage, estimateCostCents } from '../../../lib/utils/usage-logger';
 import { createHash } from 'crypto';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
 import { GraphService } from '../../../lib/services/graph-service';
 
 const APP_KEY = 'expertise-finder';
@@ -41,6 +42,7 @@ export default async function handler(req, res) {
   const primaryModel = getModelForApp(APP_KEY);
   const fallbackModel = getFallbackModelForApp(APP_KEY);
 
+  return bypassDynamicsRestrictions('expertise-finder-batch-match', async () => {
   try {
     const { requestId, requestNumber, additionalNotes } = req.body;
 
@@ -49,8 +51,6 @@ export default async function handler(req, res) {
     }
 
     // Step 1: Resolve SharePoint folder for this request
-    DynamicsService.bypassRestrictions();
-
     const locResult = await DynamicsService.queryRecords('sharepointdocumentlocations', {
       select: 'name,relativeurl,_parentsiteorlocation_value',
       filter: `_regardingobjectid_value eq '${requestId}'`,
@@ -231,6 +231,7 @@ export default async function handler(req, res) {
       details: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
+  });
 }
 
 async function callClaude(apiKey, model, prompt) {

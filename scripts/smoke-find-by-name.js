@@ -8,7 +8,8 @@ require('./../lib/dataverse/client').loadEnvLocal();
   const frag = process.argv[2];
   if (!frag) { console.error('name fragment required'); process.exit(1); }
   const { DynamicsService } = await import('../lib/services/dynamics-service.js');
-  DynamicsService.bypassRestrictions('smoke');
+  const { bypassDynamicsRestrictions } = await import('../lib/services/dynamics-context.js');
+  return bypassDynamicsRestrictions('smoke', async () => {
 
   const escaped = frag.replace(/'/g, "''");
 
@@ -39,4 +40,5 @@ require('./../lib/dataverse/client').loadEnvLocal();
     });
     console.log(`    researcher: ${rs.length ? `h-index ${rs[0].wmkf_hindex ?? '-'} / cites ${rs[0].wmkf_totalcitations ?? '-'}` : '(none)'}`);
   }
+  });
 })().catch((e) => { console.error(e.message); process.exit(1); });

@@ -14,8 +14,9 @@ require('./../lib/dataverse/client').loadEnvLocal();
   const cycleCode = process.argv[3] || null;
 
   const { DynamicsService } = await import('../lib/services/dynamics-service.js');
+  const { bypassDynamicsRestrictions } = await import('../lib/services/dynamics-context.js');
   const suggestionAdapter = await import('../lib/dataverse/adapters/reviewer-suggestion.js');
-  DynamicsService.bypassRestrictions('smoke');
+  return bypassDynamicsRestrictions('smoke', async () => {
 
   const escaped = email.replace(/'/g, "''");
   const userQ = await DynamicsService.queryRecords('systemusers', {
@@ -48,4 +49,5 @@ require('./../lib/dataverse/client').loadEnvLocal();
     }
   }
   process.exit(0);
+  });
 })().catch((e) => { console.error(e.message); process.exit(1); });

@@ -16,6 +16,7 @@ import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { sql } from '@vercel/postgres';
 import ExcelJS from 'exceljs';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { withDynamicsContext } from '../../../lib/services/dynamics-context';
 import { GraphService } from '../../../lib/services/graph-service';
 import { getRequestSharePointBuckets } from '../../../lib/utils/sharepoint-buckets';
 import { buildSystemPrompt, TOOL_DEFINITIONS, TABLE_ANNOTATIONS } from '../../../shared/config/prompts/dynamics-explorer';
@@ -92,7 +93,7 @@ export default async function handler(req, res) {
       getActiveRestrictions(),
     ]);
     const requestId = crypto.randomUUID();
-    DynamicsService.setRestrictions(restrictions, requestId);
+    return await withDynamicsContext({ restrictions, requestId }, async () => {
     const systemPrompt = buildSystemPrompt({ userRole, restrictions });
 
     // Only send the last few user/assistant exchanges to stay within token limits
@@ -213,6 +214,7 @@ export default async function handler(req, res) {
     console.log(`[DynExp] Hit max rounds (${MAX_TOOL_ROUNDS}) without final answer`);
     sendEvent('response', { content: 'Reached maximum query steps. Please refine your question.' });
     sendEvent('complete', { rounds: round, maxRoundsReached: true, suggestFeedback: true });
+    });
   } catch (error) {
     console.error('Dynamics Explorer chat error:', error);
     sendEvent('error', {

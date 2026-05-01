@@ -34,6 +34,7 @@
 
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
 import { GraphService } from '../../../lib/services/graph-service';
 import { getRequestSharePointBuckets } from '../../../lib/utils/sharepoint-buckets';
 
@@ -75,10 +76,10 @@ export default async function handler(req, res) {
   const trimmed = requestNumber.trim();
   const errors = { dynamics: null, sharepoint: null };
 
+  return bypassDynamicsRestrictions('grant-reporting-lookup', async () => {
   // ─── Step 1: Dynamics lookup ─────────────────────────────────────────────
   let record = null;
   try {
-    DynamicsService.bypassRestrictions();
     const result = await DynamicsService.queryRecords('akoya_requests', {
       select: HEADER_FIELDS,
       filter: `akoya_requestnum eq '${escapeOData(trimmed)}'`,
@@ -127,6 +128,7 @@ export default async function handler(req, res) {
     header,
     documents,
     errors,
+  });
   });
 }
 

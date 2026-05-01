@@ -7,7 +7,8 @@ require('./../lib/dataverse/client').loadEnvLocal();
   const reqId = process.argv[2];
   if (!reqId) { console.error('requestGuid required'); process.exit(1); }
   const { DynamicsService } = await import('../lib/services/dynamics-service.js');
-  DynamicsService.bypassRestrictions('smoke');
+  const { bypassDynamicsRestrictions } = await import('../lib/services/dynamics-context.js');
+  return bypassDynamicsRestrictions('smoke', async () => {
 
   const { records } = await DynamicsService.queryRecords('wmkf_appreviewersuggestions', {
     select: 'wmkf_appreviewersuggestionid,wmkf_suggestionlabel,wmkf_relevancescore,wmkf_selected,createdon,modifiedon,_wmkf_potentialreviewer_value',
@@ -25,4 +26,5 @@ require('./../lib/dataverse/client').loadEnvLocal();
     console.log(`    modified: ${s.modifiedon}`);
     console.log(`    score:    ${s.wmkf_relevancescore} | selected: ${s.wmkf_selected}`);
   }
+  });
 })().catch((e) => { console.error(e.message); process.exit(1); });

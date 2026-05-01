@@ -14,6 +14,7 @@
 import { put } from '@vercel/blob';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
 import * as suggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
 import Busboy from 'busboy';
 
@@ -33,8 +34,7 @@ export default async function handler(req, res) {
   const access = await requireAppAccess(req, res, 'review-manager');
   if (!access) return;
 
-  DynamicsService.bypassRestrictions('review-manager-upload');
-
+  return bypassDynamicsRestrictions('review-manager-upload', async () => {
   try {
     const { fields, fileData, fileName, fileContentType } = await parseFormData(req);
 
@@ -88,6 +88,7 @@ export default async function handler(req, res) {
       timestamp: new Date().toISOString(),
     });
   }
+  });
 }
 
 function parseFormData(req) {

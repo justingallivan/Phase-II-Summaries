@@ -15,9 +15,10 @@ require('./../lib/dataverse/client').loadEnvLocal();
   const cycleCode = process.argv[3] || null;
 
   const { DynamicsService } = await import('../lib/services/dynamics-service.js');
+  const { bypassDynamicsRestrictions } = await import('../lib/services/dynamics-context.js');
   const { meetingDateToCycleCode, cycleCodeToOdataFilter, cycleCodeToLabel } =
     await import('../lib/utils/cycle-code.js');
-  DynamicsService.bypassRestrictions('smoke');
+  return bypassDynamicsRestrictions('smoke', async () => {
 
   // Resolve PD
   const escaped = email.replace(/'/g, "''");
@@ -73,4 +74,5 @@ require('./../lib/dataverse/client').loadEnvLocal();
       console.log(`    · ${s.wmkf_suggestionlabel}  [${lc}]  score=${s.wmkf_relevancescore}`);
     }
   }
+  });
 })().catch((e) => { console.error(e.message); process.exit(1); });

@@ -22,6 +22,7 @@
 
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
 import { resolveByEmail as resolvePD } from '../../../lib/services/program-director-resolver';
 import { meetingDateToCycleCode, cycleCodeToLabel } from '../../../lib/utils/cycle-code';
 import * as suggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
@@ -64,12 +65,12 @@ export default async function handler(req, res) {
   if (!access) return;
 
   // Trusted internal endpoint — no field/table masking applies.
-  DynamicsService.bypassRestrictions('my-candidates');
-
-  if (req.method === 'GET') return handleGet(req, res, access);
-  if (req.method === 'PATCH') return handlePatch(req, res, access);
-  if (req.method === 'DELETE') return handleDelete(req, res, access);
-  return res.status(405).json({ error: 'Method not allowed' });
+  return bypassDynamicsRestrictions('my-candidates', async () => {
+    if (req.method === 'GET') return handleGet(req, res, access);
+    if (req.method === 'PATCH') return handlePatch(req, res, access);
+    if (req.method === 'DELETE') return handleDelete(req, res, access);
+    return res.status(405).json({ error: 'Method not allowed' });
+  });
 }
 
 // ───────── GET ─────────
