@@ -155,12 +155,61 @@ This uses site-scoped permissions (`Sites.Selected`), not tenant-wide access. Th
 
 ---
 
+## Section 4: Contact AppendTo Privilege (Dynamics Admin)
+
+**Goal:** Allow the app to set the `wmkf_contact` lookup on `wmkf_potentialreviewer` rows. Required for Reviewer Finder's contact-promotion flow (when staff first sends materials to a reviewer, that reviewer is promoted to a real CRM contact).
+
+**Date Added:** 2026-04-30
+
+### Current Behavior (Verified 2026-04-30)
+
+The app **can** create new `contact` records (the find-or-create path succeeds and the contact lands in CRM). The app **cannot** set a lookup *to* that contact from another entity — the PATCH on `wmkf_potentialreviewerses(...)` with `wmkf_Contact@odata.bind` returns:
+
+```
+403: user with id 53e97fb3-a006-f111-8406-000d3a352682 does not have AppendToAccess
+right(s) for record with id <contactid> of entity Contact. Consider assigning a
+role with the level BusinessUnitLevel to the user or team.
+```
+
+So today: contact promotion creates orphan contacts (no link back from the potentialreviewer). Re-running on the same email won't duplicate (find-by-email reuses), but the link stays empty.
+
+### What's Needed
+
+Add the **AppendTo** privilege on **Contact** at **BusinessUnit** level to the `# WMK: Research Review App Suite` security role.
+
+### Steps
+
+1. Go to **Power Platform Admin Center → (your environment) → Settings → Security → Security Roles**
+2. Find the `# WMK: Research Review App Suite` role
+3. On the **Customization** or **Core Records** tab, find **Contact**
+4. Set **AppendTo** to BusinessUnit (the green half-circle icon)
+5. Save and Close
+
+### How to Verify
+
+After the privilege is granted, send any reviewer invite via Review Manager and check:
+
+```bash
+node -e "require('./lib/dataverse/client').loadEnvLocal();
+(async()=>{const{DynamicsService}=await import('./lib/services/dynamics-service.js');
+DynamicsService.bypassRestrictions('check');
+const{records}=await DynamicsService.queryRecords('wmkf_potentialreviewerses',
+  {select:'wmkf_name,wmkf_emailaddress,_wmkf_contact_value',
+   filter:\"wmkf_emailaddress eq '<reviewer-email>'\",top:1});
+console.log(records[0]);})();"
+```
+
+`_wmkf_contact_value` should be a contact GUID, not null.
+
+---
+
 ## Summary
 
 | Admin | Action | Status |
 |-------|--------|--------|
 | Azure AD Admin | Add `Sites.Read.All`, `Files.Read.All`, `Mail.Send` to "WMK: Research Review App Suite" + grant consent | Pending |
 | Dynamics Admin | Assign "Email Sender" role (or equivalent privileges) to the app's application user | Pending |
+| Dynamics Admin | Add **AppendTo (BusinessUnit) on Contact** to the app's security role | **Pending** (added 2026-04-30) |
 | IT Admin | Grant `Sites.ReadWrite.Selected` on akoyaGO site to "WMK: Research Review App Suite" | **Done** (2026-04-15) |
 
 Once all are complete, we'll have:

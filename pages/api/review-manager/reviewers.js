@@ -32,6 +32,7 @@ const REQUEST_FIELDS = [
   'akoya_title',
   'wmkf_meetingdate',
   'wmkf_abstract',
+  'wmkf_organizationname',
   '_akoya_applicantid_value',
   '_wmkf_projectleader_value',
   '_wmkf_grantprogram_value',
@@ -70,6 +71,7 @@ function projectRequest(r) {
     projectLeader: r._wmkf_projectleader_value_formatted || null,
     grantProgram: r._wmkf_grantprogram_value_formatted || null,
     programArea: r._wmkf_programareaserved_value_formatted || null,
+    organizationName: r.wmkf_organizationname || null,
   };
 }
 
@@ -120,6 +122,7 @@ async function handleGet(req, res, access) {
           projectLeader: r.projectLeader,
           grantProgram: r.grantProgram,
           programArea: r.programArea,
+          organizationName: r.organizationName,
         };
       }
     }
@@ -154,7 +157,7 @@ async function handleGet(req, res, access) {
           proposalTitle: request.title || `Request ${request.requestNumber || ''}`.trim(),
           proposalAbstract: request.abstract,
           proposalAuthors: request.projectLeader || request.applicant,
-          proposalInstitution: null,
+          proposalInstitution: request.organizationName || request.applicant || null,
           requestNumber: request.requestNumber,
           programArea: request.programArea,
           grantCycleCode: request.cycleCode,

@@ -142,7 +142,19 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
     commitDate: '',
     honorarium: '',
   });
-  const [attachments, setAttachments] = useState([]); // [{ url, filename, size }]
+  // Attachments are per-template-type so switching templates (e.g. Materials
+  // → Thank-you) doesn't carry over the proposal PDF or other type-specific files.
+  const [attachmentsByType, setAttachmentsByType] = useState({ materials: [], followup: [], thankyou: [] });
+  const attachments = Array.isArray(attachmentsByType?.[templateType]) ? attachmentsByType[templateType] : [];
+  const setAttachments = (updater) => {
+    setAttachmentsByType((prev) => {
+      const current = prev[templateType] || [];
+      const next = typeof updater === 'function' ? updater(current) : updater;
+      const merged = { ...prev, [templateType]: next };
+      try { localStorage.setItem(ATTACHMENTS_STORAGE_KEY, JSON.stringify(merged)); } catch (e) { /* ignore */ }
+      return merged;
+    });
+  };
   const [isUploading, setIsUploading] = useState(false);
 
   // Reset transient state when modal opens
@@ -171,7 +183,16 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
     } catch (e) { /* ignore */ }
     try {
       const saved = localStorage.getItem(ATTACHMENTS_STORAGE_KEY);
-      if (saved) setAttachments(JSON.parse(saved));
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Backward-compat: legacy storage was a flat array of attachments.
+        // Treat that as materials (where attachments were intended to land).
+        if (Array.isArray(parsed)) {
+          setAttachmentsByType({ materials: parsed, followup: [], thankyou: [] });
+        } else {
+          setAttachmentsByType({ materials: [], followup: [], thankyou: [], ...parsed });
+        }
+      }
     } catch (e) { /* ignore */ }
   }, []);
 
@@ -179,9 +200,9 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
     try {
       localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templates));
       localStorage.setItem(EMAIL_FIELDS_STORAGE_KEY, JSON.stringify(emailFields));
-      localStorage.setItem(ATTACHMENTS_STORAGE_KEY, JSON.stringify(attachments));
+      localStorage.setItem(ATTACHMENTS_STORAGE_KEY, JSON.stringify(attachmentsByType));
     } catch (e) { /* ignore */ }
-  }, [templates, emailFields, attachments]);
+  }, [templates, emailFields, attachmentsByType]);
 
   const handleFileUpload = async (e) => {
     const files = Array.from(e.target.files);
@@ -195,11 +216,7 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
           handleUploadUrl: '/api/upload-handler',
         });
         const newAttachment = { url: blob.url, filename: file.name, size: file.size };
-        setAttachments(prev => {
-          const updated = [...prev, newAttachment];
-          try { localStorage.setItem(ATTACHMENTS_STORAGE_KEY, JSON.stringify(updated)); } catch (ex) { /* ignore */ }
-          return updated;
-        });
+        setAttachments((prev) => [...prev, newAttachment]);
       }
     } catch (err) {
       setError(`Failed to upload: ${err.message}`);
@@ -210,11 +227,7 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
   };
 
   const removeAttachment = (index) => {
-    setAttachments(prev => {
-      const updated = prev.filter((_, i) => i !== index);
-      try { localStorage.setItem(ATTACHMENTS_STORAGE_KEY, JSON.stringify(updated)); } catch (e) { /* ignore */ }
-      return updated;
-    });
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const formatFileSize = (bytes) => {
@@ -943,6 +956,7 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
         body: JSON.stringify({ proposalId: proposal.proposalId, proposalUrl, proposalPassword }),
       });
       if (onSettingsChange) onSettingsChange('proposalUrl', proposalUrl);
+      if (onRefresh) onRefresh();
     } catch (err) {
       console.error('Failed to save proposal fields:', err);
     } finally {

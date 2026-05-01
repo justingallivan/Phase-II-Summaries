@@ -80,7 +80,7 @@ export default async function handler(req, res) {
           select: 'wmkf_name,wmkf_emailaddress,wmkf_organizationname',
         }).catch(() => null) : null,
         requestId ? DynamicsService.getRecord('akoya_requests', requestId, {
-          select: 'akoya_requestid,akoya_requestnum,akoya_title,wmkf_abstract,_akoya_applicantid_value,_wmkf_projectleader_value,wmkf_meetingdate',
+          select: 'akoya_requestid,akoya_requestnum,akoya_title,wmkf_abstract,wmkf_organizationname,_akoya_applicantid_value,_wmkf_projectleader_value,wmkf_meetingdate',
         }).catch(() => null) : null,
       ]);
       rows.push({ suggestionId, sug, person, request });
@@ -127,7 +127,7 @@ export default async function handler(req, res) {
         authors: request?._wmkf_projectleader_value_formatted
           || request?._akoya_applicantid_value_formatted
           || null,
-        institution: null, // not directly on akoya_request
+        institution: (request?.wmkf_organizationname || request?._akoya_applicantid_value_formatted || '').trim() || null,
         coInvestigators: null, // historical Postgres-only field; not migrated
         coInvestigatorCount: null,
       };
