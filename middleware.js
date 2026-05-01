@@ -17,6 +17,7 @@
 
 import { NextResponse } from 'next/server';
 import { withAuth } from 'next-auth/middleware';
+import { isAuthRequired } from './lib/utils/auth-policy';
 
 export default withAuth(
   function middleware(req) {
@@ -81,8 +82,9 @@ export default withAuth(
       authorized({ req, token }) {
         const pathname = req.nextUrl.pathname;
         if (pathname?.startsWith('/auth/')) return true;
-        // Kill switch: allow all when auth is not required
-        if (process.env.AUTH_REQUIRED !== 'true') return true;
+        // Single source of truth shared with API routes — fails closed in
+        // production if AUTH_REQUIRED is missing or credentials are absent.
+        if (!isAuthRequired()) return true;
         // Require a valid JWT with azureId (empty token from idle timeout returns {})
         if (!token?.azureId) return false;
         // Defense-in-depth idle check: reject if lastActivity is stale (2 hours)
