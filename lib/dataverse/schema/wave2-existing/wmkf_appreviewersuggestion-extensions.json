@@ -1,0 +1,100 @@
+{
+  "name": "wmkf_appreviewersuggestion-extensions",
+  "kind": "extensions-on-existing",
+  "entityLogicalName": "wmkf_appreviewersuggestion",
+  "attributes": [
+    {
+      "type": "String",
+      "schemaName": "wmkf_ExternalTokenHash",
+      "displayName": "External Token Hash",
+      "description": "SHA-256 hex digest of the issued external-access JWT. Verification compares against the presented token's hash so individual tokens can be revoked (or replaced by minting a new one) without rotating the global secret.",
+      "maxLength": 64
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_ExternalTokenIssued",
+      "displayName": "External Token Issued",
+      "description": "When the external-access magic-link token was minted (typically at suggestion accept-time)."
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_ExternalTokenExpires",
+      "displayName": "External Token Expires",
+      "description": "Hard expiry of the external-access token. Default policy: review due date + 4 weeks grace."
+    },
+    {
+      "type": "Boolean",
+      "schemaName": "wmkf_ExternalTokenRevoked",
+      "displayName": "External Token Revoked",
+      "description": "Manual or automatic revocation flag. Auto-revoked when the suggestion is declined or withdrawn, or when a replacement token is minted.",
+      "default": false
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_ProposalFirstAccessed",
+      "displayName": "Proposal First Accessed",
+      "description": "First time the reviewer clicked the magic link and successfully reached the landing page. Distinct from wmkf_emailopenedat (email-pixel open) — this is intent-to-engage."
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ReviewSharePointFolder",
+      "displayName": "Review SharePoint Folder",
+      "description": "Path to the reviewer's per-suggestion folder under the akoya_request library. Format: '{requestNumber}_{guidNoHyphensUpper}/Reviews/{suggestionGuid}'. Library is always 'akoya_request'.",
+      "maxLength": 500
+    },
+    {
+      "type": "Boolean",
+      "schemaName": "wmkf_ReviewUploadedByStaff",
+      "displayName": "Review Uploaded By Staff",
+      "description": "True if foundation staff uploaded the review on the reviewer's behalf (paper, email-attachment, lost-link). False or null if reviewer self-served via the magic link.",
+      "default": false
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ReviewerAffiliation",
+      "displayName": "Reviewer Affiliation",
+      "description": "The reviewer's title and organization at review-submission time, as entered on the form. Pre-filled from CRM if known but reviewer-editable, since affiliations shift between invite and submission.",
+      "maxLength": 300
+    },
+    {
+      "type": "Picklist",
+      "schemaName": "wmkf_ReviewerImpact",
+      "displayName": "Reviewer Impact Rating",
+      "description": "Q1 of the review form: 'If the proposed project is successful in its entirety, how will it impact the field?' 99 is a sentinel for 'unable to answer' — filter (< 99) when computing aggregates.",
+      "options": [
+        { "value": 1, "label": "Little to no impact" },
+        { "value": 2, "label": "Will result in publications of disciplinary interest" },
+        { "value": 3, "label": "Will result in publications of broad interest" },
+        { "value": 4, "label": "Will rewrite textbooks" },
+        { "value": 99, "label": "Unable to answer" }
+      ]
+    },
+    {
+      "type": "Picklist",
+      "schemaName": "wmkf_ReviewerRisk",
+      "displayName": "Reviewer Risk Rating",
+      "description": "Q3 of the review form: 'How risky is the project overall?' Note: higher is NOT worse — Keck Foundation explicitly funds risky projects. Do not treat this as a quality signal in aggregate analysis. 99 is a sentinel for 'unable to answer'.",
+      "options": [
+        { "value": 1, "label": "Low risk (will likely work in its entirety)" },
+        { "value": 2, "label": "Medium risk (parts may succeed, others may fail)" },
+        { "value": 3, "label": "High risk (significant risk of failure)" },
+        { "value": 4, "label": "Impossible (fatal flaw)" },
+        { "value": 99, "label": "Unable to answer" }
+      ]
+    },
+    {
+      "type": "Picklist",
+      "schemaName": "wmkf_ReviewerOverallRating",
+      "displayName": "Reviewer Overall Rating",
+      "description": "Q10 of the review form: 'Please assign an overall rating to the proposal.' Higher = better, suitable for averaging. 99 is a sentinel for 'unable to answer' — filter (< 99) when computing aggregates.",
+      "options": [
+        { "value": 1, "label": "Poor" },
+        { "value": 2, "label": "Fair" },
+        { "value": 3, "label": "Good" },
+        { "value": 4, "label": "Very Good" },
+        { "value": 5, "label": "Excellent" },
+        { "value": 99, "label": "Unable to answer" }
+      ]
+    }
+  ]
+}
