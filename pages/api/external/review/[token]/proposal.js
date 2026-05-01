@@ -1,0 +1,108 @@
+/**
+ * GET /api/external/review/[token]/proposal?fileId=...&library=...
+ *
+ * Streams a single proposal-related file from SharePoint to the reviewer.
+ * Backend authenticates as the app registration; the reviewer never sees a
+ * SharePoint URL or token.
+ *
+ * Defense against arbitrary-file access: we re-list the request's allowed
+ * file set and require the requested (library, fileId) tuple to be a
+ * member. The client gets these tuples from /context and so can't probe
+ * for files outside the request's document graph.
+ */
+
+import { verifySuggestionToken } from '../../../../../lib/external/verify-suggestion-token';
+import { GraphService } from '../../../../../lib/services/graph-service';
+import { getRequestSharePointBuckets } from '../../../../../lib/utils/sharepoint-buckets';
+
+export default async function handler(req, res) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
+    return res.status(405).json({ ok: false, reason: 'method_not_allowed' });
+  }
+
+  const { token, fileId, library } = req.query;
+  if (!fileId || !library) {
+    return res.status(400).json({ ok: false, reason: 'fileId_and_library_required' });
+  }
+
+  try {
+    const verified = await verifySuggestionToken(token);
+    if (!verified.ok) {
+      return res.status(verified.reason === 'not_found' ? 404 : 401).json({
+        ok: false,
+        reason: verified.reason,
+      });
+    }
+
+    const { request } = verified;
+
+    const allowed = await isFileInRequestSet(
+      request.akoya_requestid,
+      request.akoya_requestnum,
+      library,
+      fileId,
+    );
+    if (!allowed) {
+      return res.status(403).json({ ok: false, reason: 'file_not_in_request_set' });
+    }
+
+    const driveId = await GraphService.getDriveId(library);
+    const file = await GraphService.downloadFile(driveId, fileId);
+
+    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeFilename(file.filename)}"`,
+    );
+    res.setHeader('Content-Length', file.size);
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.status(200).send(file.buffer);
+  } catch (e) {
+    console.error('[external proposal] error:', e);
+    return res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+}
+
+/**
+ * Walk the request's SharePoint buckets and check whether the (library,
+ * fileId) pair appears. Excludes anything under `Reviews/` so reviewers
+ * can't fetch each other's uploaded reviews.
+ */
+async function isFileInRequestSet(requestId, requestNumber, library, fileId) {
+  const buckets = await getRequestSharePointBuckets(requestId, requestNumber);
+  // Only probe buckets that actually match the requested library — saves
+  // round-trips on archive libraries we don't need.
+  const targetBuckets = buckets.filter(b => b.library.toLowerCase() === library.toLowerCase());
+  if (targetBuckets.length === 0) return false;
+
+  for (const bucket of targetBuckets) {
+    let items;
+    try {
+      items = await GraphService.listFiles(bucket.library, bucket.folder, {
+        recursive: true,
+        maxDepth: 3,
+      });
+    } catch {
+      continue;
+    }
+    for (const f of items) {
+      if (/(^|\/)Reviews(\/|$)/i.test(f.folder || '')) continue;
+      if (f.id === fileId) return true;
+    }
+  }
+  return false;
+}
+
+function encodeFilename(name) {
+  // RFC 5987-ish: just strip quotes/CR/LF for the filename= attribute. The
+  // browser handles the rest. Real Unicode filenames need the `filename*=`
+  // form, but for our PDF-heavy file set this is fine.
+  return String(name || 'file').replace(/["\r\n]/g, '');
+}
+
+export const config = {
+  api: {
+    responseLimit: '60mb',
+  },
+};

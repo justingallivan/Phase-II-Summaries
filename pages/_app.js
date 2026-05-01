@@ -13,9 +13,12 @@ export default function App({ Component, pageProps: { session, ...pageProps } })
   // Auth pages render before any session/profile exists. Skip the
   // profile/app-access providers there so they don't fire authenticated
   // API calls that get redirected to HTML and break JSON.parse.
-  const isAuthPage = router.pathname.startsWith('/auth/');
+  // External pages (magic-link reviewer portal) are public — same exclusion
+  // applies, plus they intentionally render no app chrome.
+  const isPublicPage =
+    router.pathname.startsWith('/auth/') || router.pathname.startsWith('/external/');
 
-  const inner = isAuthPage ? (
+  const inner = isPublicPage ? (
     <Component {...pageProps} />
   ) : (
     <RequireAuth>

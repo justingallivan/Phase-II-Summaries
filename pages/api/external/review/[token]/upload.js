@@ -1,0 +1,173 @@
+/**
+ * POST /api/external/review/[token]/upload
+ *
+ * Multipart form-data: 1..5 files plus structured form fields. Token
+ * verification gives us the suggestion id; everything else (file
+ * validation, SharePoint write, Dataverse PATCH, rollback) goes through
+ * the shared `writeReviewFiles` core so the staff and self-serve paths
+ * can never drift.
+ */
+
+import Busboy from 'busboy';
+import { verifySuggestionToken } from '../../../../../lib/external/verify-suggestion-token';
+import { writeReviewFiles } from '../../../../../lib/services/review-upload';
+import { bypassDynamicsRestrictions } from '../../../../../lib/services/dynamics-context';
+
+const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 MB per file
+const MAX_FILES = 5;
+
+export const config = {
+  api: {
+    bodyParser: false, // busboy needs the raw stream
+  },
+};
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return res.status(405).json({ ok: false, reason: 'method_not_allowed' });
+  }
+
+  try {
+    const verified = await verifySuggestionToken(req.query.token);
+    if (!verified.ok) {
+      return res.status(verified.reason === 'not_found' ? 404 : 401).json({
+        ok: false,
+        reason: verified.reason,
+      });
+    }
+
+    let parsed;
+    try {
+      parsed = await parseMultipart(req);
+    } catch (e) {
+      if (e.code === 'FILE_TOO_LARGE') {
+        return res.status(413).json({
+          ok: false,
+          reason: 'file_too_large',
+          errors: [`Each file must be under ${MAX_FILE_BYTES / 1024 / 1024} MB.`],
+        });
+      }
+      if (e.code === 'TOO_MANY_FILES') {
+        return res.status(413).json({
+          ok: false,
+          reason: 'too_many_files',
+          errors: [`Max ${MAX_FILES} files per upload.`],
+        });
+      }
+      throw e;
+    }
+
+    const { files, fields } = parsed;
+    if (files.length === 0) {
+      return res.status(400).json({ ok: false, reason: 'validation', errors: ['At least one file is required.'] });
+    }
+
+    const result = await bypassDynamicsRestrictions('external-upload', () =>
+      writeReviewFiles({
+        suggestionId: verified.suggestion.wmkf_appreviewersuggestionid,
+        files,
+        structuredData: fields,
+        opts: { source: 'reviewer_self_token', performedBy: null },
+      }),
+    );
+
+    if (!result.ok) {
+      const status = result.reason === 'validation' ? 400
+        : result.reason === 'not_found' ? 404
+        : 500;
+      return res.status(status).json(result);
+    }
+
+    return res.status(200).json({
+      ok: true,
+      folder: result.folder,
+      files: result.files.map(f => ({ name: f.name, size: f.size })),
+    });
+  } catch (e) {
+    console.error('[external upload] error:', e);
+    return res.status(500).json({ ok: false, reason: 'server_error' });
+  }
+}
+
+/**
+ * Stream-parse multipart/form-data into in-memory file Buffers + scalar fields.
+ * Caps enforced here:
+ *   - per-file size (busboy's `limits.fileSize`)
+ *   - total file count (`limits.files`)
+ *
+ * `writeReviewFiles` re-validates magic bytes and counts as a defense in
+ * depth — the parser caps are about not buffering attacker-sized payloads
+ * into memory in the first place.
+ */
+function parseMultipart(req) {
+  return new Promise((resolve, reject) => {
+    let busboy;
+    try {
+      busboy = Busboy({
+        headers: req.headers,
+        limits: {
+          fileSize: MAX_FILE_BYTES,
+          files: MAX_FILES,
+          fieldSize: 4096,
+          fields: 50,
+        },
+      });
+    } catch (e) {
+      return reject(e);
+    }
+
+    const files = [];
+    const fields = {};
+    let aborted = false;
+
+    busboy.on('file', (_fieldname, fileStream, info) => {
+      if (aborted) {
+        fileStream.resume();
+        return;
+      }
+      const chunks = [];
+      let truncated = false;
+      fileStream.on('data', chunk => chunks.push(chunk));
+      fileStream.on('limit', () => {
+        truncated = true;
+        aborted = true;
+        const err = new Error('FILE_TOO_LARGE');
+        err.code = 'FILE_TOO_LARGE';
+        reject(err);
+      });
+      fileStream.on('end', () => {
+        if (aborted || truncated) return;
+        files.push({
+          filename: info.filename,
+          buffer: Buffer.concat(chunks),
+          mimeType: info.mimeType,
+        });
+      });
+    });
+
+    busboy.on('filesLimit', () => {
+      aborted = true;
+      const err = new Error('TOO_MANY_FILES');
+      err.code = 'TOO_MANY_FILES';
+      reject(err);
+    });
+
+    busboy.on('field', (name, value) => {
+      // Coerce numeric picklist strings to numbers; review-form-schema also
+      // tolerates strings, but we normalize here to keep the shape clean.
+      const numeric = Number(value);
+      fields[name] = value !== '' && !Number.isNaN(numeric) && /^-?\d+$/.test(value)
+        ? numeric
+        : value;
+    });
+
+    busboy.on('error', reject);
+    busboy.on('finish', () => {
+      if (aborted) return;
+      resolve({ files, fields });
+    });
+
+    req.pipe(busboy);
+  });
+}
