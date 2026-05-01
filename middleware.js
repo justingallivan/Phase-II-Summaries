@@ -82,6 +82,11 @@ export default withAuth(
       authorized({ req, token }) {
         const pathname = req.nextUrl.pathname;
         if (pathname?.startsWith('/auth/')) return true;
+        // External-party paths (reviewer magic-link, etc.) authenticate at the
+        // route level via a signed token in the URL — see lib/services/external-token.js.
+        // We bypass NextAuth here so the page/API can run without an AzureAD session,
+        // but stay inside the middleware function so CSP headers are still applied.
+        if (pathname?.startsWith('/external/') || pathname?.startsWith('/api/external/')) return true;
         // Single source of truth shared with API routes — fails closed in
         // production if AUTH_REQUIRED is missing or credentials are absent.
         if (!isAuthRequired()) return true;

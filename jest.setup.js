@@ -59,38 +59,40 @@ afterAll(() => {
   console.warn = originalWarn
 })
 
-// Mock file API for testing file uploads
-Object.defineProperty(window, 'File', {
-  value: class File {
-    constructor(fileParts, fileName, options) {
-      this.parts = fileParts
-      this.name = fileName
-      this.type = options?.type || 'text/plain'
-      this.size = fileParts.reduce((acc, part) => acc + part.length, 0)
-      this.lastModified = Date.now()
-    }
-  },
-  writable: true,
-})
+// Mock file API for testing file uploads (jsdom only — node-env tests opt out)
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'File', {
+    value: class File {
+      constructor(fileParts, fileName, options) {
+        this.parts = fileParts
+        this.name = fileName
+        this.type = options?.type || 'text/plain'
+        this.size = fileParts.reduce((acc, part) => acc + part.length, 0)
+        this.lastModified = Date.now()
+      }
+    },
+    writable: true,
+  })
 
-// Mock FileReader
-Object.defineProperty(window, 'FileReader', {
-  value: class FileReader {
-    readAsDataURL = jest.fn(() => {
-      setTimeout(() => {
-        this.result = 'data:text/plain;base64,dGVzdA=='
-        this.onload?.()
-      }, 0)
-    })
-    readAsText = jest.fn(() => {
-      setTimeout(() => {
-        this.result = 'test content'
-        this.onload?.()
-      }, 0)
-    })
-  },
-  writable: true,
-})
+  // Mock FileReader
+  Object.defineProperty(window, 'FileReader', {
+    value: class FileReader {
+      readAsDataURL = jest.fn(() => {
+        setTimeout(() => {
+          this.result = 'data:text/plain;base64,dGVzdA=='
+          this.onload?.()
+        }, 0)
+      })
+      readAsText = jest.fn(() => {
+        setTimeout(() => {
+          this.result = 'test content'
+          this.onload?.()
+        }, 0)
+      })
+    },
+    writable: true,
+  })
+}
 
 // Mock crypto for API key encryption testing
 Object.defineProperty(global, 'crypto', {

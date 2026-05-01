@@ -56,7 +56,7 @@ const ENTITY = 'wmkf_appreviewersuggestion';
   // 3. Confirm our solution exists and we can write to it (no actual write —
   //    just check the solution endpoint responds with our solution).
   const solResp = await fetch(
-    `${PROD_URL}/api/data/v9.2/solutions?$select=uniquename,friendlyname,ismanaged&$filter=uniquename eq 'ResearchReviewAppSuite'`,
+    `${PROD_URL}/api/data/v9.2/solutions?$select=uniquename,friendlyname,ismanaged&$filter=uniquename eq 'wmkfResearchReviewAppSuite'`,
     { headers }
   );
   if (solResp.ok) {
