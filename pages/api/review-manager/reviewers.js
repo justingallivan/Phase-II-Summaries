@@ -1,245 +1,208 @@
 /**
- * Review Manager - Reviewers API
+ * Review Manager - Reviewers API (Dataverse-backed)
  *
- * GET  /api/review-manager/reviewers?cycleId=&proposalId=&status=
- *   Returns accepted reviewers joined with researcher data, grouped by proposal.
+ * GET /api/review-manager/reviewers
+ *   Default scope: accepted suggestions on requests where the authenticated
+ *   user is the lead Program Director.
+ *   Query overrides:
+ *     ?proposalId=<guid>     specific request (collaborator override; bypasses PD filter)
+ *     ?requestNumber=<num>   same, by request number
+ *     ?cycleCode=Jxx|Dxx     narrow within PD scope
+ *     ?status=<reviewStatus> post-filter (e.g. 'materials_sent', 'complete')
  *
  * PATCH /api/review-manager/reviewers
- *   Updates review_status, notes, proposal_url, timestamps, etc.
- *   Supports single or batch updates.
+ *   Single  : { suggestionId, reviewStatus?, notes? }
+ *   Batch   : { suggestionIds: [...], reviewStatus }
+ *   By prop : { proposalId, proposalUrl?, proposalPassword? }   (bulk)
+ *
+ * Note: suggestionId values are Dataverse GUIDs (strings). reviewStatus values
+ * are the legacy string codes — the suggestion adapter translates them to the
+ * picklist optionset on write.
  */
 
-import { sql } from '@vercel/postgres';
 import { requireAppAccess } from '../../../lib/utils/auth';
-import { BASE_CONFIG } from '../../../shared/config/baseConfig';
+import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { resolveByEmail as resolvePD } from '../../../lib/services/program-director-resolver';
+import { meetingDateToCycleCode, cycleCodeToLabel } from '../../../lib/utils/cycle-code';
+import * as suggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
+
+const REQUEST_FIELDS = [
+  'akoya_requestid',
+  'akoya_requestnum',
+  'akoya_title',
+  'wmkf_meetingdate',
+  'wmkf_abstract',
+  '_akoya_applicantid_value',
+  '_wmkf_projectleader_value',
+  '_wmkf_grantprogram_value',
+  '_wmkf_programareaserved_value',
+  '_wmkf_programdirector_value',
+];
+
+// Legacy review_status optionset → string (mirror of REVIEW_STATUS_MAP).
+// The UI keeps using the string codes; we translate on read.
+const REVIEW_STATUS_BY_VALUE = {
+  100000000: 'accepted',
+  100000001: 'materials_sent',
+  100000002: 'under_review',
+  100000003: 'review_received',
+  100000004: 'complete',
+};
+
+const RESPONSE_TYPE_BY_VALUE = {
+  100000000: 'accepted',
+  100000001: 'declined',
+  100000002: 'no_response',
+};
+
+function projectRequest(r) {
+  if (!r) return null;
+  const cycleCode = r.wmkf_meetingdate ? meetingDateToCycleCode(r.wmkf_meetingdate) : null;
+  return {
+    requestId: r.akoya_requestid,
+    requestNumber: r.akoya_requestnum,
+    title: r.akoya_title || null,
+    abstract: r.wmkf_abstract || null,
+    meetingDate: r.wmkf_meetingdate || null,
+    cycleCode,
+    cycleLabel: cycleCode ? cycleCodeToLabel(cycleCode) : null,
+    applicant: r._akoya_applicantid_value_formatted || null,
+    projectLeader: r._wmkf_projectleader_value_formatted || null,
+    grantProgram: r._wmkf_grantprogram_value_formatted || null,
+    programArea: r._wmkf_programareaserved_value_formatted || null,
+  };
+}
 
 export default async function handler(req, res) {
   const access = await requireAppAccess(req, res, 'review-manager');
   if (!access) return;
-  const sessionProfileId = access.profileId;
 
-  // Dev-mode fallback: when auth is bypassed (AUTH_REQUIRED=false), accept
-  // userProfileId from the request so the page can scope reads to the
-  // currently-selected dev profile. PATCH stays session-only.
-  let getProfileId = sessionProfileId;
-  if (!getProfileId && access.session?.authBypassed) {
-    const q = req.query?.userProfileId;
-    if (q) getProfileId = parseInt(q, 10) || null;
-  }
+  DynamicsService.bypassRestrictions('review-manager-reviewers');
 
-  if (req.method === 'GET') return handleGet(req, res, getProfileId);
-  if (req.method === 'PATCH') return handlePatch(req, res, sessionProfileId);
+  if (req.method === 'GET') return handleGet(req, res, access);
+  if (req.method === 'PATCH') return handlePatch(req, res, access);
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
-async function handleGet(req, res, profileId) {
-  const { cycleId, proposalId, status } = req.query;
-
+async function handleGet(req, res, access) {
   try {
-    // Build query for accepted reviewers
-    let result;
+    const { proposalId, requestNumber, cycleCode, status } = req.query;
 
-    if (proposalId) {
-      // Specific proposal — return all accepted reviewers for it
-      result = await sql`
-        SELECT
-          rs.id as suggestion_id,
-          rs.proposal_id,
-          rs.proposal_title,
-          rs.proposal_abstract,
-          rs.proposal_authors,
-          rs.proposal_institution,
-          rs.request_number,
-          rs.program_area,
-          rs.grant_cycle_id,
-          rs.user_profile_id,
-          rs.notes,
-          rs.proposal_url,
-          rs.proposal_password,
-          rs.materials_sent_at,
-          rs.reminder_sent_at,
-          rs.reminder_count,
-          rs.review_received_at,
-          rs.review_blob_url,
-          rs.review_filename,
-          rs.thankyou_sent_at,
-          rs.review_status,
-          rs.co_investigators,
-          rs.co_investigator_count,
-          rs.summary_blob_url,
-          r.id as researcher_id,
-          r.name,
-          r.primary_affiliation as affiliation,
-          r.email,
-          r.website,
-          r.h_index,
-          r.total_citations,
-          gc.name as cycle_name,
-          gc.short_code as cycle_short_code,
-          gc.review_deadline,
-          gc.program_name
-        FROM reviewer_suggestions rs
-        JOIN researchers r ON rs.researcher_id = r.id
-        LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
-        WHERE rs.accepted = true
-          AND rs.proposal_id = ${proposalId}
-          AND rs.user_profile_id = ${profileId}
-        ORDER BY rs.suggested_at DESC
-      `;
-    } else if (cycleId && cycleId !== 'all') {
-      // Specific cycle — return all accepted reviewers in that cycle
-      result = await sql`
-        SELECT
-          rs.id as suggestion_id,
-          rs.proposal_id,
-          rs.proposal_title,
-          rs.proposal_abstract,
-          rs.proposal_authors,
-          rs.proposal_institution,
-          rs.request_number,
-          rs.program_area,
-          rs.grant_cycle_id,
-          rs.user_profile_id,
-          rs.notes,
-          rs.proposal_url,
-          rs.proposal_password,
-          rs.materials_sent_at,
-          rs.reminder_sent_at,
-          rs.reminder_count,
-          rs.review_received_at,
-          rs.review_blob_url,
-          rs.review_filename,
-          rs.thankyou_sent_at,
-          rs.review_status,
-          rs.co_investigators,
-          rs.co_investigator_count,
-          rs.summary_blob_url,
-          r.id as researcher_id,
-          r.name,
-          r.primary_affiliation as affiliation,
-          r.email,
-          r.website,
-          r.h_index,
-          r.total_citations,
-          gc.name as cycle_name,
-          gc.short_code as cycle_short_code,
-          gc.review_deadline,
-          gc.program_name
-        FROM reviewer_suggestions rs
-        JOIN researchers r ON rs.researcher_id = r.id
-        LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
-        WHERE rs.accepted = true
-          AND rs.grant_cycle_id = ${parseInt(cycleId, 10)}
-          AND rs.user_profile_id = ${profileId}
-        ORDER BY rs.proposal_title, rs.suggested_at DESC
-      `;
+    let suggestions = [];
+    let requestById = {};
+
+    if (proposalId || requestNumber) {
+      const request = await fetchRequestByIdOrNumber({ requestId: proposalId, requestNumber });
+      if (!request) {
+        return res.status(200).json({ success: true, proposals: [], totalReviewers: 0 });
+      }
+      requestById = { [request.requestId]: request };
+      const rows = await suggestionAdapter.findByRequest(request.requestId, { selectedOnly: true });
+      suggestions = rows.filter((r) => r.wmkf_accepted === true);
     } else {
-      // All cycles — return all accepted reviewers
-      result = await sql`
-        SELECT
-          rs.id as suggestion_id,
-          rs.proposal_id,
-          rs.proposal_title,
-          rs.proposal_abstract,
-          rs.proposal_authors,
-          rs.proposal_institution,
-          rs.request_number,
-          rs.program_area,
-          rs.grant_cycle_id,
-          rs.user_profile_id,
-          rs.notes,
-          rs.proposal_url,
-          rs.proposal_password,
-          rs.materials_sent_at,
-          rs.reminder_sent_at,
-          rs.reminder_count,
-          rs.review_received_at,
-          rs.review_blob_url,
-          rs.review_filename,
-          rs.thankyou_sent_at,
-          rs.review_status,
-          rs.co_investigators,
-          rs.co_investigator_count,
-          rs.summary_blob_url,
-          r.id as researcher_id,
-          r.name,
-          r.primary_affiliation as affiliation,
-          r.email,
-          r.website,
-          r.h_index,
-          r.total_citations,
-          gc.name as cycle_name,
-          gc.short_code as cycle_short_code,
-          gc.review_deadline,
-          gc.program_name
-        FROM reviewer_suggestions rs
-        JOIN researchers r ON rs.researcher_id = r.id
-        LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
-        WHERE rs.accepted = true
-          AND rs.user_profile_id = ${profileId}
-        ORDER BY rs.grant_cycle_id DESC NULLS LAST, rs.proposal_title, rs.suggested_at DESC
-      `;
+      const pd = await resolvePD(access.session?.user?.azureEmail);
+      if (!pd?.systemuserid) {
+        return res.status(200).json({ success: true, proposals: [], totalReviewers: 0, programDirector: null });
+      }
+      const result = await suggestionAdapter.findAcceptedByPD(pd.systemuserid, { cycleCode });
+      suggestions = result.suggestions;
+      // Reshape requestById from adapter's raw form into the projector shape
+      for (const [id, r] of Object.entries(result.requestById)) {
+        requestById[id] = {
+          requestId: r.requestId,
+          requestNumber: r.requestNumber,
+          title: r.title,
+          abstract: r.abstract,
+          meetingDate: r.meetingDate,
+          cycleCode: r.meetingCycleCode,
+          cycleLabel: r.meetingCycleCode ? cycleCodeToLabel(r.meetingCycleCode) : null,
+          applicant: r.applicant,
+          projectLeader: r.projectLeader,
+          grantProgram: r.grantProgram,
+          programArea: r.programArea,
+        };
+      }
     }
 
-    // Optionally filter by review_status
-    let rows = result.rows;
-    if (status && status !== 'all') {
-      rows = rows.filter(r => (r.review_status || 'accepted') === status);
+    if (suggestions.length === 0) {
+      return res.status(200).json({ success: true, proposals: [], totalReviewers: 0 });
     }
 
-    // Group by proposal
-    const proposals = {};
-    for (const row of rows) {
-      if (!proposals[row.proposal_id]) {
-        proposals[row.proposal_id] = {
-          proposalId: row.proposal_id,
-          proposalTitle: row.proposal_title,
-          proposalAbstract: row.proposal_abstract,
-          proposalAuthors: row.proposal_authors,
-          proposalInstitution: row.proposal_institution,
-          requestNumber: row.request_number,
-          programArea: row.program_area,
-          proposalUrl: row.proposal_url,
-          proposalPassword: row.proposal_password,
-          grantCycleId: row.grant_cycle_id,
-          cycleName: row.cycle_name,
-          cycleShortCode: row.cycle_short_code,
-          reviewDeadline: row.review_deadline,
-          programName: row.program_name,
-          summaryBlobUrl: row.summary_blob_url,
-          coInvestigators: row.co_investigators,
-          coInvestigatorCount: row.co_investigator_count,
+    const personIds = [...new Set(suggestions.map((s) => s._wmkf_potentialreviewer_value).filter(Boolean))];
+    const [personById, researcherByPerson] = await Promise.all([
+      fetchPotentialReviewers(personIds),
+      fetchResearchersByPerson(personIds),
+    ]);
+
+    // Group by request, build response
+    const byRequest = {};
+    for (const s of suggestions) {
+      const reqId = s._wmkf_request_value;
+      const request = requestById[reqId];
+      if (!request) continue;
+
+      const reviewStatus = (typeof s.wmkf_reviewstatus === 'number'
+        ? REVIEW_STATUS_BY_VALUE[s.wmkf_reviewstatus]
+        : null) || 'accepted';
+
+      // Optional post-filter by status (single value, not 'all')
+      if (status && status !== 'all' && reviewStatus !== status) continue;
+
+      if (!byRequest[reqId]) {
+        byRequest[reqId] = {
+          proposalId: request.requestId,
+          proposalTitle: request.title || `Request ${request.requestNumber || ''}`.trim(),
+          proposalAbstract: request.abstract,
+          proposalAuthors: request.projectLeader || request.applicant,
+          proposalInstitution: null,
+          requestNumber: request.requestNumber,
+          programArea: request.programArea,
+          grantCycleCode: request.cycleCode,
+          cycleLabel: request.cycleLabel,
+          meetingDate: request.meetingDate,
+          // proposalUrl/proposalPassword come from the suggestion rows
+          // (kept as proposal-level by setting them on every accepted reviewer
+          // for the same request via bulkUpdateByRequest). Pull from the first
+          // suggestion for display — UI bulk-PATCH keeps them in sync.
+          proposalUrl: s.wmkf_proposalurl || null,
+          proposalPassword: s.wmkf_proposalpassword || null,
           reviewers: [],
         };
       }
-      proposals[row.proposal_id].reviewers.push({
-        suggestionId: row.suggestion_id,
-        researcherId: row.researcher_id,
-        name: row.name,
-        affiliation: row.affiliation,
-        email: row.email,
-        website: row.website,
-        hIndex: row.h_index,
-        totalCitations: row.total_citations,
-        notes: row.notes,
-        reviewStatus: row.review_status || 'accepted',
-        proposalUrl: row.proposal_url,
-        materialsSentAt: row.materials_sent_at,
-        reminderSentAt: row.reminder_sent_at,
-        reminderCount: row.reminder_count || 0,
-        reviewReceivedAt: row.review_received_at,
-        reviewBlobUrl: row.review_blob_url,
-        reviewFilename: row.review_filename,
-        thankyouSentAt: row.thankyou_sent_at,
+
+      const person = personById[s._wmkf_potentialreviewer_value] || {};
+      const researcher = researcherByPerson[s._wmkf_potentialreviewer_value] || null;
+
+      byRequest[reqId].reviewers.push({
+        suggestionId: s.wmkf_appreviewersuggestionid,
+        researcherId: researcher?.wmkf_appresearcherid || null,
+        potentialReviewerId: s._wmkf_potentialreviewer_value || null,
+        name: person.wmkf_name || null,
+        affiliation: researcher?.wmkf_primaryaffiliation || person.wmkf_organizationname || null,
+        email: person.wmkf_emailaddress || null,
+        website: researcher?.wmkf_website || null,
+        hIndex: researcher?.wmkf_hindex ?? null,
+        totalCitations: researcher?.wmkf_totalcitations ?? null,
+        notes: s.wmkf_notes || null,
+        reviewStatus,
+        responseType: typeof s.wmkf_responsetype === 'number'
+          ? RESPONSE_TYPE_BY_VALUE[s.wmkf_responsetype]
+          : null,
+        proposalUrl: s.wmkf_proposalurl || null,
+        materialsSentAt: s.wmkf_materialssentat || null,
+        reminderSentAt: s.wmkf_remindersentat || null,
+        reminderCount: s.wmkf_remindercount ?? 0,
+        reviewReceivedAt: s.wmkf_reviewreceivedat || null,
+        reviewBlobUrl: s.wmkf_reviewbloburl || null,
+        reviewFilename: s.wmkf_reviewfilename || null,
+        thankyouSentAt: s.wmkf_thankyousentat || null,
       });
     }
 
-    // Compute status summary per proposal
-    const proposalList = Object.values(proposals).map(p => {
+    const proposalList = Object.values(byRequest).map((p) => {
       const statusCounts = {};
       for (const r of p.reviewers) {
-        const s = r.reviewStatus;
-        statusCounts[s] = (statusCounts[s] || 0) + 1;
+        statusCounts[r.reviewStatus] = (statusCounts[r.reviewStatus] || 0) + 1;
       }
       return { ...p, statusSummary: statusCounts };
     });
@@ -247,101 +210,137 @@ async function handleGet(req, res, profileId) {
     return res.status(200).json({
       success: true,
       proposals: proposalList,
-      totalReviewers: rows.length,
+      totalReviewers: proposalList.reduce((n, p) => n + p.reviewers.length, 0),
     });
   } catch (error) {
     console.error('Review Manager GET error:', error);
-    return res.status(500).json({ error: 'Failed to fetch reviewers', details: process.env.NODE_ENV === 'development' ? error.message : undefined, timestamp: new Date().toISOString() });
+    return res.status(500).json({
+      error: 'Failed to fetch reviewers',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString(),
+    });
   }
 }
 
-async function handlePatch(req, res, profileId) {
-  const {
-    suggestionId,
-    suggestionIds,
-    proposalId,
-    reviewStatus,
-    notes,
-    proposalUrl,
-    proposalPassword,
-  } = req.body;
-
+async function handlePatch(req, res /* access */) {
   try {
-    // Batch: update proposal-level fields for all reviewers of a proposal
-    if (proposalId && (proposalUrl !== undefined || proposalPassword !== undefined)) {
-      const updates = [];
-      if (proposalUrl !== undefined) updates.push('url');
-      if (proposalPassword !== undefined) updates.push('password');
+    const {
+      suggestionId,
+      suggestionIds,
+      proposalId,
+      reviewStatus,
+      notes,
+      proposalUrl,
+      proposalPassword,
+    } = req.body || {};
 
-      if (proposalUrl !== undefined) {
-        await sql`
-          UPDATE reviewer_suggestions
-          SET proposal_url = ${proposalUrl || null}
-          WHERE proposal_id = ${proposalId} AND accepted = true
-            AND user_profile_id = ${profileId}
-        `;
-      }
-      if (proposalPassword !== undefined) {
-        await sql`
-          UPDATE reviewer_suggestions
-          SET proposal_password = ${proposalPassword || null}
-          WHERE proposal_id = ${proposalId} AND accepted = true
-            AND user_profile_id = ${profileId}
-        `;
-      }
-      return res.status(200).json({ success: true, message: `Proposal ${updates.join(' & ')} updated for all reviewers` });
+    // Bulk: proposal-level settings (URL/password) for all accepted reviewers
+    if (proposalId && (proposalUrl !== undefined || proposalPassword !== undefined)) {
+      const updates = {};
+      if (proposalUrl !== undefined) updates.proposalUrl = proposalUrl || null;
+      if (proposalPassword !== undefined) updates.proposalPassword = proposalPassword || null;
+      const updated = await suggestionAdapter.bulkUpdateByRequest(proposalId, updates);
+      return res.status(200).json({
+        success: true,
+        message: `Updated ${updated} reviewer(s) on this proposal`,
+      });
     }
 
-    // Batch update by suggestionIds array
-    if (suggestionIds && Array.isArray(suggestionIds) && suggestionIds.length > 0) {
-      if (reviewStatus !== undefined) {
-        await sql`
-          UPDATE reviewer_suggestions
-          SET review_status = ${reviewStatus}
-          WHERE id = ANY(${suggestionIds})
-            AND user_profile_id = ${profileId}
-        `;
+    // Batch: status change across multiple suggestions
+    if (Array.isArray(suggestionIds) && suggestionIds.length > 0) {
+      if (reviewStatus === undefined) {
+        return res.status(400).json({ error: 'reviewStatus required for batch update' });
+      }
+      for (const id of suggestionIds) {
+        await suggestionAdapter.updateLifecycle(id, { reviewStatus });
       }
       return res.status(200).json({ success: true, message: `Updated ${suggestionIds.length} reviewers` });
     }
 
-    // Single update by suggestionId
     if (!suggestionId) {
       return res.status(400).json({ error: 'suggestionId, suggestionIds, or proposalId is required' });
     }
 
-    if (reviewStatus !== undefined) {
-      await sql`
-        UPDATE reviewer_suggestions
-        SET review_status = ${reviewStatus}
-        WHERE id = ${suggestionId}
-          AND user_profile_id = ${profileId}
-      `;
-    }
+    const lifecycle = {};
+    if (reviewStatus !== undefined) lifecycle.reviewStatus = reviewStatus;
+    if (notes !== undefined) lifecycle.notes = notes;
 
-    if (notes !== undefined) {
-      await sql`
-        UPDATE reviewer_suggestions
-        SET notes = ${notes}
-        WHERE id = ${suggestionId}
-          AND user_profile_id = ${profileId}
-      `;
-    }
-
-    // Mark complete sets both status and potentially other fields
+    // Marking complete: set reviewReceivedAt to now if not already populated.
+    // Mirrors the legacy COALESCE(review_received_at, NOW()) logic.
     if (reviewStatus === 'complete') {
-      // Ensure review_received_at is set if not already
-      await sql`
-        UPDATE reviewer_suggestions
-        SET review_received_at = COALESCE(review_received_at, NOW())
-        WHERE id = ${suggestionId}
-          AND user_profile_id = ${profileId}
-      `;
+      const existing = await suggestionAdapter.findById(suggestionId);
+      if (existing && !existing.wmkf_reviewreceivedat) {
+        lifecycle.reviewReceivedAt = new Date().toISOString();
+      }
     }
 
+    if (Object.keys(lifecycle).length === 0) {
+      return res.status(400).json({ error: 'No supported fields to update' });
+    }
+
+    await suggestionAdapter.updateLifecycle(suggestionId, lifecycle);
     return res.status(200).json({ success: true, message: 'Reviewer updated' });
   } catch (error) {
     console.error('Review Manager PATCH error:', error);
-    return res.status(500).json({ error: 'Failed to update reviewer', details: process.env.NODE_ENV === 'development' ? error.message : undefined, timestamp: new Date().toISOString() });
+    return res.status(500).json({
+      error: 'Failed to update reviewer',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString(),
+    });
   }
+}
+
+async function fetchRequestByIdOrNumber({ requestId, requestNumber }) {
+  if (requestId) {
+    try {
+      const r = await DynamicsService.getRecord('akoya_requests', requestId, { select: REQUEST_FIELDS.join(',') });
+      return projectRequest(r);
+    } catch (e) {
+      return null;
+    }
+  }
+  if (requestNumber) {
+    const safe = String(requestNumber).replace(/'/g, "''");
+    const { records } = await DynamicsService.queryRecords('akoya_requests', {
+      select: REQUEST_FIELDS.join(','),
+      filter: `akoya_requestnum eq '${safe}'`,
+      top: 1,
+    });
+    return records[0] ? projectRequest(records[0]) : null;
+  }
+  return null;
+}
+
+async function fetchPotentialReviewers(ids) {
+  if (!ids?.length) return {};
+  const out = {};
+  const CHUNK = 25;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    const orChain = chunk.map((id) => `wmkf_potentialreviewersid eq ${id}`).join(' or ');
+    const { records } = await DynamicsService.queryRecords('wmkf_potentialreviewerses', {
+      select: 'wmkf_potentialreviewersid,wmkf_name,wmkf_emailaddress,wmkf_organizationname',
+      filter: orChain,
+      top: 500,
+    });
+    for (const p of records) out[p.wmkf_potentialreviewersid] = p;
+  }
+  return out;
+}
+
+async function fetchResearchersByPerson(personIds) {
+  if (!personIds?.length) return {};
+  const out = {};
+  const CHUNK = 25;
+  for (let i = 0; i < personIds.length; i += CHUNK) {
+    const chunk = personIds.slice(i, i + CHUNK);
+    const orChain = chunk.map((id) => `_wmkf_potentialreviewer_value eq ${id}`).join(' or ');
+    const { records } = await DynamicsService.queryRecords('wmkf_appresearchers', {
+      select: 'wmkf_appresearcherid,_wmkf_potentialreviewer_value,wmkf_primaryaffiliation,wmkf_website,wmkf_hindex,wmkf_totalcitations',
+      filter: orChain,
+      top: 500,
+    });
+    for (const r of records) out[r._wmkf_potentialreviewer_value] = r;
+  }
+  return out;
 }

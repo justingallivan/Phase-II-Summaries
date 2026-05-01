@@ -1,25 +1,32 @@
 /**
- * Review Manager - Send Emails (direct via Dynamics)
+ * Review Manager - Send Emails (Dataverse-backed)
  *
  * POST /api/review-manager/send-emails
  *
- * Sends per-recipient emails via Dynamics email activities. Accepts
- * already-rendered drafts (subject/body per recipient) so the UI can show a
- * preview/edit step before send. Links each email to the proposal's
- * akoya_request via regardingobjectid so it shows in the request's CRM
- * timeline. Updates lifecycle timestamps only for successfully-sent rows.
+ * Sends per-recipient emails via Dynamics email activities. Recipient data
+ * comes from `wmkf_appreviewersuggestion` joined to `wmkf_potentialreviewers`
+ * (suggestionId is now a Dataverse GUID). Cycle-level config (review template
+ * blob, additional attachments) still lives in Postgres `grant_cycles` and is
+ * looked up by cycleCode.
+ *
+ * After a successful send, the recipient `wmkf_potentialreviewers` row is
+ * promoted to a CRM `contact` (find-or-create by email), and its
+ * `wmkf_contact` lookup is filled if currently empty.
+ *
+ * Lifecycle timestamps land on `wmkf_appreviewersuggestion` via
+ * `suggestionAdapter.updateLifecycle`.
  *
  * Request body:
  *   - drafts: Array<{ suggestionId, subject, body }> — pre-rendered per recipient
- *   - templateType: 'materials' | 'followup' | 'thankyou' — drives DB status update
+ *   - templateType: 'materials' | 'followup' | 'thankyou'
  *   - attachmentUrls: string[] — additional attachment URLs (optional)
- *   - markAsSent: boolean — whether to update DB timestamps (default true)
+ *   - markAsSent: boolean — whether to update lifecycle (default true)
  *
  * SSE events:
  *   - progress { stage, message, current?, total? }
- *   - email_sent { suggestionId, candidateName, candidateEmail, emailId }
+ *   - email_sent { suggestionId, candidateName, candidateEmail, emailId, contactPromoted? }
  *   - email_failed { suggestionId, candidateName, candidateEmail, error }
- *   - result { sent: [...], failed: [...], stats: { sent, failed, skipped, total } }
+ *   - result { sent, failed, skipped, stats }
  *   - complete { message, sent, failed }
  *   - error { message }
  */
@@ -30,6 +37,10 @@ import { requireAppAccess } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { safeFetch, isAllowedUrl } from '../../../lib/utils/safe-fetch';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { meetingDateToCycleCode } from '../../../lib/utils/cycle-code';
+import * as suggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
+import * as contactAdapter from '../../../lib/dataverse/adapters/contact';
+import * as potentialReviewerAdapter from '../../../lib/dataverse/adapters/potential-reviewer';
 
 const limiter = nextRateLimiter({ max: 10 });
 
@@ -38,6 +49,15 @@ export const config = {
   maxDuration: 300,
 };
 
+function splitName(fullName) {
+  const trimmed = (fullName || '').trim();
+  if (!trimmed) return { firstName: '', lastName: '' };
+  const cleaned = trimmed.replace(/^(dr\.?|prof\.?|professor)\s+/i, '');
+  const parts = cleaned.split(/\s+/);
+  if (parts.length === 1) return { firstName: '', lastName: parts[0] };
+  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -45,10 +65,7 @@ export default async function handler(req, res) {
 
   const access = await requireAppAccess(req, res, 'review-manager');
   if (!access) return;
-  const userProfileId = access.profileId;
 
-  // Sender must resolve to a Dynamics systemuser. azureEmail is the
-  // canonical accessor (matches /api/test-email).
   const fromEmail = access.session?.user?.azureEmail;
   if (!fromEmail) {
     return res.status(400).json({
@@ -59,10 +76,6 @@ export default async function handler(req, res) {
   const allowed = await limiter(req, res);
   if (allowed !== true) return;
 
-  // DynamicsService is fail-closed; this endpoint operates with full access
-  // (resolving akoya_request GUIDs, creating email activities) so opt out
-  // explicitly. Other server endpoints (grant-reporting, expertise-finder,
-  // phase-i-dynamics) follow the same pattern.
   DynamicsService.bypassRestrictions('review-manager-send');
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -87,7 +100,7 @@ export default async function handler(req, res) {
       return res.end();
     }
     for (const d of drafts) {
-      if (!d || typeof d.suggestionId !== 'number' || !d.subject || !d.body) {
+      if (!d || !d.suggestionId || !d.subject || !d.body) {
         sendEvent('error', { message: 'each draft must have suggestionId, subject, body' });
         return res.end();
       }
@@ -99,42 +112,40 @@ export default async function handler(req, res) {
       total: drafts.length,
     });
 
-    // Refetch authoritative recipient data from Postgres — never trust
-    // client-supplied email/request_number for routing.
-    const suggestionIds = drafts.map(d => d.suggestionId);
-    const reviewerData = await sql`
-      SELECT
-        rs.id as suggestion_id,
-        rs.request_number,
-        rs.grant_cycle_id,
-        r.name,
-        r.email,
-        gc.review_template_blob_url,
-        gc.additional_attachments
-      FROM reviewer_suggestions rs
-      JOIN researchers r ON rs.researcher_id = r.id
-      LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
-      WHERE rs.id = ANY(${suggestionIds})
-        AND rs.user_profile_id = ${userProfileId}
-    `;
-
-    if (reviewerData.rows.length === 0) {
-      sendEvent('error', { message: 'No reviewers found for the provided IDs' });
-      return res.end();
+    // Hydrate each suggestion: load the suggestion row, the linked
+    // potentialreviewer (for name/email), and the linked akoya_request (for
+    // the regarding link + meeting date → cycle code).
+    sendEvent('progress', { stage: 'resolving_recipients', message: 'Loading recipients from Dataverse...' });
+    const recipientBySuggestion = new Map();
+    for (const d of drafts) {
+      const sug = await suggestionAdapter.findById(d.suggestionId);
+      if (!sug) {
+        recipientBySuggestion.set(d.suggestionId, { error: 'suggestion_not_found' });
+        continue;
+      }
+      const personId = sug._wmkf_potentialreviewer_value;
+      const requestId = sug._wmkf_request_value;
+      const [person, request] = await Promise.all([
+        personId ? DynamicsService.getRecord('wmkf_potentialreviewerses', personId, {
+          select: 'wmkf_potentialreviewersid,wmkf_name,wmkf_emailaddress,wmkf_firstname,wmkf_lastname,_wmkf_contact_value',
+        }).catch(() => null) : null,
+        requestId ? DynamicsService.getRecord('akoya_requests', requestId, {
+          select: 'akoya_requestid,akoya_requestnum,wmkf_meetingdate',
+        }).catch(() => null) : null,
+      ]);
+      recipientBySuggestion.set(d.suggestionId, { suggestion: sug, person, request });
     }
 
-    const rowBySuggestionId = new Map(reviewerData.rows.map(r => [r.suggestion_id, r]));
+    // Cycle-level config (template URL + additional attachments) still lives
+    // in Postgres. Look up once per distinct cycleCode.
+    const distinctCycleCodes = [...new Set(
+      [...recipientBySuggestion.values()]
+        .map((v) => v?.request?.wmkf_meetingdate ? meetingDateToCycleCode(v.request.wmkf_meetingdate) : null)
+        .filter(Boolean)
+    )];
+    const cycleConfigByCode = await loadCycleConfigs(distinctCycleCodes);
 
-    // Batched akoya_request GUID lookup so each email can be linked to its
-    // proposal in the CRM timeline. Failures here are non-fatal — emails still
-    // send, just without the regarding link.
-    const distinctRequestNumbers = Array.from(
-      new Set(reviewerData.rows.map(r => r.request_number).filter(Boolean))
-    );
-    const guidByRequestNumber = await resolveRequestGuids(distinctRequestNumbers, sendEvent);
-
-    // Fetch shared attachments once. Same shape as before — review template,
-    // grant cycle additional attachments, and any caller-supplied URLs.
+    // Fetch shared attachments once (caller-supplied + first cycle's template).
     sendEvent('progress', { stage: 'fetching_attachments', message: 'Fetching attachments...' });
     const attachmentCache = new Map();
     const sharedAttachments = [];
@@ -149,17 +160,20 @@ export default async function handler(req, res) {
       }
     }
 
-    const firstRow = reviewerData.rows[0];
-    if (firstRow.review_template_blob_url && !attachmentCache.has(firstRow.review_template_blob_url)) {
+    // Pull cycle template + additional attachments from the first available cycle.
+    // (Today every batch in the UI is single-cycle; multi-cycle batches would
+    // need per-recipient attachment selection — out of scope.)
+    const firstCycle = cycleConfigByCode[distinctCycleCodes[0]];
+    if (firstCycle?.review_template_blob_url && !attachmentCache.has(firstCycle.review_template_blob_url)) {
       try {
-        const att = await fetchAttachment(firstRow.review_template_blob_url, attachmentCache);
+        const att = await fetchAttachment(firstCycle.review_template_blob_url, attachmentCache);
         if (att) sharedAttachments.push(att);
       } catch (err) {
         console.warn('Failed to fetch review template:', err.message);
       }
     }
-    if (firstRow.additional_attachments && Array.isArray(firstRow.additional_attachments)) {
-      for (const a of firstRow.additional_attachments) {
+    if (Array.isArray(firstCycle?.additional_attachments)) {
+      for (const a of firstCycle.additional_attachments) {
         const url = a.blobUrl || a.url;
         if (url && !attachmentCache.has(url)) {
           try {
@@ -185,68 +199,87 @@ export default async function handler(req, res) {
 
     for (const draft of drafts) {
       processed++;
-      const row = rowBySuggestionId.get(draft.suggestionId);
-
-      if (!row) {
+      const ctx = recipientBySuggestion.get(draft.suggestionId);
+      if (!ctx || ctx.error) {
         failed.push({
           suggestionId: draft.suggestionId,
           candidateName: '(unknown)',
           candidateEmail: null,
-          error: 'Suggestion not found or not owned by you',
+          error: ctx?.error || 'Suggestion not found',
         });
         sendEvent('email_failed', failed[failed.length - 1]);
         continue;
       }
 
-      if (!row.email) {
-        skipped.push({
-          suggestionId: row.suggestion_id,
-          candidateName: row.name,
-          candidateEmail: null,
-          reason: 'no_email',
-        });
+      const { suggestion, person, request } = ctx;
+      const name = person?.wmkf_name || null;
+      const email = person?.wmkf_emailaddress || null;
+
+      if (!email) {
+        skipped.push({ suggestionId: draft.suggestionId, candidateName: name, candidateEmail: null, reason: 'no_email' });
         sendEvent('progress', {
           stage: 'sending',
           current: processed,
           total: drafts.length,
-          message: `Skipped ${row.name} (no email)`,
+          message: `Skipped ${name || '(unnamed)'} (no email)`,
         });
         continue;
       }
 
-      const regardingId = row.request_number ? guidByRequestNumber.get(row.request_number) : null;
+      const regardingId = request?.akoya_requestid || null;
 
       try {
         const { emailId } = await DynamicsService.createAndSendEmail({
           subject: draft.subject,
           body: plainTextToHtml(draft.body),
           from: fromEmail,
-          to: row.email,
+          to: email,
           regardingId: regardingId || undefined,
           regardingType: regardingId ? 'akoya_request' : undefined,
           attachments: sharedAttachments,
         });
 
+        // Contact promotion: only if the potentialreviewer doesn't already
+        // have a wmkf_contact link. Failures are non-fatal — the email
+        // already shipped.
+        let contactPromoted = false;
+        try {
+          if (person && !person._wmkf_contact_value) {
+            const fn = person.wmkf_firstname || splitName(name).firstName;
+            const ln = person.wmkf_lastname || splitName(name).lastName || name || 'Unknown';
+            const { id: contactId, created } = await contactAdapter.findOrCreateByEmail({
+              firstName: fn || null,
+              lastName: ln || null,
+              email,
+            });
+            await potentialReviewerAdapter.setContactLink(person.wmkf_potentialreviewersid, contactId);
+            contactPromoted = created ? 'created' : 'linked';
+          }
+        } catch (promoteErr) {
+          console.warn(`Contact promotion failed for ${name} <${email}>:`, promoteErr.message);
+        }
+
         sent.push({
-          suggestionId: row.suggestion_id,
-          candidateName: row.name,
-          candidateEmail: row.email,
+          suggestionId: draft.suggestionId,
+          candidateName: name,
+          candidateEmail: email,
           emailId,
           regardingLinked: Boolean(regardingId),
+          contactPromoted,
         });
         sendEvent('email_sent', sent[sent.length - 1]);
         sendEvent('progress', {
           stage: 'sending',
           current: processed,
           total: drafts.length,
-          message: `Sent to ${row.name}`,
+          message: `Sent to ${name}`,
         });
       } catch (err) {
-        console.error(`Failed to send to ${row.name} <${row.email}>:`, err.message);
+        console.error(`Failed to send to ${name} <${email}>:`, err.message);
         failed.push({
-          suggestionId: row.suggestion_id,
-          candidateName: row.name,
-          candidateEmail: row.email,
+          suggestionId: draft.suggestionId,
+          candidateName: name,
+          candidateEmail: email,
           error: err.message,
         });
         sendEvent('email_failed', failed[failed.length - 1]);
@@ -254,57 +287,50 @@ export default async function handler(req, res) {
           stage: 'sending',
           current: processed,
           total: drafts.length,
-          message: `Failed to send to ${row.name}`,
+          message: `Failed to send to ${name}`,
         });
       }
     }
 
     if (markAsSent && sent.length > 0) {
-      sendEvent('progress', { stage: 'updating_database', message: 'Updating tracking data...' });
-      const sentIds = sent.map(s => s.suggestionId);
+      sendEvent('progress', { stage: 'updating_lifecycle', message: 'Updating tracking data...' });
       const now = new Date().toISOString();
 
-      try {
-        if (templateType === 'materials') {
-          await sql`
-            UPDATE reviewer_suggestions
-            SET materials_sent_at = ${now},
-                review_status = CASE
-                  WHEN review_status IS NULL OR review_status = 'accepted'
-                  THEN 'materials_sent'
-                  ELSE review_status
-                END
-            WHERE id = ANY(${sentIds})
-              AND user_profile_id = ${userProfileId}
-          `;
-        } else if (templateType === 'followup') {
-          await sql`
-            UPDATE reviewer_suggestions
-            SET reminder_sent_at = ${now},
-                reminder_count = COALESCE(reminder_count, 0) + 1,
-                review_status = CASE
-                  WHEN review_status IN ('materials_sent', 'accepted')
-                  THEN 'under_review'
-                  ELSE review_status
-                END
-            WHERE id = ANY(${sentIds})
-              AND user_profile_id = ${userProfileId}
-          `;
-        } else if (templateType === 'thankyou') {
-          await sql`
-            UPDATE reviewer_suggestions
-            SET thankyou_sent_at = ${now},
-                review_status = 'complete'
-            WHERE id = ANY(${sentIds})
-              AND user_profile_id = ${userProfileId}
-          `;
+      for (const s of sent) {
+        try {
+          if (templateType === 'materials') {
+            const ctx = recipientBySuggestion.get(s.suggestionId);
+            const currentStatusValue = ctx?.suggestion?.wmkf_reviewstatus;
+            // 100000000 = accepted; null = no status. Bump these to materials_sent.
+            const shouldBump = currentStatusValue == null || currentStatusValue === 100000000;
+            await suggestionAdapter.updateLifecycle(s.suggestionId, {
+              materialsSentAt: now,
+              ...(shouldBump ? { reviewStatus: 'materials_sent' } : {}),
+            });
+          } else if (templateType === 'followup') {
+            const ctx = recipientBySuggestion.get(s.suggestionId);
+            const currentStatusValue = ctx?.suggestion?.wmkf_reviewstatus;
+            const currentReminderCount = ctx?.suggestion?.wmkf_remindercount ?? 0;
+            // 100000000 (accepted) or 100000001 (materials_sent) → bump to under_review
+            const shouldBump = currentStatusValue === 100000000 || currentStatusValue === 100000001;
+            await suggestionAdapter.updateLifecycle(s.suggestionId, {
+              reminderSentAt: now,
+              reminderCount: currentReminderCount + 1,
+              ...(shouldBump ? { reviewStatus: 'under_review' } : {}),
+            });
+          } else if (templateType === 'thankyou') {
+            await suggestionAdapter.updateLifecycle(s.suggestionId, {
+              thankYouSentAt: now,
+              reviewStatus: 'complete',
+            });
+          }
+        } catch (err) {
+          console.error(`Lifecycle update failed for ${s.suggestionId} (email already sent):`, err.message);
+          sendEvent('progress', {
+            stage: 'updating_lifecycle',
+            message: `Warning: lifecycle update failed for ${s.candidateName}: ${err.message}`,
+          });
         }
-      } catch (err) {
-        console.error('DB update after send failed (emails were sent):', err.message);
-        sendEvent('progress', {
-          stage: 'updating_database',
-          message: `Warning: emails sent but DB update failed: ${err.message}`,
-        });
       }
     }
 
@@ -312,12 +338,7 @@ export default async function handler(req, res) {
       sent,
       failed,
       skipped,
-      stats: {
-        sent: sent.length,
-        failed: failed.length,
-        skipped: skipped.length,
-        total: drafts.length,
-      },
+      stats: { sent: sent.length, failed: failed.length, skipped: skipped.length, total: drafts.length },
     });
 
     sendEvent('complete', {
@@ -340,46 +361,22 @@ export default async function handler(req, res) {
   }
 }
 
-/**
- * Resolve akoya_request GUIDs from request numbers in a single batched query.
- * Returns Map<requestNumber, guid>. Missing rows mean the email will send
- * without a regarding link (graceful degrade).
- */
-async function resolveRequestGuids(requestNumbers, sendEvent) {
-  const map = new Map();
-  if (requestNumbers.length === 0) return map;
-
-  try {
-    sendEvent('progress', {
-      stage: 'resolving_requests',
-      message: `Looking up ${requestNumbers.length} request(s) in Dynamics...`,
-    });
-
-    const filter = requestNumbers
-      .map(n => `akoya_requestnum eq '${String(n).replace(/'/g, "''")}'`)
-      .join(' or ');
-
-    const { records } = await DynamicsService.queryRecords('akoya_requests', {
-      select: 'akoya_requestid,akoya_requestnum',
-      filter,
-      top: requestNumbers.length,
-    });
-
-    for (const r of records) {
-      if (r.akoya_requestnum && r.akoya_requestid) {
-        map.set(r.akoya_requestnum, r.akoya_requestid);
-      }
-    }
-  } catch (err) {
-    console.warn('Request GUID resolution failed; emails will send without regarding link:', err.message);
+async function loadCycleConfigs(cycleCodes) {
+  const out = {};
+  if (!cycleCodes.length) return out;
+  const result = await sql`
+    SELECT short_code, review_template_blob_url, additional_attachments
+    FROM grant_cycles
+    WHERE short_code = ANY(${cycleCodes})
+  `;
+  for (const row of result.rows) {
+    // Take the first hit per short_code; duplicate cycles in Postgres get the
+    // first row deterministically.
+    if (!out[row.short_code]) out[row.short_code] = row;
   }
-  return map;
+  return out;
 }
 
-// Dynamics email activity `description` is rendered as HTML, so plain-text
-// templates (with `\n` line breaks) lose their formatting. Escape HTML special
-// chars, then convert newlines to <br>. Bare URLs become anchor tags so links
-// stay clickable.
 function plainTextToHtml(text) {
   if (!text) return '';
   const escaped = String(text)
@@ -388,7 +385,7 @@ function plainTextToHtml(text) {
     .replace(/>/g, '&gt;');
   const linked = escaped.replace(
     /(https?:\/\/[^\s<]+)/g,
-    (m) => `<a href="${m}">${m}</a>`
+    (m) => `<a href="${m}">${m}</a>`,
   );
   return linked.replace(/\r\n|\r|\n/g, '<br>');
 }

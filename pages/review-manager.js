@@ -796,10 +796,10 @@ function UploadReviewModal({ isOpen, onClose, reviewer, onUploaded }) {
 
 // ─── Cycle Overview Tab ─────────────────────────────────────────────────────
 
-function CycleOverviewTab({ proposals, cycles, selectedCycleId, onCycleChange, onSelectProposal, loading }) {
-  const filteredProposals = selectedCycleId === 'all'
+function CycleOverviewTab({ proposals, cycles, selectedCycleCode, onCycleChange, onSelectProposal, loading }) {
+  const filteredProposals = selectedCycleCode === 'all'
     ? proposals
-    : proposals.filter(p => p.grantCycleId === parseInt(selectedCycleId, 10));
+    : proposals.filter(p => p.grantCycleCode === selectedCycleCode);
 
   return (
     <div className="space-y-4">
@@ -807,13 +807,13 @@ function CycleOverviewTab({ proposals, cycles, selectedCycleId, onCycleChange, o
       <div className="flex items-center gap-4">
         <label className="text-sm font-medium text-gray-700">Grant Cycle</label>
         <select
-          value={selectedCycleId}
+          value={selectedCycleCode}
           onChange={e => onCycleChange(e.target.value)}
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-400 focus:border-transparent"
         >
           <option value="all">All Cycles</option>
-          {cycles.map(c => (
-            <option key={c.id} value={c.id}>{c.name}{c.shortCode ? ` (${c.shortCode})` : ''}</option>
+          {cycles.filter(c => c.shortCode).map(c => (
+            <option key={c.shortCode} value={c.shortCode}>{c.name} ({c.shortCode})</option>
           ))}
         </select>
         {loading && (
@@ -857,7 +857,7 @@ function CycleOverviewTab({ proposals, cycles, selectedCycleId, onCycleChange, o
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{p.proposalAuthors || '—'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{p.cycleShortCode || p.cycleName || '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{p.grantCycleCode || '—'}</td>
                   <td className="px-4 py-3 text-center text-sm font-medium text-gray-900">{p.reviewers.length}</td>
                   <td className="px-4 py-3">
                     <StatusSummary statusSummary={p.statusSummary} />
@@ -1023,10 +1023,9 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
                 {proposal.proposalAuthors && <span>PI: {proposal.proposalAuthors}</span>}
                 {proposal.proposalInstitution && <span> — {proposal.proposalInstitution}</span>}
               </p>
-              {proposal.cycleName && (
+              {(proposal.cycleLabel || proposal.grantCycleCode) && (
                 <p className="text-xs text-gray-500 mt-1">
-                  Cycle: {proposal.cycleName}
-                  {proposal.reviewDeadline && ` — Due: ${formatDate(proposal.reviewDeadline)}`}
+                  Cycle: {proposal.cycleLabel || proposal.grantCycleCode}
                 </p>
               )}
             </div>
@@ -1254,7 +1253,7 @@ function ReviewManagerPage() {
   const [activeTab, setActiveTab] = useState('overview');
   const [proposals, setProposals] = useState([]);
   const [cycles, setCycles] = useState([]);
-  const [selectedCycleId, setSelectedCycleId] = useState('all');
+  const [selectedCycleCode, setSelectedCycleCode] = useState('all');
   const [selectedProposal, setSelectedProposal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState({ signature: '' });
@@ -1288,8 +1287,7 @@ function ReviewManagerPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (selectedCycleId !== 'all') params.set('cycleId', selectedCycleId);
-      if (profileId) params.set('userProfileId', profileId);
+      if (selectedCycleCode !== 'all') params.set('cycleCode', selectedCycleCode);
 
       const res = await fetch(`/api/review-manager/reviewers?${params.toString()}`);
       const data = await res.json();
@@ -1306,11 +1304,11 @@ function ReviewManagerPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCycleId, profileId, selectedProposal?.proposalId]);
+  }, [selectedCycleCode, profileId, selectedProposal?.proposalId]);
 
   useEffect(() => {
     loadReviewers();
-  }, [selectedCycleId, profileId, refreshTrigger.current]);
+  }, [selectedCycleCode, refreshTrigger.current]);
 
   const handleRefresh = () => {
     refreshTrigger.current += 1;
@@ -1389,8 +1387,8 @@ function ReviewManagerPage() {
             <CycleOverviewTab
               proposals={proposals}
               cycles={cycles}
-              selectedCycleId={selectedCycleId}
-              onCycleChange={setSelectedCycleId}
+              selectedCycleCode={selectedCycleCode}
+              onCycleChange={setSelectedCycleCode}
               onSelectProposal={handleSelectProposal}
               loading={loading}
             />

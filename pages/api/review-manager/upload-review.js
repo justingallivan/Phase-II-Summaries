@@ -1,15 +1,20 @@
 /**
- * Review Manager - Upload Review Document
+ * Review Manager - Upload Review Document (Dataverse-backed)
  *
  * POST /api/review-manager/upload-review
  *
- * Accepts a multipart form upload of a completed review document.
- * Stores the file in Vercel Blob and updates the reviewer_suggestions row.
+ * Accepts a multipart upload of a completed review document. The blob still
+ * lives in Vercel Blob; the metadata (URL, filename, received timestamp,
+ * status='review_received') goes onto the Dataverse suggestion via
+ * `suggestionAdapter.updateLifecycle`.
+ *
+ * suggestionId is now a Dataverse GUID (string).
  */
 
 import { put } from '@vercel/blob';
-import { sql } from '@vercel/postgres';
 import { requireAppAccess } from '../../../lib/utils/auth';
+import { DynamicsService } from '../../../lib/services/dynamics-service';
+import * as suggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
 import Busboy from 'busboy';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
@@ -27,14 +32,13 @@ export default async function handler(req, res) {
 
   const access = await requireAppAccess(req, res, 'review-manager');
   if (!access) return;
-  const profileId = access.profileId;
+
+  DynamicsService.bypassRestrictions('review-manager-upload');
 
   try {
-    // Parse multipart form data
     const { fields, fileData, fileName, fileContentType } = await parseFormData(req);
 
     const suggestionId = fields.suggestionId;
-
     if (!suggestionId) {
       return res.status(400).json({ error: 'suggestionId is required' });
     }
@@ -42,35 +46,28 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'file is required' });
     }
 
-    // Verify the suggestion exists, is accepted, and belongs to the caller
-    const existing = await sql`
-      SELECT id, proposal_id, proposal_title FROM reviewer_suggestions
-      WHERE id = ${parseInt(suggestionId, 10)} AND accepted = true
-        AND user_profile_id = ${profileId}
-    `;
-    if (existing.rows.length === 0) {
-      return res.status(404).json({ error: 'Reviewer suggestion not found or not authorized' });
+    // Verify suggestion exists + is accepted before accepting the upload.
+    const sug = await suggestionAdapter.findById(suggestionId);
+    if (!sug || !sug.wmkf_accepted) {
+      return res.status(404).json({ error: 'Reviewer suggestion not found or not accepted' });
     }
 
-    // Upload to Vercel Blob
-    const blobPath = `reviews/${existing.rows[0].proposal_id}/${suggestionId}_${fileName}`;
+    // Use the request GUID as the blob folder so multiple reviewers' uploads
+    // for the same proposal are co-located.
+    const requestId = sug._wmkf_request_value || 'unknown';
+    const blobPath = `reviews/${requestId}/${suggestionId}_${fileName}`;
 
     const blob = await put(blobPath, fileData, {
       access: 'public',
       contentType: fileContentType || 'application/octet-stream',
     });
 
-    // Update the reviewer_suggestions row (ownership already verified above)
-    await sql`
-      UPDATE reviewer_suggestions
-      SET
-        review_blob_url = ${blob.url},
-        review_filename = ${fileName},
-        review_received_at = NOW(),
-        review_status = 'review_received'
-      WHERE id = ${parseInt(suggestionId, 10)}
-        AND user_profile_id = ${profileId}
-    `;
+    await suggestionAdapter.updateLifecycle(suggestionId, {
+      reviewBlobUrl: blob.url,
+      reviewFilename: fileName,
+      reviewReceivedAt: new Date().toISOString(),
+      reviewStatus: 'review_received',
+    });
 
     return res.status(200).json({
       success: true,
@@ -81,18 +78,18 @@ export default async function handler(req, res) {
   } catch (error) {
     if (error?.code === 'FILE_TOO_LARGE') {
       return res.status(413).json({
-        error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB.`
+        error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB.`,
       });
     }
     console.error('Review upload error:', error);
-    return res.status(500).json({ error: 'Failed to upload review', details: process.env.NODE_ENV === 'development' ? error.message : undefined, timestamp: new Date().toISOString() });
+    return res.status(500).json({
+      error: 'Failed to upload review',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString(),
+    });
   }
 }
 
-/**
- * Parse multipart form data using busboy with stream-level size limit.
- * (Security pass 2026-04-26: aborts before fully buffering oversized uploads.)
- */
 function parseFormData(req) {
   return new Promise((resolve, reject) => {
     const busboy = Busboy({ headers: req.headers, limits: { fileSize: MAX_FILE_SIZE, files: 1 } });

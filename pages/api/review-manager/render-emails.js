@@ -1,16 +1,19 @@
 /**
- * Review Manager - Render Emails (preview)
+ * Review Manager - Render Emails (Dataverse-backed preview)
  *
  * POST /api/review-manager/render-emails
  *
  * Renders per-recipient email drafts by applying the template + settings to
- * each reviewer's data. No Dynamics calls, no DB writes — pure preview so the
- * UI can show editable subject/body per recipient before send.
+ * each reviewer's data. Recipient + proposal data come from Dataverse so the
+ * preview matches what `send-emails` will use. Cycle-level template config
+ * (deadline, programName, customFields) still lives in Postgres `grant_cycles`.
+ *
+ * suggestionIds are Dataverse GUIDs (strings).
  *
  * Request body:
- *   - suggestionIds: number[] — reviewer suggestion IDs
+ *   - suggestionIds: string[]
  *   - templateType: 'materials' | 'followup' | 'thankyou'
- *   - template: { subject, body } — the template content
+ *   - template: { subject, body }
  *   - settings: { signature, proposalUrl, reviewerFormLink, customFields, ... }
  *
  * Response:
@@ -26,6 +29,9 @@ import {
 } from '../../../lib/utils/email-generator';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
+import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { meetingDateToCycleCode } from '../../../lib/utils/cycle-code';
+import * as suggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
 
 const limiter = nextRateLimiter({ max: 30 });
 
@@ -41,10 +47,11 @@ export default async function handler(req, res) {
 
   const access = await requireAppAccess(req, res, 'review-manager');
   if (!access) return;
-  const userProfileId = access.profileId;
 
   const allowed = await limiter(req, res);
   if (allowed !== true) return;
+
+  DynamicsService.bypassRestrictions('review-manager-render');
 
   try {
     const {
@@ -54,89 +61,95 @@ export default async function handler(req, res) {
       settings = {},
     } = req.body;
 
-    if (!suggestionIds || !Array.isArray(suggestionIds) || suggestionIds.length === 0) {
+    if (!Array.isArray(suggestionIds) || suggestionIds.length === 0) {
       return res.status(400).json({ error: 'suggestionIds array is required' });
     }
     if (!template || !template.subject || !template.body) {
       return res.status(400).json({ error: 'template with subject and body is required' });
     }
 
-    const reviewerData = await sql`
-      SELECT
-        rs.id as suggestion_id,
-        rs.proposal_id,
-        rs.proposal_title,
-        rs.proposal_abstract,
-        rs.proposal_authors,
-        rs.proposal_institution,
-        rs.proposal_url,
-        rs.proposal_password,
-        rs.co_investigators,
-        rs.co_investigator_count,
-        rs.request_number,
-        r.name,
-        r.primary_affiliation as affiliation,
-        r.email,
-        gc.name as cycle_name,
-        gc.program_name,
-        gc.review_deadline,
-        gc.custom_fields
-      FROM reviewer_suggestions rs
-      JOIN researchers r ON rs.researcher_id = r.id
-      LEFT JOIN grant_cycles gc ON rs.grant_cycle_id = gc.id
-      WHERE rs.id = ANY(${suggestionIds})
-        AND rs.user_profile_id = ${userProfileId}
-    `;
+    // Hydrate each suggestion: suggestion row + linked person + linked request.
+    const rows = [];
+    for (const suggestionId of suggestionIds) {
+      const sug = await suggestionAdapter.findById(suggestionId);
+      if (!sug) continue;
+      const personId = sug._wmkf_potentialreviewer_value;
+      const requestId = sug._wmkf_request_value;
+      const [person, request] = await Promise.all([
+        personId ? DynamicsService.getRecord('wmkf_potentialreviewerses', personId, {
+          select: 'wmkf_name,wmkf_emailaddress,wmkf_organizationname',
+        }).catch(() => null) : null,
+        requestId ? DynamicsService.getRecord('akoya_requests', requestId, {
+          select: 'akoya_requestid,akoya_requestnum,akoya_title,wmkf_abstract,_akoya_applicantid_value,_wmkf_projectleader_value,wmkf_meetingdate',
+        }).catch(() => null) : null,
+      ]);
+      rows.push({ suggestionId, sug, person, request });
+    }
 
-    if (reviewerData.rows.length === 0) {
+    if (rows.length === 0) {
       return res.status(404).json({ error: 'No reviewers found for the provided IDs' });
     }
 
-    const drafts = reviewerData.rows.map(row => {
-      if (!row.email) {
+    // Cycle-level config still in Postgres.
+    const distinctCycleCodes = [...new Set(
+      rows.map((r) => r.request?.wmkf_meetingdate ? meetingDateToCycleCode(r.request.wmkf_meetingdate) : null).filter(Boolean)
+    )];
+    const cycleByCode = await loadCycleConfigs(distinctCycleCodes);
+
+    const drafts = rows.map(({ suggestionId, sug, person, request }) => {
+      const requestNumber = request?.akoya_requestnum || null;
+      const candidateName = person?.wmkf_name || null;
+      const candidateEmail = person?.wmkf_emailaddress || null;
+
+      if (!candidateEmail) {
         return {
-          suggestionId: row.suggestion_id,
-          candidateName: row.name,
+          suggestionId,
+          candidateName,
           candidateEmail: null,
-          requestNumber: row.request_number || null,
+          requestNumber,
           subject: '',
           body: '',
           skipped: 'no_email',
         };
       }
 
+      const cycleCode = request?.wmkf_meetingdate ? meetingDateToCycleCode(request.wmkf_meetingdate) : null;
+      const cycle = cycleByCode[cycleCode] || {};
+
       const candidate = {
-        name: row.name,
-        affiliation: row.affiliation,
-        email: row.email,
+        name: candidateName,
+        affiliation: person?.wmkf_organizationname || null,
+        email: candidateEmail,
       };
       const proposal = {
-        title: row.proposal_title,
-        abstract: row.proposal_abstract,
-        authors: row.proposal_authors,
-        institution: row.proposal_institution,
-        coInvestigators: row.co_investigators,
-        coInvestigatorCount: row.co_investigator_count,
+        title: request?.akoya_title || null,
+        abstract: request?.wmkf_abstract || null,
+        authors: request?._wmkf_projectleader_value_formatted
+          || request?._akoya_applicantid_value_formatted
+          || null,
+        institution: null, // not directly on akoya_request
+        coInvestigators: null, // historical Postgres-only field; not migrated
+        coInvestigatorCount: null,
       };
       const templateSettings = {
         signature: settings.signature || '',
-        proposalUrl: row.proposal_url || settings.proposalUrl || '',
-        proposalPassword: row.proposal_password || settings.proposalPassword || '',
-        reviewDueDate: settings.reviewDueDate || row.review_deadline,
+        proposalUrl: sug.wmkf_proposalurl || settings.proposalUrl || '',
+        proposalPassword: sug.wmkf_proposalpassword || settings.proposalPassword || '',
+        reviewDueDate: settings.reviewDueDate || cycle.review_deadline || null,
         reviewerFormLink: settings.reviewerFormLink || '',
         grantCycle: {
-          programName: row.program_name || '',
-          reviewDeadline: row.review_deadline,
-          customFields: { ...(row.custom_fields || {}), ...(settings.customFields || {}) },
+          programName: cycle.program_name || '',
+          reviewDeadline: cycle.review_deadline || null,
+          customFields: { ...(cycle.custom_fields || {}), ...(settings.customFields || {}) },
         },
       };
 
       const templateData = buildTemplateData(candidate, proposal, templateSettings);
       return {
-        suggestionId: row.suggestion_id,
-        candidateName: row.name,
-        candidateEmail: row.email,
-        requestNumber: row.request_number || null,
+        suggestionId,
+        candidateName,
+        candidateEmail,
+        requestNumber,
         subject: replacePlaceholders(template.subject, templateData),
         body: replacePlaceholders(template.body, templateData),
       };
@@ -146,8 +159,8 @@ export default async function handler(req, res) {
       drafts,
       stats: {
         total: drafts.length,
-        ready: drafts.filter(d => !d.skipped).length,
-        skipped: drafts.filter(d => d.skipped).length,
+        ready: drafts.filter((d) => !d.skipped).length,
+        skipped: drafts.filter((d) => d.skipped).length,
       },
     });
   } catch (error) {
@@ -157,4 +170,18 @@ export default async function handler(req, res) {
       details: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
+}
+
+async function loadCycleConfigs(cycleCodes) {
+  const out = {};
+  if (!cycleCodes.length) return out;
+  const result = await sql`
+    SELECT short_code, name, program_name, review_deadline, custom_fields
+    FROM grant_cycles
+    WHERE short_code = ANY(${cycleCodes})
+  `;
+  for (const row of result.rows) {
+    if (!out[row.short_code]) out[row.short_code] = row;
+  }
+  return out;
 }
