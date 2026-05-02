@@ -14,6 +14,8 @@
 import { verifySuggestionToken } from '../../../../../lib/external/verify-suggestion-token';
 import { GraphService } from '../../../../../lib/services/graph-service';
 import { getRequestSharePointBuckets } from '../../../../../lib/utils/sharepoint-buckets';
+import { bypassDynamicsRestrictions } from '../../../../../lib/services/dynamics-context';
+import { isReviewerMaterial } from '../../../../../lib/external/reviewer-materials';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -37,11 +39,13 @@ export default async function handler(req, res) {
 
     const { request } = verified;
 
-    const allowed = await isFileInRequestSet(
-      request.akoya_requestid,
-      request.akoya_requestnum,
-      library,
-      fileId,
+    const allowed = await bypassDynamicsRestrictions('external-validate-file', () =>
+      isFileInRequestSet(
+        request.akoya_requestid,
+        request.akoya_requestnum,
+        library,
+        fileId,
+      ),
     );
     if (!allowed) {
       return res.status(403).json({ ok: false, reason: 'file_not_in_request_set' });
@@ -66,13 +70,14 @@ export default async function handler(req, res) {
 
 /**
  * Walk the request's SharePoint buckets and check whether the (library,
- * fileId) pair appears. Excludes anything under `Reviews/` so reviewers
- * can't fetch each other's uploaded reviews.
+ * fileId) pair appears in one of the reviewer-materials folders. Files
+ * outside those folders are not downloadable through the external
+ * endpoint regardless of whether the client has their fileId — defense
+ * against an attacker brute-forcing or replaying a leaked id from a
+ * different surface.
  */
 async function isFileInRequestSet(requestId, requestNumber, library, fileId) {
   const buckets = await getRequestSharePointBuckets(requestId, requestNumber);
-  // Only probe buckets that actually match the requested library — saves
-  // round-trips on archive libraries we don't need.
   const targetBuckets = buckets.filter(b => b.library.toLowerCase() === library.toLowerCase());
   if (targetBuckets.length === 0) return false;
 
@@ -87,7 +92,7 @@ async function isFileInRequestSet(requestId, requestNumber, library, fileId) {
       continue;
     }
     for (const f of items) {
-      if (/(^|\/)Reviews(\/|$)/i.test(f.folder || '')) continue;
+      if (!isReviewerMaterial(f.folder || '')) continue;
       if (f.id === fileId) return true;
     }
   }

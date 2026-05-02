@@ -19,6 +19,7 @@ import { GraphService } from '../../../../../lib/services/graph-service';
 import { getRequestSharePointBuckets } from '../../../../../lib/utils/sharepoint-buckets';
 import { bypassDynamicsRestrictions } from '../../../../../lib/services/dynamics-context';
 import { reviewFormSchema } from '../../../../../lib/external/review-form-schema';
+import { isReviewerMaterial } from '../../../../../lib/external/reviewer-materials';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -39,10 +40,14 @@ export default async function handler(req, res) {
 
     // Walk all SharePoint buckets for this request and surface
     // proposal-related files (everything except the Reviews/ subtree, which
-    // would leak other reviewers' uploads).
+    // would leak other reviewers' uploads). Wrapped in bypass so the
+    // sharepointdocumentlocations query doesn't trip the ambient
+    // restrictions guard — external endpoints have no Dynamics context.
     let files = [];
     try {
-      files = await listProposalFiles(request.akoya_requestid, request.akoya_requestnum);
+      files = await bypassDynamicsRestrictions('external-list-files', () =>
+        listProposalFiles(request.akoya_requestid, request.akoya_requestnum),
+      );
     } catch (e) {
       console.error('[external context] file listing failed:', e.message);
       // Non-fatal — page still renders, file list shows the error.
@@ -99,9 +104,12 @@ export default async function handler(req, res) {
 }
 
 /**
- * Walk every plausible SharePoint bucket for a request and return a flat
- * list of downloadable proposal files. Files inside `Reviews/` are excluded
- * — those are reviewer-uploaded and shouldn't be visible to peer reviewers.
+ * Walk every plausible SharePoint bucket for a request and return only
+ * files staff has explicitly shared by placing them in a reviewer-
+ * materials subfolder (see `lib/external/reviewer-materials.js` for the
+ * folder-name policy). If no matching folder exists or it's empty,
+ * returns an empty array — the UI surfaces that as "not yet shared,"
+ * not "no files exist."
  *
  * Each file carries its `library` so the proposal-download endpoint can
  * resolve back to the right Graph drive without trusting client input.
@@ -116,8 +124,7 @@ async function listProposalFiles(requestId, requestNumber) {
         maxDepth: 3,
       });
       for (const f of items) {
-        // Filter out files in any Reviews/ subtree (peer review privacy).
-        if (/(^|\/)Reviews(\/|$)/i.test(f.folder || '')) continue;
+        if (!isReviewerMaterial(f.folder || '')) continue;
         out.push({
           id: f.id,
           name: f.name,

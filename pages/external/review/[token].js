@@ -78,16 +78,16 @@ function LoadingPanel() {
 function ErrorPanel({ reason }) {
   const messages = {
     no_token: 'No review link was provided.',
-    expired: 'This review link has expired. Please contact the foundation to receive a new one.',
-    token_expires_passed: 'This review link has expired. Please contact the foundation to receive a new one.',
+    expired: 'This review link has expired. Please contact The Foundation to receive a new one.',
+    token_expires_passed: 'This review link has expired. Please contact The Foundation to receive a new one.',
     invalid_signature: 'This link is not valid. Please make sure you copied the entire URL from your invitation email.',
     invalid_claim: 'This link is not valid. Please make sure you copied the entire URL from your invitation email.',
     malformed: 'This link is not valid. Please make sure you copied the entire URL from your invitation email.',
     hash_mismatch: 'This link has been replaced by a newer one. Please use the most recent invitation email.',
-    revoked: 'This link has been revoked. Please contact the foundation to receive a new one.',
-    not_found: "We couldn't find a review for this link. Please contact the foundation.",
+    revoked: 'This link has been revoked. Please contact The Foundation to receive a new one.',
+    not_found: "We couldn't find a review for this link. Please contact The Foundation.",
     network: 'Network error. Please check your connection and try again.',
-    server_error: 'Something went wrong on our end. Please try again, or contact the foundation if the problem continues.',
+    server_error: 'Something went wrong on our end. Please try again, or contact The Foundation if the problem continues.',
   };
   return (
     <div className="bg-white rounded-2xl border border-red-200 p-8">
@@ -148,7 +148,7 @@ function FilesCard({ data, token }) {
       <div className="bg-white rounded-2xl border border-gray-200 p-6">
         <h3 className="text-base font-semibold text-gray-900">Proposal materials</h3>
         <p className="text-sm text-gray-600 mt-2">
-          No materials are attached to this proposal yet. If you believe this is an error, please contact the foundation.
+          The Foundation hasn&apos;t shared materials for this review yet. Please contact us if you need them.
         </p>
       </div>
     );
