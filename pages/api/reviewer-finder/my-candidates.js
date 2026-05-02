@@ -28,6 +28,7 @@ import { meetingDateToCycleCode, cycleCodeToLabel } from '../../../lib/utils/cyc
 import * as suggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
 import * as potentialReviewerAdapter from '../../../lib/dataverse/adapters/potential-reviewer';
 import * as researcherAdapter from '../../../lib/dataverse/adapters/researcher';
+import { ensureToken } from '../../../lib/external/token-lifecycle';
 
 const REQUEST_FIELDS = [
   'akoya_requestid',
@@ -343,6 +344,19 @@ async function handlePatch(req, res /* access unused but reserved for audit */) 
 
     if (hasLifecycle) {
       await suggestionAdapter.updateLifecycle(suggestionId, lifecycle);
+
+      // Auto-mint the external-reviewer magic-link token when the
+      // reviewer flips to accepted. ensureToken is idempotent — no-op
+      // if a usable token already exists, so re-flipping accepted on/off
+      // doesn't churn URLs. Failures are logged but don't fail the PATCH
+      // — staff can always generate the link manually from Review Manager.
+      if (lifecycle.accepted === true) {
+        try {
+          await ensureToken(suggestionId);
+        } catch (e) {
+          console.error(`[my-candidates] auto-mint failed for ${suggestionId}: ${e.message}`);
+        }
+      }
     }
 
     // For person/researcher edits we need the linked potentialreviewer + researcher IDs.
@@ -406,3 +420,4 @@ async function handleDelete(req, res /* access */) {
     });
   }
 }
+

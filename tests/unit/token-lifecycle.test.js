@@ -6,7 +6,7 @@
 
 import { jest } from '@jest/globals';
 import { DynamicsService } from '../../lib/services/dynamics-service.js';
-import { mintAndStore, revoke, buildExternalUrl } from '../../lib/external/token-lifecycle.js';
+import { mintAndStore, revoke, buildExternalUrl, ensureToken } from '../../lib/external/token-lifecycle.js';
 import { hashToken } from '../../lib/services/external-token.js';
 
 const SECRET = 'test-secret-32-chars-min-aaaaaaaaaaaa';
@@ -14,6 +14,7 @@ const SUGGESTION_ID = '11111111-1111-1111-1111-111111111111';
 const REQUEST_ID = '22222222-2222-2222-2222-222222222222';
 
 let originalUpdate;
+let originalGetRecord;
 let originalSecret;
 let originalNextauth;
 
@@ -24,7 +25,9 @@ describe('token-lifecycle', () => {
     process.env.EXTERNAL_LINK_SECRET = SECRET;
     process.env.NEXTAUTH_URL = 'https://reviewer.example.com';
     originalUpdate = DynamicsService.updateRecord;
+    originalGetRecord = DynamicsService.getRecord;
     DynamicsService.updateRecord = jest.fn().mockResolvedValue({});
+    DynamicsService.getRecord = jest.fn();
   });
   afterEach(() => {
     if (originalSecret === undefined) delete process.env.EXTERNAL_LINK_SECRET;
@@ -32,6 +35,7 @@ describe('token-lifecycle', () => {
     if (originalNextauth === undefined) delete process.env.NEXTAUTH_URL;
     else process.env.NEXTAUTH_URL = originalNextauth;
     DynamicsService.updateRecord = originalUpdate;
+    DynamicsService.getRecord = originalGetRecord;
   });
 
   describe('mintAndStore', () => {
@@ -83,6 +87,72 @@ describe('token-lifecycle', () => {
 
     test('rejects missing id', async () => {
       await expect(revoke()).rejects.toThrow(/suggestionId required/);
+    });
+  });
+
+  describe('ensureToken', () => {
+    function row({ hash = null, revoked = false, expires = null } = {}) {
+      return {
+        wmkf_appreviewersuggestionid: SUGGESTION_ID,
+        wmkf_externaltokenhash: hash,
+        wmkf_externaltokenrevoked: revoked,
+        wmkf_externaltokenexpires: expires,
+        _wmkf_request_value: REQUEST_ID,
+      };
+    }
+
+    test('mints when no hash exists', async () => {
+      DynamicsService.getRecord.mockResolvedValue(row());
+      const result = await ensureToken(SUGGESTION_ID);
+      expect(result.minted).toBe(true);
+      expect(DynamicsService.updateRecord).toHaveBeenCalledTimes(1);
+    });
+
+    test('skips when an active token exists (idempotent)', async () => {
+      DynamicsService.getRecord.mockResolvedValue(row({
+        hash: 'a'.repeat(64),
+        expires: new Date(Date.now() + 60_000).toISOString(),
+      }));
+      const result = await ensureToken(SUGGESTION_ID);
+      expect(result).toEqual({ minted: false, reason: 'already_active' });
+      expect(DynamicsService.updateRecord).not.toHaveBeenCalled();
+    });
+
+    test('re-mints when prior token was revoked', async () => {
+      DynamicsService.getRecord.mockResolvedValue(row({
+        hash: 'a'.repeat(64),
+        revoked: true,
+        expires: new Date(Date.now() + 60_000).toISOString(),
+      }));
+      const result = await ensureToken(SUGGESTION_ID);
+      expect(result.minted).toBe(true);
+      expect(DynamicsService.updateRecord).toHaveBeenCalledTimes(1);
+      const patch = DynamicsService.updateRecord.mock.calls[0][2];
+      expect(patch.wmkf_externaltokenrevoked).toBe(false);
+    });
+
+    test('re-mints when prior token expired', async () => {
+      DynamicsService.getRecord.mockResolvedValue(row({
+        hash: 'a'.repeat(64),
+        expires: new Date(Date.now() - 60_000).toISOString(),
+      }));
+      const result = await ensureToken(SUGGESTION_ID);
+      expect(result.minted).toBe(true);
+    });
+
+    test('returns no_request when suggestion has no linked request', async () => {
+      DynamicsService.getRecord.mockResolvedValue({
+        wmkf_appreviewersuggestionid: SUGGESTION_ID,
+        wmkf_externaltokenhash: null,
+        _wmkf_request_value: null,
+      });
+      const result = await ensureToken(SUGGESTION_ID);
+      expect(result).toEqual({ minted: false, reason: 'no_request' });
+      expect(DynamicsService.updateRecord).not.toHaveBeenCalled();
+    });
+
+    test('rejects missing id', async () => {
+      await expect(ensureToken()).rejects.toThrow(/suggestionId required/);
     });
   });
 

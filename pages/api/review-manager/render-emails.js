@@ -33,8 +33,12 @@ import { DynamicsService } from '../../../lib/services/dynamics-service';
 import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
 import { meetingDateToCycleCode } from '../../../lib/utils/cycle-code';
 import * as suggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
+import { mintAndStore } from '../../../lib/external/token-lifecycle';
 
 const limiter = nextRateLimiter({ max: 30 });
+
+const EXTERNAL_LINK_TTL_DAYS = 90;
+const EXTERNAL_LINK_PLACEHOLDER = '{{externalLink}}';
 
 export const config = {
   api: { bodyParser: { sizeLimit: '1mb' } },
@@ -96,6 +100,31 @@ export default async function handler(req, res) {
     )];
     const cycleByCode = await loadCycleConfigs(distinctCycleCodes);
 
+    // Mint external links only when the template body actually references
+    // them — avoids churning the stored hash for templates (thankyou,
+    // older customs) that don't use the placeholder. Each render produces
+    // a fresh JWT and overwrites the prior hash, so any link previously
+    // copied from the UI for the same recipient stops verifying. That's
+    // intentional: the email body becomes the canonical link.
+    const needsExternalLink = (template.body || '').includes(EXTERNAL_LINK_PLACEHOLDER) ||
+      (template.subject || '').includes(EXTERNAL_LINK_PLACEHOLDER);
+    const externalLinkBySuggestion = {};
+    if (needsExternalLink) {
+      const expires = new Date(Date.now() + EXTERNAL_LINK_TTL_DAYS * 24 * 60 * 60 * 1000);
+      for (const { suggestionId, sug } of rows) {
+        const requestId = sug?._wmkf_request_value;
+        if (!requestId) continue;
+        try {
+          const { url } = await mintAndStore({ suggestionId, requestId, expiresAt: expires });
+          externalLinkBySuggestion[suggestionId] = url;
+        } catch (e) {
+          console.error(`[render-emails] mint failed for ${suggestionId}: ${e.message}`);
+          // Leave externalLink empty for this recipient; placeholder
+          // substitution will yield "" rather than crash the render.
+        }
+      }
+    }
+
     const drafts = rows.map(({ suggestionId, sug, person, request }) => {
       const requestNumber = request?.akoya_requestnum || null;
       const candidateName = person?.wmkf_name || null;
@@ -137,6 +166,7 @@ export default async function handler(req, res) {
         proposalPassword: sug.wmkf_proposalpassword || settings.proposalPassword || '',
         reviewDueDate: settings.reviewDueDate || cycle.review_deadline || null,
         reviewerFormLink: settings.reviewerFormLink || '',
+        externalLink: externalLinkBySuggestion[suggestionId] || '',
         grantCycle: {
           programName: cycle.program_name || '',
           reviewDeadline: cycle.review_deadline || null,

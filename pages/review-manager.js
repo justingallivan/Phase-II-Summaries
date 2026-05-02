@@ -28,10 +28,10 @@ const DEFAULT_TEMPLATES = {
 
 Thank you for agreeing to review the proposal "{{proposalTitle}}" from {{piInstitution}}.
 
-Please find the full proposal at the following link:
-{{proposalUrl}}
+Please use your secure reviewer link to download the proposal materials and submit your completed review:
+{{externalLink}}
 
-Attached to this email is our review template. We ask that you submit your completed review by {{reviewDueDate}}.
+This link is unique to you. We ask that you submit your review by {{reviewDueDate}}.
 
 If you have any questions about the review process, please don't hesitate to reach out.
 
