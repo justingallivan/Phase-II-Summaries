@@ -1,5 +1,5 @@
 /**
- * Tests for the Reviewer_Materials folder-policy matcher.
+ * Tests for the Reviewer_Downloads folder-policy matcher.
  *
  * The match rule is security-relevant: the file-list and file-download
  * endpoints both use it as the *only* gate between SharePoint contents
@@ -22,28 +22,28 @@ describe('isReviewerMaterial', () => {
     else process.env.REVIEWER_MATERIALS_FOLDERS = originalEnv;
   });
 
-  describe('default policy (Reviewer_Materials)', () => {
+  describe('default policy (Reviewer_Downloads)', () => {
     test('matches the canonical folder at the request root', () => {
-      expect(isReviewerMaterial('1002379_GUID/Reviewer_Materials')).toBe(true);
-      expect(isReviewerMaterial('1002379_GUID/Reviewer_Materials/Project Narrative.pdf')).toBe(true);
+      expect(isReviewerMaterial('1002379_GUID/Reviewer_Downloads')).toBe(true);
+      expect(isReviewerMaterial('1002379_GUID/Reviewer_Downloads/Project Narrative.pdf')).toBe(true);
     });
 
     test('matches when the folder is at any depth', () => {
-      expect(isReviewerMaterial('Reviewer_Materials/file.pdf')).toBe(true);
-      expect(isReviewerMaterial('a/b/Reviewer_Materials/c/d/file.pdf')).toBe(true);
+      expect(isReviewerMaterial('Reviewer_Downloads/file.pdf')).toBe(true);
+      expect(isReviewerMaterial('a/b/Reviewer_Downloads/c/d/file.pdf')).toBe(true);
     });
 
     test('matches case-insensitively', () => {
-      expect(isReviewerMaterial('1002379_GUID/reviewer_materials/file.pdf')).toBe(true);
-      expect(isReviewerMaterial('1002379_GUID/REVIEWER_MATERIALS/file.pdf')).toBe(true);
+      expect(isReviewerMaterial('1002379_GUID/reviewer_downloads/file.pdf')).toBe(true);
+      expect(isReviewerMaterial('1002379_GUID/REVIEWER_DOWNLOADS/file.pdf')).toBe(true);
     });
 
     test('rejects sibling folders that contain the substring', () => {
-      // Critical: a folder named `My_Reviewer_Materials_v2` must not match
+      // Critical: a folder named `My_Reviewer_Downloads_v2` must not match
       // — that's what segment anchoring is for.
-      expect(isReviewerMaterial('1002379_GUID/My_Reviewer_Materials_v2')).toBe(false);
-      expect(isReviewerMaterial('Reviewer_Materials_Old')).toBe(false);
-      expect(isReviewerMaterial('XReviewer_Materials')).toBe(false);
+      expect(isReviewerMaterial('1002379_GUID/My_Reviewer_Downloads_v2')).toBe(false);
+      expect(isReviewerMaterial('Reviewer_Downloads_Old')).toBe(false);
+      expect(isReviewerMaterial('XReviewer_Downloads')).toBe(false);
     });
 
     test('rejects unrelated folders that the proposal directory holds', () => {
@@ -66,19 +66,19 @@ describe('isReviewerMaterial', () => {
     test('honors a single comma-separated alternative', () => {
       process.env.REVIEWER_MATERIALS_FOLDERS = 'Shared_With_Reviewer';
       expect(isReviewerMaterial('1002379_GUID/Shared_With_Reviewer/file.pdf')).toBe(true);
-      expect(isReviewerMaterial('1002379_GUID/Reviewer_Materials/file.pdf')).toBe(false);
+      expect(isReviewerMaterial('1002379_GUID/Reviewer_Downloads/file.pdf')).toBe(false);
     });
 
     test('supports multiple folders during a transition window', () => {
-      process.env.REVIEWER_MATERIALS_FOLDERS = 'Reviewer_Materials,Shared_With_Reviewer';
-      expect(isReviewerMaterial('1002379_GUID/Reviewer_Materials/file.pdf')).toBe(true);
+      process.env.REVIEWER_MATERIALS_FOLDERS = 'Reviewer_Downloads,Shared_With_Reviewer';
+      expect(isReviewerMaterial('1002379_GUID/Reviewer_Downloads/file.pdf')).toBe(true);
       expect(isReviewerMaterial('1002379_GUID/Shared_With_Reviewer/file.pdf')).toBe(true);
       expect(isReviewerMaterial('1002379_GUID/Phase II/file.pdf')).toBe(false);
     });
 
     test('falls back to default when env var is empty or whitespace-only', () => {
       process.env.REVIEWER_MATERIALS_FOLDERS = '   ';
-      expect(getReviewerMaterialFolders()).toEqual(['Reviewer_Materials']);
+      expect(getReviewerMaterialFolders()).toEqual(['Reviewer_Downloads']);
     });
 
     test('escapes regex metacharacters in folder names', () => {

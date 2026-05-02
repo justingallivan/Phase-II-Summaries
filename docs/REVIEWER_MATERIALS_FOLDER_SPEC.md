@@ -1,65 +1,68 @@
 # Reviewer Materials — SharePoint Folder Convention
 
 **Audience:** Connor (PowerAutomate / file generation owner)
-**Status:** Proposal, in production behind a feature flag
+**Status:** Agreed 2026-05-01. Code aligned to these names.
 **Related:** `docs/DATAVERSE_SHAREPOINT_FILE_MODEL.md` (file storage architecture)
 
 ---
 
-## What we need from PowerAutomate
+## What we agreed
 
-For each `akoya_request` that is going out for external review, create a
-subfolder named **`Reviewer_Materials`** under the request's existing
-SharePoint folder, and place inside it the files we want external reviewers
-to see — and only those files.
+For each `akoya_request` going out for external review, two sibling
+subfolders under the request's existing SharePoint folder:
 
 ```
 akoya_request/                                                ← existing library
   └─ 1002379_54E2B88B04B9F011BBD36045BD02B4CC/                 ← existing per-request folder
-      ├─ Application Cover Page.docx                            ← internal, untouched
-      ├─ Governing BoardList.pdf                                ← internal, untouched
-      ├─ St. Jude...Phase_II_Staff_Version.pdf                  ← internal, untouched
-      ├─ Phase II/                                              ← raw GoApply submission
+      ├─ (existing internal files — staff briefs, admin paperwork, etc.)
+      ├─ Phase II/                                              ← raw GoApply submission (untouched)
+      ├─ Reviewer_Downloads/                                    ← Connor's flow populates this
       │   ├─ Project Narrative.pdf
       │   ├─ Bibliography.pdf
-      │   └─ ... (etc.)
-      └─ Reviewer_Materials/                                    ← NEW: created by your flow
-          ├─ Project Narrative.pdf                              ← copied/curated by flow
-          ├─ Bibliography.pdf
-          ├─ Biographical Sketches.pdf
-          ├─ Project Budget.pdf
-          ├─ Financial Narrative.pdf
-          ├─ Collaborative Arrangements.pdf
-          └─ Graphical Abstract.pdf
+      │   └─ ... (curated reviewer-facing files)
+      └─ Reviewer_Uploads/                                      ← reviewers' completed reviews land here
+          ├─ Patel_7f3a9c2e/                                    ← per-reviewer subfolder, created on first upload
+          │   ├─ review.pdf
+          │   └─ supplementary_notes.pdf
+          └─ vanderBerg_a1b2c3d4/
+              └─ review.docx
 ```
 
-The reviewer-facing app reads only what's inside `Reviewer_Materials/`.
-Anything else in the request folder — admin paperwork, staff briefs,
-governing board lists, declaration letters, the raw `Phase II/`
-submission — is invisible to reviewers by construction.
+- **`Reviewer_Downloads/`** — Connor's PA flow creates this empty at
+  request creation, then drops files in as they're generated. The
+  reviewer-facing app reads only what's inside.
+- **`Reviewer_Uploads/`** — Connor's PA flow creates this empty at
+  request creation. Per-reviewer subfolders are created automatically
+  by our backend on first upload (you don't populate this folder).
+
+The reviewer-facing app reads only `Reviewer_Downloads/`. Anything else
+in the request folder — admin paperwork, staff briefs, the raw `Phase
+II/` submission — is invisible to reviewers by construction.
 
 ---
 
 ## Why this design
 
-**Security by default.** A typical request folder holds 20+ files, several
-of which (staff AI summaries, governing board lists, internal status
-letters, applicant admin paperwork) should never be exposed externally.
-A blanket "show the whole folder" rule would leak any of these the moment
-they appear. Allowlisting one curated subfolder makes leakage impossible
+**Security by default.** A typical request folder holds 20+ files,
+several of which (staff AI summaries, governing board lists, internal
+status letters, applicant admin paperwork) should never be exposed
+externally. Allowlisting one curated subfolder makes leakage impossible
 absent staff explicitly placing the wrong file there.
 
-**Staff visibility.** Anyone browsing SharePoint can see exactly what was
-shared with reviewers — no opaque filter buried in code. If a reviewer
-asks "where's X?" staff can answer without running a tool.
+**Symmetric naming.** "Downloads" and "Uploads" name the direction from
+the reviewer's perspective — easy for everyone to remember.
 
-**Decouples curation from submission.** GoApply's submission shape can
-change without affecting what reviewers see. PowerAutomate becomes the
-single canonical place that decides "here is the reviewer package."
+**Decoupled from GoApply.** GoApply's submission shape can change
+without affecting what reviewers see. PowerAutomate becomes the single
+canonical place that decides "here is the reviewer package."
+
+**Staff visibility.** Anyone browsing SharePoint can see exactly what
+was shared with reviewers and what came back — no opaque filter buried
+in code.
 
 ---
 
-## What goes in `Reviewer_Materials/`
+## What goes in `Reviewer_Downloads/`
 
 For Phase II reviews, the reviewer-facing package today looks like:
 
@@ -72,10 +75,10 @@ For Phase II reviews, the reviewer-facing package today looks like:
 - Graphical Abstract
 - (Optional) Proposal Abstract
 
-Most of these are already produced by GoApply into `Phase II/`. The flow's
-job is to copy (or generate fresh PDFs of) the curated subset into
-`Reviewer_Materials/`. Subfolders inside `Reviewer_Materials/` are fine
-if useful — the reader walks recursively.
+Most of these are already produced by GoApply into `Phase II/`. The
+flow's job is to copy (or generate fresh PDFs of) the curated subset
+into `Reviewer_Downloads/`. Subfolders inside are fine if useful — the
+reader walks recursively up to depth 3.
 
 **Explicitly do NOT include:**
 
@@ -91,14 +94,39 @@ the fact.
 
 ---
 
+## Per-reviewer subfolder format (`Reviewer_Uploads/{name}/`)
+
+`{sanitizedLastName}_{shortId}` — e.g. `Patel_7f3a9c2e`,
+`OBrien_a1b2c3d4`, `vanderBerg_aabb1122`.
+
+- `sanitizedLastName`: ASCII-folded (`José` → `Jose`), punctuation and
+  spaces stripped (`O'Brien` → `OBrien`, `van der Berg` → `vanderBerg`),
+  truncated to 30 chars
+- `shortId`: first 8 chars of the suggestion GUID (collision-proof
+  pairing)
+- If the lastname sanitizes to empty (e.g. CJK-only with no ASCII fold),
+  falls back to `{shortId}` only
+
+The folder name is computed once at first upload and frozen. Replacing
+files reuses the same folder. If the reviewer's name is corrected later
+in the CRM, the SharePoint folder name does not auto-update — the
+canonical pointer lives in `wmkf_appreviewersuggestion.wmkf_reviewsharepointfolder`.
+
+**Important for any future automation that reads review uploads:**
+identify reviewers by joining through Dataverse
+(`_wmkf_potentialreviewer_value` → name, affiliation, email), never by
+parsing the folder name. Folder names are display strings.
+
+---
+
 ## Folder name details
 
-- **Spelling:** exactly `Reviewer_Materials` (capital R, capital M, single
-  underscore). Case-insensitive on the read side, but standardize on this
-  for clarity.
+- **Spelling:** exactly `Reviewer_Downloads` and `Reviewer_Uploads`
+  (capital R, capital second word, single underscore). Case-insensitive
+  on the read side, but standardize on this for clarity.
 - **Location:** directly inside `akoya_request/{requestNumber}_{requestGuid}/`.
-- **Creation:** if the folder doesn't exist, the reviewer-facing app shows
-  "The Foundation hasn't shared materials yet — please contact us if you
+- **Empty `Reviewer_Downloads/`:** the reviewer-facing app shows "The
+  Foundation hasn't shared materials yet — please contact us if you
   need them." Reviewers can still load the page, just no downloads.
 
 ---
@@ -107,62 +135,51 @@ the fact.
 
 The reviewer app supports a comma-separated environment variable
 `REVIEWER_MATERIALS_FOLDERS` for periods where two folder names need to
-coexist (e.g., renaming the convention while in-flight requests use the
-old name). Default: `Reviewer_Materials`. If we change the convention,
-the var lets us match both names during the transition without a deploy.
-You don't need to do anything with this — flagged so you know flexibility
-exists.
+coexist (e.g., a future rename). Default: `Reviewer_Downloads`. If we
+change the convention later, the var lets us match both names during
+the transition without a deploy.
 
 ---
 
 ## What the system does on its end
 
-For reference — you don't need to build any of this; it's already in place.
+For reference — you don't need to build any of this; it's already in
+place.
 
-1. **Magic link generation** — when a reviewer accepts, the app mints a
-   one-time JWT and sends them a `https://[app]/external/review/{token}`
-   URL.
-2. **File listing** — the landing page calls Microsoft Graph, walks the
-   request's SharePoint folder under the `akoya_request` library, and
-   returns only files whose path contains `/Reviewer_Materials/`.
+1. **Magic link generation** — when a reviewer accepts, the app mints
+   a one-time JWT and sends them a `https://[app]/external/review/{token}`
+   URL, embedded into the materials email body.
+2. **File listing** — the landing page calls Microsoft Graph, walks
+   the request's SharePoint folder under the `akoya_request` library,
+   and returns only files whose path contains `/Reviewer_Downloads/`.
 3. **File download** — when a reviewer clicks Download, the app
    re-validates membership (defense against ID brute-forcing), then
    streams the file from SharePoint via Graph as the foundation's app
    registration. The reviewer never sees a SharePoint URL or token.
+4. **Review upload** — multipart POST. Files validated (extension,
+   magic bytes, size cap). On success, written to
+   `Reviewer_Uploads/{Patel_7f3a9c2e}/...` and the suggestion row's
+   `wmkf_reviewsharepointfolder` is set to the path. Rollback on failure.
 
 ---
 
-## Open questions for you
+## What you need to build
 
-1. **Review uploads folder name.** Reviews submitted *by* the reviewer
-   land in a sibling folder under the same request. Currently the app
-   writes to `akoya_request/{request}/Reviews/{suggestionGuid}/`. We're
-   considering renaming this to `Received_Reviews/` so the inbound vs.
-   outbound rhetoric matches `Reviewer_Materials/`. If your flow ever
-   needs to read or process review uploads, the name should align before
-   we ship to production.
+1. **At request creation (or whenever the request enters Phase II
+   Pending):** create the two empty subfolders
+   `Reviewer_Downloads/` and `Reviewer_Uploads/` under the request's
+   SharePoint folder.
+2. **As reviewer-facing files become available:** drop them into
+   `Reviewer_Downloads/`. Curate per the include/exclude list above.
 
-2. **Per-reviewer subfolder name.** Currently a GUID
-   (`Received_Reviews/7f3a-9c2e-...`); not human-scannable. Considering
-   `{ReviewerLastName}_{shortId}/` (e.g. `Patel_7f3a9c2e`). Cleaner for
-   manual SharePoint browsing.
-
-3. **PA-driven trigger.** Should the `Reviewer_Materials/` folder
-   creation be driven by a status flip on `akoya_request` (e.g., when
-   the request enters "Phase II Pending"), or by an explicit "ready for
-   external review" trigger you build separately?
-
-4. **Naming convention drift.** If your team has an existing convention
-   for review-related subfolders (from the prior grants management
-   system or current internal practice), let's align before locking
-   `Reviewer_Materials` into PA flows. Easier to converge now than to
-   migrate later.
+That's it. The rest happens automatically.
 
 ---
 
-## Suggested next step
+## Open questions (post-pilot)
 
-A 30-minute working session to walk through one real request end-to-end:
-look at what's currently in its SharePoint folder, decide what should
-land in `Reviewer_Materials/`, and sketch the PA steps that would put
-them there.
+- Trigger point for folder creation: when the request enters "Phase II
+  Pending," or earlier?
+- Any naming you want for subfolders within `Reviewer_Downloads/` if
+  you want to organize (e.g., `Reviewer_Downloads/Proposal/`,
+  `Reviewer_Downloads/Supporting/`) — works fine on our end either way.

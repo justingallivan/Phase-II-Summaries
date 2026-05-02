@@ -9,7 +9,7 @@
 import { jest } from '@jest/globals';
 import { GraphService } from '../../lib/services/graph-service.js';
 import { DynamicsService } from '../../lib/services/dynamics-service.js';
-import { writeReviewFiles } from '../../lib/services/review-upload.js';
+import { writeReviewFiles, buildReviewerSubfolder } from '../../lib/services/review-upload.js';
 
 // Replace specific methods with jest.fn() before each test, restore afterwards.
 const originals = {};
@@ -43,7 +43,9 @@ const PDF_BYTES = Buffer.concat([
 const SUGGESTION_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const REQUEST_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 const REQUEST_NUMBER = '1001289';
-const EXPECTED_FOLDER = `${REQUEST_NUMBER}_${REQUEST_ID.replace(/-/g, '').toUpperCase()}/Reviews/${SUGGESTION_ID}`;
+// First 8 chars of suggestion GUID (no hyphens) → 'aaaaaaaa'.
+// With no reviewer name in the mocked row, sanitizer falls back to short-id-only.
+const EXPECTED_FOLDER = `${REQUEST_NUMBER}_${REQUEST_ID.replace(/-/g, '').toUpperCase()}/Reviewer_Uploads/aaaaaaaa`;
 
 function validInput(overrides = {}) {
   return {
@@ -266,5 +268,49 @@ describe('writeReviewFiles — failure paths', () => {
     expect(r.cleanedUp).toBe(false);
     expect(errSpy).toHaveBeenCalled();
     errSpy.mockRestore();
+  });
+});
+
+describe('buildReviewerSubfolder', () => {
+  const SID = '7f3a9c2e-1234-5678-9abc-def012345678';
+  // First 8 chars of the GUID with hyphens stripped: '7f3a9c2e'
+
+  test('produces {LastName}_{shortId} for a normal name', () => {
+    expect(buildReviewerSubfolder(SID, { wmkf_lastname: 'Patel' })).toBe('Patel_7f3a9c2e');
+  });
+
+  test('falls back to last word of full name when lastname is empty', () => {
+    expect(buildReviewerSubfolder(SID, { wmkf_name: 'Dr. Anika Patel' })).toBe('Patel_7f3a9c2e');
+  });
+
+  test('strips diacritical marks via NFD normalization', () => {
+    expect(buildReviewerSubfolder(SID, { wmkf_lastname: 'José' })).toBe('Jose_7f3a9c2e');
+    expect(buildReviewerSubfolder(SID, { wmkf_lastname: 'Müller' })).toBe('Muller_7f3a9c2e');
+  });
+
+  test('strips punctuation, spaces, apostrophes', () => {
+    expect(buildReviewerSubfolder(SID, { wmkf_lastname: "O'Brien" })).toBe('OBrien_7f3a9c2e');
+    expect(buildReviewerSubfolder(SID, { wmkf_lastname: 'van der Berg' })).toBe('vanderBerg_7f3a9c2e');
+    expect(buildReviewerSubfolder(SID, { wmkf_lastname: 'Smith-Jones' })).toBe('SmithJones_7f3a9c2e');
+  });
+
+  test('truncates very long names', () => {
+    const longName = 'A'.repeat(50);
+    const folder = buildReviewerSubfolder(SID, { wmkf_lastname: longName });
+    expect(folder).toBe('A'.repeat(30) + '_7f3a9c2e');
+  });
+
+  test('falls back to short-id-only when sanitization produces empty', () => {
+    // CJK-only name: NFD doesn't fold to ASCII, sanitizer strips it to empty.
+    expect(buildReviewerSubfolder(SID, { wmkf_lastname: '李四' })).toBe('7f3a9c2e');
+    // No reviewer at all
+    expect(buildReviewerSubfolder(SID, null)).toBe('7f3a9c2e');
+    // Reviewer with empty fields
+    expect(buildReviewerSubfolder(SID, { wmkf_lastname: '', wmkf_name: '' })).toBe('7f3a9c2e');
+  });
+
+  test('strips honorifics from full name fallback', () => {
+    expect(buildReviewerSubfolder(SID, { wmkf_name: 'Prof. Patel' })).toBe('Patel_7f3a9c2e');
+    expect(buildReviewerSubfolder(SID, { wmkf_name: 'Professor Anika Patel' })).toBe('Patel_7f3a9c2e');
   });
 });
