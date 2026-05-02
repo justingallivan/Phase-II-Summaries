@@ -118,6 +118,10 @@ ANTHROPIC_BALANCE_ANCHOR_DATE=2026-04-21  # ISO date of last top-up; usage summe
 LOW_BALANCE_ALERT_CENTS=500               # low-balance threshold (default 500 = $5)
 SPEND_ALERT_EMAIL_TO=...                  # optional override; falls back to NOTIFICATION_EMAIL_TO
 SPEND_ALERT_EMAIL_FROM=...                # optional override; must be a Dynamics systemuser email
+
+# Required for external reviewer intake (Phase 4-7)
+EXTERNAL_LINK_SECRET=...                  # 32+ char HMAC secret for magic-link JWTs; separate from NEXTAUTH_SECRET
+REVIEWER_MATERIALS_FOLDERS=...            # optional; comma-separated SharePoint subfolders that count as reviewer-shared. Default: Reviewer_Downloads
 ```
 
 ## Per-App Model Configuration
@@ -214,6 +218,14 @@ Located in `lib/services/`:
 - `program-director-resolver.js` - Bridges the authenticated user to a Dynamics `systemuser`. `resolveByEmail(azureEmail)` returns `{ systemuserid, fullName }` cached 10 min (1 min on miss). Used by Reviewer Finder's PD-filtered proposal picker; filter target is `_wmkf_programdirector_value` on `akoya_request`.
 - `llm-client.js` - Canonical Anthropic API wrapper (`complete()` + `stream()`). `safeFetch` SSRF allowlist + real `AbortController`-bound timeout + retry on 429/529 with retry-after honoured + single fallback-model swap on 529 + `logUsage` on success/failure (cache tokens preserved) + API-key redaction in errors. Streaming preserves the dynamics-explorer/chat semantic — text deltas forward to `onTextDelta` only when no tool_use is detected; `onEvent` exposes raw SSE events for cases like web_search citation collection. Replaces the deleted `shared/api/handlers/claudeClient.js` and 14 ad-hoc fetch sites.
 - `dynamics-context.js` - AsyncLocalStorage-backed restriction context. `withDynamicsContext({ restrictions, requestId }, fn)` / `bypassDynamicsRestrictions(requestId, fn)` — every request gets its own isolated restriction store, threaded through awaits. `DynamicsService.checkRestriction` reads from the store; the legacy `setRestrictions`/`bypassRestrictions` static methods on DynamicsService are deprecated shims kept temporarily for unmigrated scripts.
+- `external-token.js` - HMAC-signed JWT primitive for external-reviewer magic links. `mintToken({ suggestionId, requestId, ops, expiresAt })` returns `{ jwt, jti, hash }`; `verifyToken(jwt)` does signature + expiry only; `hashToken(jwt)` for the row-side authorization check. Algorithm pinned (HS256), 32-char minimum secret. Hash-only storage means revoking or replacing a token is a single PATCH.
+- `review-upload.js` - Shared core for review file uploads. `writeReviewFiles({ suggestionId, files, structuredData, opts })` — used by both the public token-authenticated endpoint and the staff session-authenticated endpoint so the two paths can never drift. Validates files (extension + magic bytes + size), writes to SharePoint at `akoya_request/{request}/Reviewer_Uploads/{LastName_shortId}/`, PATCHes Dataverse, rolls back SharePoint writes on failure. `buildReviewerSubfolder()` exported for testing.
+
+Located in `lib/external/`:
+- `token-lifecycle.js` - `mintAndStore` / `revoke` / `ensureToken` / `buildExternalUrl`. The `ensureToken(suggestionId)` primitive is idempotent — used by the Reviewer Finder accept-flip hook to auto-mint on `wmkf_accepted=true`, and by future PA flows. URL base reads from `NEXTAUTH_URL`.
+- `verify-suggestion-token.js` - Combined JWT + suggestion-row check for the three external endpoints. One Dataverse round trip with `wmkf_Request` and `wmkf_PotentialReviewer` expanded; returns a discriminated result with reason codes (`expired`, `revoked`, `hash_mismatch`, etc.) so the landing page can show specific error states.
+- `reviewer-materials.js` - `isReviewerMaterial(folderPath)` enforces the "files outside `Reviewer_Downloads/` are invisible to reviewers" rule at the file-list AND file-download endpoints. Single source of truth; `REVIEWER_MATERIALS_FOLDERS` env var supports multi-name transition windows.
+- `review-form-schema.js` - The 4 structured fields (affiliation, impact, risk, overallRating). Validator supports `{ partial: true }` for the mark-received-no-file path where structured data is optional.
 
 ### Utility Classes
 
@@ -330,10 +342,21 @@ Located in `lib/utils/`:
 - `POST /api/reviewer-finder/load-proposal` - Given an `akoya_request` GUID, walks SharePoint buckets, picks the proposal best-guess (or `fileKey` override), uploads to Vercel Blob, returns the blob URL for the existing analyze pipeline.
 
 ### Review Manager
-- `GET/PATCH /api/review-manager/reviewers` - Accepted reviewers by cycle/proposal, status/notes/URL updates
-- `POST /api/review-manager/render-emails` - Preview-only: render per-recipient subject/body drafts. No Dynamics calls, no DB writes.
+- `GET/PATCH /api/review-manager/reviewers` - Accepted reviewers by cycle/proposal, status/notes/URL updates. Surfaces token state (active/revoked/expired/not_minted), structured form values, SharePoint folder pointer per row.
+- `POST /api/review-manager/render-emails` - Preview-only: render per-recipient subject/body drafts. Mints fresh `{{externalLink}}` per recipient when the template body references the placeholder.
 - `POST /api/review-manager/send-emails` - Direct Dynamics send (SSE streaming). Sender resolves from session, regardingobjectid → akoya_request, per-recipient try/catch, lifecycle timestamps update only for sent rows.
-- `POST /api/review-manager/upload-review` - Upload completed review documents (Vercel Blob)
+- `POST /api/review-manager/upload-review` - Upload 1..5 completed review files plus structured form data (affiliation, impact, risk, overallRating). Writes to SharePoint via `writeReviewFiles`; legacy Vercel Blob rows untouched.
+- `POST /api/review-manager/regenerate-token` - Mint a fresh external-reviewer magic link, store hash, clear revoked. Returns the URL + expiry.
+- `POST /api/review-manager/revoke-token` - Set `wmkf_externaltokenrevoked = true`. Hash retained for audit.
+- `POST /api/review-manager/mark-received-no-file` - Stamp received-at + staff flag without uploading bytes. Optional structured form data; null picklists = "informal feedback, not scored."
+- `GET /api/review-manager/download-review` - Stream a completed review back to staff. SharePoint via Graph if `wmkf_reviewsharepointfolder` set; redirects to legacy `wmkf_reviewbloburl` otherwise.
+
+### External Reviewer Intake (token-authenticated, public)
+- `GET /external/review/[token]` - Public landing page for invited reviewers. Verifies the JWT, fetches proposal info + curated file list + reviewer prefill in one round trip, sets `wmkf_proposalfirstaccessed` on first view.
+- `GET /api/external/review/[token]/context` - JSON bootstrap for the landing page.
+- `GET /api/external/review/[token]/proposal?fileId=&library=` - Streams a proposal file from SharePoint via Graph. Validates the requested file lives under `Reviewer_Downloads/` for the request.
+- `POST /api/external/review/[token]/upload` - Multipart upload (1..5 files + structured form). Calls shared `writeReviewFiles` core with `source: 'reviewer_self_token'`.
+- All routes allowlisted in `middleware.js`; `/external/*` is public and skips the `RequireAuth` wrapper in `pages/_app.js`. See `docs/EXTERNAL_REVIEWER_INTAKE_PLAN.md`.
 
 ### Concept Evaluator
 - `POST /api/evaluate-concepts` - Evaluate concepts with literature search (streaming)
