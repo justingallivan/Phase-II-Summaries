@@ -589,6 +589,48 @@ const v23bStatements = [
   `CREATE INDEX IF NOT EXISTS idx_dynamics_feedback_session ON dynamics_feedback(session_id)`,
 ];
 
+// V26: Intake Portal — draft staging + audit
+const v26Statements = [
+  `CREATE TABLE IF NOT EXISTS intake_drafts (
+    id            SERIAL PRIMARY KEY,
+    contact_oid   TEXT NOT NULL,
+    account_id    TEXT NOT NULL,
+    request_id    TEXT,
+    form_key      TEXT NOT NULL,
+    draft_json    JSONB NOT NULL DEFAULT '{}'::jsonb,
+    attachments   JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_intake_drafts_unique_with_request
+     ON intake_drafts (account_id, request_id, form_key)
+     WHERE request_id IS NOT NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_intake_drafts_unique_no_request
+     ON intake_drafts (account_id, form_key)
+     WHERE request_id IS NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_intake_drafts_contact_oid ON intake_drafts(contact_oid)`,
+  `CREATE INDEX IF NOT EXISTS idx_intake_drafts_account ON intake_drafts(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_intake_drafts_request ON intake_drafts(request_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_intake_drafts_updated ON intake_drafts(updated_at DESC)`,
+  `CREATE TABLE IF NOT EXISTS intake_audit (
+    id              BIGSERIAL PRIMARY KEY,
+    actor_oid       TEXT,
+    actor_type      TEXT NOT NULL,
+    action          TEXT NOT NULL,
+    target_entity   TEXT,
+    target_id       TEXT,
+    payload_digest  TEXT,
+    metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    ip_address      INET,
+    user_agent      TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_intake_audit_actor ON intake_audit(actor_oid)`,
+  `CREATE INDEX IF NOT EXISTS idx_intake_audit_target ON intake_audit(target_entity, target_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_intake_audit_action ON intake_audit(action)`,
+  `CREATE INDEX IF NOT EXISTS idx_intake_audit_created ON intake_audit(created_at DESC)`,
+];
+
 // V25: Expertise Finder tables
 const v25Statements = [
   `CREATE TABLE IF NOT EXISTS expertise_roster (
@@ -1253,6 +1295,25 @@ async function runMigration() {
       }
     }
 
+    // Run V26 table creation (Intake Portal)
+    console.log(`\nApplying v26 schema updates - Intake Portal (${v26Statements.length} statements)...`);
+    for (let i = 0; i < v26Statements.length; i++) {
+      const statement = v26Statements[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v26-${i + 1}/${v26Statements.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v26-${i + 1}/${v26Statements.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v26-${i + 1}/${v26Statements.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -1354,6 +1415,9 @@ async function runMigration() {
     console.log('\nV25 new tables (Expertise Finder):');
     console.log('  • expertise_roster (internal reviewer/consultant/board roster)');
     console.log('  • expertise_matches (AI matching history)');
+    console.log('\nV26 new tables (Intake Portal):');
+    console.log('  • intake_drafts (applicant draft staging — Postgres only, cleared on submit)');
+    console.log('  • intake_audit (state-changing portal action audit trail)');
     console.log('\nIndexes created: 64');
 
   } catch (error) {

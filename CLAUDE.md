@@ -312,6 +312,11 @@ Located in `lib/utils/`:
 - `expertise_roster` - Internal reviewer/consultant/board roster (name, role_type, affiliation, expertise fields, is_active, audit trail)
 - `expertise_matches` - AI proposal-to-reviewer matching history (match_results JSONB, model/token/cost tracking, per-user)
 
+### Intake Portal Tables (V26)
+
+- `intake_drafts` - Applicant intake draft staging (contact_oid, account_id, request_id, form_key, draft_json, attachments JSONB). Postgres-only; cleared on submission. Uniqueness scoped (account_id, request_id, form_key) so an institution can have multiple in-flight drafts per cycle.
+- `intake_audit` - State-changing portal action audit trail (actor_oid, actor_type, action, target_entity, target_id, payload_digest, metadata, ip/UA, created_at). Payloads hashed (sha256), not stored.
+
 ### Monitoring & Maintenance Tables
 
 - `system_alerts` - Central alert store (type, severity, title, message, metadata, status, auto_resolve_key)
