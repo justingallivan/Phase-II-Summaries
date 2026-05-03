@@ -44,17 +44,18 @@ A multi-application document processing system using Claude AI for grant-related
 | Batch Phase I Summaries | `batch-phase-i-summaries.js` | `/api/process-phase-i` | Batch Phase I proposal processing |
 | Batch Phase II Summaries | `batch-proposal-summaries.js` | `/api/process` | Batch Phase II proposal processing |
 | Funding Analysis | `funding-gap-analyzer.js` | `/api/analyze-funding-gap` | NSF API integration for federal funding |
-| Phase I Writeup | `phase-i-writeup.js` | `/api/process-phase-i` | Single Phase I writeup |
+| Phase I Writeup | `phase-i-writeup.js` | `/api/process-phase-i-writeup` | Single Phase I writeup |
 | Phase II Writeup | `phase-ii-writeup.js` | `/api/process` | Single Phase II writeup with Q&A |
 | Reviewer Finder | `reviewer-finder.js` | `/api/reviewer-finder/*` | AI + database search for expert reviewers |
 | Review Manager | `review-manager.js` | `/api/review-manager/*` | Post-acceptance review lifecycle management |
-| Peer Review Summarizer | `peer-review-summarizer.js` | `/api/summarize-reviews` | Analyze peer reviews |
+| Peer Review Summarizer | `peer-review-summarizer.js` | `/api/process-peer-reviews` | Analyze peer reviews |
 | Expense Reporter | `expense-reporter.js` | `/api/process-expenses` | Receipt/invoice processing |
 | Literature Analyzer | `literature-analyzer.js` | `/api/analyze-literature` | Research paper synthesis |
 | Integrity Screener | `integrity-screener.js` | `/api/integrity-screener/*` | Screen applicants for research integrity |
 | Dynamics Explorer | `dynamics-explorer.js` | `/api/dynamics-explorer/*` | Natural language CRM queries via agentic tool-use |
 | Expertise Finder | `expertise-finder.js` | `/api/expertise-finder/*` | Match proposals to internal staff, consultants, and board members |
 | Grant Reporting | `grant-reporting.js` | `/api/grant-reporting/*` | Interactive grant final report extraction with Dynamics auto-fill, goals assessment vs. original proposal, and Word export |
+| Virtual Review Panel | `virtual-review-panel.js` | `/api/virtual-review-panel` | Multi-LLM review panel (Claude, GPT, Gemini, Perplexity) with claim verification + structured review + synthesis. Not in default grants; admin-assigned. |
 | Phase I Dynamics (Test) | `phase-i-dynamics.js` | `/api/phase-i-dynamics/summarize` | Single-request Phase I summarization with writeback to `akoya_request.wmkf_ai_summary` + `wmkf_ai_run` audit row. Pre-flight overwrite guard. Not in nav — direct URL only. |
 
 ## Tech Stack
@@ -222,6 +223,15 @@ Located in `lib/services/`:
 - `intake-draft-service.js` - CRUD over `intake_drafts` for the applicant intake portal. `upsert({contactOid, accountId, requestId, formKey, draftJson, attachments})` switches between two ON CONFLICT targets (one for `request_id IS NOT NULL`, the partial-index pilot path; one for `request_id IS NULL`, future concept-stage drafts). `appendAttachment` / `removeAttachment` are atomic JSONB ops to avoid read-modify-write races during concurrent uploads. `deleteExpired({olderThanDays})` returns `{ count, attachments }` (rows + every attachment record from deleted rows) so the GC cron can purge the matching Vercel Blob objects — Blob URLs would otherwise be unrecoverable after the row is gone.
 - `intake-audit-service.js` - Append-only audit for portal state changes. `log({actorOid, actorType, action, targetEntity, targetId, payload, metadata, ipAddress, userAgent})` sha256-hashes payloads (bytes never stored). Failures are swallowed — audit must not block the primary operation.
 - `review-upload.js` - Shared core for review file uploads. `writeReviewFiles({ suggestionId, files, structuredData, opts })` — used by both the public token-authenticated endpoint and the staff session-authenticated endpoint so the two paths can never drift. Validates files (extension + magic bytes + size), writes to SharePoint at `akoya_request/{request}/Reviewer_Uploads/{LastName_shortId}/`, PATCHes Dataverse, rolls back SharePoint writes on failure. `buildReviewerSubfolder()` exported for testing.
+- `execute-prompt.js` - Implementation of the Executor contract (`docs/EXECUTOR_CONTRACT.md`). Runs one `wmkf_ai_prompt` row end-to-end: resolves the prompt template, interpolates variables, calls Claude via `llm-client`, parses declared outputs, optionally writes back to Dataverse, logs to `wmkf_ai_run`. Mirror of the PowerAutomate `ExecutePrompt` child flow.
+- `multi-llm-service.js` - Provider-agnostic wrapper for Claude / OpenAI / Gemini / Perplexity. Used by Virtual Review Panel for parallel multi-model review.
+- `panel-review-service.js` - Virtual Review Panel orchestration: claim verification, structured per-reviewer review, synthesis. Persists to `panel_reviews` + `panel_review_items`.
+- `literature-search-service.js` - Multi-database literature search orchestration shared by Literature Analyzer and the panel claim-verification step.
+- `settings-service.js` / `dataverse-settings-service.js` - Wave 1 dispatch wrapper + Dataverse adapter for `system_settings` (model overrides, etc.). Reads `WAVE1_BACKEND_SETTINGS` env var.
+- `app-access-service.js` / `dataverse-app-access-service.js` - Wave 1 dispatch wrapper + Dataverse adapter for `user_app_access`. Reads `WAVE1_BACKEND_APP_ACCESS`.
+- `dataverse-prefs-service.js` - Wave 1 Dataverse adapter for `user_preferences`. Dispatch lives in `database-service.js` (`useDataversePrefs()`), reads `WAVE1_BACKEND_PREFS`.
+- `dataverse-identity-map.js` - Bridges `user_profiles` rows to Dynamics `systemuser` records by email; cached. Used by Wave 1 services to attach attribution to writes.
+- `model-override-loader.js` - Thin loader that calls into `settings-service` to fetch per-app model overrides; consumed by `baseConfig.js` `getModelForApp()`.
 
 Located in `lib/external/`:
 - `token-lifecycle.js` - `mintAndStore` / `revoke` / `ensureToken` / `extendForPostSubmissionWindow` / `buildExternalUrl`. The `ensureToken(suggestionId)` primitive is idempotent — used by the Reviewer Finder accept-flip hook to auto-mint on `wmkf_accepted=true`, and by future PA flows. `extendForPostSubmissionWindow(suggestionId, { days = 7 })` tightens an active token's expiry to a short post-submission modify window — called from `writeReviewFiles` after a successful upload so the link stops being live for the original 90-day mint ceiling. URL base reads from `NEXTAUTH_URL`.
@@ -365,8 +375,8 @@ Located in `lib/utils/`:
 - `POST /api/external/review/[token]/upload` - Multipart upload (1..5 files + structured form). Calls shared `writeReviewFiles` core with `source: 'reviewer_self_token'`.
 - All routes allowlisted in `middleware.js`; `/external/*` is public and skips the `RequireAuth` wrapper in `pages/_app.js`. See `docs/EXTERNAL_REVIEWER_INTAKE_PLAN.md`.
 
-### Concept Evaluator
-- `POST /api/evaluate-concepts` - Evaluate concepts with literature search (streaming)
+### Virtual Review Panel
+- `POST /api/virtual-review-panel` - Multi-LLM panel review (Claude, GPT, Gemini, Perplexity) with claim verification, structured per-reviewer output, and synthesis. Streams via SSE. App key `virtual-review-panel`; admin-assigned (not in `DEFAULT_APP_GRANTS`).
 
 ### Integrity Screener
 - `POST /api/integrity-screener/screen` - Screen applicants (SSE streaming)
@@ -383,6 +393,8 @@ Located in `lib/utils/`:
 
 ### Expertise Finder
 - `POST /api/expertise-finder/match` - Match proposal PDF to internal roster (staff assignment, consultant overlap, board interest)
+- `POST /api/expertise-finder/batch-match` - Batch matching across multiple proposals
+- `GET /api/expertise-finder/proposals` - List eligible proposals for matching
 - `GET/POST/PATCH/DELETE /api/expertise-finder/roster` - CRUD for expertise roster members
 - `GET /api/expertise-finder/history` - Match history for current user
 
@@ -426,11 +438,19 @@ Located in `lib/utils/`:
 - `GET /api/cron/log-analysis` - Vercel error log analysis (every 6 hours)
 - `GET /api/cron/spend-check` - AI spend thresholds: daily total + estimated credit balance (hourly); emails via Dynamics on low balance
 
+### Document Processing (additional)
+- `POST /api/process-phase-i-writeup` - Single Phase I writeup (called by `phase-i-writeup.js`)
+- `POST /api/process-peer-reviews` - Peer review summarization (called by `peer-review-summarizer.js`)
+- `POST /api/process-legacy` - Retained legacy Phase II processing path (kept for backward compat with older saved sessions)
+
 ### Other
 - `GET /api/api-capabilities` - Boolean availability of optional third-party API integrations (ORCID/NCBI/SerpAPI). Used by UI to enable/disable feature toggles without exposing the underlying credentials to the browser.
 - `POST /api/analyze-funding-gap` - Federal funding analysis
 - `POST /api/process-expenses` - Expense extraction
-- `POST /api/upload-handler` - Vercel Blob upload
+- `POST /api/upload-handler` - Vercel Blob upload (multipart receive → blob put)
+- `POST /api/upload-file` - Alternative Vercel Blob upload path used by some apps
+- `GET /api/blob-proxy` - Authenticated proxy for fetching Vercel Blob URLs server-side
+- `POST /api/test-email` - Dev-only smoke endpoint for Dynamics email send (paired with `pages/test-email.js`)
 
 ---
 
