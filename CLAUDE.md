@@ -8,6 +8,14 @@
 - Use descriptive commit messages
 - Don't let multiple sessions accumulate without commits
 
+## Carryover Hygiene
+
+**Verify destructive carryover items before acting on them.** Any task carried over from a prior session that says **drop**, **remove**, **retire**, **archive**, **delete**, or **deprecate** infrastructure (table, column, endpoint, env var, file, dispatch wrapper, dependency, feature flag) must be grep-verified against live state first. Carryover lists in `SESSION_PROMPT.md`, memory, or user prompts go stale — a belief from a prior session can propagate forward through several handoffs without re-verification.
+
+Quick pre-flight: grep for live callers, read the most likely ones to confirm they're not load-bearing. If anything looks live, **stop and report back** — don't proceed because the carryover said to. After a successful verification, update the originating memory entry so the wrong belief doesn't keep propagating.
+
+This rule does NOT apply to additive work (new features, endpoints, tables) — only destructive work.
+
 ---
 
 ## Project Overview

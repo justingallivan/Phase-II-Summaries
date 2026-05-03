@@ -2,6 +2,7 @@
 
 ## Operational
 - [Office Mac memory reconciliation](project_office_mac_memory_sync.md) — one-shot procedure: snapshot office memory to iCloud BEFORE opening Claude Code, then symlink. Reconcile from anywhere. Delete entry after both Macs are symlinked.
+- [Verify before destructive carryover](feedback_verify_before_destructive_carryover.md) — drop/remove/retire/archive items from carryover lists must be grep-verified first. Carryover lists go stale; one nearly broke Reviewer Finder on 2026-05-03.
 
 ## Collaboration Notes
 - [Concepts vs Phase I are different grant stages](feedback_concepts_vs_phase_i.md) — hard-exclude `/concept/i` files from Phase I prompt pipelines
