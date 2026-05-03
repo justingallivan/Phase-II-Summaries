@@ -23,9 +23,10 @@ cp -R ~/.claude/projects/-Users-$(whoami)-Programming-Phase-II-Summaries/memory 
 
 **Critical:** do NOT open Claude Code before this finishes. Even a read-only session can trigger memory writes that deepen the divergence.
 
-### Phase 3 — symlink (~2 min)
+### Phase 3 — symlink memory + patch the start skill (~3 min)
 
 ```bash
+# Symlink memory
 cd ~/Programming/Phase-II-Summaries && git pull
 PROJECT_SLUG="-Users-$(whoami)-Programming-Phase-II-Summaries"
 TARGET=~/.claude/projects/$PROJECT_SLUG
@@ -33,7 +34,22 @@ mv "$TARGET/memory" "$TARGET/memory.pre-reconcile-backup"
 ln -s "$(pwd)/.claude-memory" "$TARGET/memory"
 ```
 
-The office Mac now reads/writes through `.claude-memory/`. Office-only memories from the snapshot are NOT yet in this dir — they're waiting in iCloud for Phase 2.
+The office Mac now reads/writes memory through `.claude-memory/`. Office-only memories from the snapshot are NOT yet in `.claude-memory/` — they're waiting in iCloud for Phase 2.
+
+**Then patch the `/start` skill.** The skill lives at `~/.claude/skills/start/skill.md` (per-user global Claude config, NOT in the repo) and was edited 2026-05-03 to flag destructive carryover items as unverified-until-checked. The office Mac's copy is out of date. Open the file and check whether it has a **Step 4** beginning "Treat destructive carryover items as unverified". If missing, append this verbatim after Step 3:
+
+```markdown
+## Step 4: Treat destructive carryover items as unverified
+
+When summarizing "next steps" or "pivot to" sections from SESSION_PROMPT.md, flag any item that says **drop**, **remove**, **retire**, **archive**, **delete**, or **deprecate** infrastructure as **unverified-until-checked**, NOT as a green-lit task. These items have inherited from prior sessions and may have gone stale.
+
+If the user asks to act on one, do a pre-flight verification first:
+1. Grep for live callers of the thing being removed.
+2. Read the most likely callers to confirm they're not load-bearing.
+3. If anything looks live, stop and report back before touching anything.
+
+This rule exists because on 2026-05-03 a "drop dormant Postgres reviewer tables" carryover item was about to be acted on; the tables were actually load-bearing for the live Reviewer Finder app. The rule does NOT apply to additive work.
+```
 
 ### Phase 2 — reconcile (~30-45 min)
 
