@@ -1,5 +1,8 @@
 # Project Memory
 
+## Operational
+- [Office Mac memory reconciliation](project_office_mac_memory_sync.md) — one-shot procedure: snapshot office memory to iCloud BEFORE opening Claude Code, then symlink. Reconcile from anywhere. Delete entry after both Macs are symlinked.
+
 ## Collaboration Notes
 - [Concepts vs Phase I are different grant stages](feedback_concepts_vs_phase_i.md) — hard-exclude `/concept/i` files from Phase I prompt pipelines
 - [Cycle gating vs. Executor scope](feedback_cycle_vs_executor_scope.md) — "cycle" only gates Connor-collaboration work; Executor is for backend-automation prompts; user-facing apps (Reviewer Finder) are independent of both
