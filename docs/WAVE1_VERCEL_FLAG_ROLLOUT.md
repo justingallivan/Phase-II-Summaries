@@ -65,10 +65,12 @@ Either:
 
 **CLI:**
 ```bash
-vercel env add WAVE1_BACKEND_SETTINGS production
-# enter: dataverse
+# Use printf, NOT echo — echo appends a newline that gets captured.
+printf 'dataverse' | vercel env add WAVE1_BACKEND_SETTINGS production
 vercel --prod  # redeploy to pick up the new env
 ```
+
+> ⚠️ **Trailing-newline gotcha (2026-05-03 lesson).** The first prod attempt set all three flags to `"dataverse\n"` (likely via `echo "dataverse" | vercel env add ...` or interactive Enter). All three dispatch sites do strict `=== 'dataverse'` equality, so the comparison silently failed and prod ran on Postgres for 6 days while looking like it had been rolled over. **Always use `printf 'dataverse'` (no newline) when piping, or type the value with no trailing whitespace at the interactive prompt.** Verify after with `vercel env pull` + `grep '^WAVE1_BACKEND'` — values must read `"dataverse"` with no `\n`. If you see a stored value of `"dataverse\n"`, the flag is functionally unset.
 
 ---
 
