@@ -1,186 +1,160 @@
-# Session 123 Prompt: External Reviewer Intake — Phase 7 (cutover) + post-pilot follow-ups
+# Session 124 Prompt: Intake portal foundation work (or whatever IT response unblocks)
 
 ## Heads up
 
-Session 122 closed with **Phases 4 through 6 of the external reviewer
-intake build shipped**, plus the staff download endpoint and a folder
-naming convention agreed with Connor. Pipeline is functionally
-complete end-to-end — what remains is cutover (deploy, real-cycle
-trial) plus a couple of small follow-ups that came out of the work.
+Session 123 closed two things: **External Reviewer Intake Phase 7 cutover**
+(production deploy + folder rename, end of an arc that started Session 121)
+and a **substantial design pass on the new applicant intake portal**, which
+will be the next major build. The portal is gated on IT provisioning a new
+Entra External ID tenant — the request email goes to DFT on Monday
+2026-05-04. Until that's back, no portal code can ship.
 
-Reference the full plan at `docs/EXTERNAL_REVIEWER_INTAKE_PLAN.md` and
-the Connor-shareable folder spec at
-`docs/REVIEWER_MATERIALS_FOLDER_SPEC.md`.
+Reference docs:
+- `docs/INTAKE_PORTAL_DESIGN.md` — pilot scope locked, design v2
+- `docs/IT_ENTRA_EXTERNAL_TENANT_REQUEST_2026-05-04.md` — IT email + tracking
+- `docs/EXTERNAL_REVIEWER_INTAKE_PLAN.md` — reference pattern for token-authenticated public surface
 
-## Session 122 summary
+## Session 123 summary
 
-A long session that started with Phase 4 design and finished with the
-build production-ready and smoke-tested in dev against real Dynamics +
-SharePoint data.
+Mixed session — short execution at the front (cutover), substantial design
+at the back.
 
 ### What was completed
 
-1. **Phase 4 — public endpoints + landing page** (`de6e284`).
-   `pages/external/review/[token].js` (public), three API endpoints
-   (`context`, `proposal`, `upload`), the `verifySuggestionToken`
-   helper that bundles JWT + suggestion-row checks into one Dataverse
-   round trip, and `<ReviewFormFields>` for schema-driven form
-   rendering.
+1. **External Reviewer Intake Phase 7 cutover.**
+   - `EXTERNAL_LINK_SECRET` added to Vercel **production** and **preview**
+     environments (separate 64-char hex values per env). `vercel env add`
+     for "all preview branches" non-interactively requires passing `''` as
+     the git-branch positional — both v52 and v53 of the CLI bug out
+     without it, even with `--yes`.
+   - Production deploy via `vercel --prod` — `dpl_6GubU5ja8rgfsRXtYgA3PEosxGGs`,
+     status READY.
+   - Dev SharePoint folder migrated for test request 1002379:
+     `Reviewer_Materials` → `Reviewer_Downloads`. (The session 122 prompt
+     mentioned a typo'd `Reviwer_Materials` — that was wrong; the actual
+     dev folder didn't have the typo, only the env override did.)
+   - `REVIEWER_MATERIALS_FOLDERS` env override removed from `.env.local`
+     since the folder name now matches the default.
+   - Restart `npm run dev` to pick up the env change.
 
-2. **Phase 5 backend — staff endpoints + upload-review rewrite**
-   (`d676b7e`). New `lib/external/token-lifecycle.js` (`mintAndStore`,
-   `revoke`, `ensureToken`), three new endpoints
-   (`regenerate-token`, `revoke-token`, `mark-received-no-file`), and
-   the existing `upload-review` rewritten to call `writeReviewFiles`
-   instead of Vercel Blob. Response shape changed from
-   `{ success, blobUrl, filename }` to `{ ok, folder, files }`.
+2. **Intake portal design v2.** Built on the artifact handed in from the
+   other session (`wmkf-intake-portal-context.md`, not in repo). Wrote
+   `docs/INTAKE_PORTAL_DESIGN.md` from scratch with corrections and
+   strategic pivots:
+   - Scope discipline: **skinny pilot, not parallel GOapply.** Pilot is
+     sized like the external reviewer intake (the reference build), not
+     like a GOapply rewrite. Long-term goal stays "full GOapply
+     replacement" but every pilot decision anchors on "external reviewer
+     intake but for applicants."
+   - **Schema collapsed:** pilot adds fields to `contact` and
+     `akoya_request` plus one new entity (`wmkf_portal_membership`). The
+     other three planned tables (`wmkf_opportunity`, `wmkf_phase`,
+     `wmkf_status_tracking`) deferred to Phase 1+ expansion with full
+     Connor design review before creation.
+   - **Auth: Entra External ID with OTP (separate tenant
+     `wmkeckapply.onmicrosoft.com`).** HMAC magic links explicitly
+     considered and rejected — Justin's institution-as-identity argument
+     means person-centric magic links bake in the wrong abstraction.
+   - **Entry path: self-serve sign-in**, not magic link. Once
+     authenticated, portal queries Dynamics for the contact's
+     memberships and lands them on a dashboard.
+   - **Drafts in Postgres**, not Dynamics (autosave throttling concern).
+   - **No submission PDF generator for pilot** — reviewer pipeline
+     consumes structured fields + attachments fine. Add later only if
+     downstream tools demand one.
+   - **Forms-as-code, versioned per cycle** (e.g.,
+     `phase-ii-research-2026-06/`). Each cycle = new directory.
+   - **Machine-legible capture as design principle** — split structured
+     content (budgets, rosters, milestones) into real fields, don't stuff
+     it in narrative or ZIP'd Excel.
+   - **Phase I additive only** for pilot; SoCal cross-phase revision
+     tagged as future enhancement.
 
-3. **Phase 5 frontend — Review Manager UI** (`9f366cf`). Upload
-   modal renders `<ReviewFormFields>` and accepts up to 5 files. New
-   "Link" column with `TokenStateBadge` (not_minted / active / revoked
-   / expired). Per-row `TokenActionsMenu` for regenerate (mints +
-   copies URL), revoke, mark-received. SharePoint-stored reviews show
-   a check icon; legacy Vercel Blob rows keep their direct link until
-   the eventual migration script.
+3. **IT email drafted** — `docs/IT_ENTRA_EXTERNAL_TENANT_REQUEST_2026-05-04.md`.
+   Justin sends Monday 2026-05-04. Until the tenant exists, no portal
+   code ships.
 
-4. **Reviewer_Materials folder policy** (`e3447a7`). Files outside a
-   designated subfolder are not exposed to reviewers — bulletproof
-   leakage protection. Single `lib/external/reviewer-materials.js`
-   constant, segment-anchored regex, `REVIEWER_MATERIALS_FOLDERS` env
-   override for transition windows.
+### Commits (Session 123)
 
-5. **Phase 6 — email integration + Connor spec doc** (`2057706`).
-   `ensureToken` hook into the Reviewer Finder accept flip so the
-   magic link exists by the time staff hits Send. `render-emails`
-   mints fresh per-recipient when the body references
-   `{{externalLink}}`. Default materials template body updated.
-   `docs/REVIEWER_MATERIALS_FOLDER_SPEC.md` — Connor-shareable.
-
-6. **Connor agreement → renames** (`a9f7372`). Symmetric folder names:
-   `Reviewer_Downloads/` (Connor populates) and `Reviewer_Uploads/`
-   (reviews land here). Per-reviewer subfolder format
-   `{sanitizedLastName}_{shortId}` — staff-readable, automation-safe
-   (identify reviewers via Dataverse joins, never by parsing folder
-   names). Existing `Reviews/{guid}/` rows keep working — canonical
-   pointer is in Dataverse.
-
-7. **Staff review download** (`deee9f1`). New
-   `pages/api/review-manager/download-review.js` endpoint streams from
-   SharePoint or redirects to legacy Blob. UI replaces the dual
-   anchor/marker pattern with a single download button.
-
-### Commits (Session 122)
-
-- `de6e284` — Phase 4: public endpoints + landing page
-- `d676b7e` — Phase 5 backend: staff endpoints + upload-review rewrite
-- `9f366cf` — Phase 5 frontend: Review Manager UI
-- `e3447a7` — Reviewer_Materials folder policy
-- `2057706` — Phase 6: email integration + folder spec for Connor
-- `a9f7372` — Reviewer_Downloads / Reviewer_Uploads convention
-- `deee9f1` — Review Manager: staff download for received reviews
-
-**All 7 commits are local, NOT yet pushed.** First action of Session
-123 should be `git push` once any pre-deploy review is done.
+- (this commit) — Document Session 123 + new design + IT request
 
 ### Verified end-to-end
 
-- Smoke test in dev against real Dynamics + SharePoint passed:
-  generate link → open in incognito → see `Reviewer_Downloads/` files
-  → download → upload → confirm folder + Dataverse fields.
-- 295 tests passing (was 253 entering session 122). 42 new tests
-  total across the new modules.
-- `npm run build` clean.
+- External Reviewer Intake live in production. Smoke-test path: open the
+  Review Manager in prod, regenerate a token for an accepted reviewer
+  on request 1002379, click the link in incognito, see the file in
+  `Reviewer_Downloads/`, upload back.
 
-## Pre-deploy items (do before pushing)
+## Pilot timing and dependencies
 
-These are the gating items for Phase 7 cutover. None are big.
+Hard target: portal accepting submissions by **2026-06-01** for the mid-
+June 2026 Phase II Research cycle (~25 proposals).
 
-1. **`EXTERNAL_LINK_SECRET` in Vercel env (preview + prod).** This was
-   added to `.env.local` mid-session. Without it, every Phase 4-6
-   endpoint 500s. Generate one new value (don't reuse the dev value)
-   and add via Vercel dashboard or `vercel env add EXTERNAL_LINK_SECRET`.
-2. **Connor's PA flow.** Per `docs/REVIEWER_MATERIALS_FOLDER_SPEC.md`,
-   needs to create `Reviewer_Downloads/` and `Reviewer_Uploads/`
-   subfolders at request creation and populate Downloads as files
-   come in. Without this, Phase II proposals in production have no
-   curated folder, and the landing page shows "The Foundation hasn't
-   shared materials yet." Coordinate before enabling for a real cycle.
-3. **Rename the dev test folder.** Justin's dev `Reviwer_Materials/`
-   (typo) should be renamed to `Reviewer_Downloads/`. The dev
-   `.env.local` currently has
-   `REVIEWER_MATERIALS_FOLDERS=Reviwer_Materials,Reviewer_Downloads`
-   so both match — once renamed in SharePoint, that env line can be
-   deleted.
+| Dependency | Owner | Gating |
+|---|---|---|
+| Entra External ID tenant | DFT (IT) | **Blocks all portal code.** Email Monday 2026-05-04 |
+| `wmkf_portal_membership` shape review | Connor | Justin can create the table once shape is OK'd |
+| Field inventory for Phase II Research form | Connor + Sarah | Sarah back from conference; Connor first |
+| PA flow updates for portal-originated `'Phase II Pending'` | Connor | Once portal is past initial integration test |
 
-## Where to pick up — Phase 7 + follow-ups
+## Where to pick up — Session 124
 
-### Phase 7 — Cutover
+If IT has responded → schema work + `/apply` skeleton. If not → design
+prep, Connor sync, or unrelated work.
 
-Per the plan: deploy, enable for one cycle as trial, monitor (token
-verification failures, SharePoint write errors, link-vs-staff-upload
-ratio). The endpoints are all in place; "deploy" is just a push +
-Vercel env vars + Connor's PA folders. No code work expected unless
-trial uncovers something.
+### If Entra is provisioned
+1. Create `wmkf_portal_membership` table (after Connor blesses the shape)
+2. Add fields: `wmkf_portal_oid` on `contact`, `wmkf_phaseiisubmittedat`
+   + `wmkf_phaseiisubmittedby` on `akoya_request`
+3. Build `/apply` skeleton — auth flow first, then dashboard, then form
+4. Aim for end-to-end click-through (auth → dashboard → form → submit
+   → land in Dynamics) before polishing any single screen
 
-### Open follow-ups from Session 122
+### If Entra is NOT yet provisioned
+1. **Connor sync** — review `wmkf_portal_membership` shape, rough field
+   inventory for Phase II Research form, confirm PA flow boundary,
+   identify which existing PA flows fire on `'Phase II Pending'` vs.
+   which need updating to handle portal-originated submissions
+2. **Design prep** — Postgres schema for `intake_drafts` and
+   `intake_audit`. Sketch the EIN reconciliation flow as a wireframe.
+3. **Carryover work** unrelated to the portal:
+   - Wave 1 prod migration follow-ups (`docs/WAVE1_VERCEL_FLAG_ROLLOUT.md`,
+     `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md`)
+   - Reviewer Finder Dataverse-native entry path
+     (`project_reviewer_finder_dataverse_entry_path.md`)
+   - Vercel Blob → SharePoint migration script for legacy review uploads
+   - Per-cycle expiry instead of hard-coded 90 days for external links
 
-- **Vercel Blob migration script.** Existing reviews in
-  `wmkf_reviewbloburl` keep working via the new download endpoint's
-  redirect path. A one-shot script to copy them into SharePoint and
-  clear the blob URL was deferred. Not urgent.
-- **Per-cycle expiry instead of hard-coded 90 days.** Plan flagged
-  this as v1 simplification; revisit if cycles diverge.
-- **Audit log destination.** Plan flagged Postgres vs. Dataverse;
-  punted. Revisit when traffic patterns are known.
-- **Materials email body** for users who customized templates won't
-  see the new default. Acceptable — they can re-import on demand.
-- **Trigger point for Connor's folder creation.** Per the spec,
-  request entering "Phase II Pending" is the working assumption;
-  confirm with Connor when he builds the flow.
-
-### Other in-flight work (carryover)
-
-- **Wave 1 prod migration follow-ups** — flag rollout per
-  `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md`, temp role elevations cleanup
-  per `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md`. Per memory:
-  `project_wave1_pending.md`.
-- **Reviewer Finder Dataverse-native entry path** —
-  `project_reviewer_finder_dataverse_entry_path.md`.
-- **Dynamics identity reconciliation** —
-  `project_dynamics_identity_reconciliation.md`.
+### Open questions tracked but non-blocking
+1. Virus scanning approach for uploaded attachments
+2. Draft expiry policy (likely 90d past last edit OR cycle close)
+3. Submission confirmation email content + sender identity
+4. Staff approval UI for new account requests
+5. Which `'Phase II Pending'` PA flows need updating
+6. Cycle close behavior (read-only after deadline?)
 
 ## Key files added this session
 
 | File | Purpose |
 |---|---|
-| `pages/external/review/[token].js` | Public landing page |
-| `pages/api/external/review/[token]/context.js` | Landing-page bootstrap |
-| `pages/api/external/review/[token]/proposal.js` | File download |
-| `pages/api/external/review/[token]/upload.js` | Multipart upload |
-| `pages/api/review-manager/regenerate-token.js` | Mint a new link |
-| `pages/api/review-manager/revoke-token.js` | Revoke an active link |
-| `pages/api/review-manager/mark-received-no-file.js` | Metadata-only intake |
-| `pages/api/review-manager/download-review.js` | Staff download (both backends) |
-| `lib/external/verify-suggestion-token.js` | JWT + row check helper |
-| `lib/external/token-lifecycle.js` | mintAndStore / revoke / ensureToken / buildExternalUrl |
-| `lib/external/reviewer-materials.js` | Reviewer_Downloads matcher policy |
-| `shared/components/external/ReviewFormFields.js` | Schema-driven form |
-| `docs/REVIEWER_MATERIALS_FOLDER_SPEC.md` | Connor-shareable folder spec |
-| `scripts/probe-external-files.js` | Diagnostic for "no materials" issues |
+| `docs/INTAKE_PORTAL_DESIGN.md` | Pilot design v2; locked scope |
+| `docs/IT_ENTRA_EXTERNAL_TENANT_REQUEST_2026-05-04.md` | IT email + tracking |
 
-Plus rewrites: `pages/api/review-manager/upload-review.js`,
-`lib/services/review-upload.js`, `pages/review-manager.js` (token
-column + actions menu + upload-modal form fields + download button),
-`pages/_app.js` (`/external/*` public branch),
-`lib/utils/email-generator.js` (externalLink variable),
-`lib/external/review-form-schema.js` (partial-validate mode),
-`lib/dataverse/adapters/reviewer-suggestion.js` (FIELD_SELECT
-extended with new external-token + reviewer-form fields),
-`pages/api/review-manager/render-emails.js` (per-recipient mint).
+No code added or modified this session — design + cutover only.
+
+## Production state (sanity)
+
+- External Reviewer Intake: **live in prod**. `EXTERNAL_LINK_SECRET` set
+  in both prod and preview. Connor's PA flow for auto-creating
+  `Reviewer_Downloads/` + `Reviewer_Uploads/` at new request creation
+  remains the only operational dependency for new requests to be
+  reviewer-ready out of the box.
+- Reviewer pipeline (Reviewer Finder → Review Manager → External
+  Reviewer Intake): production-tested, ready for the upcoming cycle.
 
 ## Testing
 
 ```bash
 npm test -- --runInBand          # 295 pass, 1 pre-existing skip
-node scripts/probe-external-files.js <requestNumber>  # SharePoint walk diagnostic
+node scripts/probe-external-files.js <requestNumber>
 ```

@@ -10,6 +10,22 @@ The pre-Session 84 chronological per-session log (everything after the September
 
 ---
 
+## May 2026 — External Reviewer Intake live in production (Session 123)
+
+**Milestone:** Phase 7 cutover. Invited reviewers now receive an HMAC-signed magic link granting unauthenticated access to a curated SharePoint folder for proposal materials, plus an upload form that writes reviews back into Dataverse + SharePoint. Eliminates the manual "email the proposal as an attachment, take the review back via email" loop staff have run for years and removes Vercel Blob from the review-storage path going forward.
+**Sessions:** 121-123 (2026-05-01 → 2026-05-02)
+**Ship state:**
+- Phase 4-6 endpoints live in production: public landing page (`/external/review/[token]`), staff regenerate/revoke/mark-received endpoints, public proposal download + review upload. Auto-mint on Reviewer Finder accept-flip, per-recipient `{{externalLink}}` rendering in send-emails.
+- `EXTERNAL_LINK_SECRET` set in Vercel preview + production (separate values per env). Production deploy `dpl_6GubU5ja8rgfsRXtYgA3PEosxGGs`.
+- `Reviewer_Downloads/` (Connor populates) / `Reviewer_Uploads/{LastName_shortId}/` SharePoint folder convention agreed with Connor and documented (`docs/REVIEWER_MATERIALS_FOLDER_SPEC.md`) for the PA folder-creation flow he'll build.
+- Files outside `Reviewer_Downloads/` are invisible to reviewers (segment-anchored regex enforced at both list and download endpoints).
+- 295 tests passing, smoke-tested end-to-end against real Dynamics + SharePoint.
+
+**Why it matters:** First end-to-end public-facing surface in the system. Proves the pattern for token-authenticated external access (secret separation between envs, hash-only token storage, segment-anchored file leakage protection) that subsequent external workflows will reuse. Connor's Power Automate flow to auto-create the two folders at request creation is the only remaining external dependency for new requests to be reviewer-ready out of the box.
+**Pointers:** `docs/EXTERNAL_REVIEWER_INTAKE_PLAN.md`, `docs/REVIEWER_MATERIALS_FOLDER_SPEC.md`. Commits `de6e284` → `508f5ec`.
+
+---
+
 ## May 2026 — Wave 2 architectural arc: ALS restrictions + canonical LLM client + shared auth policy (Session 120)
 
 **Milestone:** Three platform-level refactors landed in one session. Per-request Dynamics restriction context replaces module-state globals (real concurrency-leak fix under Fluid Compute). One canonical `LLMClient` replaces `shared/api/handlers/claudeClient.js` plus 14 ad-hoc `fetch` sites — the first time the app's Anthropic call surface has a single, observable, abort-bound, redacted code path. Middleware fail-open auth gap closed via shared edge-compatible policy module.
