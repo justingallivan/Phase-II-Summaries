@@ -68,7 +68,24 @@ ORCID_CLIENT_SECRET=your_orcid_secret
 USER_PREFS_ENCRYPTION_KEY=your_32_byte_hex_key
 ```
 
-### Step 4: Verify Setup
+### Step 4: Link Claude Code Memory
+
+Memory is checked into the repo at `.claude-memory/` so it stays in sync across Macs. On a new Mac (or after a fresh clone), point Claude Code's per-project memory location at the repo's directory:
+
+```bash
+# From the repo root
+PROJECT_SLUG="-Users-$(whoami)-Programming-Phase-II-Summaries"
+TARGET=~/.claude/projects/$PROJECT_SLUG
+mkdir -p "$TARGET"
+# Remove existing memory dir if present (back it up first if it has unique content)
+rm -rf "$TARGET/memory"
+ln -s "$(pwd)/.claude-memory" "$TARGET/memory"
+ls -la "$TARGET/memory"  # should show -> /…/Phase-II-Summaries/.claude-memory
+```
+
+After this, Claude Code reads/writes through the symlink and changes flow through `git pull`/`git push` like any other repo file. Edits to memory show up in `git status`; commit them like normal.
+
+### Step 5: Verify Setup
 
 ```bash
 # Test the build
@@ -80,7 +97,7 @@ npm run dev
 
 Visit http://localhost:3000 to confirm it works.
 
-### Step 5: Test Git Workflow
+### Step 6: Test Git Workflow
 
 ```bash
 # Verify git is connected
