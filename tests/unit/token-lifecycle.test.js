@@ -6,7 +6,7 @@
 
 import { jest } from '@jest/globals';
 import { DynamicsService } from '../../lib/services/dynamics-service.js';
-import { mintAndStore, revoke, buildExternalUrl, ensureToken } from '../../lib/external/token-lifecycle.js';
+import { mintAndStore, revoke, buildExternalUrl, ensureToken, extendForPostSubmissionWindow } from '../../lib/external/token-lifecycle.js';
 import { hashToken } from '../../lib/services/external-token.js';
 
 const SECRET = 'test-secret-32-chars-min-aaaaaaaaaaaa';
@@ -153,6 +153,67 @@ describe('token-lifecycle', () => {
 
     test('rejects missing id', async () => {
       await expect(ensureToken()).rejects.toThrow(/suggestionId required/);
+    });
+  });
+
+  describe('extendForPostSubmissionWindow', () => {
+    test('rejects missing id', async () => {
+      await expect(extendForPostSubmissionWindow()).rejects.toThrow(/suggestionId required/);
+    });
+
+    test('rejects non-positive days', async () => {
+      await expect(extendForPostSubmissionWindow(SUGGESTION_ID, { days: 0 }))
+        .rejects.toThrow(/days must be a positive number/);
+      await expect(extendForPostSubmissionWindow(SUGGESTION_ID, { days: -3 }))
+        .rejects.toThrow(/days must be a positive number/);
+      await expect(extendForPostSubmissionWindow(SUGGESTION_ID, { days: 'seven' }))
+        .rejects.toThrow(/days must be a positive number/);
+    });
+
+    test('PATCHes only wmkf_externaltokenexpires (~now+7 days by default)', async () => {
+      const before = Date.now();
+      const result = await extendForPostSubmissionWindow(SUGGESTION_ID);
+      const after = Date.now();
+
+      expect(DynamicsService.updateRecord).toHaveBeenCalledTimes(1);
+      const [entitySet, id, patch] = DynamicsService.updateRecord.mock.calls[0];
+      expect(entitySet).toBe('wmkf_appreviewersuggestions');
+      expect(id).toBe(SUGGESTION_ID);
+      // Critical: patch must contain ONLY the expiry field. Mutating
+      // wmkf_externaltokenrevoked or wmkf_externaltokenhash here would
+      // collapse two separate state axes (expiry vs. revocation vs.
+      // identity) into one write — easy to do, hard to debug.
+      expect(Object.keys(patch)).toEqual(['wmkf_externaltokenexpires']);
+
+      const expiresMs = new Date(patch.wmkf_externaltokenexpires).getTime();
+      expect(expiresMs).toBeGreaterThanOrEqual(before + 7 * 24 * 60 * 60 * 1000 - 1000);
+      expect(expiresMs).toBeLessThanOrEqual(after + 7 * 24 * 60 * 60 * 1000 + 1000);
+      expect(result.expiresAt.getTime()).toBe(expiresMs);
+    });
+
+    test('honors a custom days override', async () => {
+      const before = Date.now();
+      await extendForPostSubmissionWindow(SUGGESTION_ID, { days: 14 });
+      const after = Date.now();
+      const expiresMs = new Date(
+        DynamicsService.updateRecord.mock.calls[0][2].wmkf_externaltokenexpires,
+      ).getTime();
+      expect(expiresMs).toBeGreaterThanOrEqual(before + 14 * 24 * 60 * 60 * 1000 - 1000);
+      expect(expiresMs).toBeLessThanOrEqual(after + 14 * 24 * 60 * 60 * 1000 + 1000);
+    });
+
+    test('successive calls bump the window forward (now-relative)', async () => {
+      await extendForPostSubmissionWindow(SUGGESTION_ID);
+      const first = new Date(
+        DynamicsService.updateRecord.mock.calls[0][2].wmkf_externaltokenexpires,
+      ).getTime();
+      await new Promise(r => setTimeout(r, 25));
+      await extendForPostSubmissionWindow(SUGGESTION_ID);
+      const second = new Date(
+        DynamicsService.updateRecord.mock.calls[1][2].wmkf_externaltokenexpires,
+      ).getTime();
+      expect(second).toBeGreaterThan(first);
+      expect(second - first).toBeLessThan(1000);
     });
   });
 
