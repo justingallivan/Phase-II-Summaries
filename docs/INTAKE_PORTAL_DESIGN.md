@@ -1,6 +1,6 @@
 # WMKF Grant Intake Portal — Design Document
 
-**Status:** Design v2 (2026-05-02). Pilot scope locked; pilot blocked only on Entra External ID tenant provisioning (IT request sent 2026-05-04 — see `docs/IT_ENTRA_EXTERNAL_TENANT_REQUEST_2026-05-04.md`).
+**Status:** Design v2 (2026-05-02). Pilot scope locked. Largest external blocker is Entra External ID tenant provisioning (IT request sent 2026-05-04 — see `docs/IT_ENTRA_EXTERNAL_TENANT_REQUEST_2026-05-04.md`). Internal pre-launch blockers also remain: virus scanning approach, `wmkf_portal_membership` shape sign-off (Connor), Phase II Research field inventory (Sarah + Connor), reviewer-consumable artifact decision, and PA trigger confirmation. See "Open questions / open work."
 
 **Related:**
 - `docs/EXTERNAL_REVIEWER_INTAKE_PLAN.md` — reference implementation pattern for token-authenticated public surface
@@ -25,7 +25,12 @@ The pilot is sized like the **external reviewer intake portal**, not like a GOap
 
 - **One funding line, one phase.** Phase II Research, mid-June 2026. Hard cap ~25 proposals.
 - **Forms-as-code.** No form builder UI. Each cycle = a new versioned form module + deploy. Acceptable for ~6 cycles/year.
-- **No submission PDF generator for pilot.** The reviewer pipeline already consumes structured fields + uploaded attachments. We add a PDF generator only if/when downstream tools demand one.
+- **No submission PDF generator for pilot — but the reviewer-consumable artifact still has to be defined.** The external reviewer flow today exposes curated SharePoint files under `Reviewer_Downloads/`. If applicant content lives only as Dynamics fields + uploaded attachments, reviewers won't see the structured body of the proposal. Pilot decision needed before launch — options, in rough order of effort:
+  1. **Staff-rendered Word/PDF on demand.** Admin clicks "generate review packet" in `/apply/admin/*`; portal renders the form (read-only HTML → Word via existing pattern, or print-to-PDF) and drops it in `Reviewer_Downloads/`. Cheapest; keeps the "no auto-generator" stance.
+  2. **PA-built review packet.** Connor's PA flow assembles a SharePoint folder of the applicant's attachments + a templated cover doc on `'Phase II Pending'` flip. Heavier coordination but matches existing PA boundary.
+  3. **Structured portal view exported by staff.** Read-only `/apply/admin/request/:id` page that staff can save-as-PDF. Same effort as option 1 but no automation.
+  4. **Auto-generated submission PDF.** What we deferred. Cleanest reviewer experience, most build cost.
+  Default assumption is option 1 unless Connor wants option 2. Tracked as a launch blocker in "Open questions."
 - **Minimal admin UI.** Collaborator approval, list of submitted requests, opportunity status. Anything else can be a script or out-of-band staff action for pilot.
 - **Schema-light.** Pilot uses fields on existing entities + one new table (`wmkf_portal_membership`). The four-new-table model is for Phase 1+ expansion, not pilot.
 - **GOapply runs in parallel** for at least 12 months. The win is "no new applications enter GOapply" first; "GOapply turned off" comes only after all programs have migrated AND in-flight apps complete.
@@ -99,11 +104,32 @@ The original planning doc proposed four new entities. We deferred three of them;
 | `wmkf_portal_membershipid` | PK | |
 | `_wmkf_contact_value` | lookup → contact | |
 | `_wmkf_account_value` | lookup → account | |
-| `wmkf_role` | choice | `'submitter'` \| `'contributor'` |
+| `wmkf_role` | choice | `'submitter'` \| `'contributor'` (see permissions matrix below) |
 | `wmkf_isprimary` | bit | flags official communications contact |
-| `statecode` | active/inactive | supports revocation |
+| `wmkf_approvalstatus` | choice | `'requested'` \| `'approved'` \| `'rejected'` \| `'revoked'` |
+| `_wmkf_requestedby_value` | lookup → contact | who initiated (self-service, or staff) |
+| `wmkf_requestedat` | datetime | |
+| `_wmkf_approvedby_value` | lookup → systemuser | staff approver |
+| `wmkf_approvedat` | datetime | |
+| `wmkf_rejectionreason` | string | optional, surfaced to applicant on rejection |
+| `statecode` | active/inactive | hard kill switch; approved + active = live |
 
-Alternate key: (`_wmkf_contact_value`, `_wmkf_account_value`) — one row per (person, institution) pair.
+Alternate key: (`_wmkf_contact_value`, `_wmkf_account_value`) — one row per (person, institution) pair, regardless of approval state. Re-applying after rejection updates the existing row, doesn't create a duplicate.
+
+**Pending vs. revoked vs. rejected** are distinct. `statecode='inactive'` alone can't tell them apart, which matters for the admin UI ("show me requests waiting on approval" vs. "show me users I cut off"). The dedicated `wmkf_approvalstatus` field carries that distinction.
+
+#### Role permissions (pilot)
+
+| Capability | submitter | contributor |
+|---|---|---|
+| View institution dashboard + drafts | ✓ | ✓ |
+| Edit a draft | ✓ | ✓ |
+| **Submit** the form (final write to Dynamics) | ✓ | ✗ |
+| Invite another collaborator | ✓ | ✗ |
+| Withdraw an unsubmitted draft | ✓ | ✗ |
+| Receive submission confirmation email | ✓ | cc'd if `wmkf_isprimary` |
+
+Contributor is "co-author with comment access," not a peer of submitter. Promotion contributor → submitter is a staff action through the admin UI.
 
 ### Schema deferred to Phase 1+ expansion
 
@@ -135,9 +161,13 @@ OTP-only (no passwords) keeps the auth surface small while giving each person a 
 
 **Bridge to Dynamics:** Portal validates the External ID JWT, extracts email + OID, looks up `contact` by `wmkf_portal_oid` first, then by `emailaddress1`, then creates a new contact if neither matches. The membership join controls which institutions the contact can act on.
 
+**Email change handling.** `emailaddress1` is the bootstrap key only. Once a contact has `wmkf_portal_oid` populated, OID wins permanently — even if the applicant updates their email at the institution, in Entra, or in Dynamics, the OID-keyed lookup keeps the same `contact` row. Email-fallback matching is intentionally first-link-only to avoid an applicant changing their email and silently capturing a different person's `contact` record. If OID-keyed lookup misses but email-keyed lookup hits a contact that already has a *different* OID set, treat that as a conflict and route to staff (do not auto-link).
+
 ### Staff — existing Azure AD (no change)
 
 Foundation staff use the existing NextAuth + organizational Azure AD pattern. The intake admin interface lives at `/apply/admin/*` and uses `requireAppAccess(req, res, 'intake-admin')`.
+
+**Pre-launch checklist for `intake-admin`:** add `'intake-admin'` to `shared/config/appRegistry.js` (key, name, route, icon, category, description) so the admin UI is gateable like every other app, and grant it to the staff who will run pilot triage. Same pattern used for `'review-manager'`, `'reviewer-finder'`, etc.
 
 ---
 
@@ -163,6 +193,14 @@ EIN is not a clean key. To prevent duplicate `account` creation:
 
 For pilot (~25 applicants), strict staff approval on every new account is fine. We can relax this later with confidence thresholds once we see real data.
 
+### Request ownership guard
+
+Even with a valid membership, applicants must not be able to submit against arbitrary `akoya_request` rows. Server-side rule on every `/api/intake/submit` and `/api/intake/draft` call:
+
+> The target `akoya_request._wmkf_account_value` must equal an `account_id` for which the authenticated `contact` has an **approved + active** `wmkf_portal_membership`.
+
+This is a server-side authorization check, not a UI affordance. Applies to both draft writes and final submission. Without it, a contact with one valid institution membership could enumerate `akoya_request` GUIDs and overwrite another institution's request.
+
 ---
 
 ## Draft staging — Postgres, not Dynamics
@@ -177,17 +215,30 @@ intake_drafts                    -- Vercel Postgres
   request_id      TEXT           -- GUID → existing akoya_request (Phase II pilot)
   form_key        TEXT NOT NULL  -- e.g., 'phase-ii-research-2026-06'
   draft_json      JSONB NOT NULL -- current form state
-  attachments     JSONB NOT NULL -- list of {filename, sp_uri, sha256, uploaded_at, size}
+  attachments     JSONB NOT NULL -- list of {filename, blob_url, sha256, uploaded_at, size, scanned_at}
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-  UNIQUE (account_id, form_key)
+  UNIQUE (account_id, request_id, form_key)
 ```
+
+The uniqueness key is **(account_id, request_id, form_key)** — an institution can have multiple in-flight Phase II drafts (large universities frequently submit several proposals per cycle), so the per-request scope is required. `request_id` is non-null for the pilot since Phase II always updates an existing `akoya_request`.
 
 - Browser autosaves to `/api/intake/draft` debounced (every 30s of inactivity, or on field blur).
 - Endpoint upserts the row. No Dynamics traffic from autosave.
-- On phase submission: portal reads the draft, validates, calls `DynamicsService.updateRecord` to write final fields to `akoya_request`, calls `GraphService.uploadFile` to commit attachments, then **deletes** the draft row.
+- On phase submission: portal reads the draft, validates, calls `DynamicsService.updateRecord` to write final fields to `akoya_request`, **moves** attachments from staging into SharePoint via `GraphService.uploadFile`, then **deletes** the draft row.
 - On submission failure: draft is preserved; partial Dynamics writes get rolled back via the same pattern as `lib/services/review-upload.js`.
 
-**Draft expiry:** to be determined, but reasonable defaults: 90 days past last edit OR cycle close, whichever comes first. Cleanup runs as a cron job (existing pattern).
+### Attachment lifecycle during draft
+
+Files uploaded mid-draft (before submit) are a meaningfully different risk class than files written during submission. Pilot rules:
+
+- **Staging location:** Vercel Blob, **not** SharePoint. Drafts never touch the akoyaGO SharePoint site. Dedicated `intake-draft-attachments` Blob store with private access; pre-signed URLs scoped to the authenticated applicant only.
+- **Why not SharePoint:** keeps unsubmitted (and potentially never-submitted) content out of the canonical document library, sidesteps Graph permission churn, and keeps the eventual SharePoint write a single staff-visible event tied to submission.
+- **Virus scanning happens at upload**, not at submission, so unscanned files never sit in staging. See "Cross-cutting concerns → File handling."
+- **Access isolation:** download URL must verify (a) authenticated session, (b) draft owned by an `account_id` in the caller's approved memberships, (c) blob path matches `attachments[].blob_url` in that draft. No anonymous Blob URLs.
+- **Move on submit:** `GraphService.uploadFile` reads from Blob and writes to the canonical SharePoint folder for the `akoya_request`; on success, Blob copy is deleted.
+- **Cleanup:** a daily cron job deletes Blob objects orphaned from any draft row plus draft rows past expiry (and their Blob attachments). Reuses the existing maintenance-job pattern.
+
+**Draft expiry:** 90 days past last edit OR cycle close, whichever comes first. Same cron handles draft + attachment GC.
 
 ---
 
@@ -316,7 +367,7 @@ Each phase is roughly a quarter of work; numbers are illustrative not committed.
 - Vercel Function payload limit: 4.5MB default for serverless; Fluid Compute relaxes this. Pilot probably fine; quantify before second funding line.
 - Allowed file types per phase: PDF, DOCX, XLSX, plain text. Hard-block executable extensions.
 - Magic-byte validation, not just extension check (existing pattern in `lib/services/review-upload.js`).
-- Virus scanning: GOapply does this; we should too. Likely Microsoft Defender for Cloud Apps or a Vercel-side scanner. **Open — needs pilot decision.**
+- **Virus scanning is a launch blocker, not an open question.** Public applicant uploads are a different risk class than staff/reviewer uploads — the existing reviewer-intake pattern can't be ported as-is. Files must be scanned **at upload time**, before they're written to Blob staging, so unscanned content never sits accessible. Likely options: Microsoft Defender for Cloud Apps (preferred — same M365 estate) or a serverless scanner invoked from the upload endpoint. Decision required before `/api/intake/upload` ships.
 - Per-phase attachment quota (e.g., max 20 files, 50 MB total).
 
 ### Withdrawal / staff cancellation
@@ -354,14 +405,20 @@ Each phase is roughly a quarter of work; numbers are illustrative not committed.
 
 ## Open questions / open work
 
-Most pilot-blocking questions resolved. Remaining items, none gating immediate work:
+**Launch blockers** (must resolve before the portal goes live):
 
-1. **Virus scanning approach** for uploaded attachments — needs pilot decision before file upload endpoint goes live.
-2. **Draft expiry policy** — recommend 90 days past last edit OR cycle close, but confirm with Sarah/Connor.
-3. **Submission confirmation email content + sender identity** — portal sends synchronously on submission. Use existing `DynamicsService.createAndSendEmail` or send via a different transport? Probably Dynamics email so it appears in CRM history.
-4. **Staff-side approval UI for new account requests** — we know we need it; needs minimal design (table of pending requests + approve/reject button per row).
-5. **What "Phase II Pending" actually triggers** in Connor's PA flow set — coordinate with Connor on which existing flows fire vs. which need to be created/updated for the portal-originated source.
-6. **Cycle close behavior** — does the form become read-only after the deadline? Hard cutoff or grace period?
+1. **Reviewer-consumable artifact.** Default plan is staff-rendered Word/PDF dropped into `Reviewer_Downloads/` (option 1 above). Confirm with Connor; alternative is PA-built review packet on `'Phase II Pending'` flip.
+2. **Virus scanning approach** for uploaded attachments — must be in place before `/api/intake/upload` ships. See "Cross-cutting → File handling."
+3. **`wmkf_portal_membership` shape sign-off** with Connor — including the new approval-state fields.
+4. **Phase II Research field inventory** with Sarah + Connor — drives the form module.
+5. **PA trigger confirmation** — which existing `'Phase II Pending'` flows fire for portal-originated submissions vs. which need updating.
+
+**Open questions, not pilot-blocking:**
+
+6. **Draft expiry policy** — 90 days past last edit OR cycle close is the working default; confirm with Sarah/Connor.
+7. **Submission confirmation email** content + sender identity. Probably `DynamicsService.createAndSendEmail` so it appears in CRM history.
+8. **Staff approval UI for new account requests** — table of pending requests + approve/reject; design after schema is created.
+9. **Cycle close behavior** — read-only after deadline? Hard cutoff or grace period?
 
 ---
 
@@ -373,4 +430,4 @@ Most pilot-blocking questions resolved. Remaining items, none gating immediate w
 4. **Schema work** — once Entra is ready and shape is reviewed, create the `wmkf_portal_membership` table and add the fields to `contact` and `akoya_request`.
 5. **`/apply` skeleton** — auth flow + dashboard + first form (`phase-ii-research-2026-06`) iteratively. Aim for end-to-end click-through (auth → dashboard → form → submit → land in Dynamics) before polishing any single screen.
 
-Hard target: pilot accepting submissions by **2026-06-01** for the mid-June Phase II Research cycle. Slip risk concentrated entirely in the IT timeline; everything else is in our control.
+Hard target: pilot accepting submissions by **2026-06-01** for the mid-June Phase II Research cycle. The IT timeline is the largest external slip risk; the launch-blocker list above (reviewer artifact, virus scanning, schema sign-off, field inventory, PA triggers) is the largest internal slip risk and is in our control.
