@@ -207,7 +207,6 @@ async function handleGet(req, res, access) {
         reminderSentAt: s.wmkf_remindersentat || null,
         reminderCount: s.wmkf_remindercount ?? 0,
         reviewReceivedAt: s.wmkf_reviewreceivedat || null,
-        reviewBlobUrl: s.wmkf_reviewbloburl || null,
         reviewFilename: s.wmkf_reviewfilename || null,
         thankyouSentAt: s.wmkf_thankyousentat || null,
         // External magic-link token state. `tokenState` collapses the four

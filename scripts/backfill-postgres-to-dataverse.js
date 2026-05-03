@@ -156,7 +156,9 @@ const LIMIT = limitArg ? parseInt(limitArg.split('=')[1] || args[args.indexOf(li
     if (row.reminder_count) lifecycle.reminderCount = row.reminder_count;
     if (row.review_received_at) lifecycle.reviewReceivedAt = row.review_received_at.toISOString();
     if (row.thankyou_sent_at) lifecycle.thankYouSentAt = row.thankyou_sent_at.toISOString();
-    if (row.review_blob_url) lifecycle.reviewBlobUrl = row.review_blob_url;
+    // review_blob_url intentionally NOT carried over: wmkf_reviewbloburl was
+    // retired 2026-05-03 after the Blob → SharePoint cutover. Re-running this
+    // backfill must not resurrect the dead field.
     if (row.review_filename) lifecycle.reviewFilename = row.review_filename;
     if (row.proposal_url) lifecycle.proposalUrl = row.proposal_url;
     if (row.proposal_password) lifecycle.proposalPassword = row.proposal_password;

@@ -1,16 +1,13 @@
 /**
  * GET /api/review-manager/download-review?suggestionId=...&filename=...
  *
- * Stream a completed review back to staff. Two storage backends coexist:
+ * Stream a completed review back to staff. File lives in SharePoint at
+ * `akoya_request/{request}/Reviewer_Uploads/{reviewerSubfolder}/`,
+ * pointed at by `wmkf_reviewsharepointfolder`. Streamed via Graph as
+ * the foundation's app registration.
  *
- *   - SharePoint (Phase 5+): file lives in
- *     `akoya_request/{request}/Reviewer_Uploads/{reviewerSubfolder}/`,
- *     pointed at by `wmkf_reviewsharepointfolder`. Streamed via Graph as
- *     the foundation's app registration.
- *
- *   - Vercel Blob (legacy, pre-Phase-5): URL in `wmkf_reviewbloburl`.
- *     Public URL — we redirect rather than proxy. Eventually retired
- *     when the migration script runs.
+ * (The pre-Phase-5 Vercel Blob fallback was retired 2026-05-03; prod
+ * had zero rows still pointing at Blob storage at the time of removal.)
  *
  * Caller passes `suggestionId`. Optional `filename` selects a specific
  * file when the upload included multiple; defaults to the primary
@@ -43,7 +40,7 @@ export default async function handler(req, res) {
     try {
       suggestion = await bypassDynamicsRestrictions('download-review-lookup', () =>
         DynamicsService.getRecord('wmkf_appreviewersuggestions', suggestionId, {
-          select: 'wmkf_appreviewersuggestionid,wmkf_reviewsharepointfolder,wmkf_reviewfilename,wmkf_reviewbloburl',
+          select: 'wmkf_appreviewersuggestionid,wmkf_reviewsharepointfolder,wmkf_reviewfilename',
         }),
       );
     } catch (e) {
@@ -54,33 +51,24 @@ export default async function handler(req, res) {
     }
 
     const folder = suggestion?.wmkf_reviewsharepointfolder;
-    const blobUrl = suggestion?.wmkf_reviewbloburl;
     const primaryFilename = suggestion?.wmkf_reviewfilename;
 
-    // SharePoint path (preferred when set — reflects current upload core)
-    if (folder) {
-      const filename = requestedFilename || primaryFilename;
-      if (!filename) {
-        return res.status(404).json({ ok: false, reason: 'no_filename_on_row' });
-      }
-      const file = await GraphService.downloadFileByPath(REVIEW_LIBRARY, folder, filename);
-      res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="${encodeFilename(file.filename)}"`,
-      );
-      res.setHeader('Content-Length', file.size);
-      res.setHeader('Cache-Control', 'private, no-store');
-      return res.status(200).send(file.buffer);
+    if (!folder) {
+      return res.status(404).json({ ok: false, reason: 'no_review_on_file' });
     }
-
-    // Legacy Vercel Blob path. Public URL — redirect rather than proxy
-    // bytes through our function. Coexists indefinitely until migration.
-    if (blobUrl) {
-      return res.redirect(302, blobUrl);
+    const filename = requestedFilename || primaryFilename;
+    if (!filename) {
+      return res.status(404).json({ ok: false, reason: 'no_filename_on_row' });
     }
-
-    return res.status(404).json({ ok: false, reason: 'no_review_on_file' });
+    const file = await GraphService.downloadFileByPath(REVIEW_LIBRARY, folder, filename);
+    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeFilename(file.filename)}"`,
+    );
+    res.setHeader('Content-Length', file.size);
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.status(200).send(file.buffer);
   } catch (e) {
     console.error('[download-review] error:', e);
     return res.status(500).json({

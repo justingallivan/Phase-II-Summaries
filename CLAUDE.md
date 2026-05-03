@@ -352,11 +352,11 @@ Located in `lib/utils/`:
 - `GET/PATCH /api/review-manager/reviewers` - Accepted reviewers by cycle/proposal, status/notes/URL updates. Surfaces token state (active/revoked/expired/not_minted), structured form values, SharePoint folder pointer per row.
 - `POST /api/review-manager/render-emails` - Preview-only: render per-recipient subject/body drafts. Mints fresh `{{externalLink}}` per recipient when the template body references the placeholder.
 - `POST /api/review-manager/send-emails` - Direct Dynamics send (SSE streaming). Sender resolves from session, regardingobjectid → akoya_request, per-recipient try/catch, lifecycle timestamps update only for sent rows.
-- `POST /api/review-manager/upload-review` - Upload 1..5 completed review files plus structured form data (affiliation, impact, risk, overallRating). Writes to SharePoint via `writeReviewFiles`; legacy Vercel Blob rows untouched.
+- `POST /api/review-manager/upload-review` - Upload 1..5 completed review files plus structured form data (affiliation, impact, risk, overallRating). Writes to SharePoint via `writeReviewFiles`. (Pre-Phase-5 Vercel Blob path retired 2026-05-03.)
 - `POST /api/review-manager/regenerate-token` - Mint a fresh external-reviewer magic link, store hash, clear revoked. Returns the URL + expiry.
 - `POST /api/review-manager/revoke-token` - Set `wmkf_externaltokenrevoked = true`. Hash retained for audit.
 - `POST /api/review-manager/mark-received-no-file` - Stamp received-at + staff flag without uploading bytes. Optional structured form data; null picklists = "informal feedback, not scored."
-- `GET /api/review-manager/download-review` - Stream a completed review back to staff. SharePoint via Graph if `wmkf_reviewsharepointfolder` set; redirects to legacy `wmkf_reviewbloburl` otherwise.
+- `GET /api/review-manager/download-review` - Stream a completed review back to staff via Graph from the folder pointed at by `wmkf_reviewsharepointfolder`. Returns 404 if the field is unset.
 
 ### External Reviewer Intake (token-authenticated, public)
 - `GET /external/review/[token]` - Public landing page for invited reviewers. Verifies the JWT, fetches proposal info + curated file list + reviewer prefill in one round trip, sets `wmkf_proposalfirstaccessed` on first view.

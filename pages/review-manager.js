@@ -867,7 +867,7 @@ function UploadReviewModal({ isOpen, onClose, reviewer, onUploaded }) {
     }
   };
 
-  const reviewOnFile = !!(reviewer.reviewSharePointFolder || reviewer.reviewBlobUrl);
+  const reviewOnFile = !!reviewer.reviewSharePointFolder;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1393,10 +1393,8 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
                           </svg>
                         </button>
                       )}
-                      {/* Download received review. Endpoint handles both
-                          SharePoint (Phase 5+) and legacy Vercel Blob
-                          rows transparently — UI doesn't need to care. */}
-                      {(r.reviewSharePointFolder || r.reviewBlobUrl) && (
+                      {/* Download received review from SharePoint via Graph. */}
+                      {r.reviewSharePointFolder && (
                         <a
                           href={`/api/review-manager/download-review?suggestionId=${encodeURIComponent(r.suggestionId)}`}
                           className="p-1.5 text-green-600 hover:text-green-800 rounded-lg hover:bg-green-50"

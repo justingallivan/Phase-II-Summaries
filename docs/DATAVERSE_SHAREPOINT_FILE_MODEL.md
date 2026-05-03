@@ -89,8 +89,9 @@ For one reviewer's submission, the data lands in two places:
   filename, kept for back-compat with existing UI), and the
   `wmkf_reviewuploadedbystaff` boolean flag.
 - **SharePoint** — 1–5 actual file blobs at the folder path above.
-- **Vercel Blob** — nothing on the new flow. (Old reviews keep using the
-  existing `wmkf_reviewbloburl` field until manually cut over.)
+- **Vercel Blob** — not used for reviews. (The legacy `wmkf_reviewbloburl`
+  fallback path was retired 2026-05-03; zero real reviews still pointed at
+  Blob storage at retirement.)
 
 Of the seven new Dataverse fields planned for this work, only **one** is
 file-related (`wmkf_reviewsharepointfolder`, a string holding a path). The

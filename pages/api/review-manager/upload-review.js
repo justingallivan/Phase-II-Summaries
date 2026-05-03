@@ -12,9 +12,8 @@
  *   - affiliation            (string)  required (review form field)
  *   - impact, risk, overallRating  (numeric strings)  required
  *
- * Replaces the previous Vercel Blob path. Existing rows whose review still
- * lives at `wmkf_reviewbloburl` keep working — the UI fetch logic falls back
- * to that field when `wmkf_reviewsharepointfolder` is null.
+ * Replaces the previous Vercel Blob path; the legacy fallback was retired
+ * 2026-05-03 (zero rows still pointing at Blob storage in prod).
  */
 
 import Busboy from 'busboy';

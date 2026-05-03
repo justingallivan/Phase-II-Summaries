@@ -271,7 +271,7 @@ node scripts/apply-dataverse-schema.js --target=prod --wave=2 --execute
 - `wmkf_emailopenedat` — email pixel/open event
 - `wmkf_reviewreceivedat` — when latest upload landed (set by `writeReviewFiles`)
 - `wmkf_reviewfilename` — primary filename (kept for back-compat with existing UI)
-- `wmkf_reviewbloburl` — legacy Vercel Blob URL; deprecated, retained through transition
+- ~~`wmkf_reviewbloburl`~~ — retired 2026-05-03 (zero rows pointing at Blob storage at retirement; field can be removed from CRM by Connor)
 
 ---
 
@@ -336,21 +336,22 @@ The existing `/api/review-manager/send-emails` already renders + sends. Changes:
 
 ---
 
-## Migration / Cutover
+## Migration / Cutover — completed 2026-05-03
 
-- **New uploads (post-deploy):** all routes — token and staff — write to
-  SharePoint. `wmkf_reviewbloburl` is left null on new rows.
-- **Existing reviews in Vercel Blob:** keep their `wmkf_reviewbloburl` value;
-  no code change required to keep them readable. UI fetch logic is "if
-  `wmkf_reviewsharepointfolder` is set, fetch via SharePoint; else fall back
-  to Blob URL." Both paths coexist indefinitely.
-- **Optional one-shot migration script** (later, not blocking): walks rows
-  where `wmkf_reviewbloburl` is set and `wmkf_reviewsharepointfolder` is not,
-  copies the blob bytes to SharePoint, sets the folder/filename fields, clears
-  the Blob URL field. Runs once, then deletable.
-- **Vercel Blob retirement:** when the migration script has run and we've
-  confirmed no rows still reference Blob URLs, the Blob storage container can
-  be deleted and `wmkf_reviewbloburl` deprecated from CRM.
+- **New uploads:** all routes — token and staff — write to SharePoint via
+  the shared `writeReviewFiles` core. Done since Phase 5.
+- **Legacy Blob fallback:** retired 2026-05-03. The audit at retirement
+  found 0 rows still pointing at Blob storage (one dual-set row that had
+  the redundant Blob URL cleared, plus one `test-review.txt` artifact whose
+  Blob/received fields were cleared). The download endpoint now returns 404
+  when `wmkf_reviewsharepointfolder` is unset rather than redirecting to a
+  Blob URL.
+- **No migration script needed:** zero real reviews lived only in Blob at
+  retirement time — the original "everything migrates to SharePoint
+  organically as new uploads land" plan absorbed all live data.
+- **Vercel Blob retirement (remaining):** Connor can drop `wmkf_reviewbloburl`
+  from the CRM schema when convenient. Code stopped reading the field
+  2026-05-03 so a schema-side removal is no longer load-bearing.
 
 ---
 
