@@ -25,6 +25,7 @@ function file(filename, mime, sizeMb) {
     size: Math.round(sizeMb * 1024 * 1024),
     uploaded_at: new Date().toISOString(),
     scanned_at: new Date().toISOString(),
+    scan_result: 'clean',
   };
 }
 
@@ -165,10 +166,43 @@ const r13 = validate({ evil_extra: 'transient' }, { partial: true });
 check('partial mode does not flag unknown fields',
   !r13.errors.some(e => e.code === 'unknown_field'), r13.errors);
 
-console.log('14. completely empty payload in strict mode is invalid');
-const r14 = validate({});
+console.log('14. strict mode rejects unscanned file refs (launch-blocker invariant)');
+const f14a = validFixture();
+delete f14a.pi_biosketch[0].scanned_at;
+const r14a = validate(f14a);
+check('missing scanned_at caught in strict',
+  r14a.errors.some(e => e.path === 'pi_biosketch[0]' && e.code === 'scanned_at'), r14a.errors);
+
+const f14b = validFixture();
+f14b.pi_biosketch[0].scan_result = 'infected';
+const r14b = validate(f14b);
+check('non-clean scan_result rejected in strict',
+  r14b.errors.some(e => e.path === 'pi_biosketch[0]' && e.code === 'scan_result'), r14b.errors);
+
+const f14c = validFixture();
+delete f14c.pi_biosketch[0].blob_url;
+const r14c = validate(f14c);
+check('missing blob_url caught in strict',
+  r14c.errors.some(e => e.path === 'pi_biosketch[0]' && e.code === 'blob_url'), r14c.errors);
+
+const f14d = validFixture();
+f14d.pi_biosketch[0].sha256 = 'not-hex';
+const r14d = validate(f14d);
+check('malformed sha256 caught in strict',
+  r14d.errors.some(e => e.path === 'pi_biosketch[0]' && e.code === 'sha256'), r14d.errors);
+
+console.log('15. partial mode tolerates pre-scan staging (autosave path)');
+const f15 = validFixture();
+delete f15.pi_biosketch[0].scanned_at;
+delete f15.pi_biosketch[0].scan_result;
+const r15 = validate(f15, { partial: true });
+check('partial mode does not enforce scan invariants',
+  !r15.errors.some(e => ['scanned_at', 'scan_result'].includes(e.code)), r15.errors);
+
+console.log('16. completely empty payload in strict mode is invalid');
+const r16 = validate({});
 check('many required errors',
-  r14.ok === false && r14.errors.filter(e => e.code === 'required').length >= 10, r14.errors.length);
+  r16.ok === false && r16.errors.filter(e => e.code === 'required').length >= 10, r16.errors.length);
 
 console.log(`\n${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);

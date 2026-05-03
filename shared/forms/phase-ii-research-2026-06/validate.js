@@ -90,7 +90,7 @@ function validateScalar(field, value, path, errors, { strict }) {
       break;
     }
     case 'file': {
-      validateFile(field, value, path, errors);
+      validateFile(field, value, path, errors, { strict });
       break;
     }
     default:
@@ -98,9 +98,14 @@ function validateScalar(field, value, path, errors, { strict }) {
   }
 }
 
-function validateFile(field, value, path, errors) {
-  // file values are arrays of {filename, blob_url, sha256, size, mime, ...}.
-  // Single-file fields still take an array of length 1 for uniform shape.
+// Hex sha256 digest — 64 lowercase hex chars. Matches what the upload
+// endpoint computes server-side after the bytes land in Blob staging.
+const SHA256_HEX = /^[a-f0-9]{64}$/;
+
+function validateFile(field, value, path, errors, { strict }) {
+  // file values are arrays of {filename, blob_url, sha256, size, mime,
+  // scanned_at, scan_result, ...}. Single-file fields still take an
+  // array of length 1 for uniform shape.
   if (!Array.isArray(value)) {
     err(errors, path, 'type', `${path} must be an array of file refs`);
     return;
@@ -129,8 +134,26 @@ function validateFile(field, value, path, errors) {
     if (field.accept && Array.isArray(field.accept) && f.mime && !field.accept.includes(f.mime)) {
       err(errors, fp, 'mime', `${fp} mime ${f.mime} not in accept list`);
     }
-    // scanned_at is set by the upload endpoint after virus scan completes.
-    // Strict mode requires it; partial mode tolerates pre-scan staging.
+
+    // Strict-mode (submit) invariants. Virus scanning is a launch
+    // blocker — encode it here so every submit caller gets the same
+    // protection without a parallel second check. Partial mode (autosave)
+    // tolerates pre-scan staging because the upload endpoint may not
+    // have completed scanning yet.
+    if (strict) {
+      if (typeof f.blob_url !== 'string' || !f.blob_url) {
+        err(errors, fp, 'blob_url', `${fp}.blob_url required for submit`);
+      }
+      if (typeof f.sha256 !== 'string' || !SHA256_HEX.test(f.sha256)) {
+        err(errors, fp, 'sha256', `${fp}.sha256 must be a 64-char hex digest`);
+      }
+      if (typeof f.scanned_at !== 'string' || !f.scanned_at) {
+        err(errors, fp, 'scanned_at', `${fp} must be virus-scanned before submit`);
+      }
+      if (f.scan_result !== 'clean') {
+        err(errors, fp, 'scan_result', `${fp}.scan_result must be 'clean' (got ${JSON.stringify(f.scan_result)})`);
+      }
+    }
   }
 }
 

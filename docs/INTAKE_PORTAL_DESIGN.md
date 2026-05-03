@@ -131,6 +131,17 @@ Alternate key: (`_wmkf_contact_value`, `_wmkf_account_value`) — one row per (p
 
 Contributor is "co-author with comment access," not a peer of submitter. Promotion contributor → submitter is a staff action through the admin UI.
 
+##### Submitter scope: institution-wide, intentionally (pilot)
+
+A submitter is authorized at the **institution** level, not the **request** level. One approved submitter at "University X" can submit any `akoya_request` whose `_wmkf_account_value` resolves to University X — including requests led by other PIs at the same institution. This is an explicit pilot simplification, not an oversight.
+
+Reasoning at pilot scale (~25 applicants, mostly one PI per institution):
+- Universities with multiple in-flight proposals already trust their sponsored-research office to gate submissions; the portal mirrors that trust model.
+- Adding request-level allowed-submitters now means designing an invite/assignment surface, persisting it on `wmkf_portal_membership` or a sibling table, and threading it through `/api/intake/submit` — all before we know whether the multi-proposal-per-institution case is common enough to warrant it.
+- The request ownership guard (above) still prevents cross-institution writes; this only widens authority *within* one institution.
+
+**Phase 1 follow-up:** when we see real institutions with concurrent submitters from different labs, add request-level allowed-submitters (likely a many-to-many on `wmkf_portal_membership` × `akoya_request`, or a `wmkf_request_collaborator` child entity). Until then, the submitter role grants institution-wide submit authority and the design doc says so plainly.
+
 ### Schema deferred to Phase 1+ expansion
 
 These are real but not pilot-required. We add them when the second phase or second funding line forces the issue, with Connor reviewing the shape before creation.
@@ -235,10 +246,113 @@ Files uploaded mid-draft (before submit) are a meaningfully different risk class
 - **Why not SharePoint:** keeps unsubmitted (and potentially never-submitted) content out of the canonical document library, sidesteps Graph permission churn, and keeps the eventual SharePoint write a single staff-visible event tied to submission.
 - **Virus scanning happens at upload**, not at submission, so unscanned files never sit in staging. See "Cross-cutting concerns → File handling."
 - **Access isolation:** download URL must verify (a) authenticated session, (b) draft owned by an `account_id` in the caller's approved memberships, (c) blob path matches `attachments[].blob_url` in that draft. No anonymous Blob URLs.
-- **Move on submit:** `GraphService.uploadFile` reads from Blob and writes to the canonical SharePoint folder for the `akoya_request`; on success, Blob copy is deleted.
+- **Move on submit:** the move from Blob to SharePoint is **asynchronous**, not part of the submit HTTP request. See "Submission lifecycle" below.
 - **Cleanup:** a daily cron job deletes Blob objects orphaned from any draft row plus draft rows past expiry (and their Blob attachments). Reuses the existing maintenance-job pattern.
 
 **Draft expiry:** 90 days past last edit OR cycle close, whichever comes first. Same cron handles draft + attachment GC.
+
+---
+
+## Submission lifecycle — async jobs, not synchronous Dynamics writes
+
+Submission externalization (file move to SharePoint, Dynamics PATCH, child-entity writes, status flip) does **not** happen inside the `/api/intake/submit` HTTP request. The submit endpoint validates strictly, persists a `submission_jobs` row in Postgres, and returns immediately. A background drain cron walks the queue and performs the externalization steps at whatever rate Dynamics + Graph tolerate.
+
+### Why async
+
+Three reasons, in order of importance:
+
+1. **Throttling becomes self-solving.** Dynamics Web API enforces ~6,000 requests / 5 min / user and ~60K / hour / app. Graph API has stricter per-tenant limits. A synchronous submit doing 8-15 writes per applicant × 30 simultaneous submits at 4:55 PM puts us a single rate-limit response away from partial-state catastrophe (some writes landed, some didn't, and the applicant got a 500). Async drains the queue at any rate the upstream APIs accept; 429s become "wait and retry next tick," not "applicant sees an error."
+2. **Partial failures become recoverable, not catastrophic.** A submission stuck at "files moved, Dynamics PATCH failed" gets retried automatically by the drain. Without async, the same condition leaves the system inconsistent and requires staff to clean up by hand.
+3. **There is no business need for synchronous landing.** Reviewer pipeline kickoff is hours-to-days downstream of submission. An hour of latency between "applicant clicks submit" and "akoya_request reflects the change" is invisible at our scale.
+
+### `submission_jobs` table
+
+Postgres table, drained by a cron worker. Schema:
+
+```sql
+submission_jobs                          -- Vercel Postgres
+  id                  SERIAL PK
+  idempotency_key     TEXT NOT NULL UNIQUE  -- client-generated UUID per submit click
+  draft_id            INTEGER NOT NULL FK   -> intake_drafts.id
+  contact_oid         TEXT NOT NULL
+  account_id          TEXT NOT NULL
+  request_id          TEXT NOT NULL         -- akoya_request GUID
+  form_key            TEXT NOT NULL
+  status              TEXT NOT NULL         -- see state machine below
+  payload             JSONB NOT NULL        -- frozen snapshot of validated draft
+  sharepoint_paths    JSONB                 -- written paths so retry doesn't duplicate
+  dynamics_patches    JSONB                 -- which writes have already landed
+  attempts            INTEGER NOT NULL DEFAULT 0
+  last_error          TEXT
+  next_attempt_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+  completed_at        TIMESTAMPTZ
+```
+
+State machine:
+
+```
+queued
+  → scanning              (verify all attachments have scan_result='clean')
+  → files_moved           (Blob → SharePoint, all files written)
+  → dynamics_patched      (akoya_request PATCH + child entity writes)
+  → status_flipped        (akoya_requeststatus = 'Phase II Pending')
+  → completed
+```
+
+Two terminal failure states: `failed` (after N attempts the drain gives up; staff intervention required) and `cancelled` (staff explicitly stopped the job).
+
+### Idempotency contract
+
+The client (browser) generates a UUID per submit attempt and includes it in the request body. The submit endpoint's first action is:
+
+```sql
+INSERT INTO submission_jobs (idempotency_key, ...) VALUES (...)
+ON CONFLICT (idempotency_key) DO NOTHING
+RETURNING *;
+```
+
+If the insert was a no-op (UUID already seen), the endpoint returns the existing job's status instead of re-queuing. This makes double-clicks, browser refreshes, network retries, and "did it submit?" panic-clicks all safe — every variant collapses to the same job row.
+
+### Drain cron
+
+`/api/cron/drain-submissions`, runs every 1-2 minutes via Vercel Cron, authenticated via `CRON_SECRET` (existing pattern). Each tick:
+
+1. Pick up to N jobs where `status NOT IN ('completed', 'failed', 'cancelled')` and `next_attempt_at <= now()`, ordered by `created_at`.
+2. For each job, advance the state machine by **one step** — never more, even if the next step would also succeed. This bounds latency between failure and visibility.
+3. On success: update `status` and `completed_at` (or schedule next tick).
+4. On transient failure (5xx, 429, network): increment `attempts`, set `next_attempt_at = now() + backoff(attempts)`, persist `last_error`. Backoff: 1m, 5m, 15m, 1h, 4h.
+5. On permanent failure (e.g., file deleted from Blob, Dynamics request returns 400): mark `status = 'failed'` and notify staff via `notification-service.js`.
+6. Cap attempts at ~10. After cap, mark `failed`.
+
+Per-`request_id` serialization: the drain holds an advisory lock keyed on `request_id` for the duration of one job step, so two jobs targeting the same `akoya_request` (rare, but possible if a withdrawal-then-resubmit happens fast) cannot interleave writes.
+
+### Applicant UX
+
+Submit returns immediately with `{ jobId, idempotencyKey, status: 'queued' }`. The post-submit screen polls `GET /api/intake/submission/:jobId` every 5-10 seconds until `status='completed' | 'failed'`. Status messages map to plain English:
+
+- `queued` → "received, in queue"
+- `scanning` → "verifying file scans"
+- `files_moved` → "writing to system"
+- `dynamics_patched` / `status_flipped` → "almost done"
+- `completed` → "submitted successfully"
+- `failed` → "submission stalled, our staff have been notified"
+
+The applicant can close the tab and come back; their dashboard will show the job's current status whenever they reload.
+
+### Staff visibility
+
+Admin endpoint `/apply/admin/jobs` (or extension to existing admin dashboard) lists active + recent jobs with status, attempts, last error. Staff can:
+
+- Force a retry (`next_attempt_at = now()`, reset attempts).
+- Cancel a stuck job and roll back any partial writes.
+- View the frozen payload to see exactly what was submitted.
+
+Failures notify staff via existing `notification-service.js`. After-hours deadline submissions stalling at 5 AM should not require human pager response — the drain will keep retrying through transient backoffs, and staff see results when they're online.
+
+### Migration note
+
+`submission_jobs` is the second new Postgres table after `intake_drafts` and `intake_audit`. Add to V27 migration. The same pattern (small staging table, drained async to canonical systems) is general-purpose enough that future portal expansions (Phase I in the portal, concept stage in the portal) can reuse the table verbatim — `form_key` already discriminates.
 
 ---
 
@@ -364,11 +478,38 @@ Each phase is roughly a quarter of work; numbers are illustrative not committed.
 ## Cross-cutting concerns
 
 ### File handling
-- Vercel Function payload limit: 4.5MB default for serverless; Fluid Compute relaxes this. Pilot probably fine; quantify before second funding line.
+
+**Bytes never traverse a Vercel Function.** The Vercel Functions request-body limit is 4.5 MB; routing applicant uploads through a function body would cap files at that ceiling regardless of what Blob accepts. The intake portal uses Vercel Blob's client-upload pattern: the function mints a signed token, the browser PUTs bytes directly to Blob via the `@vercel/blob/client` SDK, and only metadata (`{ filename, blob_url, sha256, size, mime }`) ever crosses our function. End-to-end smoke (`scripts/smoke-blob-upload.js`) verifies a 25 MB round-trip against the actual Blob endpoint with byte-identity sha256 verification — proving the underlying capability before we wire the UI. Real per-file caps are set per field in `shared/forms/<cycle>/schema.js` (current Phase II Research draft: 20 MB for the project narrative, 5 MB for everything else, subject to Sarah/Connor refinement).
+
 - Allowed file types per phase: PDF, DOCX, XLSX, plain text. Hard-block executable extensions.
 - Magic-byte validation, not just extension check (existing pattern in `lib/services/review-upload.js`).
-- **Virus scanning is a launch blocker, not an open question.** Public applicant uploads are a different risk class than staff/reviewer uploads — the existing reviewer-intake pattern can't be ported as-is. Files must be scanned **at upload time**, before they're written to Blob staging, so unscanned content never sits accessible. Likely options: Microsoft Defender for Cloud Apps (preferred — same M365 estate) or a serverless scanner invoked from the upload endpoint. Decision required before `/api/intake/upload` ships.
-- Per-phase attachment quota (e.g., max 20 files, 50 MB total).
+- Per-phase attachment quota set per-field via `maxFiles` on file fields plus a phase-level total (e.g., max 20 files / 150 MB total package).
+
+#### Virus scanning — Cloudmersive, fail-closed
+
+Public applicant uploads are a different risk class than staff/reviewer uploads, so the existing reviewer-intake flow does not transfer. Decisions:
+
+| Question | Answer |
+|---|---|
+| **Where does scanning happen?** | While bytes are in Blob staging, **before** any move to SharePoint. Infected files never reach the canonical document library. |
+| **When does it fire?** | Immediately on upload completion, triggered by the metadata POST that follows the browser's direct-to-Blob PUT. Synchronous for pilot (1-3s per file is acceptable latency); switch to a `scan_jobs` queue if cycle-end bursts overwhelm the scanner. |
+| **What scanner?** | **Cloudmersive Virus Scan API.** ClamAV + commercial engines under the hood. ~$0.001/scan. Free tier (800 scans/month) covers pilot at 25 × 8 = 200 scans/cycle. TOS specifies no file retention. Privacy concerns rule out VirusTotal (file shared with 60+ AV vendors); Microsoft Defender via Graph isn't exposed for arbitrary file scanning. |
+| **Where does the result live?** | On the draft's `attachments[].scan_result` JSON column. Submit-strict validator (already wired) requires `scan_result === 'clean'` on every file before allowing submission. |
+| **How does the scan job in the submission lifecycle relate?** | The `scanning` state in the submission state machine re-verifies that all attachments are `'clean'` before files move. This is a defense-in-depth check, not the primary scan — primary scan happened at upload. |
+
+Failure modes — fail closed:
+
+| Scenario | Behavior |
+|---|---|
+| Scanner returns "infected" | Mark `scan_result='infected'`. UI surfaces: "we detected a virus in `filename`. Please run a local scan and re-upload." Submit blocked. |
+| Scanner 5xx / network error | Retry 3× with backoff. If still failing, mark `scan_result='error'` and notify staff. Submit blocked. |
+| Scanner timeout (>30s on a single file) | Treat as 5xx. |
+| Cloudmersive false positive | Staff admin endpoint marks the specific blob `scan_result='clean_override'` with a justification and audit trail. Validator accepts overrides; applicant sees "verified by WMKF staff" in UI. |
+| Scanner rate limit | Async scan queue (deferred to Phase 1 if pilot stays synchronous). |
+
+EICAR test file (the standardized harmless malware-detection probe) included in `scripts/smoke-virus-scan.js` to verify the scanner is wired and fails closed correctly.
+
+New env var: `CLOUDMERSIVE_API_KEY`. Pilot uses the free tier; production cycle cost ceiling ~$5.
 
 ### Withdrawal / staff cancellation
 - Applicants can withdraw an unsubmitted draft (deletes Postgres row).
@@ -408,10 +549,30 @@ Each phase is roughly a quarter of work; numbers are illustrative not committed.
 **Launch blockers** (must resolve before the portal goes live):
 
 1. **Reviewer-consumable artifact.** Default plan is staff-rendered Word/PDF dropped into `Reviewer_Downloads/` (option 1 above). Confirm with Connor; alternative is PA-built review packet on `'Phase II Pending'` flip.
-2. **Virus scanning approach** for uploaded attachments — must be in place before `/api/intake/upload` ships. See "Cross-cutting → File handling."
-3. **`wmkf_portal_membership` shape sign-off** with Connor — including the new approval-state fields.
-4. **Phase II Research field inventory** with Sarah + Connor — drives the form module.
-5. **PA trigger confirmation** — which existing `'Phase II Pending'` flows fire for portal-originated submissions vs. which need updating.
+2. **`wmkf_portal_membership` shape sign-off** with Connor — including the new approval-state fields.
+3. **Phase II Research field inventory** with Sarah + Connor — drives the form module.
+4. **PA trigger confirmation** — which existing `'Phase II Pending'` flows fire for portal-originated submissions vs. which need updating.
+5. **Structured-tables persistence contract** with Connor — pick one storage pattern (real child entities, JSON columns on `akoya_request`, or defer) so submit endpoints can be wired. See `docs/CONNOR_INTAKE_PORTAL_SYNC.md` § 6.
+
+**Resolved (decisions made, build remaining):**
+
+- ~~Virus scanning approach~~ — **Cloudmersive, fail-closed, scan at upload completion.** See "Cross-cutting → File handling → Virus scanning."
+- ~~Submit-time vs. async externalization to Dynamics/SharePoint~~ — **async via `submission_jobs` queue + drain cron.** See "Submission lifecycle."
+- ~~Upload path capacity~~ — **direct browser-to-Blob client uploads, function never sees bytes.** 25 MB round-trip verified by `scripts/smoke-blob-upload.js` (server-side `put()` against the real Blob endpoint).
+
+### Pre-launch verification checklist — must run against real URLs before pilot opens
+
+The smokes shipped this session exercise primitives in isolation. Before opening the portal to applicants, repeat the following against the **actual deployed `/apply` URLs** on Vercel preview, not localhost:
+
+- [ ] **20 MB upload from a real browser** through `/apply/upload` (or whatever the live page is) against a deployed preview. Confirm bytes do not traverse our function — check Vercel function logs: `/api/intake/upload-token` (or chosen name) should record a signed-token mint of ~50 ms with no large payload. If the function shows multi-MB request bodies, the wiring is wrong.
+- [ ] **CORS + signed-URL behavior** under production runtime: confirm the signed PUT URL works from the browser origin, that token expiry is enforced, and that revoking the draft revokes future uploads.
+- [ ] **Flaky-network simulation** (DevTools → Slow 3G): confirm `@vercel/blob/client` upload SDK exposes progress and error handling correctly; confirm the UI's retry path works without duplicating the staging row.
+- [ ] **EICAR test file** uploaded through the live path — confirm Cloudmersive flags it, confirm the draft surfaces `scan_result='infected'`, confirm the submit endpoint refuses the draft.
+- [ ] **Idempotent submit replay**: hit `/api/intake/submit` twice with the same idempotency key (DevTools → repeat last fetch). Confirm second call returns the existing job row, not a duplicate.
+- [ ] **End-to-end deadline rehearsal**: 5-10 concurrent submits at the staging URL with the actual `submission_jobs` drain running. Watch logs for 429s from Dynamics/Graph; confirm the queue drains cleanly and partial failures retry.
+- [ ] **Real Entra External ID sign-in flow** end-to-end (only possible once the IT request lands).
+
+This list lives here, not in `scripts/`, because passing the smokes is necessary but not sufficient — production has CORS, auth headers, real network jitter, and Vercel's function runtime that local Node cannot replicate.
 
 **Open questions, not pilot-blocking:**
 

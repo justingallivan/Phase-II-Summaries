@@ -67,6 +67,11 @@ check('wmkf_phaseiisubmittedat is ISO timestamp',
 console.log('4. TODO_ASK_CONNOR placeholders do NOT pollute the patch');
 const polluted = Object.keys(plan.akoyaRequestPatch).filter(k => k.startsWith('TODO_'));
 check('no TODO keys in patch', polluted.length === 0, polluted);
+check('pi_name lookup does not leak as raw string',
+  plan.akoyaRequestPatch['wmkf_projectleader@odata.bind'] === undefined,
+  'pi_name is needsConnor; value must surface in unmapped, not patch');
+check('pi_name appears in unmapped',
+  plan.unmapped.some(u => u.schemaKey === 'pi_name'));
 
 console.log('5. unmapped surfaces a Connor punch list');
 const unmappedKeys = plan.unmapped.map(u => u.schemaKey).sort();

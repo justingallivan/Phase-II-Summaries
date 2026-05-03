@@ -207,14 +207,18 @@ function mapToDynamics(data, { requestId } = {}) {
         unmapped.push({ schemaKey: field.key, reason: 'no mapping defined' });
         continue;
       }
+      // `needsConnor: true` means the mapping is not yet executable —
+      // either a TODO_ASK_CONNOR_* placeholder field name, or a real
+      // field name (e.g. wmkf_projectleader@odata.bind) whose value
+      // requires resolution the mapper does not perform (lookup -> GUID).
+      // In both cases we surface the intent via `unmapped` and skip the
+      // PATCH so an unresolved value cannot land on akoya_request.
       if (mapping.needsConnor) {
         unmapped.push({ schemaKey: field.key, reason: 'mapping placeholder', note: mapping.note, placeholder: mapping.field });
+        continue;
       }
       const out = mapping.transform ? mapping.transform(value) : value;
       if (out === undefined) continue;
-      // Skip TODO_ASK_CONNOR_* placeholders — they'd corrupt the PATCH
-      // body. We surface them via `unmapped` instead.
-      if (typeof mapping.field === 'string' && mapping.field.startsWith('TODO_ASK_CONNOR_')) continue;
       akoyaRequestPatch[mapping.field] = out;
     }
   }

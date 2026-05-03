@@ -8,13 +8,14 @@
 
 ## What I need from this sync
 
-Concrete decisions on five things, in priority order:
+Concrete decisions on six things, in priority order:
 
 1. **`wmkf_portal_membership` schema sign-off** (blocker — needed before I can create the entity)
 2. **Reviewer-consumable artifact** — pick option 1 vs option 2 (blocker — affects whether portal needs a renderer or PA needs a new flow)
 3. **Phase II Research form field inventory — first pass** (rough list; Sarah will refine on return, but I want your view of the must-haves)
 4. **PA flow boundary** at `'Phase II Pending'` — what fires today vs. what needs updating for portal-originated submissions
 5. **Account creation policy** — when an applicant claims an institution that does not exist in Dynamics yet
+6. **Structured-tables persistence contract** — pick one storage pattern for budget / Co-Is / milestones / prior-support before submit endpoints are wired
 
 Estimate: 30-45 min. I will send the actual meeting invite once we agree on a slot.
 
@@ -160,6 +161,27 @@ For ~25 pilot applicants, strict staff approval on every new account is fine. We
 - Are you OK with the portal creating `account` rows directly on staff approval (i.e., portal does the write, not PA)? My default is yes — keeps the "portal owns applicant-originated writes" boundary clean.
 - Any fields on `account` that *must* be populated at creation time that the applicant won't have? (e.g., parent account, owner, region tagging — anything we can't infer from EIN + name.)
 - Any institutions you'd expect the portal to *block* even on staff approval (e.g., a denylist for entities WMKF cannot fund)?
+
+---
+
+## 6. Structured-tables persistence contract
+
+The pilot's value proposition over GOapply is **machine-legible capture** — budgets, Co-Is, milestones, and prior support arrive as structured rows, not freeform PDFs. Section 3a frames each table individually, but it's worth picking one storage pattern up front rather than mixing four different answers; otherwise we bake in a heterogeneous shape that we'll pay to clean up later.
+
+Three viable pilot contracts:
+
+1. **Real child entities for each table** — `wmkf_budgetline`, `wmkf_milestone`, `wmkf_priorsupport`, plus either `wmkf_coinvestigator` or reusing `wmkf_copi1..5`. Cleanest long-term, fully queryable in Dataverse on day one. Cost: 3-4 new entities Connor designs and creates before submit can ship.
+2. **JSON columns on `akoya_request`** — one `wmkf_*budgetjson`, `wmkf_*coisjson`, `wmkf_*milestonesjson`, `wmkf_*priorsupportjson` longtext per table, holding the JSON array. Pilot-fast, queryable via OData `contains()` (not joinable), trivially migratable to real entities in Phase 1. Schema-light promise stays intact.
+3. **Defer to Phase 1** — accept structured tables as draft/UI conveniences only; submit drops them. Honest, but undermines the "machine-legible from day one" pitch.
+
+**My recommendation:** option 2 for pilot. JSON columns let us ship without 3-4 new entities, keep the data structured (downstream tools can `JSON.parse` and operate on rows), and an explicit Phase-1 migration to real entities once Sarah and the program team confirm the table shapes hold up across multiple cycles. Option 1 is correct long-term but pays the cost up front. Option 3 cedes the main reason to build a portal at all.
+
+**Decisions sought:**
+- Pick one of 1/2/3 as the pilot's structured-tables contract.
+- If option 2 — confirm you're OK with `akoya_request` accumulating four `wmkf_*json` longtext columns for the pilot, with a documented Phase-1 migration plan.
+- If option 1 — please scope which 3-4 entities you'd want to design first, since that becomes a hard prerequisite for the submit endpoint.
+
+The per-table questions in Section 3a become much simpler once this top-level pattern is locked in (e.g., option 2 collapses all four "child entity vs JSON" questions into "yes, JSON, what column names").
 
 ---
 
