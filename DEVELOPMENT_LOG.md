@@ -10,6 +10,23 @@ The pre-Session 84 chronological per-session log (everything after the September
 
 ---
 
+## May 2026 — Applicant intake portal Entra External ID foundation (Session 129)
+
+**Milestone:** First non-staff identity surface in the system. Wired the `entra-external` NextAuth provider against the new `wmkeckapply.ciamlogin.com` External ID tenant IT provisioned this session. Sessions now self-identify as `'staff' | 'applicant'`; middleware enforces non-crossing both directions. Smoke-test page at `/apply` rendered authenticated applicant identity (name/email/Object ID) end-to-end with an iCloud hide-my-email account. Also closed the second half of the Dynamics impersonation work — `actingUserSystemId` now plumbs through the entire Dataverse adapter chain + token lifecycle, so contact promotion and token writes attribute to the same staff user as the surrounding action instead of falling back to the service principal mid-flow.
+**Sessions:** 129 (2026-05-04)
+**Ship state:**
+- Tenant `04a1406b-3878-4286-bd17-b8c8118886f7`, domain `wmkeckapply.onmicrosoft.com`. Custom OAuth provider via `wellKnown` discovery; env-gated, registers only when `EXTERNAL_AZURE_AD_*` vars are set.
+- Dual-provider NextAuth in one instance — staff (`azure-ad`) and applicants (`entra-external`) share `/api/auth/*` routes; callbacks branch on `account.provider`. Applicant sessions hit no DB during signIn (contact↔OID lookup is lazy, on first authenticated `/apply` write).
+- `pages/auth/signin.js` auto-dispatches to External ID OAuth when `callbackUrl` resolves to `/apply*` (handles relative + absolute URL shapes).
+- `lib/dataverse/adapters/{contact,potential-reviewer,researcher,reviewer-suggestion}.js` + `lib/external/token-lifecycle.js` (mintAndStore/revoke/ensureToken/extendForPostSubmissionWindow) all forward `actingUserSystemId`. 8 endpoints plumbed. 20 new pass-through tests, suite 333/333.
+- Security-matrix housekeeping bundled in: `requireSuperuser`/`getUserRole` helpers added to `lib/utils/auth.js`, 11 admin/role-checking routes migrated off per-file clones (net −89 lines). Standalone profile creation removed (POST `/api/user-profiles` + UI surface).
+
+**Why it matters:** Unblocks the intake portal pilot (Phase II Research, mid-June 2026). The foundation is the load-bearing piece — once it's right, membership/forms/Dynamics writes are mechanical. The institution-as-identity model the design doc commits to (multiple collaborators per institution, transferable primary contact, self-service requests) requires per-person persistent identity with stable OIDs across email changes; OTP-only Entra External ID is the right primitive. Magic-link primitives we already have (`lib/services/external-token.js`) would have baked in person-centric identity instead. The impersonation completion closes the audit-trail mismatch that was visible during Session 128's flag-off rollout — code is now correct end-to-end; only the prod flag flip remains.
+
+**Pointers:** `docs/INTAKE_PORTAL_DESIGN.md`, `docs/IT_ENTRA_EXTERNAL_TENANT_REQUEST_2026-05-04.md`, `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md` § Step 5. Commits `87f07e2`, `7d0091e`, `ee2fb99`, `046835c`, `68e4c59`.
+
+---
+
 ## May 2026 — Memory architecture into the repo + carryover-hygiene guardrail (Session 126)
 
 **Milestone:** Two structural changes triggered by an audit that caught a near-miss production breakage. Memory was per-machine with silent multi-Mac divergence; now lives in the repo at `.claude-memory/`, symlinked back to Claude's expected path, version-controlled like any code. Separately, a three-layer rule (CLAUDE.md section + feedback memory + `/start` skill Step 4) flags any drop/remove/retire/archive/delete/deprecate carryover item as **unverified-until-checked** — the propagation pattern that nearly broke Reviewer Finder this session.

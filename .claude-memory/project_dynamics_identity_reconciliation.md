@@ -1,10 +1,10 @@
 ---
 name: Dynamics Identity Reconciliation
-description: SHIPPED — user_profiles ↔ systemuser bridge + MSCRMCallerID write attribution on user-driven endpoints (S127–S128). Adapter chain intentionally deferred.
+description: SHIPPED — user_profiles ↔ systemuser bridge + MSCRMCallerID write attribution end-to-end across direct services, adapter chain, and token lifecycle (S127–S129). Rollout still gated on flag flip.
 type: project
 originSessionId: 62437821-a516-465d-9fe9-ccd2fa785705
 ---
-**Status (2026-05-04, post Session 128):** Plan complete except adapter chain.
+**Status (2026-05-04, post Session 129):** Code complete. Only outstanding item is flipping `DYNAMICS_IMPERSONATION_ENABLED=true` in preview → prod.
 
 **Shipped Session 127:**
 - V27 migration: `user_profiles.dynamics_systemuser_id` (UUID) + `dynamics_reconciled_at` (TIMESTAMP) + index. Applied to prod 2026-05-03.
@@ -26,10 +26,11 @@ originSessionId: 62437821-a516-465d-9fe9-ccd2fa785705
 
 **Rollout (still TODO):** flip `DYNAMICS_IMPERSONATION_ENABLED=true` in preview → smoke-test phase-i-dynamics writeback + a Review Manager email send with a non-superuser staff Dynamics account → watch logs for `[DynamicsService] Impersonated write rejected` warnings → decide per-table (add privilege to role vs. accept service-principal attribution) → promote to production. Procedure documented in `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md` § Step 5.
 
-**Deliberately deferred — adapter chain (Wave 2 candidate):**
-- `lib/dataverse/adapters/{contact,potential-reviewer,researcher,reviewer-suggestion}.js` and `lib/external/token-lifecycle.js` still write as the service principal.
-- Affected user-driven flows that are partially attributed today: send-emails (email activity = staff; contact promotion + lifecycle PATCH = service principal), reviewer-finder save-candidates, regenerate/revoke token.
-- Reasoning: ~12 internal call sites would need adapter signature changes; scope-cap chosen rather than touching everything in one pass. Wiring is mechanical when picked up.
+**Shipped Session 129 (adapter chain + token lifecycle):**
+- `lib/dataverse/adapters/{contact,potential-reviewer,researcher,reviewer-suggestion}.js` — every write helper takes `{ actingUserSystemId } = {}` as trailing opts, forwards to `DynamicsService.updateRecord`/`createRecord`. Reads stay clean.
+- `lib/external/token-lifecycle.js` — `mintAndStore`, `revoke`, `ensureToken`, `extendForPostSubmissionWindow` all accept and forward.
+- 8 endpoints plumbed: `reviewer-finder/{save-candidates,my-candidates}`, `review-manager/{render-emails,send-emails,regenerate-token,revoke-token,reviewers,upload-review}`. Audit-trail mismatch closed: contact promotion + token writes now attribute to the same staff user as the surrounding action.
+- 20 pass-through tests in `tests/unit/adapters-caller-id.test.js`. Suite 333/333.
 
 **How to apply going forward:**
 - New session-bound writes: `actingUserSystemId: access.session?.user?.dynamicsSystemuserId || null` and pass to the write helper. Unattended (cron / token-auth / PA) leaves it null.

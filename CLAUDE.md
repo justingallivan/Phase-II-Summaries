@@ -132,6 +132,11 @@ SPEND_ALERT_EMAIL_FROM=...                # optional override; must be a Dynamic
 # Required for external reviewer intake (Phase 4-7)
 EXTERNAL_LINK_SECRET=...                  # 32+ char HMAC secret for magic-link JWTs; separate from NEXTAUTH_SECRET
 REVIEWER_MATERIALS_FOLDERS=...            # optional; comma-separated SharePoint subfolders that count as reviewer-shared. Default: Reviewer_Downloads
+
+# Required for applicant intake portal (Entra External ID, separate tenant from staff)
+EXTERNAL_AZURE_AD_TENANT_ID=...           # External tenant ID (NOT the staff AZURE_AD_TENANT_ID)
+EXTERNAL_AZURE_AD_CLIENT_ID=...           # App registration client ID inside the external tenant
+EXTERNAL_AZURE_AD_CLIENT_SECRET=...       # App registration secret. Provider only registers when all three are set, so staff-only deployments don't need them
 ```
 
 ## Per-App Model Configuration
@@ -172,7 +177,16 @@ Three-layer defense-in-depth:
 2. **API route auth** (`lib/utils/auth.js`) — App-specific endpoints use `requireAppAccess(req, res, ...appKeys)` which combines CSRF origin check + auth + `is_active` check + app access in one call. Returns `{ profileId, session }` on success; sends 401/403 on failure. Uses in-memory cache with 2-min TTL (includes `isActive` flag). Disabled accounts blocked before superuser bypass. Infrastructure endpoints (auth, admin, health) use `requireAuth()` or `requireAuthWithProfile()`.
 3. **Client-side guards** (`RequireAuth`, `RequireAppAccess`) — Defense in depth for navigation/UI.
 
-**Important:** When adding new app-specific API endpoints, use `requireAppAccess(req, res, 'app-key')` with the correct app key from `appRegistry.js`. For infrastructure endpoints, use `requireAuthWithProfile()` for user-scoped data. Never accept `profileId` from query/body params — derive it from `access.profileId` or the session.
+**Important:** When adding new app-specific API endpoints, use `requireAppAccess(req, res, 'app-key')` with the correct app key from `appRegistry.js`. For infrastructure endpoints, use `requireAuthWithProfile()` for user-scoped data. Superuser-only routes use `requireSuperuser(req, res)` (returns `{ profileId }` or null after sending 401/403); the lower-level `getUserRole(profileId)` is available when a route needs role beyond just superuser. Never accept `profileId` from query/body params — derive it from `access.profileId` or the session.
+
+### Dual-provider NextAuth (staff + applicants)
+
+`pages/api/auth/[...nextauth].js` registers two providers in one NextAuth instance:
+
+- `azure-ad` — staff (organizational Entra ID tenant). Sessions carry `azureId` / `profileId` / `dynamicsSystemuserId`.
+- `entra-external` — applicants (separate Entra External ID tenant `wmkeckapply.ciamlogin.com`, OTP-only). Sessions carry `contactOid` / `contactEmail`. Provider is env-gated: only registers when `EXTERNAL_AZURE_AD_*` vars are set.
+
+Sessions self-identify with `session.user.userType: 'staff' | 'applicant'`. Staff and applicant fields are mutually exclusive on a session — branch on `userType`, never inspect populated fields to infer identity. Middleware enforces non-crossing both directions: a staff session hitting `/apply/*` (or an applicant session hitting any non-`/apply` route) is rejected outright. `/auth/signin` auto-dispatches to External ID OAuth when `callbackUrl` resolves to `/apply*`. Foundation only as of Session 129 — only the smoke-test page at `/apply` exists; membership / form / submission flows are upcoming.
 
 ---
 

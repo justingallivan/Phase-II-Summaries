@@ -39,6 +39,7 @@
 - [Grant lifecycle states confirmed (2026-05-01)](project_grant_lifecycle_states_confirmed.md) — `akoya_requeststatus` is a string field with values 'Concept Pending' → 'Phase I Pending' → 'Phase II Pending'; picker filters to the third only; new submissions are 'Phase I Pending'
 
 ## Intake Portal (GOapply replacement)
+- [External ID auth foundation SHIPPED (S129)](project_intake_portal_external_id_foundation.md) — tenant `04a1406b...`, NextAuth `entra-external` provider, `/apply` route auth round-trip verified. Membership/forms/Dynamics writes still ahead.
 - [Skinny pilot scope, not feature-for-feature](project_intake_portal_skinny_scope.md) — pilot sized like external reviewer intake; Phase II Research mid-June 2026; design doc at `docs/INTAKE_PORTAL_DESIGN.md`
 - [Capture machine-legible structured data](project_machine_legible_form_capture.md) — split budgets/rosters/milestones into structured fields, not narrative; Sarah + Connor own form wishlists
 
@@ -59,7 +60,7 @@
 ## Dynamics CRM Users
 - **16 licensed staff users** (Read-Write, `@wmkeck.org`) + ~180 Microsoft service accounts
 - All staff already have Dynamics licenses — OBO flow would not require additional licensing (but is not recommended due to complexity)
-- [Identity reconciliation SHIPPED](project_dynamics_identity_reconciliation.md) — DB bridge + MSCRMCallerID on user-driven writes (S127–S128). Adapter chain still on service principal — not blocking, not silent.
+- [Identity reconciliation SHIPPED](project_dynamics_identity_reconciliation.md) — DB bridge + MSCRMCallerID on user-driven writes + adapter chain + token lifecycle (S127–S129). Code complete; rollout gated on `DYNAMICS_IMPERSONATION_ENABLED=true` flip in preview → prod.
 
 ## SharePoint Document Integration
 - Documents attached to requests are stored in **SharePoint**, not Dynamics
