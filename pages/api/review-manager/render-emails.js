@@ -53,6 +53,8 @@ export default async function handler(req, res) {
   const access = await requireAppAccess(req, res, 'review-manager');
   if (!access) return;
 
+  const actingUserSystemId = access.session?.user?.dynamicsSystemuserId || null;
+
   const allowed = await limiter(req, res);
   if (allowed !== true) return;
 
@@ -115,7 +117,7 @@ export default async function handler(req, res) {
         const requestId = sug?._wmkf_request_value;
         if (!requestId) continue;
         try {
-          const { url } = await mintAndStore({ suggestionId, requestId, expiresAt: expires });
+          const { url } = await mintAndStore({ suggestionId, requestId, expiresAt: expires, actingUserSystemId });
           externalLinkBySuggestion[suggestionId] = url;
         } catch (e) {
           console.error(`[render-emails] mint failed for ${suggestionId}: ${e.message}`);

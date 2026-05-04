@@ -250,7 +250,8 @@ async function handleGet(req, res, access) {
   }
 }
 
-async function handlePatch(req, res /* access */) {
+async function handlePatch(req, res, access) {
+  const actingUserSystemId = access.session?.user?.dynamicsSystemuserId || null;
   try {
     const {
       suggestionId,
@@ -267,7 +268,7 @@ async function handlePatch(req, res /* access */) {
       const updates = {};
       if (proposalUrl !== undefined) updates.proposalUrl = proposalUrl || null;
       if (proposalPassword !== undefined) updates.proposalPassword = proposalPassword || null;
-      const updated = await suggestionAdapter.bulkUpdateByRequest(proposalId, updates);
+      const updated = await suggestionAdapter.bulkUpdateByRequest(proposalId, updates, { actingUserSystemId });
       return res.status(200).json({
         success: true,
         message: `Updated ${updated} reviewer(s) on this proposal`,
@@ -280,7 +281,7 @@ async function handlePatch(req, res /* access */) {
         return res.status(400).json({ error: 'reviewStatus required for batch update' });
       }
       for (const id of suggestionIds) {
-        await suggestionAdapter.updateLifecycle(id, { reviewStatus });
+        await suggestionAdapter.updateLifecycle(id, { reviewStatus }, { actingUserSystemId });
       }
       return res.status(200).json({ success: true, message: `Updated ${suggestionIds.length} reviewers` });
     }
@@ -306,7 +307,7 @@ async function handlePatch(req, res /* access */) {
       return res.status(400).json({ error: 'No supported fields to update' });
     }
 
-    await suggestionAdapter.updateLifecycle(suggestionId, lifecycle);
+    await suggestionAdapter.updateLifecycle(suggestionId, lifecycle, { actingUserSystemId });
     return res.status(200).json({ success: true, message: 'Reviewer updated' });
   } catch (error) {
     console.error('Review Manager PATCH error:', error);

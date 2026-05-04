@@ -25,6 +25,8 @@ export default async function handler(req, res) {
   const access = await requireAppAccess(req, res, 'reviewer-finder');
   if (!access) return;
 
+  const actingUserSystemId = access.session?.user?.dynamicsSystemuserId || null;
+
   // Trusted internal writeback — no field/table masking applies.
   return bypassDynamicsRestrictions('save-candidates', async () => {
   try {
@@ -89,7 +91,7 @@ export default async function handler(req, res) {
           affiliation: candidateAffiliation,
           expertise: expertiseForDv,
           whyChosen: matchReason || null,
-        });
+        }, { actingUserSystemId });
 
         await researcherAdapter.upsertByPotentialReviewer(potentialReviewerId, {
           name: candidate.name,
@@ -108,7 +110,7 @@ export default async function handler(req, res) {
           website: candidateWebsite,
           facultyPageUrl: candidate.facultyPageUrl || candidate.contactEnrichment?.facultyPageUrl || null,
           keywords: expertiseForDv,
-        });
+        }, { actingUserSystemId });
 
         await reviewerSuggestionAdapter.upsert({
           potentialReviewerId,
@@ -120,7 +122,7 @@ export default async function handler(req, res) {
           matchReason,
           sources: sources.join(','),
           selected: true,
-        });
+        }, { actingUserSystemId });
 
         savedCount++;
       } catch (candidateError) {

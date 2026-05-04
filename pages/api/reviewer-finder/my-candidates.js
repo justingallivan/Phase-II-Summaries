@@ -262,7 +262,8 @@ async function fetchResearchersByPerson(personIds) {
 
 // ───────── PATCH ─────────
 
-async function handlePatch(req, res /* access unused but reserved for audit */) {
+async function handlePatch(req, res, access) {
+  const actingUserSystemId = access.session?.user?.dynamicsSystemuserId || null;
   try {
     const body = req.body || {};
     const {
@@ -308,7 +309,7 @@ async function handlePatch(req, res /* access unused but reserved for audit */) 
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ error: 'No supported fields to update' });
       }
-      const updated = await suggestionAdapter.bulkUpdateByRequest(proposalId, updates);
+      const updated = await suggestionAdapter.bulkUpdateByRequest(proposalId, updates, { actingUserSystemId });
       return res.status(200).json({
         success: true,
         message: 'Proposal updated',
@@ -343,7 +344,7 @@ async function handlePatch(req, res /* access unused but reserved for audit */) 
     }
 
     if (hasLifecycle) {
-      await suggestionAdapter.updateLifecycle(suggestionId, lifecycle);
+      await suggestionAdapter.updateLifecycle(suggestionId, lifecycle, { actingUserSystemId });
 
       // Auto-mint the external-reviewer magic-link token when the
       // reviewer flips to accepted. ensureToken is idempotent — no-op
@@ -352,7 +353,7 @@ async function handlePatch(req, res /* access unused but reserved for audit */) 
       // — staff can always generate the link manually from Review Manager.
       if (lifecycle.accepted === true) {
         try {
-          await ensureToken(suggestionId);
+          await ensureToken(suggestionId, { actingUserSystemId });
         } catch (e) {
           console.error(`[my-candidates] auto-mint failed for ${suggestionId}: ${e.message}`);
         }
@@ -372,7 +373,7 @@ async function handlePatch(req, res /* access unused but reserved for audit */) 
       if (email !== undefined) personUpdates.email = email;
       if (affiliation !== undefined) personUpdates.affiliation = affiliation;
       if (Object.keys(personUpdates).length > 0) {
-        await potentialReviewerAdapter.update(personId, personUpdates);
+        await potentialReviewerAdapter.update(personId, personUpdates, { actingUserSystemId });
       }
 
       const researcherUpdates = {};
@@ -383,7 +384,7 @@ async function handlePatch(req, res /* access unused but reserved for audit */) 
       if (Object.keys(researcherUpdates).length > 0) {
         const researcher = await researcherAdapter.getByPotentialReviewer(personId);
         if (researcher) {
-          await researcherAdapter.updateById(researcher.wmkf_appresearcherid, researcherUpdates);
+          await researcherAdapter.updateById(researcher.wmkf_appresearcherid, researcherUpdates, { actingUserSystemId });
         }
       }
     }
@@ -404,13 +405,14 @@ async function handlePatch(req, res /* access unused but reserved for audit */) 
 
 // ───────── DELETE ─────────
 
-async function handleDelete(req, res /* access */) {
+async function handleDelete(req, res, access) {
+  const actingUserSystemId = access.session?.user?.dynamicsSystemuserId || null;
   try {
     const { suggestionId } = req.body || {};
     if (!suggestionId) {
       return res.status(400).json({ error: 'suggestionId is required' });
     }
-    await suggestionAdapter.softDelete(suggestionId);
+    await suggestionAdapter.softDelete(suggestionId, { actingUserSystemId });
     return res.status(200).json({ success: true, message: 'Candidate removed' });
   } catch (error) {
     console.error('Delete candidate error:', error);

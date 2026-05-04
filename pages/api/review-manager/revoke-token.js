@@ -20,6 +20,8 @@ export default async function handler(req, res) {
   const access = await requireAppAccess(req, res, 'review-manager');
   if (!access) return;
 
+  const actingUserSystemId = access.session?.user?.dynamicsSystemuserId || null;
+
   try {
     const { suggestionId } = req.body || {};
     if (!suggestionId || typeof suggestionId !== 'string') {
@@ -27,7 +29,7 @@ export default async function handler(req, res) {
     }
 
     try {
-      await revoke(suggestionId);
+      await revoke(suggestionId, { actingUserSystemId });
     } catch (e) {
       if (/update.*failed.*404/i.test(e.message || '')) {
         return res.status(404).json({ ok: false, reason: 'not_found' });

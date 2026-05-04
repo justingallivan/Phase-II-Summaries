@@ -34,6 +34,8 @@ export default async function handler(req, res) {
   const access = await requireAppAccess(req, res, 'review-manager');
   if (!access) return;
 
+  const actingUserSystemId = access.session?.user?.dynamicsSystemuserId || null;
+
   try {
     const { suggestionId, expiresAt: rawExpires } = req.body || {};
     if (!suggestionId || typeof suggestionId !== 'string') {
@@ -73,7 +75,7 @@ export default async function handler(req, res) {
       return res.status(404).json({ ok: false, reason: 'not_found' });
     }
 
-    const result = await mintAndStore({ suggestionId, requestId, expiresAt });
+    const result = await mintAndStore({ suggestionId, requestId, expiresAt, actingUserSystemId });
 
     return res.status(200).json({
       ok: true,

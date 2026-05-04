@@ -82,6 +82,7 @@ describe('token-lifecycle', () => {
         'wmkf_appreviewersuggestions',
         SUGGESTION_ID,
         { wmkf_externaltokenrevoked: true },
+        { actingUserSystemId: undefined },
       );
     });
 

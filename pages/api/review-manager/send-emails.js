@@ -254,8 +254,8 @@ export default async function handler(req, res) {
               firstName: fn || null,
               lastName: ln || null,
               email,
-            });
-            await potentialReviewerAdapter.setContactLink(person.wmkf_potentialreviewersid, contactId);
+            }, { actingUserSystemId });
+            await potentialReviewerAdapter.setContactLink(person.wmkf_potentialreviewersid, contactId, { actingUserSystemId });
             contactPromoted = created ? 'created' : 'linked';
           }
         } catch (promoteErr) {
@@ -309,7 +309,7 @@ export default async function handler(req, res) {
             await suggestionAdapter.updateLifecycle(s.suggestionId, {
               materialsSentAt: now,
               ...(shouldBump ? { reviewStatus: 'materials_sent' } : {}),
-            });
+            }, { actingUserSystemId });
           } else if (templateType === 'followup') {
             const ctx = recipientBySuggestion.get(s.suggestionId);
             const currentStatusValue = ctx?.suggestion?.wmkf_reviewstatus;
@@ -320,12 +320,12 @@ export default async function handler(req, res) {
               reminderSentAt: now,
               reminderCount: currentReminderCount + 1,
               ...(shouldBump ? { reviewStatus: 'under_review' } : {}),
-            });
+            }, { actingUserSystemId });
           } else if (templateType === 'thankyou') {
             await suggestionAdapter.updateLifecycle(s.suggestionId, {
               thankYouSentAt: now,
               reviewStatus: 'complete',
-            });
+            }, { actingUserSystemId });
           }
         } catch (err) {
           console.error(`Lifecycle update failed for ${s.suggestionId} (email already sent):`, err.message);
