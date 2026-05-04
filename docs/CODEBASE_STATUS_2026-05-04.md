@@ -20,27 +20,32 @@ The biggest architectural shift underway is the movement from Vercel Postgres as
 
 ## Current Product Surface
 
-The live application registry defines the staff-facing suite. Concept Evaluator has been archived, and the current registry contains the following tools:
+Three audiences interact with the platform: **staff** (apps in `shared/config/appRegistry.js`), **external reviewers** (public token-authenticated routes), and **administrators** (always-accessible `/admin`). Concept Evaluator was archived in Session 110; its page and prompt now live under `_archived/`. Phase I Dynamics is a test surface reachable by direct URL only and is intentionally not in the registry.
+
+**Staff applications (16, from `appRegistry.js`):**
 
 | Area | Application | What it does |
 |---|---|---|
-| Proposal evaluation | Multi-Perspective Evaluator | Evaluates a proposal through optimistic, skeptical, and neutral AI perspectives, then synthesizes the result. |
+| Proposal evaluation | Multi-Perspective Evaluator | Evaluates a proposal through Optimist, Skeptic, and Neutral AI perspectives, then synthesizes the result. |
 | Summaries | Batch Phase I Summaries | Processes multiple Phase I proposal PDFs with configurable summary length and export. |
 | Summaries | Batch Phase II Summaries | Processes multiple Phase II proposal PDFs with configurable summary length and export. |
-| Summaries | Phase I Writeup | Generates standardized Phase I writeup drafts from uploaded PDFs. |
-| Summaries | Phase II Writeup | Generates standardized Phase II writeup drafts and supports Q&A/refinement follow-up. |
+| Summaries | Create Phase I Writeup Draft | Generates standardized Phase I writeup drafts from uploaded PDFs. |
+| Summaries | Create Phase II Writeup Draft | Generates standardized Phase II writeup drafts and supports Q&A/refinement follow-up. |
 | Funding analysis | Funding Analysis | Uses NSF, NIH, and USAspending data to assess funding landscapes and funding gaps. |
 | Reviewer pipeline | Reviewer Finder | Finds and verifies qualified peer reviewers using AI plus PubMed, ArXiv, BioRxiv, ChemRxiv, ORCID, and web search. |
-| Reviewer pipeline | Review Manager | Tracks accepted reviewers, sends/render emails, manages materials, reminders, tokens, uploads, and lifecycle status. |
-| Reviewer pipeline | External Reviewer Portal | Public magic-link workflow for reviewers to access proposal context and upload structured reviews. |
-| Review synthesis | Peer Review Summarizer | Summarizes peer review feedback, themes, concerns, and site visit questions. |
+| Reviewer pipeline | Review Manager | Tracks accepted reviewers, sends/renders emails, manages materials, reminders, tokens, uploads, and lifecycle status. |
+| Review synthesis | Summarize Peer Reviews | Summarizes peer review feedback, themes, concerns, and site visit questions. |
 | Analysis | Literature Analyzer | Synthesizes research papers and academic literature. |
 | Analysis | Applicant Integrity Screener | Screens applicants against Retraction Watch, PubPeer/news search, and AI summaries. |
-| CRM | Dynamics Explorer | Lets staff ask natural language questions over Dynamics and SharePoint-backed documents through a tool-using AI agent. |
+| CRM | Dynamics Explorer | Lets staff ask natural-language questions over Dynamics and SharePoint-backed documents through a tool-using AI agent. |
 | Staff matching | WMKF Expertise | Matches proposals to internal staff, consultants, and board expertise. |
 | Simulation | Virtual Review Panel | Runs a multi-LLM review panel with claim verification and synthesis. |
-| Reporting | Grant Reporting | Extracts progress/final reports, compares goals versus achievements, looks up original grants, and exports Word reports. |
-| Operations | Admin Console | Exposes health, alerts, model settings, secrets checks, maintenance, and identity reconciliation. |
+| Reporting | Grant Reporting | Extracts progress/final reports, compares goals vs. achievements, looks up original grants, and exports Word reports. |
+| Operations | Expense Reporter | Extracts and categorizes expense data from receipts and invoices. |
+
+**Public surface:** `/external/review/[token]` — magic-link workflow for invited reviewers to access curated proposal materials and upload structured reviews.
+
+**Admin surface:** `/admin` — health, alerts, model settings, secrets checks, maintenance, identity reconciliation, app access, and usage analytics. Always accessible to authenticated staff; superuser-only sections gated server-side.
 
 ## Codebase Shape
 
@@ -50,11 +55,11 @@ Current source inventory, excluding archived code and dependencies:
 |---|---:|
 | Source/code files | 363 |
 | Approximate code lines | 99,799 |
-| Staff/public pages | 28 |
+| Staff/public pages | 27 |
 | API route files | 76 |
 | Service modules | 39 |
-| Tests | 22 |
-| Markdown docs | 92 |
+| Test files | 19 |
+| Markdown docs | 93 |
 
 Primary directories:
 
@@ -185,7 +190,7 @@ The strategic direction is clear:
 - **Blob is used for app-managed file staging and generated artifacts.**
 - **SharePoint is the official document repository** for proposal materials, reviewer downloads, uploaded reviews, grant reports, and applicant attachments after submission.
 
-The reviewer subsystem is the most visible transition area. Older Postgres tables model researchers, publications, and suggestions. New Dataverse adapters map the target model into:
+The reviewer subsystem is the most visible transition area. New Dataverse adapters map the target model (below) and now own the picker + save-candidates entry path. The older Postgres reviewer tables (`researchers`, `publications`, `proposal_searches`, `reviewer_suggestions`) are **still load-bearing** for browse, contact enrichment, email generation, and grant-cycle management — they are not dormant and should not be dropped until those flows have been migrated.
 
 ```mermaid
 flowchart TB
@@ -306,7 +311,7 @@ Dynamics Explorer is an agentic, server-side tool-use loop. The model does not r
 ```mermaid
 flowchart TB
   Trigger["Vercel route / PowerAutomate test / future automation"] --> Executor["executePrompt"]
-  Executor --> Prompt["Fetch current prompt from Dataverse<br/>wmkf_ai_prompts"]
+  Executor --> Prompt["Fetch current prompt from Dataverse<br/>wmkf_ai_prompt (entity set: wmkf_ai_prompts)"]
   Executor --> Vars["Resolve variables<br/>Dynamics / SharePoint / overrides"]
   Vars --> Claude["Claude call"]
   Claude --> Parse["Parse raw or JSON output"]
@@ -343,14 +348,14 @@ The pilot target is the mid-June 2026 Phase II Research cycle. The main external
 
 ## AI and Model Layer
 
-The codebase has moved from scattered direct Claude calls toward a canonical AI layer:
+The codebase has consolidated previously scattered Claude calls into a canonical AI layer (the prior `claudeClient` handler and ~14 ad-hoc fetch sites have been removed):
 
 - `lib/services/llm-client.js` wraps Anthropic Messages API calls.
 - It supports unary and streaming calls, tool-use blocks, retry on 429/529, fallback models, timeouts, redaction, and usage logging.
 - `shared/config/baseConfig.js` defines per-app model choices.
 - `lib/services/model-override-loader.js` allows model overrides from configuration.
 - Prompt modules live under `shared/config/prompts/`.
-- Some prompts and executor-driven tasks now live in Dataverse as `wmkf_ai_prompts`.
+- Some prompts and executor-driven tasks now live in Dataverse in the `wmkf_ai_prompt` table (entity set `wmkf_ai_prompts`).
 
 The current default model configuration is centered on Claude Sonnet for most analytical tasks and Claude Haiku for cheaper/faster lower-complexity or tool-use tasks such as Dynamics Explorer. The virtual review panel also has a separate multi-LLM service path for panel-style experiments.
 
@@ -404,7 +409,7 @@ What is actively in transition:
 - Reviewer data is moving from Postgres-centered storage to Dataverse-centered storage.
 - Prompt storage is moving from static repo modules toward Dataverse-managed prompts for backend automation.
 - Applicant intake is in design/early implementation rather than production.
-- Some older API routes still use legacy/direct patterns while newer services converge on `LLMClient`, Dataverse adapters, and shared auth helpers.
+- Newer services have converged on `LLMClient`, Dataverse adapters, and shared auth helpers; remaining drift is mostly in older operational scripts under `scripts/` rather than in live API routes.
 - The original README understates the current system; this document and the broader `docs/` directory are more representative.
 
 Main risks and open work:
