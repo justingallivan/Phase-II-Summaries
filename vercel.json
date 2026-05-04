@@ -33,6 +33,10 @@
     {
       "path": "/api/cron/spend-check",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-identities",
+      "schedule": "0 7 * * 1"
     }
   ]
 }

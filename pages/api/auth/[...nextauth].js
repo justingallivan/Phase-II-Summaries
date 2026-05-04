@@ -18,6 +18,7 @@ import { sql } from '@vercel/postgres';
 import { DEFAULT_APP_GRANTS } from '../../../shared/config/appRegistry';
 import NotificationService from '../../../lib/services/notification-service';
 import { grantApps } from '../../../lib/services/app-access-service';
+import { reconcileProfile } from '../../../lib/services/dynamics-identity-service';
 
 export const authOptions = {
   providers: [
@@ -93,6 +94,8 @@ export const authOptions = {
               await grantDefaultApps(tempResult.rows[0].id);
               // Fire-and-forget new user notification
               NotificationService.notifyNewUser({ id: tempResult.rows[0].id, name: displayName, azure_email: azureEmail }).catch(() => {});
+              // Fire-and-forget Dynamics identity link
+              reconcileProfile(tempResult.rows[0].id, { silent: true }).catch(() => {});
             }
 
             return true;
@@ -112,6 +115,8 @@ export const authOptions = {
             await grantDefaultApps(newResult.rows[0].id);
             // Fire-and-forget new user notification
             NotificationService.notifyNewUser({ id: newResult.rows[0].id, name: displayName, azure_email: azureEmail }).catch(() => {});
+            // Fire-and-forget Dynamics identity link
+            reconcileProfile(newResult.rows[0].id, { silent: true }).catch(() => {});
           }
 
           return true;

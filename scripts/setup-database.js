@@ -631,6 +631,13 @@ const v26Statements = [
   `CREATE INDEX IF NOT EXISTS idx_intake_audit_created ON intake_audit(created_at DESC)`,
 ];
 
+// V27: Dynamics identity reconciliation — link user_profiles to Dynamics systemuser
+const v27Alterations = [
+  `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS dynamics_systemuser_id UUID`,
+  `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS dynamics_reconciled_at TIMESTAMP`,
+  `CREATE INDEX IF NOT EXISTS idx_user_profiles_dynamics_systemuser_id ON user_profiles(dynamics_systemuser_id)`,
+];
+
 // V25: Expertise Finder tables
 const v25Statements = [
   `CREATE TABLE IF NOT EXISTS expertise_roster (
@@ -1314,6 +1321,25 @@ async function runMigration() {
       }
     }
 
+    // Run V27 alterations (Dynamics identity reconciliation)
+    console.log(`\nApplying v27 schema updates - Dynamics identity reconciliation (${v27Alterations.length} statements)...`);
+    for (let i = 0; i < v27Alterations.length; i++) {
+      const statement = v27Alterations[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v27-${i + 1}/${v27Alterations.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists') || error.message.includes('duplicate column')) {
+          console.log(`[v27-${i + 1}/${v27Alterations.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v27-${i + 1}/${v27Alterations.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
+      }
+    }
+
     console.log('\n✓ Database migration completed successfully!');
     console.log('\nTables created/updated:');
     console.log('  • search_cache (API search result caching)');
@@ -1418,6 +1444,9 @@ async function runMigration() {
     console.log('\nV26 new tables (Intake Portal):');
     console.log('  • intake_drafts (applicant draft staging — Postgres only, cleared on submit)');
     console.log('  • intake_audit (state-changing portal action audit trail)');
+    console.log('\nV27 column additions (Dynamics identity reconciliation):');
+    console.log('  • user_profiles.dynamics_systemuser_id');
+    console.log('  • user_profiles.dynamics_reconciled_at');
     console.log('\nIndexes created: 64');
 
   } catch (error) {
