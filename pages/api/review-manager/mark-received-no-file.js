@@ -59,9 +59,11 @@ export default async function handler(req, res) {
       wmkf_reviewuploadedbystaff: true,
     };
 
+    const actingUserSystemId = access.session?.user?.dynamicsSystemuserId || null;
+
     try {
       await bypassDynamicsRestrictions('mark-received-no-file', () =>
-        DynamicsService.updateRecord(ENTITY_SET, suggestionId, patch),
+        DynamicsService.updateRecord(ENTITY_SET, suggestionId, patch, { actingUserSystemId }),
       );
     } catch (e) {
       if (/update.*failed.*404/i.test(e.message || '')) {

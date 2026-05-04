@@ -59,7 +59,7 @@
 ## Dynamics CRM Users
 - **16 licensed staff users** (Read-Write, `@wmkeck.org`) + ~180 Microsoft service accounts
 - All staff already have Dynamics licenses — OBO flow would not require additional licensing (but is not recommended due to complexity)
-- [Identity reconciliation SHIPPED 2026-05-03](project_dynamics_identity_reconciliation.md) — DB bridge persisted, weekly cron live, /admin section live. Step 5 (MSCRMCallerID write attribution) still deferred.
+- [Identity reconciliation SHIPPED](project_dynamics_identity_reconciliation.md) — DB bridge + MSCRMCallerID on user-driven writes (S127–S128). Adapter chain still on service principal — not blocking, not silent.
 
 ## SharePoint Document Integration
 - Documents attached to requests are stored in **SharePoint**, not Dynamics

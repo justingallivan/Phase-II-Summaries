@@ -217,7 +217,7 @@ Located in `lib/services/`:
 - `serp-contact-service.js` - Google/Scholar search via SerpAPI
 - `integrity-service.js` - Integrity screening orchestration
 - `integrity-matching-service.js` - Name matching algorithms
-- `dynamics-service.js` - Microsoft Dynamics 365 CRM API (OAuth, OData queries, Dataverse Search, Email Activities). `updateIfEmpty(entitySet, guid, field, value, { overwrite })` composes a read + empty-check + ETag-guarded PATCH for AI-writeback fields; returns discriminated `{ ok, reason }` result.
+- `dynamics-service.js` - Microsoft Dynamics 365 CRM API (OAuth, OData queries, Dataverse Search, Email Activities). `updateIfEmpty(entitySet, guid, field, value, { overwrite })` composes a read + empty-check + ETag-guarded PATCH for AI-writeback fields; returns discriminated `{ ok, reason }` result. Write helpers (`createRecord` / `updateRecord` / `deleteRecord` / `updateIfEmpty` / `logAiRun` / `createEmailActivity` / `addEmailAttachment` / `sendEmail` / `createAndSendEmail`) accept an optional `actingUserSystemId` — when set, sends `MSCRMCallerID` so Dataverse records the staff member on `createdby`/`modifiedby`/audit. Plumbed through user-driven API endpoints from `session.user.dynamicsSystemuserId`; left null on cron/external-token/PA-triggered paths so unattended writes correctly attribute to the service principal. Reads never receive the header (would impersonate the user for security-role evaluation and break callers with restricted Dynamics roles).
 - `graph-service.js` - Microsoft Graph API (SharePoint document access, file listing/download, content search)
 - `feedback-service.js` - CRUD for dynamics_feedback table (user feedback + auto-detection)
 - `alert-service.js` - CRUD for system_alerts table (deduplication, auto-resolve)

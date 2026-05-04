@@ -73,9 +73,16 @@ New entry in `pages/api/cron/reconcile-identities.js`:
 
 Add a "Reconcile now" button in the admin app that calls the same endpoint on demand.
 
-### 5. Impersonation on writes
+### 5. Impersonation on writes — SHIPPED 2026-05-04 (Session 128)
 
-Update the Dynamics write helper (new, doesn't exist yet — gate for the work that follows Connor's write-permission grant) to accept an `actingUserSystemId` argument:
+Direct API → DynamicsService writes plumb `actingUserSystemId` from `session.user.dynamicsSystemuserId`:
+- `lib/services/dynamics-service.js` — write helpers accept the option, conditionally adds `MSCRMCallerID`. Reads never carry it.
+- NextAuth: JWT/session loads `dynamics_systemuser_id` so `session.user.dynamicsSystemuserId` is available everywhere.
+- API endpoints wired: `phase-i-dynamics/summarize`, `phase-i-dynamics/summarize-v2`, `grant-reporting/extract`, `review-manager/send-emails`, `review-manager/mark-received-no-file`, `review-manager/upload-review`, `test-email`. Executor (`lib/services/execute-prompt.js`) accepts the kwarg.
+- Intentionally null (unattended): `pages/api/cron/spend-check.js`, `pages/api/external/review/[token]/*`, `lib/external/token-lifecycle.js`, all PowerAutomate triggers.
+- **Deferred — adapter chain.** `lib/dataverse/adapters/{contact,potential-reviewer,researcher,reviewer-suggestion}.js` still write as the service principal. Wiring those would touch ~12 call sites (reviewer-finder save-candidates, send-emails contact promotion, etc.) and is a clean follow-up. Behavior today: the email activity itself is attributed to the staff sender, while the contact-promotion / lifecycle PATCHes that follow are still service-principal. Acceptable as an intermediate state; track in a future session.
+
+Original plan text below:
 
 ```js
 await dynamicsService.updateRequest(requestId, fields, {

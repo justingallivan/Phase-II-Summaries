@@ -161,7 +161,7 @@ export const authOptions = {
       if (token.azureId) {
         try {
           const result = await sql`
-            SELECT id, name, display_name, avatar_color, needs_linking, last_login_at
+            SELECT id, name, display_name, avatar_color, needs_linking, last_login_at, dynamics_systemuser_id
             FROM user_profiles
             WHERE azure_id = ${token.azureId} AND is_active = true
             LIMIT 1
@@ -173,6 +173,7 @@ export const authOptions = {
             token.avatarColor = result.rows[0].avatar_color;
             token.needsLinking = result.rows[0].needs_linking;
             token.isNewUser = !result.rows[0].last_login_at;
+            token.dynamicsSystemuserId = result.rows[0].dynamics_systemuser_id || null;
           }
         } catch (error) {
           console.error('Error looking up profile in jwt callback:', error);
@@ -194,6 +195,7 @@ export const authOptions = {
         session.user.avatarColor = token.avatarColor;
         session.user.needsLinking = token.needsLinking;
         session.user.isNewUser = token.isNewUser;
+        session.user.dynamicsSystemuserId = token.dynamicsSystemuserId || null;
       }
       return session;
     },

@@ -40,6 +40,7 @@ export default async function handler(req, res) {
 
   const access = await requireAppAccess(req, res, APP_KEY);
   if (!access) return;
+  const actingUserSystemId = access.session?.user?.dynamicsSystemuserId || null;
 
   const allowed = await limiter(req, res);
   if (allowed !== true) return;
@@ -139,6 +140,7 @@ export default async function handler(req, res) {
         status: 'failed',
         rawOutput: { error: err.message },
         notes: `Phase I Dynamics summarize — Claude call failed (${fileLoad.filename})`,
+        actingUserSystemId,
       });
       throw err;
     }
@@ -161,6 +163,7 @@ export default async function handler(req, res) {
         status: 'failed',
         rawOutput: { error: 'empty-summary', raw: summaryText },
         notes: `Phase I Dynamics summarize — empty summary (${fileLoad.filename})`,
+        actingUserSystemId,
       });
       return res.status(502).json({ error: 'Claude returned an empty summary' });
     }
@@ -176,7 +179,10 @@ export default async function handler(req, res) {
         'akoya_requests',
         requestGuid,
         { wmkf_ai_summary: summaryText },
-        preflightEtag ? { ifMatch: preflightEtag } : undefined,
+        {
+          ...(preflightEtag ? { ifMatch: preflightEtag } : {}),
+          ...(actingUserSystemId ? { actingUserSystemId } : {}),
+        },
       );
       writebackOk = true;
     } catch (err) {
@@ -196,6 +202,7 @@ export default async function handler(req, res) {
       notes: writebackOk
         ? `Phase I Dynamics summarize (${fileLoad.filename}) — wmkf_ai_summary updated`
         : `Phase I Dynamics summarize (${fileLoad.filename}) — writeback ${writebackFailureCategory}`,
+      actingUserSystemId,
     });
 
     return res.status(200).json({
@@ -224,7 +231,7 @@ export default async function handler(req, res) {
 // logged but not rethrown — the user-facing flow must continue — however the
 // boolean bubbles to the response as `auditLogCreated` so monitoring can
 // alert on audit gaps.
-async function tryLogAiRun({ requestGuid, model, status, rawOutput, notes }) {
+async function tryLogAiRun({ requestGuid, model, status, rawOutput, notes, actingUserSystemId }) {
   if (!requestGuid) return false;
   try {
     await DynamicsService.logAiRun({
@@ -235,6 +242,7 @@ async function tryLogAiRun({ requestGuid, model, status, rawOutput, notes }) {
       status,
       rawOutput,
       notes,
+      actingUserSystemId,
     });
     return true;
   } catch (err) {

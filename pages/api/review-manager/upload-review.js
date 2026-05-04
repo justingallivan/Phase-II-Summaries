@@ -78,7 +78,11 @@ export default async function handler(req, res) {
         suggestionId,
         files,
         structuredData,
-        opts: { source: 'staff_upload', performedBy: access.profileId },
+        opts: {
+          source: 'staff_upload',
+          performedBy: access.profileId,
+          actingUserSystemId: access.session?.user?.dynamicsSystemuserId || null,
+        },
       }),
     );
 

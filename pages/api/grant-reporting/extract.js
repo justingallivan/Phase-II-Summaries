@@ -128,6 +128,7 @@ export default async function handler(req, res) {
 // ─── Mode handlers ─────────────────────────────────────────────────────────
 
 async function handleFull({ res, access, apiKey, reportRef, proposalRef, headerFromDynamics, requestGuid }) {
+  const actingUserSystemId = access.session?.user?.dynamicsSystemuserId || null;
   if (!reportRef) {
     return res.status(400).json({ error: 'reportRef is required for mode=full' });
   }
@@ -147,6 +148,7 @@ async function handleFull({ res, access, apiKey, reportRef, proposalRef, headerF
     fallback,
     userProfileId: access.profileId,
     requestGuid,
+    actingUserSystemId,
   });
 
   const goalsPromise = proposalLoad
@@ -159,6 +161,7 @@ async function handleFull({ res, access, apiKey, reportRef, proposalRef, headerF
         fallback,
         userProfileId: access.profileId,
         requestGuid,
+        actingUserSystemId,
       })
     : Promise.resolve(null);
 
@@ -178,6 +181,7 @@ async function handleFull({ res, access, apiKey, reportRef, proposalRef, headerF
 }
 
 async function handleRegenerate({ res, access, apiKey, reportRef, fieldKey, currentValues, requestGuid }) {
+  const actingUserSystemId = access.session?.user?.dynamicsSystemuserId || null;
   if (!reportRef) {
     return res.status(400).json({ error: 'reportRef is required for mode=regenerate' });
   }
@@ -212,6 +216,7 @@ async function handleRegenerate({ res, access, apiKey, reportRef, fieldKey, curr
       status: 'failed',
       rawOutput: { error: err.message, fieldKey },
       notes: `Grant Reporting regenerate (${fieldKey}) — Claude call failed`,
+      actingUserSystemId,
     });
     throw err;
   }
@@ -235,6 +240,7 @@ async function handleRegenerate({ res, access, apiKey, reportRef, fieldKey, curr
     status: 'completed',
     rawOutput: { fieldKey, value: parsed.value ?? '' },
     notes: `Grant Reporting regenerate (${fieldKey})`,
+    actingUserSystemId,
   });
 
   return res.status(200).json({ value: parsed.value ?? '' });
@@ -250,6 +256,7 @@ async function handleRegenerateGoals({
   currentValues,
   requestGuid,
 }) {
+  const actingUserSystemId = access.session?.user?.dynamicsSystemuserId || null;
   if (!reportRef || !proposalRef) {
     return res.status(400).json({
       error: 'Both reportRef and proposalRef are required for mode=regenerate-goals',
@@ -270,6 +277,7 @@ async function handleRegenerateGoals({
     fallback,
     userProfileId: access.profileId,
     requestGuid,
+    actingUserSystemId,
     logContext: 'regenerate-goals',
   });
 
@@ -291,6 +299,7 @@ export async function extractReport({
   fallback,
   userProfileId,
   requestGuid = null,
+  actingUserSystemId = null,
 }) {
   const prompt = createGrantReportExtractionPrompt(reportText, headerFromDynamics);
   const start = Date.now();
@@ -311,6 +320,7 @@ export async function extractReport({
       status: 'failed',
       rawOutput: { error: err.message },
       notes: 'Grant Reporting extraction — Claude call failed',
+      actingUserSystemId,
     });
     throw err;
   }
@@ -334,6 +344,7 @@ export async function extractReport({
     status: 'completed',
     rawOutput: parsed,
     notes: 'Grant Reporting extraction (full report fields)',
+    actingUserSystemId,
   });
 
   return parsed;
@@ -356,6 +367,7 @@ export async function compareProposalToReport({
   fallback,
   userProfileId,
   requestGuid = null,
+  actingUserSystemId = null,
   logContext = 'goals-assessment',
 }) {
   const prompt = createGoalsAssessmentPrompt({
@@ -383,6 +395,7 @@ export async function compareProposalToReport({
       status: 'failed',
       rawOutput: { error: err.message },
       notes: `Grant Reporting ${logContext} — Claude call failed`,
+      actingUserSystemId,
     });
     throw err;
   }
@@ -407,6 +420,7 @@ export async function compareProposalToReport({
     status: 'completed',
     rawOutput: { goalsAssessment },
     notes: `Grant Reporting ${logContext} (proposal vs. report)`,
+    actingUserSystemId,
   });
 
   return goalsAssessment;
@@ -475,7 +489,7 @@ function parseJsonResponse(text) {
 
 // Fire-and-log wrapper around DynamicsService.logAiRun. Writeback is best-effort
 // audit logging — a failure here must never break the user's extraction flow.
-async function tryLogAiRun({ requestGuid, model, status, rawOutput, notes }) {
+async function tryLogAiRun({ requestGuid, model, status, rawOutput, notes, actingUserSystemId }) {
   if (!requestGuid) return;
   try {
     await DynamicsService.logAiRun({
@@ -486,6 +500,7 @@ async function tryLogAiRun({ requestGuid, model, status, rawOutput, notes }) {
       status,
       rawOutput,
       notes,
+      actingUserSystemId,
     });
   } catch (err) {
     console.warn(`[GrantReporting:extract] logAiRun failed (non-fatal): ${err.message}`);

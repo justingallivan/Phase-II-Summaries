@@ -29,6 +29,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Could not determine sender email from session' });
   }
 
+  const actingUserSystemId = access.session?.user?.dynamicsSystemuserId || null;
+
   try {
     if (sendMode === 'send') {
       const { emailId } = await DynamicsService.createAndSendEmail({
@@ -36,6 +38,7 @@ export default async function handler(req, res) {
         body,
         from,
         to,
+        actingUserSystemId,
       });
 
       return res.json({
@@ -51,6 +54,7 @@ export default async function handler(req, res) {
         body,
         from,
         to,
+        actingUserSystemId,
       });
 
       return res.json({

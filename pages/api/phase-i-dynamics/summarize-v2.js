@@ -80,6 +80,7 @@ export default async function handler(req, res) {
       },
       runSource: 'Vercel Interactive',
       forceOverwrite: !!overwrite,
+      actingUserSystemId: access.session?.user?.dynamicsSystemuserId || null,
     });
   } catch (err) {
     console.error('[summarize-v2] executePrompt failed:', err.message);

@@ -1,25 +1,31 @@
 ---
 name: Dynamics Identity Reconciliation
-description: SHIPPED 2026-05-03 (Session 127) — user_profiles ↔ systemuser bridge persisted in DB. Step 5 (MSCRMCallerID impersonation on writes) still deferred.
+description: SHIPPED — user_profiles ↔ systemuser bridge + MSCRMCallerID write attribution on user-driven endpoints (S127–S128). Adapter chain intentionally deferred.
 type: project
 originSessionId: 62437821-a516-465d-9fe9-ccd2fa785705
 ---
-**Status (2026-05-03):** Steps 1–4 + 6 of `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md` shipped in commit `76c6a21`. Step 5 (impersonation header on writes) deliberately deferred — separate PR/session.
+**Status (2026-05-04, post Session 128):** Plan complete except adapter chain.
 
-**What landed:**
+**Shipped Session 127:**
 - V27 migration: `user_profiles.dynamics_systemuser_id` (UUID) + `dynamics_reconciled_at` (TIMESTAMP) + index. Applied to prod 2026-05-03.
-- `lib/services/dynamics-identity-service.js`: `reconcileProfile` / `reconcileBatch` with discriminated results.
-- `scripts/reconcile-dynamics-identities.js`: CLI; supports `--all`, `--stale N`, `--profile N`.
+- `lib/services/dynamics-identity-service.js`: `reconcileProfile` / `reconcileBatch`.
+- `scripts/reconcile-dynamics-identities.js`: CLI; `--all`, `--stale N`, `--profile N`.
 - NextAuth signIn callback fires `reconcileProfile` (silent) on first profile insert.
-- `pages/api/cron/reconcile-identities.js` + `vercel.json` schedule `0 7 * * 1` (Mondays 7:00 UTC).
-- `pages/api/admin/reconcile-identities.js` (superuser-gated manual trigger) + `/admin` "Dynamics Identity Linkage" section.
-- All 7 active prod profiles linked to their systemuserids via the backfill. Other licensed staff auto-link on next login or via the cron.
+- Weekly cron `pages/api/cron/reconcile-identities.js` (Mondays 7:00 UTC). Manual admin trigger + `/admin` UI.
+- 7 active prod profiles linked.
 
-**What's still TODO (Step 5 — write attribution):**
-- Add `actingUserSystemId` arg to Dynamics write helpers (`MSCRMCallerID` header).
-- Cross-cutting change to existing write paths in `dynamics-service.js` — needs a careful audit of every caller before flipping any of them, since the service principal currently shows up in `modifiedby` and that's the working baseline.
-- Unblocks: writes attributed to acting staff, dynamic PD lookup in PowerAutomate flows.
+**Shipped Session 128 (Step 5 — MSCRMCallerID impersonation):**
+- All write helpers in `lib/services/dynamics-service.js` accept `actingUserSystemId`. When set, sends `MSCRMCallerID: {guid}` so Dataverse records the staff member on `createdby`/`modifiedby`/audit. Reads never carry the header (would impersonate for security-role evaluation).
+- NextAuth jwt + session callbacks load `dynamics_systemuser_id` → `session.user.dynamicsSystemuserId`.
+- Wired through user-driven API endpoints: `phase-i-dynamics/summarize`, `phase-i-dynamics/summarize-v2`, `grant-reporting/extract`, `review-manager/send-emails`, `review-manager/mark-received-no-file`, `review-manager/upload-review`, `test-email`. Executor (`lib/services/execute-prompt.js`) accepts the kwarg and threads to its two write sites.
+- Intentionally null (unattended): cron, external-token endpoints, `lib/external/token-lifecycle.js`, all PA-triggered paths.
+- Test coverage: `tests/unit/dynamics-service-caller-id.test.js` verifies header presence/absence on create/update/delete and confirms reads are never decorated.
+
+**Deliberately deferred — adapter chain (Wave 2 candidate):**
+- `lib/dataverse/adapters/{contact,potential-reviewer,researcher,reviewer-suggestion}.js` and `lib/external/token-lifecycle.js` still write as the service principal.
+- Affected user-driven flows that are partially attributed today: send-emails (email activity = staff; contact promotion + lifecycle PATCH = service principal), reviewer-finder save-candidates, regenerate/revoke token.
+- Reasoning: ~12 internal call sites would need adapter signature changes; scope-cap chosen rather than touching everything in one pass. Wiring is mechanical when picked up.
 
 **How to apply going forward:**
-- New code that does Dynamics writes from a session context should plumb `session.user.profileId` → look up `dynamics_systemuser_id` → pass to the write helper as `actingUserSystemId`. PowerAutomate-triggered writes leave it null (intentional — they're unattended).
-- Don't write directly from this entry — full plan is `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md` step 5.
+- New session-bound writes: `actingUserSystemId: access.session?.user?.dynamicsSystemuserId || null` and pass to the write helper. Unattended (cron / token-auth / PA) leaves it null.
+- When touching an adapter, thread `actingUserSystemId` through its public function — don't add it speculatively to all of them at once.

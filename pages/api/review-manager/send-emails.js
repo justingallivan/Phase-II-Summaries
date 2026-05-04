@@ -68,6 +68,7 @@ export default async function handler(req, res) {
   if (!access) return;
 
   const fromEmail = access.session?.user?.azureEmail;
+  const actingUserSystemId = access.session?.user?.dynamicsSystemuserId || null;
   if (!fromEmail) {
     return res.status(400).json({
       error: 'Could not determine sender email from your session. Please sign out and back in.',
@@ -238,6 +239,7 @@ export default async function handler(req, res) {
           regardingId: regardingId || undefined,
           regardingType: regardingId ? 'akoya_request' : undefined,
           attachments: sharedAttachments,
+          actingUserSystemId,
         });
 
         // Contact promotion: only if the potentialreviewer doesn't already
