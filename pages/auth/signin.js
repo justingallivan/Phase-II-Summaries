@@ -5,7 +5,7 @@
  */
 
 import { signIn } from 'next-auth/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 
@@ -14,10 +14,33 @@ export default function SignIn() {
   const [isLoading, setIsLoading] = useState(false);
   const { error, callbackUrl } = router.query;
 
+  // Applicant callbackUrls (`/apply...`) should never see the staff sign-in
+  // UI — auto-dispatch to the External ID provider so OTP starts immediately.
+  // If sign-in failed (error present), stop here and surface the message
+  // instead of looping the applicant through OAuth again.
+  // The callbackUrl arrives as an absolute URL when middleware encoded the
+  // current location (`http://localhost:3000/apply`); pull the pathname
+  // instead of string-matching the raw value.
+  const isApplicantContext = isApplyPath(callbackUrl);
+  useEffect(() => {
+    if (isApplicantContext && !error) {
+      signIn('entra-external', { callbackUrl });
+    }
+  }, [isApplicantContext, error, callbackUrl]);
+
   const handleSignIn = () => {
     setIsLoading(true);
     signIn('azure-ad', { callbackUrl: callbackUrl || '/' });
   };
+
+  if (isApplicantContext && !error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Head><title>Signing in — WMKF Apply</title></Head>
+        <p className="text-sm text-gray-500">Redirecting to sign-in…</p>
+      </div>
+    );
+  }
 
   const getErrorMessage = (errorCode) => {
     switch (errorCode) {
@@ -135,6 +158,18 @@ export default function SignIn() {
   );
 }
 
+// Returns true when the callback target is the applicant portal (any /apply* path),
+// whether the value is a raw path or an absolute URL.
+function isApplyPath(cb) {
+  if (typeof cb !== 'string' || !cb) return false;
+  if (cb.startsWith('/apply')) return true;
+  try {
+    return new URL(cb).pathname.startsWith('/apply');
+  } catch {
+    return false;
+  }
+}
+
 // Prevent authenticated users from seeing this page.
 //
 // Uses the same strict checks as middleware.js (azureId present + not idle)
@@ -148,14 +183,18 @@ export async function getServerSideProps(context) {
   const token = await getToken({ req: context.req });
 
   const IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000;
-  const isValid =
-    token?.azureId &&
-    (!token.lastActivity || Date.now() - token.lastActivity < IDLE_TIMEOUT_MS);
+  const notIdle = !token?.lastActivity || Date.now() - token.lastActivity < IDLE_TIMEOUT_MS;
+  const hasStaffIdentity = !!token?.azureId;
+  const hasApplicantIdentity = token?.userType === 'applicant' && !!token?.contactOid;
+  const isValid = (hasStaffIdentity || hasApplicantIdentity) && notIdle;
 
   if (isValid) {
+    // Send the user back to where they were headed, defaulting per surface
+    // so a stale arrival at /auth/signin lands somewhere sensible.
+    const fallback = hasApplicantIdentity ? '/apply' : '/';
     return {
       redirect: {
-        destination: context.query.callbackUrl || '/',
+        destination: context.query.callbackUrl || fallback,
         permanent: false,
       },
     };

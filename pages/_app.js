@@ -15,8 +15,12 @@ export default function App({ Component, pageProps: { session, ...pageProps } })
   // API calls that get redirected to HTML and break JSON.parse.
   // External pages (magic-link reviewer portal) are public — same exclusion
   // applies, plus they intentionally render no app chrome.
+  // Apply pages (applicant intake portal) authenticate via Entra External ID,
+  // not the staff providers — same skip.
   const isPublicPage =
-    router.pathname.startsWith('/auth/') || router.pathname.startsWith('/external/');
+    router.pathname.startsWith('/auth/') ||
+    router.pathname.startsWith('/external/') ||
+    router.pathname.startsWith('/apply');
 
   const inner = isPublicPage ? (
     <Component {...pageProps} />

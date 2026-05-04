@@ -90,13 +90,26 @@ export default withAuth(
         // Single source of truth shared with API routes — fails closed in
         // production if AUTH_REQUIRED is missing or credentials are absent.
         if (!isAuthRequired()) return true;
-        // Require a valid JWT with azureId (empty token from idle timeout returns {})
-        if (!token?.azureId) return false;
-        // Defense-in-depth idle check: reject if lastActivity is stale (2 hours)
-        if (token.lastActivity && Date.now() - token.lastActivity > 2 * 60 * 60 * 1000) {
+
+        // Idle timeout — applies to both surfaces. Empty token from the JWT
+        // callback's idle bail returns {} which fails the userType check below.
+        if (token?.lastActivity && Date.now() - token.lastActivity > 2 * 60 * 60 * 1000) {
           return false;
         }
-        return true;
+
+        const isApplicantSurface = pathname?.startsWith('/apply') || pathname?.startsWith('/api/apply');
+
+        if (isApplicantSurface) {
+          // Applicant routes accept ONLY applicant sessions. A staff session
+          // hitting /apply gets bounced (don't silently allow — different
+          // identity model, different downstream auth assumptions).
+          return token?.userType === 'applicant' && !!token?.contactOid;
+        }
+
+        // Staff surface (everything else). Reject applicant tokens explicitly
+        // so they can't reach staff-side endpoints with a half-populated session.
+        if (token?.userType === 'applicant') return false;
+        return !!token?.azureId;
       },
     },
     pages: {
