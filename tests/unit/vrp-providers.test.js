@@ -13,18 +13,36 @@ import { resolveAllowedProviders } from '../../lib/utils/vrp-providers.js';
 
 describe('resolveAllowedProviders', () => {
   let originalEnv;
+  let originalNodeEnv;
   beforeEach(() => {
     originalEnv = process.env.VRP_ALLOWED_PROVIDERS;
+    originalNodeEnv = process.env.NODE_ENV;
     delete process.env.VRP_ALLOWED_PROVIDERS;
+    process.env.NODE_ENV = 'test';
   });
   afterEach(() => {
     if (originalEnv === undefined) delete process.env.VRP_ALLOWED_PROVIDERS;
     else process.env.VRP_ALLOWED_PROVIDERS = originalEnv;
+    if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalNodeEnv;
   });
 
-  test('returns the available set unchanged when env is unset', () => {
+  test('dev/test: returns the available set unchanged when env is unset', () => {
     expect(resolveAllowedProviders(['claude', 'openai', 'gemini', 'perplexity']))
       .toEqual(['claude', 'openai', 'gemini', 'perplexity']);
+  });
+
+  test('production: unset env fails closed (empty list)', () => {
+    process.env.NODE_ENV = 'production';
+    expect(resolveAllowedProviders(['claude', 'openai', 'gemini', 'perplexity']))
+      .toEqual([]);
+  });
+
+  test('production: explicit env still works', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.VRP_ALLOWED_PROVIDERS = 'claude,openai';
+    expect(resolveAllowedProviders(['claude', 'openai', 'gemini']))
+      .toEqual(['claude', 'openai']);
   });
 
   test('intersects available with the env allowlist', () => {

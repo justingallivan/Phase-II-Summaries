@@ -133,8 +133,8 @@ SPEND_ALERT_EMAIL_FROM=...                # optional override; must be a Dynamic
 EXTERNAL_LINK_SECRET=...                  # 32+ char HMAC secret for magic-link JWTs; separate from NEXTAUTH_SECRET
 REVIEWER_MATERIALS_FOLDERS=...            # optional; comma-separated SharePoint subfolders that count as reviewer-shared. Default: Reviewer_Downloads
 
-# Optional - Virtual Review Panel allowlist
-VRP_ALLOWED_PROVIDERS=claude,openai           # comma-separated. Intersects with configured-API-keys to gate which vendors VRP may send proposal text to. Unset = no narrowing (any provider with a key). Valid values: claude, openai, gemini, perplexity.
+# Required in production - Virtual Review Panel allowlist
+VRP_ALLOWED_PROVIDERS=claude,openai           # comma-separated. Intersects with configured-API-keys to gate which vendors VRP may send proposal text to. Production fails closed when unset (empty allowlist); dev/test falls back to "any provider with a key." Must include `claude` for any run — synthesis and intelligence-pass stages call Anthropic Claude unconditionally. Valid values: claude, openai, gemini, perplexity.
 
 # Required for applicant intake portal (Entra External ID, separate tenant from staff)
 EXTERNAL_AZURE_AD_TENANT_ID=...           # External tenant ID (NOT the staff AZURE_AD_TENANT_ID)

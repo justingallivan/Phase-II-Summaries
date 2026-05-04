@@ -103,6 +103,18 @@ export default async function handler(req, res) {
     const allowedProviders = resolveAllowedProviders(availableProviders);
     const providers = requestedProviders.filter(p => allowedProviders.includes(p));
 
+    // Synthesis (always) and intelligence-pass stages 0a/0c (when enabled)
+    // call Claude unconditionally inside PanelReviewService. If `claude` is
+    // not allowed, the run would still transmit proposal-derived content to
+    // Anthropic — block it here rather than silently leak past the gate.
+    if (!allowedProviders.includes('claude')) {
+      sendEvent('error', {
+        message: `Virtual Review Panel requires "claude" in VRP_ALLOWED_PROVIDERS — synthesis and intelligence-pass stages call Anthropic Claude unconditionally. ` +
+                 `Allowed: ${allowedProviders.join(', ') || '(none)'}.`
+      });
+      return res.end();
+    }
+
     if (providers.length < 2) {
       sendEvent('error', {
         message: `Need at least 2 allowed LLM providers. Allowed: ${allowedProviders.join(', ') || '(none)'}. ` +
