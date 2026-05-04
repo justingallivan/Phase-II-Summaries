@@ -15,6 +15,7 @@ import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { safeFetch } from '../../lib/utils/safe-fetch';
 import { MultiLLMService } from '../../lib/services/multi-llm-service';
 import { PanelReviewService } from '../../lib/services/panel-review-service';
+import { resolveAllowedProviders } from '../../lib/utils/vrp-providers';
 import pdf from 'pdf-parse';
 
 const limiter = nextRateLimiter({ max: 3 });
@@ -35,7 +36,8 @@ export default async function handler(req, res) {
     if (!access) return;
 
     const available = MultiLLMService.getAvailableProviders();
-    const providers = available.map(key => ({
+    const allowed = resolveAllowedProviders(available);
+    const providers = allowed.map(key => ({
       key,
       name: MultiLLMService.getProviderName(key),
       model: MultiLLMService.getDefaultModel(key),
@@ -94,14 +96,17 @@ export default async function handler(req, res) {
       return res.end();
     }
 
-    // Validate providers
+    // Validate providers — intersect (requested ∩ allowlist ∩ configured-with-key).
+    // Allowlist is VRP_ALLOWED_PROVIDERS env var; defends against config drift
+    // where adding an API key elsewhere silently broadens VRP vendor exposure.
     const availableProviders = MultiLLMService.getAvailableProviders();
-    const providers = requestedProviders.filter(p => availableProviders.includes(p));
+    const allowedProviders = resolveAllowedProviders(availableProviders);
+    const providers = requestedProviders.filter(p => allowedProviders.includes(p));
 
     if (providers.length < 2) {
       sendEvent('error', {
-        message: `Need at least 2 configured LLM providers. Available: ${availableProviders.join(', ')}. ` +
-                 `Requested: ${requestedProviders.join(', ')}. Check API keys in environment variables.`
+        message: `Need at least 2 allowed LLM providers. Allowed: ${allowedProviders.join(', ') || '(none)'}. ` +
+                 `Requested: ${requestedProviders.join(', ')}. Check API keys and VRP_ALLOWED_PROVIDERS.`
       });
       return res.end();
     }
@@ -144,6 +149,7 @@ export default async function handler(req, res) {
         includeIntelligencePass,
         includeDevilsAdvocate,
         availableProviders,
+        allowedProviders,
       },
     });
 
@@ -156,6 +162,7 @@ export default async function handler(req, res) {
       includeClaimVerification,
       includeIntelligencePass,
       includeDevilsAdvocate,
+      allowedProviders,
       loggingContext,
       sendEvent,
     });
