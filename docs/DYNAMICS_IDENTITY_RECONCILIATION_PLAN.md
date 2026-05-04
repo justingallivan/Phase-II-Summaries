@@ -80,6 +80,20 @@ Direct API → DynamicsService writes plumb `actingUserSystemId` from `session.u
 - NextAuth: JWT/session loads `dynamics_systemuser_id` so `session.user.dynamicsSystemuserId` is available everywhere.
 - API endpoints wired: `phase-i-dynamics/summarize`, `phase-i-dynamics/summarize-v2`, `grant-reporting/extract`, `review-manager/send-emails`, `review-manager/mark-received-no-file`, `review-manager/upload-review`, `test-email`. Executor (`lib/services/execute-prompt.js`) accepts the kwarg.
 - Intentionally null (unattended): `pages/api/cron/spend-check.js`, `pages/api/external/review/[token]/*`, `lib/external/token-lifecycle.js`, all PowerAutomate triggers.
+
+**Privilege-intersection safety (added Session 128 after Codex review):**
+
+Microsoft's docs ([impersonate-another-user-web-api](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/webapi/impersonate-another-user-web-api)) confirm Dataverse evaluates impersonated requests under the *intersection* of the app-user privileges and the impersonated-user privileges. A staff role missing a single table-level write (e.g. Update on `wmkf_ai_run`, prvSendAsUser on email) would 403 even though the app registration has the privilege. To make rollout safe:
+
+1. **Feature flag `DYNAMICS_IMPERSONATION_ENABLED`** (default off). `_withCallerId` is a no-op until set to `"true"`. Flip per environment after a privilege audit.
+2. **403 fallback.** `_writeFetch` retries once without `MSCRMCallerID` on 403, logs a structured warning so the missing privilege is actionable telemetry rather than a hard failure. The user request still succeeds; that one write falls back to service-principal attribution.
+
+**Rollout procedure:**
+1. Verify staff Dynamics roles include write on the touched tables: `akoya_request`, `wmkf_ai_run`, `email`/`activitymimeattachment` send privileges, `wmkf_appreviewersuggestion`. Two of the licensed staff users are sufficient for the smoke test (one with the broadest role, one minimal). Use `/api/test-email` to check the email path; use `/phase-i-dynamics` to check the writeback + audit-log path.
+2. Set `DYNAMICS_IMPERSONATION_ENABLED=true` in Vercel preview first, exercise the smoke flows, watch logs for `[DynamicsService] Impersonated write rejected` warnings.
+3. If warnings appear, decide per-table: add the missing privilege to the role, or accept service-principal attribution for that table (no code change needed; fallback already handles it).
+4. Promote to production.
+
 - **Deferred — adapter chain.** `lib/dataverse/adapters/{contact,potential-reviewer,researcher,reviewer-suggestion}.js` still write as the service principal. Wiring those would touch ~12 call sites (reviewer-finder save-candidates, send-emails contact promotion, etc.) and is a clean follow-up. Behavior today: the email activity itself is attributed to the staff sender, while the contact-promotion / lifecycle PATCHes that follow are still service-principal. Acceptable as an intermediate state; track in a future session.
 
 Original plan text below:

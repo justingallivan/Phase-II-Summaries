@@ -107,6 +107,7 @@ DYNAMICS_URL=https://wmkf.crm.dynamics.com
 DYNAMICS_TENANT_ID=...
 DYNAMICS_CLIENT_ID=...
 DYNAMICS_CLIENT_SECRET=...
+DYNAMICS_IMPERSONATION_ENABLED=false   # set "true" to attribute user-driven writes to staff via MSCRMCallerID; off by default for safe rollout (privilege intersection means a staff role missing one Dynamics privilege would break that write)
 
 # Optional - SharePoint (uses Dynamics app registration credentials)
 SHAREPOINT_SITE_URL=https://appriver3651007194.sharepoint.com/sites/akoyaGO
@@ -217,7 +218,7 @@ Located in `lib/services/`:
 - `serp-contact-service.js` - Google/Scholar search via SerpAPI
 - `integrity-service.js` - Integrity screening orchestration
 - `integrity-matching-service.js` - Name matching algorithms
-- `dynamics-service.js` - Microsoft Dynamics 365 CRM API (OAuth, OData queries, Dataverse Search, Email Activities). `updateIfEmpty(entitySet, guid, field, value, { overwrite })` composes a read + empty-check + ETag-guarded PATCH for AI-writeback fields; returns discriminated `{ ok, reason }` result. Write helpers (`createRecord` / `updateRecord` / `deleteRecord` / `updateIfEmpty` / `logAiRun` / `createEmailActivity` / `addEmailAttachment` / `sendEmail` / `createAndSendEmail`) accept an optional `actingUserSystemId` — when set, sends `MSCRMCallerID` so Dataverse records the staff member on `createdby`/`modifiedby`/audit. Plumbed through user-driven API endpoints from `session.user.dynamicsSystemuserId`; left null on cron/external-token/PA-triggered paths so unattended writes correctly attribute to the service principal. Reads never receive the header (would impersonate the user for security-role evaluation and break callers with restricted Dynamics roles).
+- `dynamics-service.js` - Microsoft Dynamics 365 CRM API (OAuth, OData queries, Dataverse Search, Email Activities). `updateIfEmpty(entitySet, guid, field, value, { overwrite })` composes a read + empty-check + ETag-guarded PATCH for AI-writeback fields; returns discriminated `{ ok, reason }` result. Write helpers (`createRecord` / `updateRecord` / `deleteRecord` / `updateIfEmpty` / `logAiRun` / `createEmailActivity` / `addEmailAttachment` / `sendEmail` / `createAndSendEmail`) accept an optional `actingUserSystemId` — when set AND env var `DYNAMICS_IMPERSONATION_ENABLED=true`, sends `MSCRMCallerID` so Dataverse records the staff member on `createdby`/`modifiedby`/audit. Privilege-intersection is real (Dataverse evaluates the request under the union → intersection of app-user + impersonated-user privileges), so a 403 from an impersonated write triggers a single retry without the header (logged warning); the user's request still completes as the service principal. Plumbed through user-driven API endpoints from `session.user.dynamicsSystemuserId`; left null on cron/external-token/PA-triggered paths so unattended writes correctly attribute to the service principal. Reads never receive the header (would impersonate the user for security-role evaluation and break callers with restricted Dynamics roles).
 - `graph-service.js` - Microsoft Graph API (SharePoint document access, file listing/download, content search)
 - `feedback-service.js` - CRUD for dynamics_feedback table (user feedback + auto-detection)
 - `alert-service.js` - CRUD for system_alerts table (deduplication, auto-resolve)

@@ -1,10 +1,20 @@
 /**
  * MSCRMCallerID impersonation header — unit coverage for write helpers.
  *
- * Verifies that when `actingUserSystemId` is supplied, DynamicsService
- * write methods send the `MSCRMCallerID` header so Dataverse attributes
- * createdby/modifiedby/audit history to the acting staff member. When
- * the option is omitted (cron / unattended writes), the header is absent.
+ * Verifies:
+ *   - Direct write helpers (createRecord/updateRecord/deleteRecord) inject
+ *     MSCRMCallerID when actingUserSystemId is supplied AND the impersonation
+ *     feature flag is on.
+ *   - Composed helpers (updateIfEmpty, logAiRun, createEmailActivity,
+ *     addEmailAttachment, sendEmail, createAndSendEmail) propagate the option
+ *     down to every underlying write.
+ *   - Reads never carry the header (would impersonate for security-role
+ *     evaluation and break callers with restricted Dynamics roles).
+ *   - The DYNAMICS_IMPERSONATION_ENABLED flag, when off, suppresses the header
+ *     even when actingUserSystemId is set.
+ *   - Privilege-intersection fallback: a 403 from an impersonated write
+ *     triggers a single retry without MSCRMCallerID and the eventual response
+ *     is the retry's, with a warning logged.
  */
 
 import { DynamicsService } from '../../lib/services/dynamics-service.js';
@@ -20,10 +30,14 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  fetch.mockClear();
+  // mockClear leaves queued mockImplementationOnce entries from prior tests in
+  // place; mockReset wipes them. Without this, a stub from one test bleeds
+  // into the next.
+  fetch.mockReset();
   DynamicsService.clearCaches();
+  process.env.DYNAMICS_IMPERSONATION_ENABLED = 'true';
 
-  // Token endpoint always succeeds first
+  // Token endpoint always succeeds first; non-token requests succeed empty.
   fetch.mockImplementation((url) => {
     if (typeof url === 'string' && url.includes('login.microsoftonline.com')) {
       return Promise.resolve({
@@ -31,7 +45,6 @@ beforeEach(() => {
         json: () => Promise.resolve({ access_token: 'tok', expires_in: 3600 }),
       });
     }
-    // Default success for write paths
     return Promise.resolve({
       ok: true,
       status: 200,
@@ -41,37 +54,34 @@ beforeEach(() => {
   });
 });
 
-function lastRequestHeaders() {
-  const calls = fetch.mock.calls;
-  // Skip the token call(s); return headers from the last non-token call.
-  for (let i = calls.length - 1; i >= 0; i--) {
-    const [url, init] = calls[i];
-    if (!String(url).includes('login.microsoftonline.com')) {
-      return init?.headers || {};
-    }
-  }
-  return {};
+afterEach(() => {
+  delete process.env.DYNAMICS_IMPERSONATION_ENABLED;
+});
+
+function nonTokenCalls() {
+  return fetch.mock.calls.filter(([url]) => !String(url).includes('login.microsoftonline.com'));
 }
 
-describe('MSCRMCallerID impersonation header', () => {
+function lastWriteHeaders() {
+  const calls = nonTokenCalls();
+  return calls.length === 0 ? {} : (calls[calls.length - 1][1]?.headers || {});
+}
+
+describe('MSCRMCallerID — direct write helpers', () => {
   test('createRecord adds the header when actingUserSystemId is set', async () => {
-    fetch.mockImplementationOnce((url) => {
-      if (String(url).includes('login.microsoftonline.com')) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ access_token: 't', expires_in: 3600 }) });
-      }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    });
+    fetch.mockImplementationOnce((url) =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ access_token: 't', expires_in: 3600 }) }),
+    );
     fetch.mockImplementationOnce(() =>
       Promise.resolve({ ok: true, json: () => Promise.resolve({ id: '1' }) }),
     );
-
     await DynamicsService.createRecord('wmkf_ai_runs', { foo: 'bar' }, { actingUserSystemId: ACTING_GUID });
-    expect(lastRequestHeaders().MSCRMCallerID).toBe(ACTING_GUID);
+    expect(lastWriteHeaders().MSCRMCallerID).toBe(ACTING_GUID);
   });
 
   test('createRecord omits the header when actingUserSystemId is null', async () => {
     await DynamicsService.createRecord('wmkf_ai_runs', { foo: 'bar' });
-    expect(lastRequestHeaders().MSCRMCallerID).toBeUndefined();
+    expect(lastWriteHeaders().MSCRMCallerID).toBeUndefined();
   });
 
   test('updateRecord adds the header alongside If-Match', async () => {
@@ -81,18 +91,206 @@ describe('MSCRMCallerID impersonation header', () => {
       { wmkf_ai_summary: 'hi' },
       { ifMatch: 'W/"123"', actingUserSystemId: ACTING_GUID },
     );
-    const h = lastRequestHeaders();
+    const h = lastWriteHeaders();
     expect(h.MSCRMCallerID).toBe(ACTING_GUID);
     expect(h['If-Match']).toBe('W/"123"');
   });
 
   test('deleteRecord adds the header', async () => {
     await DynamicsService.deleteRecord('wmkf_ai_runs', 'guid', { actingUserSystemId: ACTING_GUID });
-    expect(lastRequestHeaders().MSCRMCallerID).toBe(ACTING_GUID);
+    expect(lastWriteHeaders().MSCRMCallerID).toBe(ACTING_GUID);
+  });
+});
+
+describe('MSCRMCallerID — feature flag', () => {
+  test('flag disabled suppresses the header even when actingUserSystemId is supplied', async () => {
+    process.env.DYNAMICS_IMPERSONATION_ENABLED = 'false';
+    await DynamicsService.createRecord('wmkf_ai_runs', { foo: 'bar' }, { actingUserSystemId: ACTING_GUID });
+    expect(lastWriteHeaders().MSCRMCallerID).toBeUndefined();
   });
 
-  test('reads do not receive the header even if a future caller mistakenly forwards it', async () => {
-    // queryRecords path — buildHeaders is read-only and never includes MSCRMCallerID.
+  test('flag unset suppresses the header', async () => {
+    delete process.env.DYNAMICS_IMPERSONATION_ENABLED;
+    await DynamicsService.updateRecord('akoya_requests', 'g', { x: 1 }, { actingUserSystemId: ACTING_GUID });
+    expect(lastWriteHeaders().MSCRMCallerID).toBeUndefined();
+  });
+});
+
+describe('MSCRMCallerID — composed helpers', () => {
+  test('logAiRun forwards actingUserSystemId to the underlying createRecord', async () => {
+    await DynamicsService.logAiRun({
+      requestGuid: '11111111-1111-1111-1111-111111111111',
+      taskType: 'summary',
+      model: 'claude-test',
+      status: 'completed',
+      actingUserSystemId: ACTING_GUID,
+    });
+    expect(lastWriteHeaders().MSCRMCallerID).toBe(ACTING_GUID);
+  });
+
+  test('updateIfEmpty: when the field is empty, the PATCH carries the header', async () => {
+    // Token, then GET (empty field), then PATCH
+    fetch.mockImplementationOnce((url) =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ access_token: 't', expires_in: 3600 }) }),
+    );
+    fetch.mockImplementationOnce(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ '@odata.etag': 'W/"42"', wmkf_ai_summary: '' }),
+      }),
+    );
+    fetch.mockImplementationOnce(() =>
+      Promise.resolve({ ok: true, status: 204, text: () => Promise.resolve(''), json: () => Promise.resolve({}) }),
+    );
+
+    // getRecord under the hood calls checkRestriction; needs a context.
+    const result = await withDynamicsContext({ restrictions: [], requestId: 'test' }, () =>
+      DynamicsService.updateIfEmpty(
+        'akoya_requests', 'guid', 'wmkf_ai_summary', 'hello',
+        { actingUserSystemId: ACTING_GUID },
+      ),
+    );
+    expect(result.ok).toBe(true);
+
+    const calls = nonTokenCalls();
+    // Last call is the PATCH; first non-token call is the GET (no caller id on reads).
+    expect(calls[0][1].headers.MSCRMCallerID).toBeUndefined();
+    expect(calls[calls.length - 1][1].headers.MSCRMCallerID).toBe(ACTING_GUID);
+    expect(calls[calls.length - 1][1].headers['If-Match']).toBe('W/"42"');
+  });
+
+  test('createAndSendEmail propagates to email create, attachment, and SendEmail', async () => {
+    // Token + resolveSystemUser (queryRecords) → returns one row → then create → attachment → send
+    fetch.mockImplementationOnce(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ access_token: 't', expires_in: 3600 }) }),
+    );
+    // resolveSystemUser
+    fetch.mockImplementationOnce(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ value: [{ systemuserid: 'user-1' }] }),
+      }),
+    );
+    // createEmailActivity
+    fetch.mockImplementationOnce(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ activityid: 'mail-1' }) }),
+    );
+    // addEmailAttachment
+    fetch.mockImplementationOnce(() =>
+      Promise.resolve({ ok: true, status: 204, text: () => Promise.resolve(''), json: () => Promise.resolve({}) }),
+    );
+    // sendEmail
+    fetch.mockImplementationOnce(() =>
+      Promise.resolve({ ok: true, status: 204, text: () => Promise.resolve(''), json: () => Promise.resolve({}) }),
+    );
+
+    await withDynamicsContext({ restrictions: [], requestId: 'test' }, () =>
+      DynamicsService.createAndSendEmail({
+        subject: 's',
+        body: 'b',
+        from: 'sender@example.com',
+        to: 'to@example.com',
+        attachments: [{ filename: 'a.pdf', contentType: 'application/pdf', content: Buffer.from('x') }],
+        actingUserSystemId: ACTING_GUID,
+      }),
+    );
+
+    const calls = nonTokenCalls();
+    // [0] resolveSystemUser (read — no caller id), [1] email create, [2] attachment, [3] send
+    expect(calls[0][1].headers.MSCRMCallerID).toBeUndefined();
+    expect(calls[1][1].headers.MSCRMCallerID).toBe(ACTING_GUID);
+    expect(calls[2][1].headers.MSCRMCallerID).toBe(ACTING_GUID);
+    expect(calls[3][1].headers.MSCRMCallerID).toBe(ACTING_GUID);
+  });
+});
+
+describe('MSCRMCallerID — privilege-intersection fallback', () => {
+  test('403 on impersonated write retries once without the header and surfaces the retry response', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // Token, then 403 from Dataverse, then the retry succeeds
+    fetch.mockImplementationOnce(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ access_token: 't', expires_in: 3600 }) }),
+    );
+    fetch.mockImplementationOnce(() =>
+      Promise.resolve({
+        ok: false,
+        status: 403,
+        text: () => Promise.resolve('PrincipalPrivilegeDenied'),
+        json: () => Promise.resolve({}),
+      }),
+    );
+    fetch.mockImplementationOnce(() =>
+      Promise.resolve({
+        ok: true,
+        status: 204,
+        text: () => Promise.resolve(''),
+        json: () => Promise.resolve({}),
+      }),
+    );
+
+    await DynamicsService.updateRecord(
+      'akoya_requests', 'guid', { x: 1 },
+      { actingUserSystemId: ACTING_GUID },
+    );
+
+    const calls = nonTokenCalls();
+    expect(calls).toHaveLength(2);
+    expect(calls[0][1].headers.MSCRMCallerID).toBe(ACTING_GUID);
+    expect(calls[1][1].headers.MSCRMCallerID).toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Impersonated write rejected'),
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  test('non-403 errors are not retried (regular failure path)', async () => {
+    fetch.mockImplementationOnce(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ access_token: 't', expires_in: 3600 }) }),
+    );
+    fetch.mockImplementationOnce(() =>
+      Promise.resolve({
+        ok: false,
+        status: 412,
+        text: () => Promise.resolve('PreconditionFailed'),
+        json: () => Promise.resolve({}),
+      }),
+    );
+
+    await expect(
+      DynamicsService.updateRecord(
+        'akoya_requests', 'guid', { x: 1 },
+        { ifMatch: 'W/"old"', actingUserSystemId: ACTING_GUID },
+      ),
+    ).rejects.toMatchObject({ status: 412 });
+
+    expect(nonTokenCalls()).toHaveLength(1);
+  });
+
+  test('non-impersonated 403 (no caller id) is not retried', async () => {
+    fetch.mockImplementationOnce(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ access_token: 't', expires_in: 3600 }) }),
+    );
+    fetch.mockImplementationOnce(() =>
+      Promise.resolve({
+        ok: false,
+        status: 403,
+        text: () => Promise.resolve('PrincipalPrivilegeDenied'),
+        json: () => Promise.resolve({}),
+      }),
+    );
+
+    await expect(
+      DynamicsService.updateRecord('akoya_requests', 'guid', { x: 1 }),
+    ).rejects.toThrow(/403/);
+
+    expect(nonTokenCalls()).toHaveLength(1);
+  });
+});
+
+describe('Reads never carry MSCRMCallerID', () => {
+  test('queryRecords does not include the header even with the flag on', async () => {
     fetch.mockImplementationOnce(() =>
       Promise.resolve({ ok: true, json: () => Promise.resolve({ access_token: 't', expires_in: 3600 }) }),
     );
@@ -106,6 +304,6 @@ describe('MSCRMCallerID impersonation header', () => {
     await withDynamicsContext({ restrictions: [], requestId: 'test' }, () =>
       DynamicsService.queryRecords('wmkf_ai_runs', { top: 1 }),
     );
-    expect(lastRequestHeaders().MSCRMCallerID).toBeUndefined();
+    expect(lastWriteHeaders().MSCRMCallerID).toBeUndefined();
   });
 });
