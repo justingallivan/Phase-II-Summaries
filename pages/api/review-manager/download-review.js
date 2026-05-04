@@ -6,6 +6,19 @@
  * pointed at by `wmkf_reviewsharepointfolder`. Streamed via Graph as
  * the foundation's app registration.
  *
+ * Authorization scope: staff-shared. Any user with `review-manager` app
+ * access can download any review by suggestionId. This is intentional —
+ * Review Manager is a shared staff workflow (multiple program directors,
+ * grant managers, and the CSO collaborate across proposals), and reviews
+ * are not user-owned data. The PD-scoping you see in `my-candidates` and
+ * `reviewers.js` is a UX convenience for the default listing view, not an
+ * auth boundary.
+ *
+ * If the org-wide model later changes (e.g., a more sensitive grant program
+ * needs PD-only access), tighten by resolving suggestion → request → PD
+ * and adding a `_wmkf_programdirector_value === access.session.dynamicsSystemuserId`
+ * check here.
+ *
  * (The pre-Phase-5 Vercel Blob fallback was retired 2026-05-03; prod
  * had zero rows still pointing at Blob storage at the time of removal.)
  *

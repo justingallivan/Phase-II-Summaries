@@ -8,8 +8,7 @@
  * PUT  — Set or clear a model override for an app
  */
 
-import { requireAuthWithProfile, isAuthRequired } from '../../../lib/utils/auth';
-import { sql } from '@vercel/postgres';
+import { requireSuperuser } from '../../../lib/utils/auth';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 import { clearModelOverridesCache } from '../../../lib/services/model-override-loader';
 import { listSettings, setSetting, deleteSetting } from '../../../lib/services/settings-service';
@@ -64,43 +63,19 @@ async function fetchAvailableModels() {
   }
 }
 
-async function getRole(profileId) {
-  try {
-    const result = await sql`
-      SELECT role FROM dynamics_user_roles
-      WHERE user_profile_id = ${profileId}
-    `;
-    return result.rows[0]?.role || 'read_only';
-  } catch {
-    return 'read_only';
-  }
-}
-
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'PUT') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  let profileId;
-
-  if (!isAuthRequired()) {
-    // Dev mode — skip auth, use fallback profile ID
-    profileId = 0;
-  } else {
-    profileId = await requireAuthWithProfile(req, res);
-    if (profileId === null) return;
-
-    const role = await getRole(profileId);
-    if (role !== 'superuser') {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
-  }
+  const gate = await requireSuperuser(req, res);
+  if (!gate) return;
 
   if (req.method === 'GET') {
     return handleGet(req, res);
   }
   if (req.method === 'PUT') {
-    return handlePut(req, res, profileId);
+    return handlePut(req, res, gate.profileId);
   }
 }
 
@@ -183,8 +158,9 @@ async function handlePut(req, res, profileId) {
     }
 
     const settingKey = `model_override:${appKey}:${modelType}`;
-    // Use null for updated_by if profileId is 0 (dev mode) to avoid FK violation
-    const updatedBy = profileId === 0 ? null : profileId;
+    // requireSuperuser returns profileId=null in dev (AUTH_REQUIRED=false) — keep
+    // it null so the FK to user_profiles isn't violated.
+    const updatedBy = profileId;
 
     if (modelId === null || modelId === undefined || modelId === '') {
       // Delete the override — revert to env/hardcoded default

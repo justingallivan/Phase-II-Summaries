@@ -9,24 +9,13 @@
  * Also supports GET ?summary=true for badge counts only.
  */
 
-import { requireAuthWithProfile, isAuthRequired } from '../../../lib/utils/auth';
-import { sql } from '@vercel/postgres';
+import { requireSuperuser } from '../../../lib/utils/auth';
 import AlertService from '../../../lib/services/alert-service';
 
 export default async function handler(req, res) {
-  // Auth check — same pattern as stats.js
-  let profileId = null;
-  if (!isAuthRequired()) {
-    // Dev mode — skip auth
-  } else {
-    profileId = await requireAuthWithProfile(req, res);
-    if (profileId === null) return;
-
-    const role = await getRole(profileId);
-    if (role !== 'superuser') {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
-  }
+  const gate = await requireSuperuser(req, res);
+  if (!gate) return;
+  const { profileId } = gate;
 
   if (req.method === 'GET') {
     try {
@@ -72,14 +61,3 @@ export default async function handler(req, res) {
   return res.status(405).json({ error: 'Method not allowed' });
 }
 
-async function getRole(profileId) {
-  try {
-    const result = await sql`
-      SELECT role FROM dynamics_user_roles
-      WHERE user_profile_id = ${profileId}
-    `;
-    return result.rows[0]?.role || 'read_only';
-  } catch {
-    return 'read_only';
-  }
-}

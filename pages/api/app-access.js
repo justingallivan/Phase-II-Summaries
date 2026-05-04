@@ -7,8 +7,7 @@
  * DELETE: Revoke apps from a user (superuser only)
  */
 
-import { requireAuthWithProfile, isAuthRequired, clearAppAccessCache } from '../../lib/utils/auth';
-import { sql } from '@vercel/postgres';
+import { requireAuthWithProfile, isAuthRequired, clearAppAccessCache, getUserRole } from '../../lib/utils/auth';
 import { ALL_APP_KEYS } from '../../shared/config/appRegistry';
 import {
   listAppKeysForUser,
@@ -29,7 +28,7 @@ export default async function handler(req, res) {
   const profileId = await requireAuthWithProfile(req, res);
   if (profileId === null) return;
 
-  const isSuperuser = await checkSuperuser(profileId);
+  const isSuperuser = (await getUserRole(profileId)) === 'superuser';
 
   switch (req.method) {
     case 'GET':
@@ -109,14 +108,3 @@ async function handleDelete(req, res, profileId, isSuperuser) {
   return res.json({ success: true, revoked: apps });
 }
 
-async function checkSuperuser(profileId) {
-  try {
-    const result = await sql`
-      SELECT role FROM dynamics_user_roles
-      WHERE user_profile_id = ${profileId}
-    `;
-    return result.rows[0]?.role === 'superuser';
-  } catch {
-    return false;
-  }
-}

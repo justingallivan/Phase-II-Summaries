@@ -8,7 +8,7 @@
  *   period  - '7d' | '30d' | '90d' (default '30d')
  */
 
-import { requireAuthWithProfile, isAuthRequired } from '../../../lib/utils/auth';
+import { requireSuperuser } from '../../../lib/utils/auth';
 import { sql } from '@vercel/postgres';
 
 export default async function handler(req, res) {
@@ -16,17 +16,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  if (!isAuthRequired()) {
-    // Dev mode — skip auth
-  } else {
-    const profileId = await requireAuthWithProfile(req, res);
-    if (profileId === null) return;
-
-    const role = await getRole(profileId);
-    if (role !== 'superuser') {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
-  }
+  const gate = await requireSuperuser(req, res);
+  if (!gate) return;
 
   const period = req.query.period || '30d';
   const days = period === '7d' ? 7 : period === '90d' ? 90 : 30;
@@ -164,14 +155,3 @@ async function getByDay(days) {
   return result.rows;
 }
 
-async function getRole(profileId) {
-  try {
-    const result = await sql`
-      SELECT role FROM dynamics_user_roles
-      WHERE user_profile_id = ${profileId}
-    `;
-    return result.rows[0]?.role || 'read_only';
-  } catch {
-    return 'read_only';
-  }
-}

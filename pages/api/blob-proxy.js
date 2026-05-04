@@ -1,8 +1,21 @@
 /**
  * API Route: /api/blob-proxy
  *
- * Authenticated proxy for Vercel Blob URLs. Prevents direct client access
- * to public blob storage URLs by requiring authentication.
+ * Authenticated proxy for Vercel Blob URLs. Forces a session cookie before
+ * serving content that lives on Vercel's "public" blob CDN — without this,
+ * a leaked blob URL would be readable from anywhere on the internet.
+ *
+ * Intended scope: shared organizational assets (review-email templates and
+ * additional cycle attachments configured via `/api/reviewer-finder/grant-cycles`,
+ * surfaced through `proxifyBlobUrl` in `lib/utils/blob-proxy.js`). These are
+ * staff-wide, not user-owned. The host allowlist is the security boundary;
+ * there is intentionally no per-record ownership check.
+ *
+ * Do NOT extend this proxy to serve user-owned blobs. Per-user data should go
+ * through a dedicated, scoped endpoint (see `/api/review-manager/download-review`
+ * for the record-aware pattern). If a future caller needs scoped blob access,
+ * add a route that resolves blob URL → owning record → caller permission and
+ * stream from there, instead of expanding this generic proxy.
  *
  * GET /api/blob-proxy?url={encoded-blob-url}
  */

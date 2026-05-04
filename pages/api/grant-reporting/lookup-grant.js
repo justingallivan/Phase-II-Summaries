@@ -5,6 +5,13 @@
  *       documents in a single round-trip. The frontend uses the result to
  *       prefill header fields and populate document pickers.
  *
+ * Data boundary: staff-shared, scoped by `grant-reporting` or
+ * `batch-phase-i-summaries` app access. Any user with that grant can look up
+ * any request by its number — grant records are foundation-owned and are not
+ * partitioned per program director at this layer. The bypass on Dynamics
+ * restrictions is appropriate because the surface only returns whitelisted
+ * header fields plus SharePoint file listings — never raw Dynamics rows.
+ *
  * Request body: { requestNumber: string }
  *
  * Response shape (status 200):

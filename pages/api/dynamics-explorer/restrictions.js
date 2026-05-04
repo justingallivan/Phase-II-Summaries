@@ -9,7 +9,7 @@
  * DELETE: remove a restriction by id
  */
 
-import { requireAppAccess } from '../../../lib/utils/auth';
+import { requireAppAccess, getUserRole } from '../../../lib/utils/auth';
 import { sql } from '@vercel/postgres';
 
 export default async function handler(req, res) {
@@ -18,7 +18,7 @@ export default async function handler(req, res) {
 
   const profileId = access.profileId;
 
-  const callerRole = await getRole(profileId);
+  const callerRole = profileId === null ? 'superuser' : await getUserRole(profileId);
 
   switch (req.method) {
     case 'GET':
@@ -104,14 +104,3 @@ async function handleDelete(req, res, profileId, callerRole) {
   return res.json({ success: true });
 }
 
-async function getRole(profileId) {
-  try {
-    const result = await sql`
-      SELECT role FROM dynamics_user_roles
-      WHERE user_profile_id = ${profileId}
-    `;
-    return result.rows[0]?.role || 'read_only';
-  } catch {
-    return 'read_only';
-  }
-}

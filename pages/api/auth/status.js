@@ -1,8 +1,16 @@
 /**
  * API Route: /api/auth/status
  *
- * Returns whether authentication is enabled and required.
- * Used by RequireAuth to determine if login should be required.
+ * Returns whether authentication is enabled. Used by `RequireAuth` and the
+ * sign-in page bootstrap to decide whether to redirect unauthenticated
+ * visitors before any session cookie exists.
+ *
+ * **Intentionally public.** The response shape MUST stay `{ enabled: boolean }`
+ * — never grow this endpoint to expose tenant IDs, client IDs, configured
+ * provider names, env-var presence flags, or any other deployment metadata.
+ * The boolean alone is what the client needs and is the only thing that's
+ * safe to expose pre-auth. If you need richer config on the client, gate it
+ * behind a session.
  *
  * Authentication is enabled when ALL of these conditions are met:
  * 1. AUTH_REQUIRED=true (kill switch - set to false to disable auth)

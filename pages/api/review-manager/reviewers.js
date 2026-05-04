@@ -18,6 +18,12 @@
  * Note: suggestionId values are Dataverse GUIDs (strings). reviewStatus values
  * are the legacy string codes — the suggestion adapter translates them to the
  * picklist optionset on write.
+ *
+ * Data boundary: staff-shared. The PD-default scope is a listing convenience,
+ * not an auth boundary — any `review-manager` user can target a specific
+ * suggestion via `proposalId`/`requestNumber` and update its lifecycle.
+ * Dynamics restrictions are bypassed because reviewer suggestions are
+ * foundation-owned operational data, not user-private.
  */
 
 import { requireAppAccess } from '../../../lib/utils/auth';

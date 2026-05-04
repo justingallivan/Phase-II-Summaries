@@ -5,6 +5,16 @@
  * Runs a server-side tool-use loop: user question → Claude tool calls
  * → Dynamics API execution → Claude response → SSE stream to client.
  *
+ * Data boundary: role-gated, org-wide CRM exploration. The caller's access
+ * is shaped by `dynamics_user_roles` (read_only / read_write / superuser)
+ * plus org-wide table/field rules in `dynamics_restrictions`, loaded into
+ * `withDynamicsContext` here and enforced inside every tool by
+ * `DynamicsService.checkRestriction`. Within those rules the user sees
+ * Dynamics data org-wide — not user-scoped — because CRM records belong
+ * to the foundation, not to individual staff. Tightening to per-user
+ * visibility (e.g., PD-only) is the job of Dataverse security roles, not
+ * this layer.
+ *
  * Architecture: Search-first discovery with server-side relationship traversal.
  * 11 tools: search, get_entity, get_related, describe_table, query_records,
  * count_records, aggregate, find_reports_due, list_documents, search_documents, export_csv.

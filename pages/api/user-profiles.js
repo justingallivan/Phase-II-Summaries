@@ -12,9 +12,8 @@
  * DELETE: Archive (soft delete) a profile (own only)
  */
 
-import { sql } from '@vercel/postgres';
 import { DatabaseService } from '../../lib/services/database-service';
-import { requireAuthWithProfile, clearAppAccessCache } from '../../lib/utils/auth';
+import { requireAuthWithProfile, clearAppAccessCache, getUserRole } from '../../lib/utils/auth';
 import { BASE_CONFIG } from '../../shared/config/baseConfig';
 
 /**
@@ -87,8 +86,8 @@ async function handleGet(req, res, profileId) {
 
     // ?all=true — full list, superuser only (used by admin dashboard)
     if (req.query.all === 'true') {
-      const isSuperuser = await checkSuperuser(profileId);
-      if (!isSuperuser) {
+      const role = await getUserRole(profileId);
+      if (role !== 'superuser') {
         return res.status(403).json({ error: 'Superuser access required' });
       }
       const profiles = await DatabaseService.getUserProfiles(includeArchived === 'true');
@@ -217,14 +216,3 @@ async function handleDelete(req, res, sessionProfileId) {
   }
 }
 
-async function checkSuperuser(profileId) {
-  try {
-    const result = await sql`
-      SELECT role FROM dynamics_user_roles
-      WHERE user_profile_id = ${profileId}
-    `;
-    return result.rows[0]?.role === 'superuser';
-  } catch {
-    return false;
-  }
-}

@@ -29,6 +29,13 @@
  *   - result { sent, failed, skipped, stats }
  *   - complete { message, sent, failed }
  *   - error { message }
+ *
+ * Data boundary: staff-shared. Any `review-manager` user can send to any
+ * suggestion's reviewer; the sender attribution is the caller's session
+ * email (Dynamics email activity sender + MSCRMCallerID on lifecycle and
+ * contact-promotion writes when impersonation is enabled). Dynamics
+ * restrictions are bypassed because reviewer outreach is a foundation-
+ * owned workflow, not user-private.
  */
 
 import { sql } from '@vercel/postgres';

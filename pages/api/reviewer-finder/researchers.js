@@ -49,20 +49,8 @@
  */
 
 import { sql } from '@vercel/postgres';
-import { requireAppAccess } from '../../../lib/utils/auth';
+import { requireAppAccess, getUserRole } from '../../../lib/utils/auth';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
-
-async function checkSuperuser(profileId) {
-  try {
-    const result = await sql`
-      SELECT role FROM dynamics_user_roles
-      WHERE user_profile_id = ${profileId}
-    `;
-    return result.rows[0]?.role === 'superuser';
-  } catch {
-    return false;
-  }
-}
 
 export default async function handler(req, res) {
   // Require authentication + app access
@@ -84,7 +72,8 @@ export default async function handler(req, res) {
   } else if (req.method === 'PATCH' || req.method === 'DELETE') {
     // Restrict modifications to superusers (skip in dev mode)
     if (!access.session.authBypassed) {
-      if (!access.profileId || !(await checkSuperuser(access.profileId))) {
+      const role = access.profileId ? await getUserRole(access.profileId) : 'read_only';
+      if (role !== 'superuser') {
         return res.status(403).json({ error: 'Superuser access required to modify researchers' });
       }
     }
