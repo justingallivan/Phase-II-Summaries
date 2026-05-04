@@ -239,6 +239,7 @@ Located in `lib/services/`:
 - `app-access-service.js` / `dataverse-app-access-service.js` - Wave 1 dispatch wrapper + Dataverse adapter for `user_app_access`. Reads `WAVE1_BACKEND_APP_ACCESS`.
 - `dataverse-prefs-service.js` - Wave 1 Dataverse adapter for `user_preferences`. Dispatch lives in `database-service.js` (`useDataversePrefs()`), reads `WAVE1_BACKEND_PREFS`.
 - `dataverse-identity-map.js` - Bridges `user_profiles` rows to Dynamics `systemuser` records by email; cached. Used by Wave 1 services to attach attribution to writes.
+- `dynamics-identity-service.js` - Persists the user_profiles → Dynamics systemuser mapping into `user_profiles.dynamics_systemuser_id` + `dynamics_reconciled_at`. `reconcileProfile(profileId)` (single, used by NextAuth signIn) and `reconcileBatch({ staleDays, includeNull, includeAll })` (used by cron + CLI). Discriminated results: `linked` / `unchanged` / `no_match` / `disabled` / `skipped_no_email` / `error`. CLI: `scripts/reconcile-dynamics-identities.js`. Plan: `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md`.
 - `model-override-loader.js` - Thin loader that calls into `settings-service` to fetch per-app model overrides; consumed by `baseConfig.js` `getModelForApp()`.
 
 Located in `lib/external/`:
@@ -271,6 +272,8 @@ Located in `lib/utils/`:
 | azure_id | VARCHAR(255) | Azure AD user ID (unique) |
 | azure_email | VARCHAR(255) | User's Azure email |
 | is_active | BOOLEAN | Soft delete flag |
+| dynamics_systemuser_id | UUID | Linked Dynamics `systemuser.systemuserid` (V27, nullable) |
+| dynamics_reconciled_at | TIMESTAMP | Last identity-reconcile attempt (V27) |
 
 **`user_preferences`** - Per-user settings
 | Column | Type | Description |
@@ -427,6 +430,7 @@ Located in `lib/utils/`:
 - `GET /api/admin/maintenance` - Last run per job + retention config (superuser only)
 - `GET/PUT /api/admin/secrets` - Secret expiration status; update rotation dates (superuser only)
 - `GET /api/admin/health-history` - Health check history with uptime % (superuser only)
+- `POST /api/admin/reconcile-identities` - Manual trigger for Dynamics identity reconciliation (superuser only). Body `{ all?: boolean }` — `true` for full backfill, default scans stale + null only. Same code path as the weekly cron, just session-authenticated.
 
 ### User Management
 - `GET/POST/PATCH/DELETE /api/user-profiles` - Profile CRUD
@@ -445,6 +449,7 @@ Located in `lib/utils/`:
 - `GET /api/cron/secret-check` - Secret expiration check (8:00 AM UTC daily)
 - `GET /api/cron/log-analysis` - Vercel error log analysis (every 6 hours)
 - `GET /api/cron/spend-check` - AI spend thresholds: daily total + estimated credit balance (hourly); emails via Dynamics on low balance
+- `GET /api/cron/reconcile-identities` - Weekly Dynamics identity reconciliation (Mondays 7:00 AM UTC). Re-runs the resolver for stale (>30d) or null-but-emailed `user_profiles` rows. Catches staff who get their Dynamics account after first app login.
 
 ### Document Processing (additional)
 - `POST /api/process-phase-i-writeup` - Single Phase I writeup (called by `phase-i-writeup.js`)

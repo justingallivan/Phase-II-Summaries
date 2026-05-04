@@ -1,18 +1,25 @@
 ---
 name: Dynamics Identity Reconciliation
-description: TODO — bridge Vercel user_profiles to Dynamics systemusers via email match so writes can be attributed, reporting can be joined, and PD lookups can be dynamic
+description: SHIPPED 2026-05-03 (Session 127) — user_profiles ↔ systemuser bridge persisted in DB. Step 5 (MSCRMCallerID impersonation on writes) still deferred.
 type: project
 originSessionId: 62437821-a516-465d-9fe9-ccd2fa785705
 ---
-**🎯 Next session: START HERE.** Picked as the Session 127 opener at the end of Session 126 (2026-05-03). Real work, not blocked, sets up future Dynamics write paths.
+**Status (2026-05-03):** Steps 1–4 + 6 of `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md` shipped in commit `76c6a21`. Step 5 (impersonation header on writes) deliberately deferred — separate PR/session.
 
-TODO — bridge `user_profiles` (Vercel) to `systemuser` (Dynamics) via email match.
+**What landed:**
+- V27 migration: `user_profiles.dynamics_systemuser_id` (UUID) + `dynamics_reconciled_at` (TIMESTAMP) + index. Applied to prod 2026-05-03.
+- `lib/services/dynamics-identity-service.js`: `reconcileProfile` / `reconcileBatch` with discriminated results.
+- `scripts/reconcile-dynamics-identities.js`: CLI; supports `--all`, `--stale N`, `--profile N`.
+- NextAuth signIn callback fires `reconcileProfile` (silent) on first profile insert.
+- `pages/api/cron/reconcile-identities.js` + `vercel.json` schedule `0 7 * * 1` (Mondays 7:00 UTC).
+- `pages/api/admin/reconcile-identities.js` (superuser-gated manual trigger) + `/admin` "Dynamics Identity Linkage" section.
+- All 7 active prod profiles linked to their systemuserids via the backfill. Other licensed staff auto-link on next login or via the cron.
 
-**Why:** Today the two identity systems never meet. Writes from Vercel apps appear as the service principal, cross-system reporting can't join cleanly, and PowerAutomate has to hardcode PD GUIDs. All 16 licensed staff use `@wmkeck.org` emails that match `internalemailaddress` on `systemuser`, so the mapping is deterministic — just not stored anywhere. Surfaced during Connor's review of `DYNAMICS_AI_FIELDS_SPEC.md` (point 7, PD prompt drift).
+**What's still TODO (Step 5 — write attribution):**
+- Add `actingUserSystemId` arg to Dynamics write helpers (`MSCRMCallerID` header).
+- Cross-cutting change to existing write paths in `dynamics-service.js` — needs a careful audit of every caller before flipping any of them, since the service principal currently shows up in `modifiedby` and that's the working baseline.
+- Unblocks: writes attributed to acting staff, dynamic PD lookup in PowerAutomate flows.
 
-**How to apply:**
-- Full scope doc: [`docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md`](../../Programming/Phase-II-Summaries/docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md)
-- Implementation is ~½ day; steps 1–4 (schema + resolver + sign-in hook + weekly cron) need no new permissions. Step 5 (impersonation header on writes) needs the pending Dynamics write-permission grant.
-- Migration target: next available V-number on `user_profiles` — add `dynamics_systemuser_id UUID` + `dynamics_reconciled_at TIMESTAMP`. (Note: this entry originally said V26, but V26 was used for the intake portal. Verify the next free V in `scripts/setup-database.js` before writing the migration.)
-- Treat as blocker for: `MSCRMCallerID` attribution on writes, unified admin-dashboard/Dynamics reporting, any attempt to replace hardcoded PD lists in PowerAutomate flows with dynamic lookups.
-- Not in scope: two-way sync, non-staff profiles, historical backfill of existing records.
+**How to apply going forward:**
+- New code that does Dynamics writes from a session context should plumb `session.user.profileId` → look up `dynamics_systemuser_id` → pass to the write helper as `actingUserSystemId`. PowerAutomate-triggered writes leave it null (intentional — they're unattended).
+- Don't write directly from this entry — full plan is `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md` step 5.
