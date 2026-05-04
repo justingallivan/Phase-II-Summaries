@@ -10,6 +10,22 @@ The pre-Session 84 chronological per-session log (everything after the September
 
 ---
 
+## May 2026 — Memory architecture into the repo + carryover-hygiene guardrail (Session 126)
+
+**Milestone:** Two structural changes triggered by an audit that caught a near-miss production breakage. Memory was per-machine with silent multi-Mac divergence; now lives in the repo at `.claude-memory/`, symlinked back to Claude's expected path, version-controlled like any code. Separately, a three-layer rule (CLAUDE.md section + feedback memory + `/start` skill Step 4) flags any drop/remove/retire/archive/delete/deprecate carryover item as **unverified-until-checked** — the propagation pattern that nearly broke Reviewer Finder this session.
+**Sessions:** 126 (2026-05-03)
+**Ship state:**
+- `.claude-memory/` in repo; symlink at `~/.claude/projects/-Users-gallivan-Programming-Phase-II-Summaries/memory/`. Office Mac NOT yet symlinked — one-shot reconciliation procedure documented at `docs/OFFICE_MAC_MEMORY_SYNC.md`.
+- Audit caught 3 stale memory assertions (most serious: Postgres reviewer tables claimed dormant, actually load-bearing in 5 endpoints) plus 9 undocumented services + 6 undocumented endpoints + 2 wrong Apps-table mappings in CLAUDE.md.
+- Carryover-hygiene rule live in CLAUDE.md, `feedback_verify_before_destructive_carryover.md`, and `~/.claude/skills/start/skill.md` Step 4. Future sessions are required to grep + verify before acting on destructive carryover.
+- Five stale memory entries corrected to match live state.
+- No product code touched. 7 commits, all process/infrastructure/docs.
+
+**Why it matters:** The audit caught a Session 126 pivot-list item ("drop dormant Postgres reviewer tables") that would have broken the live Reviewer Finder app. Without the audit, the next session would have executed it because the carryover said to. Memory-in-repo prevents the silent multi-Mac divergence that contributed to the drift; the carryover-hygiene rule prevents stale beliefs from converting to action even when they do propagate.
+**Pointers:** `docs/OFFICE_MAC_MEMORY_SYNC.md`, `docs/MULTI_MAC_SETUP.md` (new Step 4), `CLAUDE.md` Carryover Hygiene section. Commits `7f5de6d` → `789536d`.
+
+---
+
 ## May 2026 — External Reviewer Intake live in production (Session 123)
 
 **Milestone:** Phase 7 cutover. Invited reviewers now receive an HMAC-signed magic link granting unauthenticated access to a curated SharePoint folder for proposal materials, plus an upload form that writes reviews back into Dataverse + SharePoint. Eliminates the manual "email the proposal as an attachment, take the review back via email" loop staff have run for years and removes Vercel Blob from the review-storage path going forward.
