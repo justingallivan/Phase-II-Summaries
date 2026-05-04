@@ -1,14 +1,13 @@
 /**
  * Profile Settings Page
  *
- * Manage user profiles and their settings:
- * - List all profiles with edit/archive actions
- * - Set default profile
- * - API key management
- * - Model preference overrides per app
+ * Self-service surface for the staff user's own linked profile. Each Entra
+ * account links to exactly one profile via /api/auth/link-profile during
+ * first-login; this page exposes display-name, avatar color, and archive on
+ * that profile. Profile creation is intentionally not exposed here.
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import { useProfile } from '../shared/context/ProfileContext';
 
@@ -31,14 +30,11 @@ export default function ProfileSettings() {
     profiles,
     currentProfile,
     isLoading,
-    createProfile,
     updateProfile,
     archiveProfile,
-    selectProfile,
-    refreshProfiles
+    selectProfile
   } = useProfile();
 
-  const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingProfile, setEditingProfile] = useState(null);
   const [newProfileName, setNewProfileName] = useState('');
   const [newProfileColor, setNewProfileColor] = useState(AVATAR_COLORS[0]);
@@ -47,36 +43,10 @@ export default function ProfileSettings() {
 
   // Reset form when closing
   const resetForm = () => {
-    setShowCreateForm(false);
     setEditingProfile(null);
     setNewProfileName('');
     setNewProfileColor(AVATAR_COLORS[0]);
     setError(null);
-  };
-
-  // Handle create profile
-  const handleCreate = async (e) => {
-    e.preventDefault();
-    if (!newProfileName.trim()) return;
-
-    setIsSubmitting(true);
-    setError(null);
-
-    try {
-      const profile = await createProfile({
-        name: newProfileName.trim(),
-        avatarColor: newProfileColor,
-        isDefault: profiles.length === 0
-      });
-
-      // Select the newly created profile
-      await selectProfile(profile.id);
-      resetForm();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   // Handle edit profile
@@ -128,7 +98,6 @@ export default function ProfileSettings() {
     setEditingProfile(profile);
     setNewProfileName(profile.displayName || profile.name);
     setNewProfileColor(profile.avatarColor || AVATAR_COLORS[0]);
-    setShowCreateForm(false);
     setError(null);
   };
 
@@ -192,28 +161,16 @@ export default function ProfileSettings() {
         <Card>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900">All Profiles</h2>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => {
-                setShowCreateForm(true);
-                setEditingProfile(null);
-                setNewProfileName('');
-                setNewProfileColor(AVATAR_COLORS[0]);
-              }}
-            >
-              + New Profile
-            </Button>
           </div>
 
-          {/* Create/Edit Form */}
-          {(showCreateForm || editingProfile) && (
+          {/* Edit Form */}
+          {editingProfile && (
             <form
-              onSubmit={editingProfile ? handleEdit : handleCreate}
+              onSubmit={handleEdit}
               className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200"
             >
               <h3 className="text-sm font-semibold text-gray-800 mb-4">
-                {editingProfile ? 'Edit Profile' : 'Create New Profile'}
+                Edit Profile
               </h3>
 
               <div className="mb-4">
@@ -224,7 +181,7 @@ export default function ProfileSettings() {
                   type="text"
                   value={newProfileName}
                   onChange={(e) => setNewProfileName(e.target.value)}
-                  placeholder="e.g., Work, Personal, Research"
+                  placeholder="Display name"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                   autoFocus
                 />
@@ -267,7 +224,7 @@ export default function ProfileSettings() {
                   disabled={!newProfileName.trim() || isSubmitting}
                   loading={isSubmitting}
                 >
-                  {editingProfile ? 'Save Changes' : 'Create Profile'}
+                  Save Changes
                 </Button>
               </div>
             </form>
@@ -277,7 +234,7 @@ export default function ProfileSettings() {
           <div className="space-y-2">
             {profiles.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
-                No profiles yet. Create your first profile to get started.
+                No profile linked yet. Sign in with your WMKF account to provision one.
               </div>
             ) : (
               profiles.map((profile) => (
@@ -361,18 +318,18 @@ export default function ProfileSettings() {
           <h2 className="text-lg font-semibold text-gray-900 mb-4">About Profiles</h2>
           <div className="prose prose-sm text-gray-600">
             <p>
-              User profiles allow multiple people to use this application with their own API keys
-              and settings. Each profile stores:
+              Each WMKF Entra account links to a single profile, provisioned automatically
+              on first sign-in. Your profile stores per-user state used by the apps:
             </p>
             <ul className="list-disc pl-5 space-y-1 mt-2">
-              <li>Claude API key (encrypted)</li>
-              <li>ORCID, NCBI, and SerpAPI credentials (encrypted)</li>
-              <li>Saved candidates and proposal history</li>
-              <li>Email template settings (coming soon)</li>
+              <li>Saved reviewer candidates and proposal-search history</li>
+              <li>Per-app preferences (model overrides, UI settings)</li>
+              <li>Display name and avatar color</li>
             </ul>
             <p className="mt-3">
-              <strong>Note:</strong> Researchers and grant cycles are shared across all profiles
-              to maintain a unified database of experts.
+              <strong>Note:</strong> External API credentials (Claude, ORCID, NCBI, SerpAPI) are
+              centralized server-side — they are not stored per profile. Researchers and grant
+              cycles are shared across all profiles to maintain a unified database of experts.
             </p>
           </div>
         </Card>

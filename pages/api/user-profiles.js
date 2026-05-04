@@ -3,8 +3,11 @@
  *
  * Manages user profiles for the multi-user system.
  *
+ * Profile creation flows exclusively through `/api/auth/link-profile` during
+ * the first-login Entra ID handshake. POST is intentionally not supported
+ * here — staff cannot manufacture additional unlinked profile rows.
+ *
  * GET: Return caller's own profile (default), or all profiles (?all=true, superuser only)
- * POST: Create a new profile
  * PATCH: Update a profile (own only)
  * DELETE: Archive (soft delete) a profile (own only)
  */
@@ -29,17 +32,14 @@ export default async function handler(req, res) {
     // If response was already sent (auth failure), stop
     if (res.headersSent) return;
     // Dev mode (AUTH_REQUIRED=false) with no userProfileId param —
-    // allow GET/POST through without scoping for dev compatibility
+    // allow GET through without scoping for dev compatibility
     if (req.method === 'GET') return handleGet(req, res, null);
-    if (req.method === 'POST') return handlePost(req, res);
     return res.status(401).json({ error: 'Profile ID required' });
   }
 
   switch (req.method) {
     case 'GET':
       return handleGet(req, res, profileId);
-    case 'POST':
-      return handlePost(req, res);
     case 'PATCH':
       return handlePatch(req, res, profileId);
     case 'DELETE':
@@ -122,48 +122,6 @@ async function handleGet(req, res, profileId) {
     console.error('Get user profiles error:', error);
     return res.status(500).json({
       error: 'Failed to fetch profiles',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-      timestamp: new Date().toISOString()
-    });
-  }
-}
-
-async function handlePost(req, res) {
-  try {
-    const { name, displayName, avatarColor, isDefault } = req.body;
-
-    if (!name || !name.trim()) {
-      return res.status(400).json({ error: 'Profile name is required' });
-    }
-
-    // Validate avatar color if provided
-    if (avatarColor && !/^#[0-9A-Fa-f]{6}$/.test(avatarColor)) {
-      return res.status(400).json({ error: 'Avatar color must be a valid hex color (e.g., #6366f1)' });
-    }
-
-    const profile = await DatabaseService.createUserProfile({
-      name: name.trim(),
-      displayName: displayName?.trim() || name.trim(),
-      avatarColor: avatarColor || '#6366f1',
-      isDefault: isDefault || false
-    });
-
-    return res.status(201).json({
-      success: true,
-      profile
-    });
-  } catch (error) {
-    console.error('Create user profile error:', error);
-
-    // Check for unique constraint violation
-    if (error.message?.includes('unique') || error.message?.includes('duplicate')) {
-      return res.status(409).json({
-        error: 'A profile with this name already exists'
-      });
-    }
-
-    return res.status(500).json({
-      error: 'Failed to create profile',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined,
       timestamp: new Date().toISOString()
     });

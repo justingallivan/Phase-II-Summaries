@@ -99,39 +99,6 @@ export function ProfileProvider({ children }) {
   }, [profiles, refreshPreferences]);
 
   /**
-   * Create a new profile
-   */
-  const createProfile = useCallback(async ({ name, displayName, avatarColor, isDefault }) => {
-    try {
-      const response = await fetch('/api/user-profiles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, displayName, avatarColor, isDefault })
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to create profile');
-      }
-
-      const data = await response.json();
-
-      // Refresh profiles list
-      await refreshProfiles();
-
-      // If this is the first profile or it's set as default, select it
-      if (isDefault || profiles.length === 0) {
-        await selectProfile(data.profile.id);
-      }
-
-      return data.profile;
-    } catch (err) {
-      console.error('Failed to create profile:', err);
-      throw err;
-    }
-  }, [profiles.length, refreshProfiles, selectProfile]);
-
-  /**
    * Update a profile
    */
   const updateProfile = useCallback(async (id, updates) => {
@@ -350,7 +317,6 @@ export function ProfileProvider({ children }) {
 
     // Profile management
     selectProfile,
-    createProfile,
     updateProfile,
     archiveProfile,
     refreshProfiles,
