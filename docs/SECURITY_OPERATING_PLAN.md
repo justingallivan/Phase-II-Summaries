@@ -66,7 +66,7 @@ Use this on any PR that touches API routes, auth, Dynamics, SharePoint, external
 
 Owner: Justin (sole developer on the app suite).
 
-Timebox: 30-45 minutes. Anchored to the start of a coding session, not a separate calendared block — folds into existing work rhythm rather than creating new overhead.
+Timebox: 30-45 minutes. Triggered by a recurring calendar reminder (e.g. Mondays AM) rather than an implicit "first session of the week" trigger — explicit recurrence guards against the cadence-drift failure mode that quietly slips after several weeks.
 
 Checklist:
 
@@ -199,16 +199,16 @@ Likely response:
 
 - Add a fan-out cap, such as limiting returned snippet lines and reporting `hasMore`.
 
-## Initial Alignment Agenda
+## Decisions, 2026-05-05
 
-For the first planning conversation that anchors this operating plan — whether that's tomorrow or three weeks from now. Once decisions are made, fold them back into the relevant sections above and remove this section.
+Initial alignment ratified in Session 132. Brief archived at `docs/archive/SECURITY_OPERATING_PLAN_ALIGNMENT_BRIEF.md`.
 
-1. Confirm the hardening tranche is complete.
-2. Confirm Justin owns weekly/monthly/quarterly security operations as drafted, and that the monthly cadence rides along Connor syncs.
-3. Decide whether `wmkf_ai_run` permission/retention review needs an IT ticket now or stays a watch item until the escalation thresholds above trigger.
-4. Decide how strict the PR-time matrix-update check should be — soft prompt vs. CI-blocking.
-5. Decide where to track watch items: matrix rows only, or matrix rows plus GitHub issues. (Memory entries already cover the longer-form rationale.)
-6. Pick the next non-security priority, since this tranche is now at a natural stopping point.
+1. **Hardening tranche complete** — confirmed.
+2. **Cadence as drafted** — accepted. Weekly trigger switched from "first session of the week" to a recurring calendar reminder (folded into § Weekly Cadence above).
+3. **`wmkf_ai_run` permission review** — kept as a watch item. Read-access question added to the in-flight Connor Delegate-grant ask (see `docs/CONNOR_DELEGATE_ROLE_REQUEST.md`) for low-cost incremental signal.
+4. **PR-time AI matrix check** — kept as a soft prompt. CI gate revisited if drift accumulates over two consecutive monthly reviews, or if a contributor is onboarded.
+5. **Watch-item tracking** — matrix rows only. Promotion to GitHub issue only when an item's escalation threshold trips.
+6. **Next non-security priority** — intake portal institution/membership flow as primary thread for sessions 133+, with impersonation re-smoke as soon as Connor unblocks the Delegate role and Dynamics Explorer schema curation as a between-rocks palate cleanser.
 
 ## Definition of Done For Future Security Work
 
