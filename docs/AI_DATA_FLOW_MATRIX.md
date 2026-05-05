@@ -25,15 +25,41 @@ It complements `docs/API_ROUTE_SECURITY_MATRIX.md`: that document answers "who c
 - Many proposal workflows send up to 80,000-100,000 characters of extracted text. That may be appropriate for staff workflows, but the code should make the size and source of transmitted text explicit, bounded, and testable.
 - The Virtual Review Panel may send the same proposal to multiple providers: Anthropic, OpenAI, Google, and Perplexity depending on configuration. The code threat is provider-boundary drift: a config/UI change could broaden provider exposure without being obvious to operators.
 
-## Initial Findings
+## Current Findings And Disposition
 
 ### P1 - Large document payloads lack a shared, explicit send boundary
 
-Several routes send large extracted proposal/report payloads to external models. This includes reviewer finding, proposal summaries, Phase I/II summaries, grant reporting goals assessment, virtual review panel, and Q&A. This is an authorized staff workflow, but the implementation currently expresses limits inconsistently across routes and prompt helpers.
+Several routes send large extracted proposal/report payloads to external models. This includes reviewer finding, proposal summaries, Phase I/II summaries, grant reporting goals assessment, virtual review panel, and Q&A. This is an authorized staff workflow, but before this hardening pass the implementation expressed limits inconsistently across routes and prompt helpers.
 
 Code threat: future changes can accidentally raise limits, send the wrong file text, duplicate payloads across multiple calls, or include fields the route did not actually need.
 
-Recommended next step: define a small shared helper or convention for AI payload construction that records source, character limit, truncation marker, and data class. Use it in high-volume routes so reviewers can see the boundary in code.
+Recommended next step: keep this convention as the standard for new high-volume routes and move the same source/data-class/retention thinking into the Prompt Executor.
+
+**Status (2026-05-04): addressed for the identified route/service call sites.** `lib/utils/ai-payload-boundary.js` now defines a reusable bounded-text helper. The pattern is in place across the high-volume route/service paths reviewed in this pass:
+
+- `ClaudeReviewerService.analyzeProposal` (`reviewer-finder.analyze.proposalText`, 100k cap)
+- `/api/process` (`batch-phase-ii.summary.proposalText` + `batch-phase-ii.extraction.proposalText`, both 100k)
+- `/api/process-legacy` (`legacy.summary.proposalText` 15k + `legacy.extraction.proposalText` 10k — asymmetric caps preserved exactly)
+- `/api/process-phase-i` (`batch-phase-i.summary.proposalText` + `batch-phase-i.extraction.proposalText`, both 100k)
+- `/api/process-phase-i-writeup` (`phase-i-writeup.writeup.proposalText` + `phase-i-writeup.extraction.proposalText`, both 100k)
+- `/api/qa` (`qa.system.proposalText`, 80k cap)
+- `/api/grant-reporting/extract` — three call sites, each bounded with its own source:
+  - `extractReport()` (exported helper): `grant-reporting.extract.reportText`, 100k cap
+  - `compareProposalToReport()` (exported helper, future PA seam): `grant-reporting.goals.proposalText` 100k + `grant-reporting.goals.reportText` 100k
+  - `handleRegenerate` (single-field regeneration): `grant-reporting.regenerate.reportText`, 100k cap
+  - The grant-reporting prompt builders previously had no internal truncation — proposal and report text went straight to Claude. The boundary helper is the first explicit cap on this path.
+- `/api/analyze-funding-gap` (`funding-gap.extraction.proposalText`, 100k cap) before PI/institution/keyword extraction
+- `/api/virtual-review-panel` (`virtual-review-panel.run.proposalText`, 100k cap) — bounded once at the route boundary; the bounded text propagates to every prompt builder that embeds raw proposal text (Stage 0a claim extraction, claim verification, structured review, devil's advocate) across every configured provider. Two stages do **not** receive raw proposal text by design — Stage 0c (search collation) operates on extracted `claimData` plus raw search results, and synthesis operates on parsed reviewer outputs. Tests pin both invariants (six proposal-bearing calls when intelligence + DA are enabled; non-proposal calls verified to not contain the over-cap tail) so a future refactor that pipes raw proposal into either path would fail loudly.
+- `/api/phase-i-dynamics/summarize` (`phase-i-dynamics.summarize.proposalText`, 100k cap) — single-request Phase I path with Dynamics writeback. Previously relied on an internal substring inside the prompt builder; now bounded at the route before `createPhaseISummarizationPrompt` is called.
+- `/api/phase-i-dynamics/summarize-v2` — bounded **inside the Prompt Executor** via the `phase-i.summary` prompt row's variable declaration (`dataClass: 'proposal_text'`, `maxChars: 100000` on `proposal_text`). Source string `executor.phase-i.summary.proposal_text`. The route hands raw `fileLoad.text` to `executePrompt`; the Executor enforces the cap uniformly — closes the symmetry between user-driven HTTP routes and unattended PowerAutomate triggers (both go through the same Executor and get the same boundary). See `lib/services/execute-prompt.js` and `docs/EXECUTOR_CONTRACT.md` § "Data classification + payload boundary".
+
+For the batch summarization routes, **both LLM calls per file (summary/writeup and structured extraction) are bounded in code via `buildBoundedTextPayload`**. For Q&A, grant reporting, and funding-gap analysis, each raw proposal/report-text model entry point now carries an explicit `source` string and route-appropriate `maxChars`, and bounded text arrives at the cap with a truncation marker before any prompt builder is called. Tests pin the bounded `source` strings so future drift is caught.
+
+For operator visibility, the batch summarization routes emit one non-content `payload_boundary` SSE event per file before the summary/writeup call, and `/api/qa` emits one before the streamed Q&A call. The event includes `{source, dataClass, maxChars, originalChars, transmittedChars, truncated, truncationMarker}`. For the batch routes, we deliberately do not emit a second event for the extraction call — the in-code boundary is the load-bearing control; doubling SSE events would just add noise on batch runs of 50+ PDFs without strengthening the protection. Operators who need extraction-call boundaries audited can read the source strings or the test assertions, which cover both call sites.
+
+Hidden truncation in the prompt builders (`text.substring(0, textLimit)`) has been removed across the high-volume builders (`proposal-summarizer.js`, `proposal-summarizer-legacy.js`, `phase-i-summaries.js`, `phase-i-writeup.js`, `funding-gap-analyzer.js`, `reviewer-finder.js`). The route boundary is now the single source of truth for the cap; each cleaned function carries a header comment stating that callers MUST bound `text` via the helper before calling. This eliminates the dead "fallback cap" that could mask a future regression where a route forgets to bound.
+
+The identified high-volume route/service payload-boundary targets are now covered by the shared helper. Future high-volume AI call sites should follow the same pattern: bound at the route or service boundary with a named cap and an explicit `source` string, pin the bounded `source` in tests, and emit one non-content `payload_boundary` event when a streaming surface is available. The Prompt Executor remains the next place to formalize this as declarative prompt metadata (`dataClass`, `maxChars`, and raw-output retention policy) rather than ad hoc route code.
 
 ### P1 - Dynamics Explorer can send verbose CRM records into an agentic loop
 
@@ -41,7 +67,7 @@ Recommended next step: define a small shared helper or convention for AI payload
 
 Code threat: a tool, query expansion, or future schema change could include more CRM fields than the user intended to ask about.
 
-**Status (2026-05-04): deferred — watch item.** Discussed in Session 130. The realistic threat model for this user base (16 staff, all with full Dataverse access by design; flows curated by Justin and Connor) is not data leak — it is context pollution / token cost / AI-summary loopback if `wmkf_ai_summary` or similar AI-generated long-text fields enter Claude's context as "ground truth" on later queries. None of those symptoms have been observed yet because `wmkf_ai_summary` is new and not yet populated at scale. Building a serialization layer now would be preventive work for an unproven failure mode, and the realistic mitigation (per-table default `select` when Claude omits one) requires system-prompt tuning to avoid regressing answer quality.
+**Status (2026-05-04): deferred — watch item.** Discussed in Session 130. Given the current staff-only user base and Dataverse access model, the near-term code threat is less about unauthorized staff access and more about context pollution, token cost growth, and AI-summary loopback if `wmkf_ai_summary` or similar AI-generated long-text fields enter Claude's context as "ground truth" on later queries. None of those symptoms have been observed yet because `wmkf_ai_summary` is new and not yet populated at scale. Building a serialization layer now would be preventive work for an unproven failure mode, and the realistic mitigation (per-table default `select` when Claude omits one) requires system-prompt tuning to avoid regressing answer quality.
 
 Revisit triggers:
 - Claude citing prior `wmkf_ai_summary` / `wmkf_ai_rawoutput` content as authoritative input on a fresh query (loopback symptom).
@@ -56,13 +82,17 @@ If revisited, the design proposal is in Session 130 conversation: per-table defa
 
 Code threat: a default provider list or environment variable change can broaden where payloads go without a code reviewer seeing the impact.
 
-Recommended next step: add an explicit provider allowlist/config surface and log provider set per run. Consider tests that assert default provider behavior.
+Recommended next step: keep provider policy changes explicit in config and tests as VRP stages evolve.
+
+**Status (2026-05-04): addressed.** `VRP_ALLOWED_PROVIDERS` now gates the Virtual Review Panel provider set. Production fails closed when the variable is unset, dev/test retain the previous "any configured provider" behavior, and the API rejects runs unless `claude` is allowed because synthesis and intelligence-pass extraction/collation currently call Claude unconditionally. The resolved provider set is stored in `panel_reviews.config`.
 
 ### P2 - Legacy/direct Anthropic fetch paths bypass the canonical wrapper
 
-`ClaudeReviewerService`, `ContactEnrichmentService.claudeWebSearch`, `health-checker`, and the old module demo use direct `fetch` calls. Some of these are low sensitivity, but the pattern bypasses `LLMClient`'s timeout, safeFetch, retry, and redaction behavior.
+`ContactEnrichmentService.claudeWebSearch`, `health-checker`, and the old module demo still use direct `fetch` calls. `ClaudeReviewerService` previously did as well, but has since been migrated to `LLMClient`. Some remaining paths are low sensitivity, but the direct-fetch pattern bypasses `LLMClient`'s timeout, safeFetch, retry, and redaction behavior.
 
-Recommended next step: migrate remaining production Claude callers to `LLMClient` or `safeFetch` as appropriate. The reviewer-finder analysis path should be prioritized because it sends raw proposal text.
+Recommended next step: migrate remaining production Claude callers to `LLMClient` or `safeFetch` as appropriate. Prioritize paths where the wrapper adds meaningful timeout, redaction, retry, or allowlist behavior.
+
+**Status (2026-05-04): partially addressed.** `ClaudeReviewerService` now uses `LLMClient` for reviewer-finder analysis and discovered-candidate reasoning, and content-bearing debug logs are gated behind `DEBUG_REVIEWER_FINDER`. Remaining direct-fetch paths should still be reviewed, but the highest-volume reviewer-finder path is no longer the priority migration target.
 
 ### P2 - AI-run logs persist generated outputs with large limits
 
@@ -82,62 +112,64 @@ Recommended next step: use this as the model for "redact before external AI, red
 
 | Area / Route | Provider(s) | Data Sent | Volume / Limits | Persistence After Call | Current Controls | Risk | Notes / Hardening Ideas |
 |---|---|---|---|---|---|---|---|
-| `/api/reviewer-finder/analyze` via `ClaudeReviewerService.analyzeProposal` | Anthropic Claude | Proposal text from upload/blob, additional notes, excluded names, reviewer count/settings | Body limit 10 MB; service prompt likely sends large proposal text | Usage metadata; generated proposal info/reviewer suggestions returned to client and later saved by user flows | App access, rate limit, `safeFetch` for blob input | High | Priority migration target: direct Anthropic `fetch` in `ClaudeReviewerService`; add explicit input cap and payload-construction helper. |
+| `/api/reviewer-finder/analyze` via `ClaudeReviewerService.analyzeProposal` | Anthropic Claude | Proposal text from upload/blob, additional notes, excluded names, reviewer count/settings | Body limit 10 MB; proposal text capped at 100,000 chars by `ai-payload-boundary` before prompt construction | Usage metadata; generated proposal info/reviewer suggestions returned to client and later saved by user flows | App access, rate limit, `safeFetch` for blob input, `LLMClient` for Anthropic transport, explicit AI payload boundary metadata | High | Direct Anthropic `fetch` has been removed from `ClaudeReviewerService`; proposal text now has an explicit cap/source/data-class boundary. |
 | `/api/reviewer-finder/generate-emails` | Anthropic Claude | Candidate/reviewer details, proposal info, base email body | Per-email prompt; `maxTokens: 512` | Generated email returned/saved; usage metadata | App access; uses `LLMClient` | Medium | Sends reviewer + proposal context. Reasonable, but keep prompt fields tight. |
 | `/api/reviewer-finder/enrich-contacts` / `ContactEnrichmentService.claudeWebSearch` | Anthropic Claude with web search | Candidate name and institution | Minimal prompt; `max_tokens: 256`; one web search | Enriched contact info returned/saved | App access, rate limit, server-side credentials only | Medium | Direct Anthropic `fetch`; candidate PII/name sent to Claude/web search. Migrate to `LLMClient` or `safeFetch`. |
-| `/api/process`, `/api/process-legacy` | Anthropic Claude | Extracted Phase II proposal text; filename; generated summary reused for structured extraction | Prompt utilities truncate proposal text, commonly up to 100k chars | Summary and structured data returned; extracted text included in response object | App access, rate limit, `LLMClient`, `safeFetch` for blob input | High | Main code risk is returning full extracted text in API response and duplicating it across summary + extraction calls. Confirm UI need or remove from response. |
-| `/api/process-phase-i` | Anthropic Claude | Extracted Phase I proposal text | Similar to batch proposal summarizer; structured extraction second call | Summary/structured data returned | App access, `LLMClient` | High | Same minimization issue as `/api/process`. |
-| `/api/process-phase-i-writeup` | Anthropic Claude | Extracted Phase I writeup/proposal text | Similar raw proposal prompt + structured extraction | Writeup/structured data returned | App access, `LLMClient` | High | Same minimization issue as `/api/process`. |
+| `/api/process`, `/api/process-legacy` | Anthropic Claude | Extracted Phase II proposal text; filename; generated summary reused for structured extraction | Proposal text bounded by `ai-payload-boundary` before both summary and structured-extraction prompts; legacy preserves 15k/10k asymmetric caps | Summary and structured data returned; extracted text included in response object | App access, rate limit, `LLMClient`, `safeFetch` for blob input, explicit AI payload boundary metadata | High | Main remaining code risk is returning full extracted text in API response and duplicating bounded text across summary + extraction calls. Confirm UI need or remove from response. |
+| `/api/process-phase-i` | Anthropic Claude | Extracted Phase I proposal text | Proposal text bounded at 100,000 chars before both summary and structured-extraction prompts | Summary/structured data returned | App access, `LLMClient`, explicit AI payload boundary metadata | High | Same response-minimization issue as `/api/process`. |
+| `/api/process-phase-i-writeup` | Anthropic Claude | Extracted Phase I writeup/proposal text | Proposal text bounded at 100,000 chars before both writeup and structured-extraction prompts | Writeup/structured data returned | App access, `LLMClient`, explicit AI payload boundary metadata | High | Same response-minimization issue as `/api/process`. |
 | `/api/process-peer-reviews` | Anthropic Claude | Peer review text and possibly proposal/review context | Review-analysis prompt plus question extraction | Analysis/questions returned | App access, `LLMClient` | Medium | Review text can contain sensitive reviewer opinions. Confirm retention and output handling. |
-| `/api/qa` | Anthropic Claude with web search tool | Proposal text up to 80k chars in system prompt, summary text, filename, recent conversation, user question | System prompt caches proposal context; last 6 messages retained | Usage metadata; streamed answer/sources returned | App access, rate limit, `LLMClient`, prompt cache, conversation trimming | High | Good conversation trimming. Code risk is combining internal proposal context with web search tool in the same call. Consider a mode flag for tool-enabled vs. internal-only Q&A. |
+| `/api/qa` | Anthropic Claude with web search tool | Proposal text bounded at 80k chars in system prompt, summary text, filename, recent conversation, user question | System prompt caches proposal context; last 6 messages retained | Usage metadata; streamed answer/sources returned | App access, rate limit, `LLMClient`, prompt cache, conversation trimming, explicit AI payload boundary metadata | High | Good conversation trimming. Code risk is combining internal proposal context with web search tool in the same call. Consider a mode flag for tool-enabled vs. internal-only Q&A. |
 | `/api/refine` | Anthropic Claude | Existing generated summary and user feedback | `maxTokens: 3000` | Refined summary returned; usage metadata | App access, `LLMClient` | Medium | Does not send raw proposal unless summary contains it. Lower risk than original summarization. |
-| `/api/analyze-funding-gap` | Anthropic Claude | Proposal text for funder/funding-gap extraction and analysis | Text prompt likely up to 100k chars | Funding extraction/analysis returned; usage metadata | App access, `LLMClient` | High | Raw proposal to model. Candidate for structured pre-extraction/minimized sections. |
+| `/api/analyze-funding-gap` | Anthropic Claude | Proposal text for PI/institution/keyword extraction; extracted metadata and federal API summaries for final analysis | Proposal text capped at 100,000 chars by `ai-payload-boundary` before extraction prompt construction | Funding extraction/analysis returned; usage metadata plus non-content boundary metadata in result metadata | App access, `LLMClient`, explicit AI payload boundary metadata | High | Final analysis prompt does not include raw proposal text. Remaining code risk is whether future extraction fields broaden what leaves the app. |
 | `/api/analyze-literature` | Anthropic Claude | Literature search results, user topic/proposal context, synthesis prompts | Multiple calls, 4k-6k max output | Analysis returned; usage metadata | App access, `LLMClient` | Medium | Depends on user-supplied context. Search results mostly public; proposal context may raise risk. |
 | `/api/evaluate-multi-perspective` | Anthropic Claude | User concept/proposal text and perspective prompts; optional image/vision payloads | Multiple model calls; 1.5k-3.5k max output | Evaluation returned; manual usage logging | App access, `LLMClient` | Medium | Clarify whether users paste non-public proposal material. |
-| `/api/phase-i-dynamics/summarize` | Anthropic Claude | Proposal file text loaded from SharePoint/upload plus request GUID context | Large proposal text sent to prompt; max output default | Writes summary to `akoya_request.wmkf_ai_summary`; logs AI run/usage | App access, rate limit, overwrite guard, optimistic concurrency | High | Code risk is wrong-record writeback or accidental overwrite; concurrency guard is good. Add shared payload cap convention. |
-| `/api/phase-i-dynamics/summarize-v2` via `executePrompt()` | Anthropic Claude | `proposal_text` override truncated to 100k chars plus prompt variables from Dynamics/SharePoint | `proposal_text: fileLoad.text.substring(0, 100000)` | Writes target fields; stores `wmkf_ai_run` raw output up to 1M chars | App access, executor guard, overwrite controls, Dataverse audit | High | Good centralized architecture. Review prompt variable declarations and raw output retention. |
-| `lib/services/execute-prompt.js` | Anthropic Claude | Prompt variables from Dynamics, SharePoint text extraction, caller overrides | Variable `maxChars` supported; call body is one user message | Writes outputs to Dynamics; creates AI-run audit row with raw output | Centralized prompt executor, output guards, Dataverse audit | High | Add classification to prompt definitions: allowed data classes, max chars, raw-output retention mode. |
-| `/api/grant-reporting/extract` | Anthropic Claude | Grant report text, proposal text for goals assessment, authoritative Dynamics header fields, current narratives | Extraction `maxTokens: 4096`; goals assessment includes proposal + report text | Returns structured extraction/goals; logs usage and AI-run outputs | App access, rate limit, `LLMClient`, file loader | High | Code risk is multi-document prompt growth and raw-output persistence. Add explicit file source/length metadata and output retention policy. |
+| `/api/phase-i-dynamics/summarize` | Anthropic Claude | Proposal file text loaded from SharePoint/upload plus request GUID context | Proposal text bounded at 100,000 chars before prompt construction | Writes summary to `akoya_request.wmkf_ai_summary`; logs AI run/usage | App access, rate limit, overwrite guard, optimistic concurrency, explicit AI payload boundary | High | Code risk is wrong-record writeback or accidental overwrite; concurrency guard is good. Route-level boundary is pinned by a handler test. |
+| `/api/phase-i-dynamics/summarize-v2` via `executePrompt()` | Anthropic Claude | Raw `fileLoad.text` passed via `overrideVariables.proposal_text`; Executor enforces the cap | Executor caps `proposal_text` at 100,000 chars via prompt-row metadata (`dataClass: 'proposal_text'`, `maxChars: 100000`); source string `executor.phase-i.summary.proposal_text` | Writes target fields; stores `wmkf_ai_run` raw output up to 1M chars | App access, executor guard, overwrite controls, Dataverse audit, declarative payload boundary | High | Route-level substring removed in favor of Executor-enforced cap. Boundary metadata surfaces on `result.meta.aiPayloadBoundaries` and in the `wmkf_ai_run` notes. |
+| `lib/services/execute-prompt.js` | Anthropic Claude | Prompt variables from Dynamics, SharePoint text extraction, caller overrides | Per-variable payload boundary when a declaration includes both `dataClass` and `maxChars` (opt-in, backwards compatible); applied uniformly across `kind: override / dynamics / sharepoint` | Writes outputs to Dynamics; creates AI-run audit row with raw output and boundary summary | Centralized prompt executor, output guards, Dataverse audit, declarative payload boundary | High | Mechanism shipped 2026-05-04; first adopter is `phase-i.summary`. Future prompts adopt the metadata fields when touched; raw-output retention policy still open. |
+| `/api/grant-reporting/extract` | Anthropic Claude | Grant report text, proposal text for goals assessment, authoritative Dynamics header fields, current narratives | Report/proposal text bounded at 100,000 chars at each model entry point | Returns structured extraction/goals; logs usage and AI-run outputs | App access, rate limit, `LLMClient`, file loader, explicit AI payload boundary metadata | High | Code risk is multi-document prompt growth and raw-output persistence. Add output retention policy for AI-run records. |
 | `/api/dynamics-explorer/chat` | Anthropic Claude with tool loop | User question, recent conversation, tool definitions, CRM query/search/list document results, possible exported record batches | Streaming `maxTokens: 2048`; batch processing `maxTokens: 4096`; result char caps per tool | Dynamics query log stores query params/counts; usage metadata | App access, Dynamics roles/restrictions, result char caps, conversation trimming | High | Highest CRM-specific code target. Add tool-result field serializer and sensitive-field masking before model context. |
-| `/api/virtual-review-panel` and `PanelReviewService` | Anthropic, OpenAI, Gemini, Perplexity | Proposal text, extracted claims, PI/team intelligence, search results, structured review prompts | Long multi-stage prompts; multi-provider; panel DB stores text hash not raw proposal | Panel results/items/costs stored; provider outputs persisted | App access, rate limit, provider availability checks | High | Code risk is provider-set drift. Add explicit provider allowlist and persist provider set per run. |
+| `/api/virtual-review-panel` and `PanelReviewService` | Anthropic, OpenAI, Gemini, Perplexity | Bounded proposal text for proposal-bearing stages; extracted claims/search results; parsed reviewer outputs for synthesis | Proposal text bounded at 100,000 chars once at the route boundary; multi-provider fan-out; panel DB stores text hash not raw proposal | Panel results/items/costs stored; provider outputs persisted | App access, rate limit, provider availability checks, `VRP_ALLOWED_PROVIDERS` allowlist, provider set persisted per run, explicit AI payload boundary metadata | High | Provider-set drift mitigated by production fail-closed allowlist. Remaining risk is that Claude is currently mandatory for synthesis and intelligence extraction/collation; future provider changes should make those stages policy-aware. |
 | `MultiLLMService` | Anthropic, OpenAI, Gemini, Perplexity | Arbitrary prompt/system prompt from caller | Defaults `maxTokens: 16384`; timeout via `Promise.race` | Usage metadata if logging context supplied | `safeFetch` for provider calls | High | Shared transport for full proposal review. Consider request aborts instead of Promise.race and provider-level data classification. |
 | `/api/integrity-screener/screen` / `IntegrityService.analyzeWithHaiku` | Anthropic Claude | Search result titles, URLs, snippets for applicant/research integrity analysis | Top search results; `maxTokens: 1000` | Screening results/history through service | App access; `LLMClient` | Medium | Mostly public search snippets, but query subject is person/institution-sensitive. |
 | `/api/cron/log-analysis` | Anthropic Claude | Redacted Vercel error summaries: timestamp, path, message | Up to 50 entries; `maxTokens: 1024` | Alert message/metadata stored; output redacted again | Cron secret, input redaction, output redaction, `LLMClient` | Low | Good reference pattern. |
 | `lib/utils/health-checker.js` | Anthropic Claude | Static "Hello" health-check prompt | `max_tokens: 10` | Health status only | Cron/admin health surface | Low | Direct `fetch` acceptable risk, but can migrate to `safeFetch` for consistency. |
-| `lib/services/claude-reviewer-service.js` | Anthropic Claude | Reviewer-finder prompts containing raw proposal text, reviewer criteria, notes/exclusions | Large prompt; service-level retry/fallback | Usage metadata when logging context supplied | Called behind reviewer-finder app access | High | Direct `fetch`, no `safeFetch`, no canonical timeout. Priority migration target. |
+| `lib/services/claude-reviewer-service.js` | Anthropic Claude | Reviewer-finder prompts containing bounded proposal text, reviewer criteria, notes/exclusions | Proposal text capped at 100,000 chars by `ai-payload-boundary`; `LLMClient` retry/fallback behavior | Usage metadata through `LLMClient` | Called behind reviewer-finder app access; `LLMClient` transport with `safeFetch`, timeout, retry, redacted errors; explicit AI payload boundary metadata | High | Direct `fetch` migration and proposal-text boundary are complete for the reviewer-finder analysis path. |
 | `lib/services/contact-enrichment-service.js` | Anthropic Claude web search | Candidate name and institution | Minimal prompt, one web search | Contact enrichment result | Server-side credentials only | Medium | Direct `fetch`; migrate to canonical wrapper/tool handling where feasible. |
 | `lib/services/multi-llm-service.js` | Anthropic/OpenAI/Gemini/Perplexity | Arbitrary caller prompt, often proposal review prompts | Large max-token default | Usage metadata | `safeFetch`; provider env keys | High | Exposure depends entirely on caller. Needs caller-level matrix references. |
 | `modules/expertise_matching/src/reviewer_matcher.jsx` | Anthropic Claude | Browser-side prompt for local/module reviewer matching | Demo/module code path, not main API | Unknown | Direct browser/component fetch | Medium | Confirm whether this module is production-reachable. If not, archive or document as non-production. |
 
 ## Recommended Hardening Sequence
 
-1. **Reviewer Finder proposal analysis**
-   - Migrate `ClaudeReviewerService` to `LLMClient`.
-   - Add explicit max input characters and document it.
-   - Add tests around the payload cap/helper.
+1. **Prompt Executor data classification — payload boundary done; retention pending**
+   - ✅ Per-variable `dataClass` + `maxChars` declarations are honored by the Executor (added 2026-05-04). First adopter: `phase-i.summary` row, used by `/api/phase-i-dynamics/summarize-v2`.
+   - ✅ Route-level substring removed from `summarize-v2`; `executor.phase-i.summary.proposal_text` is the load-bearing cap.
+   - 🟡 Apply the same metadata to other Dynamics-backed prompts as they're touched (incremental adoption — opt-in per variable).
+   - 🟡 Raw-output retention policy on `wmkf_ai_run` still open — see below.
 
-2. **Dynamics Explorer tool-result serialization**
-   - Add a serializer that filters/masks CRM records before they enter model messages.
-   - Make allowed fields explicit per tool and role.
-   - Add tests that sensitive fields are not sent for read-only users.
-
-3. **Prompt Executor data classification**
-   - Extend Dynamics prompt definitions with data class, `maxChars`, and raw-output retention policy.
-   - Add a check that `proposal_text` variables must declare `maxChars`.
-
-4. **Virtual Review Panel provider policy**
-   - Add provider allowlist configuration and default to the minimum provider set.
-   - Persist the provider set used for each run.
-
-5. **AI-run retention and raw-output review**
+2. **AI-run retention and raw-output review**
    - Confirm who can read `wmkf_ai_run`.
-   - Decide whether raw outputs should be retained for all prompts.
+   - Decide whether high-volume prompt runs should store full raw output, structured output only, or a hash.
    - Add cleanup/retention policy if needed.
+
+3. **Dynamics Explorer watch item**
+   - Do not build a serializer until symptoms appear or the schema/tooling broadens.
+   - Monitor for AI-summary loopback, rising token costs, and long-text fields entering tool results.
+   - If triggered, implement per-table default `select` behavior plus system-prompt guidance.
+
+4. **Remaining direct Anthropic fetch paths**
+   - Review `ContactEnrichmentService.claudeWebSearch`, `health-checker`, and older/demo/module paths.
+   - Migrate production paths to `LLMClient` or `safeFetch` where the wrapper adds meaningful protection.
+
+5. **Payload-boundary governance**
+   - Keep `lib/utils/ai-payload-boundary.js` as the route/service convention for non-Executor paths.
+   - Add new high-volume route tests that assert the `AI payload boundary: <source>` marker reaches proposal-bearing model calls.
+   - Consider a lightweight lint/check for new prompt builders that embed raw `text` without a documented caller boundary.
 
 ## Open Questions
 
-- Where should payload limits live: per route, prompt definition, or shared helper?
+- For Executor-backed prompts, should payload limits live only in prompt definitions, or should route-level overrides remain allowed?
 - Should web search/tool-enabled calls be explicitly separated from internal-only model calls in code?
-- What provider set should Virtual Review Panel default to in production?
+- What provider set should Virtual Review Panel use in production via `VRP_ALLOWED_PROVIDERS`?
 - Who can read `wmkf_ai_run` raw outputs in Dataverse, and how long should those outputs live?
 - Are summary-page extraction and Dynamics-stored abstracts sufficient for reviewer-finder analysis in some cycles?

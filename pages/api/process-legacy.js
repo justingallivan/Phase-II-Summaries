@@ -6,6 +6,12 @@ import { requireAppAccess } from '../../lib/utils/auth';
 import { LLMClient } from '../../lib/services/llm-client';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { safeFetch } from '../../lib/utils/safe-fetch';
+import {
+  DATA_CLASSES,
+  LEGACY_BATCH_SUMMARY_MAX_CHARS,
+  LEGACY_BATCH_EXTRACTION_MAX_CHARS,
+  buildBoundedTextPayload,
+} from '../../lib/utils/ai-payload-boundary';
 
 const limiter = nextRateLimiter({ max: 5 });
 
@@ -66,7 +72,10 @@ export default async function handler(req, res) {
           throw new Error('PDF appears to be empty or contains insufficient text');
         }
 
-        const summary = await generateSummary(text, file.filename, apiKey, summaryLength, summaryLevel, userProfileId);
+        const sendUpdate = (data) => {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        };
+        const summary = await generateSummary(text, file.filename, apiKey, summaryLength, summaryLevel, userProfileId, sendUpdate);
         results[file.filename] = summary;
 
       } catch (fileError) {
@@ -94,9 +103,23 @@ export default async function handler(req, res) {
   }
 }
 
-async function generateSummary(text, filename, apiKey, summaryLength, summaryLevel, userProfileId) {
+async function generateSummary(text, filename, apiKey, summaryLength, summaryLevel, userProfileId, sendUpdate = () => {}) {
   try {
-    const prompt = createSummarizationPrompt(text, summaryLength, summaryLevel);
+    const summaryPayload = buildBoundedTextPayload({
+      text,
+      source: 'legacy.summary.proposalText',
+      dataClass: DATA_CLASSES.PROPOSAL_TEXT,
+      maxChars: LEGACY_BATCH_SUMMARY_MAX_CHARS,
+    });
+    sendUpdate({
+      type: 'payload_boundary',
+      filename,
+      message: summaryPayload.metadata.truncated
+        ? `Proposal text truncated to ${summaryPayload.metadata.transmittedChars.toLocaleString()} characters before AI summarization`
+        : `Proposal text bounded at ${summaryPayload.metadata.transmittedChars.toLocaleString()} characters before AI summarization`,
+      aiPayloadBoundary: summaryPayload.metadata,
+    });
+    const prompt = createSummarizationPrompt(summaryPayload.text, summaryLength, summaryLevel);
     const claude = new LLMClient({
       apiKey,
       model: getModelForApp('batch-phase-ii'),
@@ -125,7 +148,13 @@ async function generateSummary(text, filename, apiKey, summaryLength, summaryLev
 
 async function extractStructuredData(text, filename, summary, apiKey, userProfileId) {
   try {
-    const extractionPrompt = createStructuredDataExtractionPrompt(text, filename);
+    const extractionPayload = buildBoundedTextPayload({
+      text,
+      source: 'legacy.extraction.proposalText',
+      dataClass: DATA_CLASSES.PROPOSAL_TEXT,
+      maxChars: LEGACY_BATCH_EXTRACTION_MAX_CHARS,
+    });
+    const extractionPrompt = createStructuredDataExtractionPrompt(extractionPayload.text, filename);
 
     const claude = new LLMClient({
       apiKey,

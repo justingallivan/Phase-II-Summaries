@@ -29,6 +29,11 @@ import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { loadFile } from '../../../lib/utils/file-loader';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
 import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
+import {
+  DATA_CLASSES,
+  BATCH_PHASE_I_PROPOSAL_MAX_CHARS,
+  buildBoundedTextPayload,
+} from '../../../lib/utils/ai-payload-boundary';
 
 const APP_KEY = 'batch-phase-i-summaries';
 const limiter = nextRateLimiter({ max: 5 });
@@ -100,8 +105,14 @@ export default async function handler(req, res) {
 
     const fileLoad = await loadFile(fileRef);
     const model = getModelForApp('batch-phase-i');
+    const proposalPayload = buildBoundedTextPayload({
+      text: fileLoad.text,
+      source: 'phase-i-dynamics.summarize.proposalText',
+      dataClass: DATA_CLASSES.PROPOSAL_TEXT,
+      maxChars: BATCH_PHASE_I_PROPOSAL_MAX_CHARS,
+    });
     const prompt = createPhaseISummarizationPrompt(
-      fileLoad.text,
+      proposalPayload.text,
       summaryLength,
       summaryLevel,
       KECK_GUIDELINES,

@@ -4,15 +4,15 @@
  */
 
 /**
- * Extract PI, institution, state, and keywords from proposal
- * @param {string} proposalText - The proposal text to analyze
- * @param {number} textLimit - Character limit for extraction (default: 100000)
+ * Extract PI, institution, state, and keywords from proposal.
+ *
+ * Callers MUST bound `proposalText` via lib/utils/ai-payload-boundary.js before
+ * calling. The route boundary is the single source of truth for the cap.
+ *
+ * @param {string} proposalText - The proposal text to analyze (already bounded)
  * @returns {string} - The formatted prompt
  */
-export function createFundingExtractionPrompt(proposalText, textLimit = 100000) {
-  const truncatedText = proposalText.substring(0, textLimit);
-  const truncationIndicator = proposalText.length > textLimit ? '...' : '';
-
+export function createFundingExtractionPrompt(proposalText) {
   return `You are analyzing a research proposal to extract key information for federal funding analysis.
 
 Extract the following information from this proposal:
@@ -45,7 +45,7 @@ Extract the following information from this proposal:
 - Return ONLY the JSON object
 
 Proposal text (first few pages):
-${truncatedText} ${truncationIndicator}
+${proposalText}
 
 Return only valid JSON:`;
 }

@@ -7,6 +7,11 @@ import { BASE_CONFIG, getModelForApp } from '../../shared/config/baseConfig';
 import { loadModelOverrides } from '../../lib/services/model-override-loader';
 import { requireAppAccess } from '../../lib/utils/auth';
 import { safeFetch } from '../../lib/utils/safe-fetch';
+import {
+  DATA_CLASSES,
+  FUNDING_GAP_PROPOSAL_MAX_CHARS,
+  buildBoundedTextPayload,
+} from '../../lib/utils/ai-payload-boundary';
 
 export const config = {
   api: {
@@ -109,7 +114,13 @@ export default async function handler(req, res) {
         // Step 2: Use Claude to extract PI, institution, keywords
         sendProgress(`Extracting PI information and keywords from ${file.filename}...`, baseProgress + 5);
 
-        const extractionPrompt = createFundingExtractionPrompt(proposalText);
+        const extractionPayload = buildBoundedTextPayload({
+          text: proposalText,
+          source: 'funding-gap.extraction.proposalText',
+          dataClass: DATA_CLASSES.PROPOSAL_TEXT,
+          maxChars: FUNDING_GAP_PROPOSAL_MAX_CHARS,
+        });
+        const extractionPrompt = createFundingExtractionPrompt(extractionPayload.text);
         let extractionResponse;
 
         try {
@@ -390,7 +401,8 @@ export default async function handler(req, res) {
             processedAt: new Date().toISOString(),
             searchYears: searchYears,
             proposalLength: proposalText.length,
-            ...metadata
+            ...metadata,
+            aiPayloadBoundary: extractionPayload.metadata,
           }
         });
 

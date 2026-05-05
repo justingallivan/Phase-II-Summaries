@@ -11,11 +11,13 @@
  * Extracts proposal metadata, generates reviewer suggestions with reasoning,
  * and creates optimized search queries for academic databases.
  */
+const DEBUG_REVIEWER_FINDER = process.env.DEBUG_REVIEWER_FINDER === 'true';
+
+// Callers MUST bound `proposalText` via lib/utils/ai-payload-boundary.js before
+// calling. ClaudeReviewerService.analyzeProposal does this with source
+// `reviewer-finder.analyze.proposalText`.
 export function createAnalysisPrompt(proposalText, additionalNotes = '', excludedNames = [], reviewerCount = 12) {
   const safeText = proposalText || 'No proposal text provided';
-  const truncatedText = safeText.length > 100000
-    ? safeText.substring(0, 100000) + '\n\n[...truncated for length...]'
-    : safeText;
 
   const excludedSection = excludedNames.length > 0
     ? `\n**EXCLUDED NAMES (conflicts of interest - do NOT suggest these):**\n${excludedNames.join(', ')}\n`
@@ -24,7 +26,7 @@ export function createAnalysisPrompt(proposalText, additionalNotes = '', exclude
   return `You are an expert at identifying qualified peer reviewers for scientific research proposals. Analyze this proposal and provide structured output for a reviewer discovery system.
 
 **PROPOSAL TEXT:**
-${truncatedText}
+${safeText}
 
 ${additionalNotes ? `**ADDITIONAL CONTEXT FROM USER:**\n${additionalNotes}\n` : ''}
 ${excludedSection}
@@ -226,7 +228,9 @@ export function parseAnalysisResponse(response) {
   // Parse reviewer suggestions
   const reviewerBlocks = response.split(/REVIEWER:/i).slice(1);
 
-  console.log('[parseAnalysisResponse] Found', reviewerBlocks.length, 'reviewer blocks');
+  if (DEBUG_REVIEWER_FINDER) {
+    console.log('[parseAnalysisResponse] Found', reviewerBlocks.length, 'reviewer blocks');
+  }
 
   for (const block of reviewerBlocks) {
     const reviewer = {};
@@ -234,7 +238,9 @@ export function parseAnalysisResponse(response) {
     const nameMatch = block.match(/NAME:\s*(.+?)(?:\n|$)/i);
     if (nameMatch) {
       reviewer.name = nameMatch[1].trim();
-      console.log('[parseAnalysisResponse] Parsed name:', reviewer.name, '| Raw match:', nameMatch[1]);
+      if (DEBUG_REVIEWER_FINDER) {
+        console.log('[parseAnalysisResponse] Parsed name:', reviewer.name, '| Raw match:', nameMatch[1]);
+      }
     }
 
     const institutionMatch = block.match(/INSTITUTION:\s*(.+?)(?:\n|$)/i);

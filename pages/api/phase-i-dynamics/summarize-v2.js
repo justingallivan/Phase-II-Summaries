@@ -72,7 +72,12 @@ export default async function handler(req, res) {
       promptName: PROMPT_NAME,
       requestId: requestGuid,
       overrideVariables: {
-        proposal_text: fileLoad.text.substring(0, 100000),
+        // The Executor enforces the cap via the prompt row's variable
+        // declaration (dataClass=proposal_text, maxChars=100000). See
+        // docs/EXECUTOR_CONTRACT.md § "Data classification + payload boundary"
+        // and scripts/seed-phase-i-summary-prompt.js. Source in audit:
+        //   executor.phase-i.summary.proposal_text
+        proposal_text: fileLoad.text,
         summary_length: summaryLength,
         summary_length_suffix: summaryLength > 1 ? 's' : '',
         audience_description:

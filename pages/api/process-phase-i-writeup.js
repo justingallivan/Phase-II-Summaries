@@ -6,6 +6,11 @@ import { requireAppAccess } from '../../lib/utils/auth';
 import { LLMClient } from '../../lib/services/llm-client';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { safeFetch } from '../../lib/utils/safe-fetch';
+import {
+  DATA_CLASSES,
+  PHASE_I_WRITEUP_PROPOSAL_MAX_CHARS,
+  buildBoundedTextPayload,
+} from '../../lib/utils/ai-payload-boundary';
 
 const limiter = nextRateLimiter({ max: 10 });
 
@@ -81,7 +86,10 @@ export default async function handler(req, res) {
 
         // Generate Phase I writeup using Claude API
         console.log(`Sending to Claude API with text length: ${text.length}`);
-        const writeup = await generatePhaseIWriteup(text, file.filename, institution, apiKey, userProfileId);
+        const sendUpdate = (data) => {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        };
+        const writeup = await generatePhaseIWriteup(text, file.filename, institution, apiKey, userProfileId, sendUpdate);
         console.log(`Received writeup:`, writeup ? 'Success' : 'Failed');
         results[file.filename] = writeup;
 
@@ -112,9 +120,23 @@ export default async function handler(req, res) {
   }
 }
 
-async function generatePhaseIWriteup(text, filename, institution, apiKey, userProfileId) {
+async function generatePhaseIWriteup(text, filename, institution, apiKey, userProfileId, sendUpdate = () => {}) {
   try {
-    const prompt = createPhaseIWriteupPrompt(text, institution);
+    const writeupPayload = buildBoundedTextPayload({
+      text,
+      source: 'phase-i-writeup.writeup.proposalText',
+      dataClass: DATA_CLASSES.PROPOSAL_TEXT,
+      maxChars: PHASE_I_WRITEUP_PROPOSAL_MAX_CHARS,
+    });
+    sendUpdate({
+      type: 'payload_boundary',
+      filename,
+      message: writeupPayload.metadata.truncated
+        ? `Proposal text truncated to ${writeupPayload.metadata.transmittedChars.toLocaleString()} characters before AI writeup`
+        : `Proposal text bounded at ${writeupPayload.metadata.transmittedChars.toLocaleString()} characters before AI writeup`,
+      aiPayloadBoundary: writeupPayload.metadata,
+    });
+    const prompt = createPhaseIWriteupPrompt(writeupPayload.text, institution);
 
     const claude = new LLMClient({
       apiKey,
@@ -147,7 +169,13 @@ async function generatePhaseIWriteup(text, filename, institution, apiKey, userPr
 
 async function extractStructuredData(text, filename, writeup, apiKey, userProfileId) {
   try {
-    const extractionPrompt = createStructuredDataExtractionPrompt(text, filename);
+    const extractionPayload = buildBoundedTextPayload({
+      text,
+      source: 'phase-i-writeup.extraction.proposalText',
+      dataClass: DATA_CLASSES.PROPOSAL_TEXT,
+      maxChars: PHASE_I_WRITEUP_PROPOSAL_MAX_CHARS,
+    });
+    const extractionPrompt = createStructuredDataExtractionPrompt(extractionPayload.text, filename);
 
     const claude = new LLMClient({
       apiKey,

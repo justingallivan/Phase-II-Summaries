@@ -16,6 +16,11 @@ import { safeFetch } from '../../lib/utils/safe-fetch';
 import { MultiLLMService } from '../../lib/services/multi-llm-service';
 import { PanelReviewService } from '../../lib/services/panel-review-service';
 import { resolveAllowedProviders } from '../../lib/utils/vrp-providers';
+import {
+  DATA_CLASSES,
+  VIRTUAL_REVIEW_PANEL_PROPOSAL_MAX_CHARS,
+  buildBoundedTextPayload,
+} from '../../lib/utils/ai-payload-boundary';
 import pdf from 'pdf-parse';
 
 const limiter = nextRateLimiter({ max: 3 });
@@ -167,10 +172,30 @@ export default async function handler(req, res) {
 
     sendEvent('progress', { message: 'Panel review created, starting LLM evaluations...', panelReviewId });
 
+    // Bound proposal text once at the route boundary. The same bounded text
+    // propagates to every downstream stage (intelligence, claim verification,
+    // structured review, devil's advocate) across every configured provider —
+    // a single application covers all downstream prompt builders. The DB hash
+    // above was taken over the original (full) text so the audit trail of
+    // what was uploaded stays intact; the model context never sees the tail.
+    const proposalPayload = buildBoundedTextPayload({
+      text: proposalText,
+      source: 'virtual-review-panel.run.proposalText',
+      dataClass: DATA_CLASSES.PROPOSAL_TEXT,
+      maxChars: VIRTUAL_REVIEW_PANEL_PROPOSAL_MAX_CHARS,
+    });
+    sendEvent('payload_boundary', {
+      filename: file.filename,
+      message: proposalPayload.metadata.truncated
+        ? `Proposal text truncated to ${proposalPayload.metadata.transmittedChars.toLocaleString()} characters before AI panel review`
+        : `Proposal text bounded at ${proposalPayload.metadata.transmittedChars.toLocaleString()} characters before AI panel review`,
+      aiPayloadBoundary: proposalPayload.metadata,
+    });
+
     // Run the full pipeline
     const loggingContext = { userProfileId, appName: 'virtual-review-panel' };
 
-    await PanelReviewService.runFullPanel(panelReviewId, proposalText, providers, {
+    await PanelReviewService.runFullPanel(panelReviewId, proposalPayload.text, providers, {
       includeClaimVerification,
       includeIntelligencePass,
       includeDevilsAdvocate,

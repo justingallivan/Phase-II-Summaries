@@ -9,12 +9,9 @@
  * @param {string} institution - Optional institution name override (default: '')
  * @returns {string} - The formatted prompt
  */
+// Callers MUST bound `text` via lib/utils/ai-payload-boundary.js before calling.
+// The route boundary is the single source of truth for the cap.
 export function createPhaseIWriteupPrompt(text, institution = '') {
-  // Text truncation limit — high enough to include full proposals (personnel, budgets, etc.)
-  const textLimit = 100000;
-  const truncatedText = text.substring(0, textLimit);
-  const truncationIndicator = text.length > textLimit ? '...' : '';
-
   return `You are creating a Phase I proposal writeup for the W.M. Keck Foundation. Analyze the research proposal and generate a concise, well-structured writeup following the exact format below.
 
 **CRITICAL FORMAT REQUIREMENTS:**
@@ -124,7 +121,7 @@ Provide exactly 4 bullet points in this specific order:
 
 Research Proposal Text:
 ---
-${truncatedText} ${truncationIndicator}
+${text}
 
 **OUTPUT FORMAT EXAMPLE:**
 

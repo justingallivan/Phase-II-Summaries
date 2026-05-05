@@ -4,14 +4,17 @@
  */
 
 /**
- * Main summarization prompt for research proposals
- * @param {string} text - The proposal text to summarize
+ * Main summarization prompt for research proposals.
+ *
+ * Callers MUST bound `text` via lib/utils/ai-payload-boundary.js before calling.
+ * The route boundary is the single source of truth for the cap.
+ *
+ * @param {string} text - The proposal text to summarize (already bounded)
  * @param {number} summaryLength - Number of pages (1-5, default: 2)
  * @param {string} summaryLevel - Technical level: 'general-audience', 'technical-non-expert', 'technical-expert', 'academic' (default: 'technical-non-expert')
- * @param {number} textLimit - Maximum characters to process (default: 15000)
  * @returns {string} - The formatted prompt
  */
-export function createSummarizationPrompt(text, summaryLength = 2, summaryLevel = 'technical-non-expert', textLimit = 15000) {
+export function createSummarizationPrompt(text, summaryLength = 2, summaryLevel = 'technical-non-expert') {
   // Map summary levels to descriptions
   const levelDescriptions = {
     'general-audience': 'general audience (avoiding technical jargon, explaining concepts accessibly)',
@@ -66,19 +69,21 @@ export function createSummarizationPrompt(text, summaryLength = 2, summaryLevel 
 
 Research Proposal Text:
 ---
-${text.substring(0, textLimit)} ${text.length > textLimit ? '...' : ''}
+${text}
 
 Write in a neutral, factual tone. Avoid promotional language or unnecessary adjectives. State information directly and let the science speak for itself.`;
 }
 
 /**
- * Structured data extraction prompt
- * @param {string} text - The proposal text
+ * Structured data extraction prompt.
+ *
+ * Callers MUST bound `text` via lib/utils/ai-payload-boundary.js before calling.
+ *
+ * @param {string} text - The proposal text (already bounded)
  * @param {string} filename - The filename (may contain institution hints)
- * @param {number} textLimit - Maximum characters to process
  * @returns {string} - The extraction prompt
  */
-export function createStructuredDataExtractionPrompt(text, filename, textLimit = 10000) {
+export function createStructuredDataExtractionPrompt(text, filename) {
   return `Based on this research proposal, please extract the following information and return it as a JSON object.
 
 IMPORTANT: The filename "${filename}" may contain hints about the institution name. Use this information to help identify the correct institution.
@@ -96,7 +101,7 @@ IMPORTANT: The filename "${filename}" may contain hints about the institution na
 }
 
 Research text:
-${text.substring(0, textLimit)} ${text.length > textLimit ? '...' : ''}
+${text}
 
 Return only the JSON object, no other text.`;
 }

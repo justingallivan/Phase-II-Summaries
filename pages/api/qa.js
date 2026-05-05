@@ -12,6 +12,11 @@ import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { requireAppAccess } from '../../lib/utils/auth';
 import { LLMClient } from '../../lib/services/llm-client';
 import { createQASystemPrompt } from '../../shared/config/prompts/proposal-summarizer';
+import {
+  DATA_CLASSES,
+  QA_PROPOSAL_CONTEXT_MAX_CHARS,
+  buildBoundedTextPayload,
+} from '../../lib/utils/ai-payload-boundary';
 
 export const config = {
   api: {
@@ -61,9 +66,22 @@ export default async function handler(req, res) {
 
     const userProfileId = access.profileId;
 
+    const proposalPayload = buildBoundedTextPayload({
+      text: proposalText || '',
+      source: 'qa.system.proposalText',
+      dataClass: DATA_CLASSES.PROPOSAL_TEXT,
+      maxChars: QA_PROPOSAL_CONTEXT_MAX_CHARS,
+    });
+    sendEvent('payload_boundary', {
+      message: proposalPayload.metadata.truncated
+        ? `Proposal text truncated to ${proposalPayload.metadata.transmittedChars.toLocaleString()} characters before Q&A`
+        : `Proposal text bounded at ${proposalPayload.metadata.transmittedChars.toLocaleString()} characters before Q&A`,
+      aiPayloadBoundary: proposalPayload.metadata,
+    });
+
     // Build system prompt with proposal context
     const systemPrompt = createQASystemPrompt(
-      proposalText || '',
+      proposalPayload.text,
       summaryText || '',
       filename || 'Unknown'
     );

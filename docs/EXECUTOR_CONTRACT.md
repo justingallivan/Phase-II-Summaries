@@ -143,6 +143,36 @@ Executor throws (Vercel) or sets failure status (PA) on: prompt not found, varia
 
 **`cacheable` flag:** Phase 0 honors this for *within-prompt* cache alignment (rerunning the same prompt on the same request hits the Claude cache). Cross-prompt cache alignment (e.g., summary + compliance sharing the bundle) requires context blocks in Phase 2.
 
+**Data classification + payload boundary (added 2026-05-04):** A variable can declare two additional optional fields to opt into the shared AI payload-boundary helper:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `dataClass` | string | Classification tag from `DATA_CLASSES` in `lib/utils/ai-payload-boundary.js` (e.g. `proposal_text`, `grant_report_text`, `crm_record_text`, `review_text`, `staff_provided_context`). |
+| `maxChars` | integer | Hard cap on transmitted character count for this variable. |
+
+**Both fields must be present for enforcement to fire** — declaring only one is treated as no declaration (backwards compatible). When both are present, the Executor applies `buildBoundedTextPayload` to the resolved value before composing the prompt:
+
+- The bounded value is what reaches the prompt body / system block.
+- Source string is `executor.<promptName>.<variableName>` (e.g. `executor.phase-i.summary.proposal_text`), so audit logs and tests can distinguish Executor-driven boundaries from route-driven ones.
+- Boundary metadata (`source`, `dataClass`, `maxChars`, `originalChars`, `transmittedChars`, `truncated`, `truncationMarker`) is returned on `result.meta.aiPayloadBoundaries` (array, one entry per bounded variable). The `wmkf_ai_run` notes string also captures a compact form of the metadata (no content) so unattended PA-triggered runs keep an audit trail.
+- Existing variables without these fields pass through ungated; adoption is opt-in per variable. Existing `kind: 'sharepoint'` variables that already use `source.maxChars` continue with the legacy silent substring unless they're upgraded by also declaring top-level `dataClass`.
+
+Example:
+
+```json
+{
+  "name": "proposal_text",
+  "source": { "kind": "override" },
+  "required": true,
+  "cacheable": true,
+  "placement": "user",
+  "dataClass": "proposal_text",
+  "maxChars": 100000
+}
+```
+
+Callers no longer need to apply their own substring before passing values via `overrideVariables` — the Executor enforces the cap once, uniformly, regardless of `source.kind`.
+
 ### `wmkf_ai_promptoutputschema` (Memo, JSON)
 
 ```json

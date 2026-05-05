@@ -8,13 +8,16 @@
  */
 
 /**
- * Main summarization prompt for research proposals
- * @param {string} text - The proposal text to summarize
+ * Main summarization prompt for research proposals.
+ *
+ * Callers MUST bound `text` via lib/utils/ai-payload-boundary.js before calling.
+ * The route boundary is the single source of truth for the cap.
+ *
+ * @param {string} text - The proposal text to summarize (already bounded)
  * @param {number} summaryLength - Detail level for pages 3-4 content (1-5, default: 2 ≈ 800 words)
- * @param {number} textLimit - Maximum characters to process (default: 100000)
  * @returns {string} - The formatted prompt
  */
-export function createSummarizationPrompt(text, summaryLength = 2, textLimit = 100000) {
+export function createSummarizationPrompt(text, summaryLength = 2) {
   const detailedWordTarget = summaryLength * 400;
 
   return `Please analyze this research proposal and create a two-part writeup following the exact structure below.
@@ -75,19 +78,21 @@ Technical language is acceptable here, but define all abbreviations on first use
 
 Research Proposal Text:
 ---
-${text.substring(0, textLimit)} ${text.length > textLimit ? '...' : ''}
+${text}
 
 Write in a neutral, factual tone. Avoid promotional language or unnecessary adjectives. State information directly and let the science speak for itself.`;
 }
 
 /**
- * Structured data extraction prompt
- * @param {string} text - The proposal text
+ * Structured data extraction prompt.
+ *
+ * Callers MUST bound `text` via lib/utils/ai-payload-boundary.js before calling.
+ *
+ * @param {string} text - The proposal text (already bounded)
  * @param {string} filename - The filename (may contain institution hints)
- * @param {number} textLimit - Maximum characters to process
  * @returns {string} - The extraction prompt
  */
-export function createStructuredDataExtractionPrompt(text, filename, textLimit = 100000) {
+export function createStructuredDataExtractionPrompt(text, filename) {
   return `Based on this research proposal, please extract the following information and return it as a JSON object.
 
 IMPORTANT: The filename "${filename}" may contain hints about the institution name. Use this information to help identify the correct institution.
@@ -110,7 +115,7 @@ IMPORTANT: The filename "${filename}" may contain hints about the institution na
 }
 
 Research text:
-${text.substring(0, textLimit)} ${text.length > textLimit ? '...' : ''}
+${text}
 
 Return only the JSON object, no other text.`;
 }
@@ -155,10 +160,7 @@ Please provide the refined writeup maintaining the exact same format and structu
  * @returns {string} - System prompt
  */
 export function createQASystemPrompt(proposalText, summaryText, filename) {
-  const truncatedProposal = proposalText
-    ? proposalText.substring(0, 80000) + (proposalText.length > 80000 ? '\n\n[...proposal text truncated at 80,000 characters]' : '')
-    : '[No proposal text available]';
-
+  // Callers MUST bound `proposalText` via lib/utils/ai-payload-boundary.js.
   return `You are an expert research assistant helping analyze a research proposal. You have access to the full proposal text and a staff-generated summary.
 
 ## Document: ${filename}
@@ -167,7 +169,7 @@ export function createQASystemPrompt(proposalText, summaryText, filename) {
 ${summaryText || '[No summary available]'}
 
 ## Full Proposal Text
-${truncatedProposal}
+${proposalText || '[No proposal text available]'}
 
 ## Instructions
 - Answer questions thoroughly, referencing specific details from the proposal when relevant

@@ -33,6 +33,12 @@ import { LLMClient } from '../../../lib/services/llm-client';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { loadFile, httpError } from '../../../lib/utils/file-loader';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
+import {
+  DATA_CLASSES,
+  GRANT_REPORTING_REPORT_MAX_CHARS,
+  GRANT_REPORTING_PROPOSAL_MAX_CHARS,
+  buildBoundedTextPayload,
+} from '../../../lib/utils/ai-payload-boundary';
 
 const APP_KEY = 'grant-reporting';
 const limiter = nextRateLimiter({ max: 5 });
@@ -195,7 +201,13 @@ async function handleRegenerate({ res, access, apiKey, reportRef, fieldKey, curr
   const model = getModelForApp(APP_KEY);
   const fallback = getFallbackModelForApp(APP_KEY);
 
-  const prompt = createFieldRegenerationPrompt(reportLoad.text, fieldKey, currentValues);
+  const reportPayload = buildBoundedTextPayload({
+    text: reportLoad.text,
+    source: 'grant-reporting.regenerate.reportText',
+    dataClass: DATA_CLASSES.GRANT_REPORT_TEXT,
+    maxChars: GRANT_REPORTING_REPORT_MAX_CHARS,
+  });
+  const prompt = createFieldRegenerationPrompt(reportPayload.text, fieldKey, currentValues);
   const temperature = fieldKey === 'implications_for_future_grantmaking' ? 0.6 : 0.1;
 
   const start = Date.now();
@@ -301,7 +313,13 @@ export async function extractReport({
   requestGuid = null,
   actingUserSystemId = null,
 }) {
-  const prompt = createGrantReportExtractionPrompt(reportText, headerFromDynamics);
+  const reportPayload = buildBoundedTextPayload({
+    text: reportText,
+    source: 'grant-reporting.extract.reportText',
+    dataClass: DATA_CLASSES.GRANT_REPORT_TEXT,
+    maxChars: GRANT_REPORTING_REPORT_MAX_CHARS,
+  });
+  const prompt = createGrantReportExtractionPrompt(reportPayload.text, headerFromDynamics);
   const start = Date.now();
   let result;
   try {
@@ -319,7 +337,7 @@ export async function extractReport({
       model,
       status: 'failed',
       rawOutput: { error: err.message },
-      notes: 'Grant Reporting extraction — Claude call failed',
+      notes: `Grant Reporting extraction — Claude call failed (boundary: ${reportPayload.metadata.transmittedChars}/${reportPayload.metadata.originalChars} chars, truncated=${reportPayload.metadata.truncated})`,
       actingUserSystemId,
     });
     throw err;
@@ -370,9 +388,21 @@ export async function compareProposalToReport({
   actingUserSystemId = null,
   logContext = 'goals-assessment',
 }) {
+  const proposalPayload = buildBoundedTextPayload({
+    text: proposalText,
+    source: 'grant-reporting.goals.proposalText',
+    dataClass: DATA_CLASSES.PROPOSAL_TEXT,
+    maxChars: GRANT_REPORTING_PROPOSAL_MAX_CHARS,
+  });
+  const reportPayload = buildBoundedTextPayload({
+    text: reportText,
+    source: 'grant-reporting.goals.reportText',
+    dataClass: DATA_CLASSES.GRANT_REPORT_TEXT,
+    maxChars: GRANT_REPORTING_REPORT_MAX_CHARS,
+  });
   const prompt = createGoalsAssessmentPrompt({
-    proposalText,
-    reportText,
+    proposalText: proposalPayload.text,
+    reportText: reportPayload.text,
     headerContext,
     currentNarratives,
   });

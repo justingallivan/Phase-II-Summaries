@@ -124,6 +124,14 @@ const promptVariables = {
       required: true,
       cacheable: true,
       placement: 'user',
+      // Data classification + payload boundary (added 2026-05-04). The
+      // Executor applies buildBoundedTextPayload uniformly when both fields
+      // are declared. Source string in audit logs / prompts:
+      //   executor.phase-i.summary.proposal_text
+      // Cap matches BATCH_PHASE_I_PROPOSAL_MAX_CHARS so callers no longer
+      // need to apply their own substring before passing the value.
+      dataClass: 'proposal_text',
+      maxChars: 100000,
     },
     {
       name: 'summary_length',

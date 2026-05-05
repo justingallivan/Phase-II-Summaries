@@ -6,6 +6,11 @@ import { requireAppAccess } from '../../lib/utils/auth';
 import { LLMClient } from '../../lib/services/llm-client';
 import { nextRateLimiter } from '../../shared/api/middleware/rateLimiter';
 import { safeFetch } from '../../lib/utils/safe-fetch';
+import {
+  DATA_CLASSES,
+  BATCH_PHASE_II_PROPOSAL_MAX_CHARS,
+  buildBoundedTextPayload,
+} from '../../lib/utils/ai-payload-boundary';
 
 const limiter = nextRateLimiter({ max: 5 });
 
@@ -76,7 +81,10 @@ export default async function handler(req, res) {
 
         // Generate summary using Claude API
         console.log(`Sending to Claude API with text length: ${text.length}`);
-        const summary = await generateSummary(text, file.filename, apiKey, summaryLength, userProfileId);
+        const sendUpdate = (data) => {
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        };
+        const summary = await generateSummary(text, file.filename, apiKey, summaryLength, userProfileId, sendUpdate);
         console.log(`Received summary:`, summary ? 'Success' : 'Failed');
         results[file.filename] = { ...summary, extractedText: text };
 
@@ -107,9 +115,23 @@ export default async function handler(req, res) {
   }
 }
 
-async function generateSummary(text, filename, apiKey, summaryLength, userProfileId) {
+async function generateSummary(text, filename, apiKey, summaryLength, userProfileId, sendUpdate = () => {}) {
   try {
-    const prompt = createSummarizationPrompt(text, summaryLength);
+    const summaryPayload = buildBoundedTextPayload({
+      text,
+      source: 'batch-phase-ii.summary.proposalText',
+      dataClass: DATA_CLASSES.PROPOSAL_TEXT,
+      maxChars: BATCH_PHASE_II_PROPOSAL_MAX_CHARS,
+    });
+    sendUpdate({
+      type: 'payload_boundary',
+      filename,
+      message: summaryPayload.metadata.truncated
+        ? `Proposal text truncated to ${summaryPayload.metadata.transmittedChars.toLocaleString()} characters before AI summarization`
+        : `Proposal text bounded at ${summaryPayload.metadata.transmittedChars.toLocaleString()} characters before AI summarization`,
+      aiPayloadBoundary: summaryPayload.metadata,
+    });
+    const prompt = createSummarizationPrompt(summaryPayload.text, summaryLength);
 
     const claude = new LLMClient({
       apiKey,
@@ -148,7 +170,13 @@ async function generateSummary(text, filename, apiKey, summaryLength, userProfil
 
 async function extractStructuredData(text, filename, summary, apiKey, userProfileId) {
   try {
-    const extractionPrompt = createStructuredDataExtractionPrompt(text, filename);
+    const extractionPayload = buildBoundedTextPayload({
+      text,
+      source: 'batch-phase-ii.extraction.proposalText',
+      dataClass: DATA_CLASSES.PROPOSAL_TEXT,
+      maxChars: BATCH_PHASE_II_PROPOSAL_MAX_CHARS,
+    });
+    const extractionPrompt = createStructuredDataExtractionPrompt(extractionPayload.text, filename);
 
     const claude = new LLMClient({
       apiKey,

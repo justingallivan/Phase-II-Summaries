@@ -25,10 +25,8 @@ export function createPhaseISummarizationPrompt(text, summaryLength = 1, summary
 
   const targetAudience = levelDescriptions[summaryLevel] || levelDescriptions['technical-non-expert'];
 
-  // Text truncation limit — high enough to include full proposals (personnel, budgets, etc.)
-  const textLimit = 100000;
-  const truncatedText = text.substring(0, textLimit);
-  const truncationIndicator = text.length > textLimit ? '...' : '';
+  // Callers MUST bound `text` via lib/utils/ai-payload-boundary.js before calling.
+  // The route boundary is the single source of truth for the cap.
 
   return `Please analyze this Phase I research proposal and provide a summary with the following structure:
 
@@ -85,7 +83,7 @@ Write for ${targetAudience}.
 
 Research Proposal Text:
 ---
-${truncatedText} ${truncationIndicator}
+${text}
 
 Provide your response now following the exact format above.`;
 }
