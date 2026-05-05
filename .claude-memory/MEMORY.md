@@ -55,14 +55,13 @@
   - Query auto-expansion: "fungi" → "(fungus* | fungi)^2 OR (fungi~1)"
   - Entity filter format: `entities: [{ name: 'akoya_request' }]`
 - **`wmkf_abstract`** field exists on `akoya_request` — full proposal abstract text, not in original schema but now added
-- Schema mapper (`scripts/dynamics-schema-map.js`) samples only 25 records — can miss fields that aren't populated on those specific records
-- `scripts/dynamics-schema-output.json` is untracked (gitignored territory) — regenerate with `node scripts/dynamics-schema-map.js`
+- [Schema discovery: prefer the diff tool over the sample mapper](project_dynamics_explorer_schema_diff.md) — `scripts/dynamics-schema-diff.js` enumerates ALL Dataverse attributes via EntityDefinitions and reports gaps vs. inline annotations; the older `dynamics-schema-map.js` samples 25 records and silently drops sparsely-populated fields (this is why `wmkf_ai_summary` was missing until 2026-05-05).
 - **Performance optimizations applied** — inline schemas for top 4 tables (saves 1 round-trip), parallel tool execution, streaming final response via `text_delta` SSE events, React.memo/useMemo on MessageBubble
 
 ## Dynamics CRM Users
 - **16 licensed staff users** (Read-Write, `@wmkeck.org`) + ~180 Microsoft service accounts
 - All staff already have Dynamics licenses — OBO flow would not require additional licensing (but is not recommended due to complexity)
-- [Identity reconciliation SHIPPED](project_dynamics_identity_reconciliation.md) — DB bridge + MSCRMCallerID on user-driven writes + adapter chain + token lifecycle (S127–S129). Code complete; rollout gated on `DYNAMICS_IMPERSONATION_ENABLED=true` flip in preview → prod.
+- [Identity reconciliation SHIPPED](project_dynamics_identity_reconciliation.md) — DB bridge + MSCRMCallerID on user-driven writes + adapter chain + token lifecycle (S127–S129). Preview flag flipped + smoked S132 (2026-05-05); rollout BLOCKED on Connor granting **Delegate** role to app user `# WMK: Research Review App Suite` (app user lacks `prvActOnBehalfOfAnotherUser`). 403 fallback keeps prod safe; preview flag left on.
 
 ## SharePoint Document Integration
 - Documents attached to requests are stored in **SharePoint**, not Dynamics
