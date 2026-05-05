@@ -1,6 +1,6 @@
 # Connor brief — Phase 0 Executor handoff
 
-**Status:** Draft. Send after the May 1 2026 cycle has run cleanly through `phase-i.summary` for ~1 week with no production incidents. Phase 0 is shipped and working as of Session 110 (2026-04-25); this brief is what Justin sends Connor when it's confirmed stable.
+**Status:** Ready to send (2026-05-05). The May 1 2026 cycle ran cleanly past the stability bar; Phase 0 is confirmed stable in production. Pre-send checklist below cleared.
 
 Edit freely before sending — the structure below is just to make sure nothing important gets dropped.
 
@@ -46,7 +46,7 @@ Anything ambiguous in the spec, just ping me — better to fix the contract than
 
 ## Pre-send checklist
 
-- [ ] Cycle has been running for at least 5 working days without an `executePrompt` 500 in Vercel runtime logs
-- [ ] No anomalies in `wmkf_ai_run` audit rows (skim the table for `Failed` status patterns)
+- [x] Cycle has been running for at least 5 working days without an `executePrompt` 500 in Vercel runtime logs *(confirmed 2026-05-05)*
+- [x] No anomalies in `wmkf_ai_run` audit rows *(confirmed 2026-05-05)*
+- [x] Call-site references verified — `pages/api/phase-i-dynamics/summarize-v2.js` is still the live `phase-i.summary` consumer; `phase-i.summary`, `reviewer-finder.analyze`/`score-candidates`, `peer-review-summarizer.analyze`/`questions` rows still seeded *(grep verified 2026-05-05)*
 - [ ] Justin has personally re-read `docs/EXECUTOR_CONTRACT.md § Notes for caller authors` so he can answer Connor's first follow-up question without rereading
-- [ ] If any Phase 0 changes have shipped since 2026-04-25, the seeded prompt-row IDs and call-site references above are still accurate (`grep` the repo for `phase-i.summary` and verify)

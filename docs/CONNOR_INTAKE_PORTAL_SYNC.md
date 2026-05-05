@@ -1,7 +1,7 @@
 # Connor sync — Intake portal pilot
 
 **Audience:** Connor
-**Status:** Draft pre-read for the next portal-focused sync. Intake portal pilot targets the **mid-June 2026 Phase II Research cycle** (~25 proposals). IT email for the Entra External ID tenant goes Monday 2026-05-04; the items below are everything that needs Connor input *independently of* the IT timeline.
+**Status:** Draft pre-read for the next portal-focused sync. Intake portal pilot targets the **mid-June 2026 Phase II Research cycle** (~25 proposals). Entra External ID tenant access was granted by IT and the auth foundation shipped in Session 129 (2026-05-04) — `/apply` is now reachable with applicant identity. The items below are the application-layer decisions still ahead of pilot.
 **Read first:** `docs/INTAKE_PORTAL_DESIGN.md` (design v2, scope locked).
 
 ---
@@ -126,6 +126,8 @@ The schema sketch in `shared/forms/phase-ii-research-2026-06/schema.js` is wired
 
 Submission flips `akoya_request.akoya_requeststatus = 'Phase II Pending'`. That same flip already happens today via GOapply for the current cycle. Portal just becomes a second source of that flip.
 
+**One implementation note worth flagging:** the portal's submit endpoint is async — it validates strictly, persists a `submission_jobs` row in Postgres, and returns immediately; a drain cron walks the queue and performs the SharePoint move + Dynamics PATCH + status flip. From your side, nothing changes — the trigger is still the `'Phase II Pending'` flip on `akoya_request`. The only wrinkle is that the flip lands seconds-to-minutes after the applicant clicks submit, not synchronously with the click. Mentioning it in case any flow times out waiting for a synchronous downstream effect (none should, but worth knowing).
+
 **My assumptions, please confirm or correct:**
 
 - Existing PA flows that fire on `'Phase II Pending'` are source-agnostic — they will fire correctly when the portal sets the field, no changes required.
@@ -200,7 +202,7 @@ These are scoped out of pilot and don't need decisions yet — listed so we don'
 
 ## Pre-send checklist (Justin)
 
-- [ ] Re-read design doc latest edits since 2026-05-03 patch (Codex review fixes)
-- [ ] Confirm IT email actually sent Monday before sending this — otherwise update the timing language
+- [x] Re-read design doc latest edits since 2026-05-03 patch (Codex review fixes) *(2026-05-05)*
+- [x] IT email + Entra External ID tenant access — granted; auth foundation shipped Session 129 *(2026-05-04)*
 - [ ] Pick a sync slot before sending (don't ask Connor to pick from nothing)
 - [ ] If anything Connor flagged in earlier conversations contradicts what I've assumed above, fix here before sending

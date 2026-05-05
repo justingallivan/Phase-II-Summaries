@@ -150,7 +150,7 @@ Nothing in that sequence needs your help unless something breaks.
 
 Low priority — whenever you have a minute:
 
-1. **`wmkf_ai_prompt`** — our app user still has no `prvRead` on it. We have the dynamic prompt-resolver pattern designed but can't hit the table. See `docs/CONNOR_PROMPT_TABLE_NOTES.md`.
+1. **`wmkf_ai_prompt`** — our app user still has no `prvRead` on it. We have the dynamic prompt-resolver pattern designed but can't hit the table. See `docs/archive/CONNOR_PROMPT_TABLE_NOTES.md`.
 2. **System/user prompt split** — whether you'd add a second Memo column (`wmkf_ai_systempromptbody`) or keep the combined body + marker-based split. No rush; we can ship the first prompts either way.
 
 ---
