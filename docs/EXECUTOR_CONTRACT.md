@@ -253,7 +253,7 @@ Every Execution writes one `wmkf_ai_run` row with, at minimum:
 | Lookup `wmkf_ai_prompt` (new in Phase 0) | Reference to the prompt row resolved in step 1 |
 | `wmkf_ai_promptversion` | The resolved row's `wmkf_promptversion` |
 | `wmkf_ai_promptoverridden` | `true` if `overrideVariables` was non-empty |
-| `wmkf_ai_promptoverride` | Verbatim text of the override inputs (for audit) if applicable |
+| `wmkf_ai_promptoverride` | JSON of the override inputs (for audit). Variables that opt into the payload boundary (`dataClass` + `maxChars`) are persisted as a redacted summary `[redacted: dataClass=…, originalChars=…, maxChars=…]` — the raw bounded text is never written to Dataverse. Non-bounded overrides are persisted verbatim. |
 | `wmkf_ai_runsource` | Caller-supplied input |
 | `wmkf_ai_tasktype` | Derived from the prompt row (future — after `tasktype` lands on `wmkf_ai_prompt`) |
 | `wmkf_ai_status` | `Completed` / `Failed` / `Needs Review` (the last is also used for blocked runs — see *Notes for caller authors*) |

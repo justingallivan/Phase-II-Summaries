@@ -54,17 +54,22 @@ global.fetch = jest.fn(async (url, init) => {
 // runs without hitting the real CRM. Each test injects its own promptRow
 // shape via PROMPT_ROW.
 let PROMPT_ROW = null;
+const createdRunRows = [];
 jest.mock('../../lib/services/dynamics-service', () => ({
   DynamicsService: {
     queryRecords: jest.fn(async () => ({ records: [PROMPT_ROW] })),
     getRecord: jest.fn(async () => null),
-    createRecord: jest.fn(async () => 'audit-row-id'),
+    createRecord: jest.fn(async (entitySet, payload) => {
+      createdRunRows.push({ entitySet, payload });
+      return 'audit-row-id';
+    }),
     updateRecord: jest.fn(async () => ({})),
   },
 }));
 
 beforeEach(() => {
   fetchedBodies.length = 0;
+  createdRunRows.length = 0;
   process.env.CLAUDE_API_KEY = 'sk-ant-test';
 });
 
@@ -207,5 +212,49 @@ describe('executePrompt — declarative payload boundary', () => {
     expect(sentBody).toContain('UNSENT_TAIL');
     expect(sentBody).not.toContain('AI payload boundary');
     expect(result.meta.aiPayloadBoundaries).toEqual([]);
+  });
+
+  test('audit row redacts bounded override values; raw text never persisted to wmkf_ai_promptoverride', async () => {
+    const overLimit = `${'A'.repeat(100_500)}UNSENT_TAIL`;
+
+    PROMPT_ROW = buildPromptRow({
+      variables: [
+        {
+          name: 'proposal_text',
+          source: { kind: 'override' },
+          required: true,
+          dataClass: 'proposal_text',
+          maxChars: 100_000,
+        },
+        {
+          name: 'summary_length',
+          source: { kind: 'override' },
+          required: false,
+          // No dataClass/maxChars — small scalar, persisted verbatim.
+        },
+      ],
+    });
+
+    await executePrompt({
+      promptName: 'phase-i.summary',
+      overrideVariables: { proposal_text: overLimit, summary_length: 1 },
+      runSource: 'Vercel Test',
+    });
+
+    // Find the wmkf_ai_runs createRecord call (the only one in this test).
+    const runRow = createdRunRows.find(c => c.entitySet === 'wmkf_ai_runs');
+    expect(runRow).toBeDefined();
+
+    const persisted = runRow.payload.wmkf_ai_promptoverride;
+    expect(persisted).toBeDefined();
+    expect(persisted).not.toContain('UNSENT_TAIL');
+    expect(persisted).not.toContain('AAAA');
+    // Bounded variable shows up as a content-free summary.
+    expect(persisted).toMatch(/dataClass=proposal_text/);
+    expect(persisted).toMatch(/originalChars=\d+/);
+    // Non-bounded scalar is preserved verbatim.
+    expect(persisted).toMatch(/"summary_length":1/);
+    // Audit flag still set.
+    expect(runRow.payload.wmkf_ai_promptoverridden).toBe(true);
   });
 });
