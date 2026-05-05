@@ -45,6 +45,7 @@
 
 ## Dynamics Explorer
 - [Multi-library + subfolder document listing shipped](project_dynamics_explorer_archive_libs.md) — `list_documents` and `search_documents` now walk archives + nested folders via `lib/utils/sharepoint-buckets.js`
+- [Tool-result serializer deferred](project_dynamics_explorer_serializer_deferred.md) — Codex AI_DATA_FLOW_MATRIX P1 #2 deferred 2026-05-04 as a watch item. Trigger conditions for revisit: AI-summary loopback, token-cost creep, or new tools broadening the agentic loop.
 - **Dataverse Search API** is enabled on the CRM instance (77K+ docs, 154MB index)
   - Endpoint: `{DYNAMICS_URL}/api/search/v1.0/query`
   - Searches all indexed text fields across tables simultaneously
