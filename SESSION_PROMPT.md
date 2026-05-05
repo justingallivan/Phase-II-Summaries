@@ -1,46 +1,53 @@
-# Session 130 Prompt: Open
+# Session 131 Prompt: Open
 
 ## Heads up
 
-Session 129 was a multi-thread session: documentation correction, full Dynamics-impersonation plumbing, security-matrix response (Codex), and the Entra External ID foundation for the intake portal. Five commits, all pushed. Tree is clean except for two changes (`.github/workflows/test.yml`, `package.json`) and two untracked items (`docs/API_ROUTE_SECURITY_MATRIX.md`, `scripts/check-api-route-security-matrix.js`) that are owned by Justin's parallel Codex session — leave them alone.
+Session 130 was a security-hardening tranche driven by an ongoing Codex review thread. Seven commits, all pushed. P1 column of the AI security matrix is now closed end-to-end and an operating plan is in place for ongoing cadence. Tree is clean.
 
-No carryover red flags.
+No carryover red flags. Codex's parallel matrix-CI work from Session 129 was integrated this session (`ad8f4f3`) — that thread is fully closed.
 
-## Session 129 summary
+## Session 130 summary
 
 ### What was completed
 
-1. **Codebase status snapshot drift correction** (`87f07e2`). Reviewed `docs/CODEBASE_STATUS_2026-05-04.md` against live state. Fixed: product-surface table (added Expense Reporter, removed non-registry entries, corrected display names), file counts (pages 28→27, tests 22→19, docs 92→93), `wmkf_ai_prompt` vs entity-set name disambiguation, "Postgres reviewer tables still load-bearing" annotation, softened "older direct Claude calls" claim that was already migrated.
+1. **AI payload boundary across high-volume Anthropic call sites** (`6af5614`). Established `lib/utils/ai-payload-boundary.js` as the canonical helper. Every route that sends extracted proposal/report text to Claude now passes through `buildBoundedTextPayload` with an explicit source string, dataClass, and route-appropriate cap. Routes covered: reviewer-finder analyze, /api/process + /api/process-legacy, batch Phase I + Phase I writeup, /api/qa, /api/grant-reporting/extract (3 sites), /api/analyze-funding-gap, /api/virtual-review-panel (single boundary propagating through all proposal-bearing stages), /api/phase-i-dynamics/summarize. Six prompt builders had dead `text.substring(0, textLimit)` cleaned up — the route boundary is now the single source of truth. Tests pin every bounded source string.
 
-2. **Adapter chain + token-lifecycle MSCRMCallerID plumbing** (`7d0091e`). Threaded `actingUserSystemId` through `lib/dataverse/adapters/{contact,potential-reviewer,researcher,reviewer-suggestion}.js` and `lib/external/token-lifecycle.js` (mintAndStore, revoke, ensureToken, extendForPostSubmissionWindow). Plumbed from 8 endpoints (save-candidates, my-candidates PATCH/DELETE, render-emails, send-emails, regenerate-token, revoke-token, reviewers PATCH, upload-review). Closes the audit-trail mismatch where contact-promotion + token writes attributed to the service principal mid-flow. 20 new pass-through tests (`tests/unit/adapters-caller-id.test.js`). Suite 333/333.
+2. **API route security matrix + CI gate** (`ad8f4f3`). Codex's parallel work from Session 129 integrated this session. `docs/API_ROUTE_SECURITY_MATRIX.md` catalogues every API route's auth/access pattern; `scripts/check-api-route-security-matrix.js` cross-references and exits non-zero on missing/stale entries. Wired into `npm run check:api-routes` and CI. 76 routes covered.
 
-3. **Security matrix P1 #1: standalone profile creation** (`ee2fb99`). Confirmed `POST /api/user-profiles` was a vestige of the pre-Entra multi-profile era, not intentional. Removed the endpoint, the `createProfile` context method, the "+ New Profile" UI in `pages/profile-settings.js`, and the create dropdown in dev-mode-only `ProfileSelector`. Refreshed stale "About Profiles" copy that still claimed profiles store API keys (centralized 2026-04-26). Net −289 lines across 4 files.
+3. **Override redaction in `wmkf_ai_promptoverride`** (`b057f7e`). Closed Codex P2 finding: `writeRunRow()` was persisting raw `JSON.stringify(overrideVariables)`, so summarize-v2 was writing raw `fileLoad.text` into Dataverse before the Executor boundary applied. Added `redactBoundedOverrides()` — variables with `dataClass + maxChars` declarations now persist as `[redacted: dataClass=..., originalChars=..., maxChars=...]`. Non-bounded scalars stay verbatim.
 
-4. **Security matrix P1/P2/P3 cleanup** (`046835c`). Added `requireSuperuser(req, res)` and `getUserRole(profileId)` helpers to `lib/utils/auth.js`. Migrated 11 routes off per-file `getRole`/`checkSuperuser` clones (7 admin, app-access, user-profiles, reviewer-finder/researchers, 3 dynamics-explorer). Documented intended scope inline for blob-proxy, review-manager/download-review, dynamics-explorer/chat, grant-reporting/lookup-grant, review-manager/reviewers, review-manager/send-emails. Pinned auth/status as intentionally public with a "do not grow" note. Net −89 lines across 21 files.
+4. **Raw-output retention modes for `wmkf_ai_run`** (`39da64e`). New `lib/utils/ai-run-retention.js` exposes `applyRawOutputRetention(rawOutput, retention)` with three modes: `'full'` (default, backwards compat), `'hash'` (`{retention, originalChars, sha256}`), `'none'` (`{retention, originalChars}`). Wired into Executor (`outputSchema.rawOutputRetention`) and `DynamicsService.logAiRun()`. Idempotence guard prevents re-hashing already-retained envelopes. Adopters: `phase-i.summary` prompt row (live tenant activated) and v1 `/api/phase-i-dynamics/summarize` for parity. Grant Reporting deliberately stays `'full'` — no save endpoint, audit row is the only durable copy. Inline comment documents this for future maintainers.
 
-5. **Entra External ID applicant intake foundation** (`68e4c59`). IT delivered the External ID tenant (`04a1406b-3878-4286-bd17-b8c8118886f7`, domain `wmkeckapply.onmicrosoft.com`) during the session. Walked through the user flow + app registration setup interactively. Wired the `entra-external` NextAuth provider as a custom OAuth source against `wmkeckapply.ciamlogin.com`, env-gated. Sessions now self-identify as `'staff' | 'applicant'` via `session.user.userType` with mutually exclusive field sets. Middleware enforces non-crossing both directions. `/auth/signin` auto-dispatches to External ID OAuth when `callbackUrl` resolves to `/apply*` (handles both relative + absolute callback shapes). Smoke-test page at `/apply` renders authenticated applicant identity. End-to-end verified with iCloud hide-my-email account.
+5. **Dynamics Explorer model-context serializer** (`06e682b`). Codex AI_DATA_FLOW_MATRIX P1 #2, originally deferred earlier in the session but then implemented when scope was reframed from "sensitive field redaction" to "model-context minimization." `lib/utils/dynamics-explorer-serializer.js` recursively strips OData metadata, redacts sensitive/loopback field patterns (`description`, `notetext`, `body`, `documentbody`, `wmkf_ai_rawoutput`, `wmkf_ai_promptoverride`, plus credential-shaped names), caps long scalars at 1500 chars, and adds `_aiContextBoundary` metadata when redaction fires. Passthrough for `describe_table`, `count_records`, `list_documents`, `search_documents`. Search highlights routed through field-level serializer so hits on `notetext`/`description` become placeholders. Annotation/email label formatters routed through the same path for consistency. `wmkf_ai_summary` deliberately NOT in denylist — relies on long-string cap so legitimate summary queries still work.
 
-### Commits (Session 129)
+6. **Security operating plan** (`1ffa15d`). New `docs/SECURITY_OPERATING_PLAN.md` captures the operating cadence we want now that the hardening tranche is complete. Weekly (Justin solo, 30-45 min, anchored to start of coding sessions), monthly (rides Connor syncs), quarterly (Justin + IT contact, half day, calendar-or-event-triggered). Each current watch item carries an explicit escalation threshold so the watch list cannot grow indefinitely. Initial Alignment Agenda included for the first planning conversation.
 
-- `87f07e2` — Correct factual drift in codebase status snapshot
-- `7d0091e` — Plumb actingUserSystemId through Dataverse adapters and token lifecycle
-- `ee2fb99` — Remove standalone profile creation path
-- `046835c` — Address remaining security-matrix concerns
-- `68e4c59` — Wire Entra External ID provider for applicant intake portal foundation
+### Live tenant activation
+
+`phase-i.summary` prompt row at `d4201d8e-3840-f111-88b5-000d3a3065b8` now carries `rawOutputRetention: 'hash'`. Verified zero drift via `scripts/diff-phase-i-summary-prompt.js` after `--execute`. The row also got `dataClass: 'proposal_text', maxChars: 100000` on the `proposal_text` variable earlier in the session.
+
+### Commits (Session 130)
+
+- `6af5614` — Establish AI payload-boundary helper and apply across high-volume Anthropic call sites
+- `ad8f4f3` — Add API route security matrix and CI gate
+- `d5351ac` — Memory: Session 130 — defer Dynamics Explorer tool-result serializer (later flipped to shipped)
+- `b057f7e` — Redact bounded override values in wmkf_ai_promptoverride audit field
+- `39da64e` — Add wmkf_ai_run raw-output retention modes; adopt hash for phase-i.summary
+- `06e682b` — Add Dynamics Explorer model-context serializer
+- `1ffa15d` — Add SECURITY_OPERATING_PLAN.md
 
 ### Memory updates this session
 
-- `project_dynamics_identity_reconciliation.md` — adapter chain section flipped from "deferred" to "shipped Session 129"; description and status header updated. MEMORY.md index entry rewritten to reflect code-complete state.
-- `project_intake_portal_external_id_foundation.md` — new entry capturing tenant ID, OAuth endpoint family, provider config, env vars, session shape, watch-outs, next-session ordering. Indexed under "Intake Portal" in MEMORY.md.
-- `project_codex_recurring_review.md` — added a Session 129 update note about the security-matrix recurring cadence and the importance of pushing the matrix CI gate before it bit-rots.
+- `project_dynamics_explorer_serializer_deferred.md` — flipped from "deferred" to "shipped"; renamed; rewrote rationale and watch items for post-ship state.
+- MEMORY.md index entry for the serializer rewritten to reflect shipped status with model-context-minimization framing.
 
-## Where to pick up — Session 130
+## Where to pick up — Session 131
 
-Open. The two threads with the most momentum:
+Open. The two threads with the most momentum are unchanged from Session 130's prompt; the security thread is now closed.
 
 ### A. Continue the intake portal — institution / membership flow (~1 day)
 
-Now that `/apply` has a working applicant identity, the next slice is institution selection:
+Now that `/apply` has a working applicant identity (Session 129), the next slice is institution selection:
 - Applicant lands on `/apply` → empty memberships → routed to institution-search flow.
 - Search by name + EIN (Dataverse query: exact EIN → exact name → fuzzy via Dataverse Search).
 - 0..N candidates returned → applicant picks one or requests "create new."
@@ -51,11 +58,11 @@ Schema is documented in `docs/INTAKE_PORTAL_DESIGN.md` (lines 84–143). Pilot u
 
 ### B. Smoke-test impersonation in preview, then flip prod (~30 min, blocking on staff cooperation)
 
-Procedure in `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md` § Step 5. Now that the adapter chain is plumbed, the preview test exercises a much larger surface than what was tested in Session 128. Recommended: do this BEFORE more intake portal work, so the impersonation flag is on for the new writes that intake will produce.
+Procedure in `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md` § Step 5. The adapter chain is fully plumbed (Session 129); the preview test exercises a much larger surface than what was tested in Session 128. Recommended: do this BEFORE more intake portal work, so the impersonation flag is on for the new writes that intake will produce.
 
-### C. The matrix CI gate (~30 min)
+### C. Initial alignment conversation on the security operating plan (~30 min)
 
-Justin's Codex session has an untracked `scripts/check-api-route-security-matrix.js` and a tweak to `.github/workflows/test.yml`. Once that work is finalized on the Codex side, integrating it removes the "matrix bit-rots" risk — every new route forces a matrix update at PR time.
+`docs/SECURITY_OPERATING_PLAN.md § Initial Alignment Agenda` lists six decisions to make in the first planning conversation. Once aligned, fold the decisions back into the relevant sections and remove the agenda block. This is a Connor-sync topic for the next regular sync — not urgent, just don't let it sit indefinitely.
 
 ### Externally gated (don't pursue without signal)
 
@@ -72,43 +79,48 @@ Justin's Codex session has an untracked `scripts/check-api-route-security-matrix
 
 | File | Purpose |
 |---|---|
-| `lib/utils/auth.js` | `requireSuperuser` + `getUserRole` helpers added; consumed by 11 admin/app-access routes. |
-| `pages/api/auth/[...nextauth].js` | Dual-provider; `entra-external` OAuth registered when env vars present. Per-provider signIn/jwt/session branching. |
-| `middleware.js` | Surface-aware: applicant token required for `/apply/*`, staff token rejected on applicant routes (and vice versa). |
-| `pages/auth/signin.js` | Auto-dispatches to External ID when callbackUrl is `/apply*`. Handles relative + absolute URL shapes. |
-| `pages/_app.js` | `/apply` excluded from staff `ProfileProvider`/`AppAccessProvider`. |
-| `pages/apply/index.js` | NEW. Smoke-test landing page; renders applicant name/email/OID. |
-| `lib/dataverse/adapters/*.js` | Every write helper takes `{ actingUserSystemId } = {}` opts arg, forwards down. |
-| `lib/external/token-lifecycle.js` | mintAndStore/revoke/ensureToken/extendForPostSubmissionWindow accept and forward. |
-| `pages/api/admin/{stats,health-history,maintenance,reconcile-identities,alerts,models,secrets}.js` | Migrated to `requireSuperuser`. |
-| `pages/api/{app-access,user-profiles}.js` | Use `getUserRole`; local clones removed. POST removed from user-profiles. |
-| `pages/api/dynamics-explorer/{feedback,roles,restrictions}.js` | Use `getUserRole`; local clones removed. |
-| `tests/unit/adapters-caller-id.test.js` | NEW. 20 pass-through cases. |
-| `docs/CODEBASE_STATUS_2026-05-04.md` | Drift corrections applied. |
+| `lib/utils/ai-payload-boundary.js` | Canonical bounded-payload helper. Per-route cap constants, DATA_CLASSES enum, source-string convention. |
+| `lib/utils/ai-run-retention.js` | NEW. `applyRawOutputRetention(rawOutput, retention)` — `full` / `hash` / `none`. Idempotent. |
+| `lib/utils/dynamics-explorer-serializer.js` | NEW. Recursive sanitizer for tool results + record-level + field-level entry points. |
+| `lib/services/execute-prompt.js` | `applyVariableBoundaries()` between resolve and compose. `redactBoundedOverrides()` before audit write. `outputSchema.rawOutputRetention` honored. |
+| `lib/services/dynamics-service.js` | `logAiRun()` accepts `rawOutputRetention`. |
+| `pages/api/dynamics-explorer/chat.js` | Serializer wired at tool-result, search-highlight, annotation/email label, and export-AI-processing paths. |
+| `pages/api/grant-reporting/extract.js` | All 6 `tryLogAiRun` call sites bounded; retention deliberately stays `'full'` with inline comment explaining why. |
+| `pages/api/phase-i-dynamics/summarize.js` (v1) | `rawOutputRetention: 'hash'` on success/needs_review path. |
+| `scripts/check-api-route-security-matrix.js` | NEW. CI gate for matrix updates. |
+| `scripts/seed-phase-i-summary-prompt.js` | Added `dataClass + maxChars + rawOutputRetention: 'hash'`. Live row activated. |
+| `scripts/diff-phase-i-summary-prompt.js` | NEW. Read-only field-by-field diff; ran clean post-activation. |
+| `docs/SECURITY_OPERATING_PLAN.md` | NEW. Cadence + watch-item escalation thresholds + alignment agenda. |
+| `docs/EXECUTOR_CONTRACT.md` | Data-classification + payload-boundary section; `wmkf_ai_promptoverride` redaction documented. |
+| `docs/AI_DATA_FLOW_MATRIX.md` | P1 column marked closed; serializer flipped from deferred to shipped. |
+| `docs/API_ROUTE_SECURITY_MATRIX.md` | NEW. 76-route matrix. |
 
 ## Production state (sanity)
 
+- AI payload boundaries: live across every high-volume Anthropic call site.
+- Executor declarative caps: live; `phase-i.summary` is the first adopter.
+- `wmkf_ai_run` retention: phase-i.summary uses `'hash'` in the live tenant. Other callers default to `'full'` (backwards compatible).
+- Dynamics Explorer serializer: live; redaction fires on first non-passthrough tool call.
+- API route matrix CI gate: live; PRs touching `pages/api/**` will fail without a matrix update.
 - Identity reconciliation: code-complete end-to-end. `DYNAMICS_IMPERSONATION_ENABLED` still default off in prod — no behavior change yet.
-- Wave 1: 14-day stability clock running from 2026-05-03.
+- Wave 1: 14-day stability clock running from 2026-05-03 (next eligible drop date 2026-05-17).
 - Reviewer Finder: production-tested. Postgres reviewer tables still load-bearing.
 - External Reviewer Intake: live.
-- **Intake portal Entra External ID foundation: live in code.** No `/apply` UI yet beyond the smoke test. Tenant + provider + middleware are all wired and verified end-to-end.
+- Intake portal Entra External ID foundation: live in code. No `/apply` UI yet beyond the Session 129 smoke test.
 
 ## Testing
 
 ```bash
-# Standard suite — should be 333/333
+# Standard suite — should be 407/407 (1 skipped, 406 passed)
 npm test -- --runInBand
 
-# Adapter pass-through coverage
-npm test -- --runInBand --testPathPatterns="adapters-caller-id"
+# API route matrix CI gate
+npm run check:api-routes
 
-# /apply round-trip (incognito, with EXTERNAL_AZURE_AD_* in .env.local)
-npm run dev
-# Visit http://localhost:3000/apply → External ID OTP → land on /apply showing OID
+# Targeted regression on the security tranche
+npm test -- --runInBand --testPathPatterns="ai-payload-boundary|ai-run-retention|execute-prompt|phase-i-dynamics|grant-reporting|dynamics-explorer|virtual-review-panel"
 
-# Smoke test impersonation locally (requires DYNAMICS_IMPERSONATION_ENABLED=true)
-node scripts/reconcile-dynamics-identities.js --profile 2
-# then exercise an adapter-chain endpoint (e.g., reviewer-finder save-candidates)
-# and confirm acting userid lands on createdby/modifiedby in Dataverse
+# Re-verify live phase-i.summary row is in sync with seed source
+node scripts/diff-phase-i-summary-prompt.js
+# Expect: "✓ No content drift detected."
 ```

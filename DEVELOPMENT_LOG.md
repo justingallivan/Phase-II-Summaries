@@ -10,6 +10,20 @@ The pre-Session 84 chronological per-session log (everything after the September
 
 ---
 
+## May 2026 — AI security hardening tranche + operating plan (Session 130)
+
+**Milestone:** Closed the P1 column of the AI security matrix end-to-end and stood up an ongoing operating cadence so future regressions are caught at PR time rather than in a quarterly audit. AI payload-boundary helper bounds every high-volume Anthropic call site at the route boundary; Prompt Executor enforces the same caps declaratively via `dataClass + maxChars` on prompt-row variable declarations. `wmkf_ai_promptoverride` redacts bounded values before audit-write so raw proposal text never lands in Dataverse. New `rawOutputRetention: 'full' | 'hash' | 'none'` modes cut audit duplication where the business output already lives elsewhere; `phase-i.summary` live row activated with `'hash'`. Dynamics Explorer model-context serializer redacts sensitive/loopback fields and caps long strings before CRM data re-enters the agent loop. API route security matrix + CI gate makes PR-time matrix updates enforceable.
+**Sessions:** 130 (2026-05-05)
+**Ship state:**
+- 7 commits on main: `6af5614` (boundary helper), `ad8f4f3` (matrix + CI gate), `b057f7e` (override redaction), `39da64e` (retention modes + phase-i.summary hash), `06e682b` (Dynamics Explorer serializer), `1ffa15d` (operating plan).
+- Live tenant: `phase-i.summary` row `d4201d8e-3840-f111-88b5-000d3a3065b8` carries `rawOutputRetention: 'hash'`. Verified zero drift via `scripts/diff-phase-i-summary-prompt.js` post-activation.
+- 407/407 tests green (406 + 1 skipped). 76 API routes covered by `npm run check:api-routes`.
+- VRP provider allowlist already in place from earlier in the session via the previous tranche.
+**Why it matters:** The matrix CI gate eliminates the historical "matrix bit-rots between audits" failure mode. The Executor declarative caps mean future prompts get the same boundary protection without per-route work — a backend-automation flow added in PowerAutomate that runs the same prompt row through the same Executor inherits the cap by default. The serializer is reusable model-context minimization that can extend to other agent-loop tools as they're added.
+**Pointers:** `docs/SECURITY_OPERATING_PLAN.md` (operating cadence + escalation thresholds), `docs/AI_DATA_FLOW_MATRIX.md` (P1 column closed), `docs/EXECUTOR_CONTRACT.md` (data-classification + payload-boundary section), `lib/utils/ai-payload-boundary.js`, `lib/utils/ai-run-retention.js`, `lib/utils/dynamics-explorer-serializer.js`, `scripts/check-api-route-security-matrix.js`.
+
+---
+
 ## May 2026 — Applicant intake portal Entra External ID foundation (Session 129)
 
 **Milestone:** First non-staff identity surface in the system. Wired the `entra-external` NextAuth provider against the new `wmkeckapply.ciamlogin.com` External ID tenant IT provisioned this session. Sessions now self-identify as `'staff' | 'applicant'`; middleware enforces non-crossing both directions. Smoke-test page at `/apply` rendered authenticated applicant identity (name/email/Object ID) end-to-end with an iCloud hide-my-email account. Also closed the second half of the Dynamics impersonation work — `actingUserSystemId` now plumbs through the entire Dataverse adapter chain + token lifecycle, so contact promotion and token writes attribute to the same staff user as the surrounding action instead of falling back to the service principal mid-flow.
