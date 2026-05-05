@@ -13,7 +13,8 @@
     "test:integration": "jest tests/integration",
     "test:prompts": "jest tests/unit/prompts",
     "test:utils": "jest tests/unit/utils",
-    "test:ci": "jest --ci --coverage --watchAll=false"
+    "test:ci": "jest --ci --coverage --watchAll=false",
+    "check:api-routes": "node scripts/check-api-route-security-matrix.js"
   },
   "dependencies": {
     "@vercel/analytics": "^1.6.1",

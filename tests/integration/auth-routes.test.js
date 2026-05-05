@@ -86,7 +86,6 @@ jest.mock('../../lib/utils/safe-fetch', () => ({
 jest.mock('../../lib/services/database-service', () => ({
   DatabaseService: jest.fn().mockImplementation(() => ({
     getProfiles: jest.fn(() => Promise.resolve([])),
-    createProfile: jest.fn(() => Promise.resolve({ id: 1 })),
   })),
 }));
 
@@ -314,5 +313,16 @@ describe('/api/user-profiles', () => {
     await handler(req, res);
 
     expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('returns 405 for authenticated POST because standalone profile creation is disabled', async () => {
+    mockAuthenticatedUser(1, []);
+    const req = createMockReq({ method: 'POST', body: { name: 'New Profile' } });
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(405);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Method not allowed' });
   });
 });

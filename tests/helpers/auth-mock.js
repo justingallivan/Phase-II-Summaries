@@ -33,6 +33,9 @@ jest.mock('@vercel/postgres', () => ({
     // Match against known table names
     for (const [key, result] of Object.entries(_mockSqlResults)) {
       if (queryText.toLowerCase().includes(key.toLowerCase())) {
+        if (result instanceof Error) {
+          return Promise.reject(result);
+        }
         return Promise.resolve(result);
       }
     }
@@ -142,6 +145,16 @@ export function mockNoProfile() {
   process.env.AZURE_AD_TENANT_ID = 'test-tenant-id';
 }
 
+/**
+ * Make role lookup fail while preserving the current session/profile mock.
+ */
+export function mockRoleLookupFailure() {
+  _mockSqlResults = {
+    ..._mockSqlResults,
+    dynamics_user_roles: new Error('role lookup failed'),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Request / Response helpers
 // ---------------------------------------------------------------------------
@@ -160,6 +173,7 @@ export function createMockReq({ method = 'GET', headers = {}, body = {}, query =
 export function createMockRes() {
   const res = {
     statusCode: 200,
+    headersSent: false,
     _headers: {},
     _data: null,
     _ended: false,
@@ -169,10 +183,12 @@ export function createMockRes() {
     }),
     json: jest.fn(function (data) {
       this._data = data;
+      this.headersSent = true;
       return this;
     }),
     end: jest.fn(function () {
       this._ended = true;
+      this.headersSent = true;
       return this;
     }),
     setHeader: jest.fn(function (key, value) {
@@ -180,6 +196,11 @@ export function createMockRes() {
       return this;
     }),
     write: jest.fn(),
+    send: jest.fn(function (data) {
+      this._data = data;
+      this.headersSent = true;
+      return this;
+    }),
   };
   return res;
 }

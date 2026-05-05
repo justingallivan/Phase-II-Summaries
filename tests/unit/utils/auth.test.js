@@ -5,6 +5,7 @@
  * - requireAuth: unauthenticated → 401, CSRF validation
  * - requireAuthWithProfile: no profile → 403, disabled → 403
  * - requireAppAccess: missing app → 403, superuser bypass, disabled → 403
+ * - requireSuperuser: auth + profile + superuser role gate
  * - validateOrigin (tested via requireAuth/requireAppAccess CSRF path)
  */
 
@@ -13,6 +14,7 @@ import {
   mockAuthenticatedUser,
   mockDisabledUser,
   mockNoProfile,
+  mockRoleLookupFailure,
   createMockReq,
   createMockRes,
   clearAppAccessCache,
@@ -22,6 +24,7 @@ import {
   requireAuth,
   requireAuthWithProfile,
   requireAppAccess,
+  requireSuperuser,
   isAuthRequired,
 } from '../../../lib/utils/auth';
 
@@ -276,6 +279,71 @@ describe('requireAppAccess', () => {
 
     expect(result).toBeNull();
     expect(res.status).toHaveBeenCalledWith(403);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// requireSuperuser
+// ---------------------------------------------------------------------------
+describe('requireSuperuser', () => {
+  it('returns 401 when unauthenticated', async () => {
+    mockUnauthenticated();
+    const req = createMockReq();
+    const res = createMockRes();
+
+    const result = await requireSuperuser(req, res);
+
+    expect(result).toBeNull();
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('returns 403 when authenticated user is not a superuser', async () => {
+    mockAuthenticatedUser(1, ['reviewer-finder']);
+    const req = createMockReq();
+    const res = createMockRes();
+
+    const result = await requireSuperuser(req, res);
+
+    expect(result).toBeNull();
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Admin access required' });
+  });
+
+  it('returns profileId when authenticated user is a superuser', async () => {
+    mockAuthenticatedUser(2, [], { isSuperuser: true });
+    const req = createMockReq();
+    const res = createMockRes();
+
+    const result = await requireSuperuser(req, res);
+
+    expect(result).toEqual({ profileId: 2 });
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when role lookup fails', async () => {
+    mockAuthenticatedUser(3, []);
+    mockRoleLookupFailure();
+    const req = createMockReq();
+    const res = createMockRes();
+
+    const result = await requireSuperuser(req, res);
+
+    expect(result).toBeNull();
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Admin access required' });
+  });
+
+  it('bypasses role check when auth is disabled in non-production', async () => {
+    mockUnauthenticated();
+    process.env.AUTH_REQUIRED = 'false';
+    process.env.NODE_ENV = 'test';
+    const req = createMockReq();
+    const res = createMockRes();
+
+    const result = await requireSuperuser(req, res);
+
+    expect(result).toEqual({ profileId: null });
+    expect(res.status).not.toHaveBeenCalled();
   });
 });
 
