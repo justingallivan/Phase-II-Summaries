@@ -1,113 +1,132 @@
-# Session 132 Prompt: Open
+# Session 133 Prompt: Intake portal institution/membership flow
 
 ## Heads up
 
-Session 131 was housekeeping — Connor docs triage + CLAUDE.md tightening + Codex CLI install. Two commits, both pushed. No code changes.
+Session 132 cleared two of the three open threads from S131. **A. Impersonation rollout** is preview-flipped + smoke-tested, blocked on Connor granting a Dataverse role. **B. Security operating plan alignment** is fully ratified. **C. Intake portal** is the obvious next primary thread — that decision was made explicit during the alignment conversation.
 
-The three substantive open threads from Session 131's prompt (intake portal membership flow, impersonation flag flip, security operating plan alignment) are unchanged and still the most-momentum candidates.
+Also shipped two small Dynamics Explorer improvements unrelated to those threads: active-only default filter, and the first cut of AI-field documentation on `akoya_request` (with a new schema-diff tool to make future curation easier).
 
-## Session 131 summary
+## Session 132 summary
 
 ### What was completed
 
-1. **Connor docs triage** (`b36aad2`).
-   - Archived 3 fully resolved docs to `docs/archive/`: `CONNOR_PROMPT_TABLE_NOTES.md`, `CONNOR_PROMPT_TABLE_FOLLOWUP.md`, `CONNOR_PROMPT_SCHEMA_QUESTIONS.md`. All superseded once `wmkf_ai_prompt` shipped with system/user split, name-based routing, and `prvRead`/`prvWrite` granted.
-   - Trimmed `CONNOR_QUESTIONS_2026-04-15.md` from 222 lines to ~75: kept only Q4 (Field Set B timeline), Q5 (`akoya_request` workflow-chaining fields), Q6 (two remaining `wmkf_ai_run` columns), Q7 (PD expertise field). Added "Previously resolved" table so context isn't lost.
-   - Updated `WAVE1_PROD_RUNBOOK.md` to point at the archive path.
-   - Prepped two active docs for sending. `CONNOR_BRIEF_PHASE0.md` flipped to "Ready to send (2026-05-05)" — pre-send checklist 3/4 verified (cycle stability, audit row health, call-site references). `CONNOR_INTAKE_PORTAL_SYNC.md` preamble rewritten to reflect that Entra External ID access was granted and `/apply` foundation shipped in Session 129; Section 4 gained a one-paragraph note on the async submit lifecycle so Connor isn't surprised that the `'Phase II Pending'` flip lands seconds-to-minutes after submit click.
-   - Memory: new `feedback_check_memory_before_asking_user.md`. Pre-send "has X happened" items are lookup tasks (MEMORY.md + commits), not user-confirm tasks. Triggered when I asked the user to confirm the IT-email status that was already in MEMORY.md.
+1. **Dynamics Explorer: exclude inactive records by default** (`9c8e456`).
+   - OData query tools (`query_records`, `count_records`, `aggregate`, `find_reports_due`, `export_csv`) now auto-inject `statecode eq 0` so deactivated records are hidden unless the model passes `include_inactive: true`.
+   - User-supplied `statecode` clauses honored verbatim (auto-injection skipped when the user filter mentions statecode).
+   - `search` and `get_entity` deliberately unchanged — those are name/ID lookups where active-only filtering would surprise the user. Documented why in the conversation; if the model needs to filter Dataverse Search, it'd be a post-filter rather than a clause in the search query.
+   - Tool descriptions + system-prompt rules updated so the model doesn't write `statecode eq 0` itself.
 
-2. **CLAUDE.md tightened: 525 → 256 lines (51%), 41.5KB → 18.9KB (54%)** (`29432f2`). Three staged passes:
-   - **Service Classes** — every entry now ≤ 1 line. The dynamics-service.js paragraph (~420 words on `actingUserSystemId` / `MSCRMCallerID` plumbing) collapses to a one-liner pointing at `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md`. Same treatment for intake-draft, token-lifecycle, llm-client, execute-prompt, review-upload, external-token, verify-suggestion-token. Stale prompt-resolver text fixed.
-   - **API Endpoints** — full ~115-line catalogue replaced with a pointer to `docs/API_ROUTE_SECURITY_MATRIX.md` (CI-gated as of S130) plus a short conventions block.
-   - **Database Schema** — column-by-column tables collapsed to a 13-row "table → purpose" matrix; `lib/db/schema.sql` + migrations are authoritative. Added `panel_reviews` / `panel_review_items` (was missing).
-   - **Env Vars** — full block replaced with required-vs-optional groupings + pointer to `CREDENTIALS_RUNBOOK.md` and a "notable flags" callout.
-   - **Per-App Model Configuration** — incomplete table dropped in favor of one line.
-   - **Extended Documentation** — 35-row table reduced to 13 load-bearing operational pointers. Added `SECURITY_OPERATING_PLAN.md`, `API_ROUTE_SECURITY_MATRIX.md`, `INTAKE_PORTAL_DESIGN.md`, `DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md`, `EXTERNAL_REVIEWER_INTAKE_PLAN.md` which were missing.
-   - Stale fixes: "all 13 app definitions" → made count-free (Applications table actually lists 17); historical 2026-04-26 ApiKeyManager removal note dropped; rotting "Foundation only as of Session 129" line in dual-provider NextAuth section dropped.
+2. **Dynamics Explorer: document AI-generated fields on `akoya_request`** (`25d91e4`).
+   - Five `wmkf_ai_*` Memo fields added to `TABLE_ANNOTATIONS` so the model surfaces them: `wmkf_ai_summary`, `wmkf_ai_fitrationale`, `wmkf_ai_dataextract`, `wmkf_ai_compliancesummary`, `wmkf_ai_complianceissues`.
+   - Trigger: user noticed `wmkf_ai_summary` was missing despite being in Dataverse for weeks. Existing `dynamics-schema-map.js` couldn't catch it — sample-based, drops fields populated <20% of 25 sampled records, and sparsely-populated AI fields fall through.
+   - **New tool:** `scripts/dynamics-schema-diff.js`. Definition-based via `EntityDefinitions(LogicalName='X')/Attributes` — enumerates every attribute regardless of population. Filters out `*_base` shadows, `AttributeOf` subordinates, infrastructure noise, TRASH-labeled fields. Output: console report grouped by attribute type + structured JSON (gitignored). Run: `node scripts/dynamics-schema-diff.js [tableName ...]`. No args = all annotated tables.
+   - Surfaced ~250 custom-only missing fields on `akoya_request` alone (of 1213 across all six annotated tables). User explicitly chose minimal patch (option 3) — only the AI family added; broader curation deferred but tooling now exists.
+   - Memory: `project_dynamics_explorer_schema_diff.md` records why to use the new tool over the old mapper.
 
-3. **Codex CLI installed + authenticated**. `codex-cli 0.128.0`, ChatGPT login active for `justingallivan@gmail.com`. Review gate not enabled — opt-in via `/codex:setup --enable-review-gate` if wanted.
+3. **Impersonation rollout: preview flipped, smoke ran, blocker identified** (`df1591f`).
+   - `DYNAMICS_IMPERSONATION_ENABLED=true` set on Vercel preview, deployment built, alias `wmkfresearchapps-preview.vercel.app` pointed at it.
+   - Smoke: signed in as `jgallivan@wmkeck.org`, summarized request 1002379 via `/phase-i-dynamics`. Summary text wrote successfully but `_modifiedby_value` came back as the service principal, not Justin's systemuserid.
+   - **Root cause via direct Dataverse probe:** the application user `# WMK: Research Review App Suite` lacks `prvActOnBehalfOfAnotherUser`. Every impersonation attempt 403s; `_writeFetch` 403 fallback strips `MSCRMCallerID` and retries, succeeds, but attribution lands on the app user.
+   - Vercel logs corroborated: two `[DynamicsService] Impersonated write rejected` warnings, one for the `akoya_request` PATCH and one for the `wmkf_ai_run` POST, both with the same Dataverse error message.
+   - **Important nuance:** the rollout doc anticipated *staff-role* privilege gaps (per-table writes). Actual gap is one layer above — the app user can't impersonate anyone at all. Until Delegate is granted, the staff-role smoke test (kmoses narrow / cnoda broad) is moot. Future rollouts in other Dataverse environments should verify Delegate is on the app user *first*.
+   - **Side effect (resolved at re-smoke time):** request 1002379's `wmkf_ai_summary` was overwritten with placeholder text `(impersonation probe — ignore)` during the direct-API reproduction. Re-running summarize with `overwrite=true` after Connor unblocks both restores the field AND verifies impersonation in the same step. Two-for-one.
+   - **Connor email drafted:** `docs/CONNOR_DELEGATE_ROLE_REQUEST.md` (email body up top, internal context below). Single-purpose ask — grant Delegate role to the app user. Not yet sent.
+   - Memory updated: `project_dynamics_identity_reconciliation.md` flipped from "rollout gated on flag flip" to "BLOCKED on Connor granting Delegate role."
 
-### Commits (Session 131)
+4. **Security operating plan: initial alignment ratified** (`9a95d5c`, `c11d2b7`, `f6682de`).
+   - Drafted a one-page brief mapping each of the six § Initial Alignment Agenda decisions to a recommendation (`9a95d5c`, archived `c11d2b7`).
+   - Justin ratified all six on the spot (1 ✓ 2 ✓ 3 ✓ 4 ✓ 5 ✓ 6 ✓).
+   - Decisions folded into a new `## Decisions, 2026-05-05` block in `docs/SECURITY_OPERATING_PLAN.md`. Old § Initial Alignment Agenda section removed per the plan's own instruction.
+   - Notable concrete change beyond ratification: **weekly cadence trigger switched from "first session of the week" to a recurring calendar reminder** (Mondays AM) — explicit recurrence guards against the cadence-drift failure mode that quietly slips after several weeks.
+   - The wmkf_ai_run read-access question piggybacked onto the Connor email was self-answered same day (`f6682de`): in this Dataverse environment, staff have read access to all fields across all tables by design. Question dropped from the Connor email; assumption baked into the watch-item description so it doesn't get re-asked. Escalation threshold remains "non-staff role gains read access" (e.g. external-portal contact / applicant tenant user).
 
-- `b36aad2` — Connor docs cleanup: archive resolved, trim stale, prep active
-- `29432f2` — Tighten CLAUDE.md: 525 → 256 lines, defer detail to authoritative docs
+### Commits (Session 132)
+
+- `9c8e456` — Dynamics Explorer: exclude inactive records by default
+- `25d91e4` — Dynamics Explorer: document AI-generated fields on akoya_request
+- `df1591f` — Connor request: Delegate role for Research Review App Suite app user
+- `9a95d5c` — Security plan: draft initial alignment brief
+- `c11d2b7` — Security plan: ratify initial alignment decisions
+- `f6682de` — Security plan: resolve wmkf_ai_run read-access question
 
 ### Memory updates this session
 
-- New: `feedback_check_memory_before_asking_user.md` — check MEMORY.md and recent commits before asking the user to confirm pre-send / "has X happened" state.
-- MEMORY.md index entry added under Operational.
+- New: `project_dynamics_explorer_schema_diff.md` — when to use the new diff tool vs. the older sample-based mapper.
+- Updated: `project_dynamics_identity_reconciliation.md` — status flipped to BLOCKED-on-Connor; diagnosis (`prvActOnBehalfOfAnotherUser` on the app user) recorded; rollout doc's anticipated layer noted as wrong (privilege gap is one layer above staff roles).
+- MEMORY.md index entry for the schema-diff memory; impersonation rollout pointer line rewritten.
 
-### Send-ready Connor docs (pending user action)
+## Production state (sanity)
 
-- **`CONNOR_BRIEF_PHASE0.md`** — fully send-ready. Only outstanding pre-send checklist item is a personal re-read of `EXECUTOR_CONTRACT.md § Notes for caller authors`.
-- **`CONNOR_INTAKE_PORTAL_SYNC.md`** — send-ready pending only the sync-slot pick.
+- Vercel preview env: `DYNAMICS_IMPERSONATION_ENABLED=true`. Safe to leave on — 403 fallback handles failures; retest will be cheap once Connor unblocks.
+- Vercel production env: `DYNAMICS_IMPERSONATION_ENABLED` unchanged (off / unset). Don't flip prod until preview re-smokes clean post-Delegate.
+- Request 1002379's `wmkf_ai_summary` currently contains `(impersonation probe — ignore)` — re-run summarize with overwrite to restore.
+- Everything else as of end of S131. Wave 1 stability clock still running from 2026-05-03.
 
-## Where to pick up — Session 132
+## Where to pick up — Session 133
 
-Open. No new threads opened by S131. The three highest-momentum candidates are unchanged:
+### A. **PRIMARY: Intake portal — institution / membership flow** (~1 day per slice)
 
-### A. Continue the intake portal — institution / membership flow (~1 day)
+Per the alignment conversation in S132, this is the explicit next primary thread for sessions 133+. Schema in `docs/INTAKE_PORTAL_DESIGN.md` lines 84–143. Bite-sized first slice:
 
-Schema in `docs/INTAKE_PORTAL_DESIGN.md` lines 84–143. Next slice: applicant lands on `/apply` → empty memberships → institution-search flow. Search by name + EIN (Dataverse: exact EIN → exact name → fuzzy via Dataverse Search). 0..N candidates → applicant picks one or "create new." "Create new" routes to staff approval. Selection creates a `wmkf_portal_membership` row. Bite-sized scope: pick (a) the search/match endpoint or (b) the membership-write flow.
+- **(a) search/match endpoint:** applicant types name + EIN; Dataverse query tries exact EIN → exact name → fuzzy via Dataverse Search. Returns 0..N candidate institutions.
+- **(b) membership-write flow:** applicant picks a candidate or selects "create new"; selection writes a `wmkf_portal_membership` row; "create new" routes to staff approval queue.
 
-### B. Smoke-test impersonation in preview, then flip prod (~30 min, blocking on staff cooperation)
+Pick whichever feels easier to scope cleanly into one session. (a) is more contained and a useful standalone endpoint; (b) needs the staff-approval queue stub which is a bit more design.
 
-Procedure in `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md § Step 5`. Recommended *before* more intake portal work so the impersonation flag is on for the new writes that intake will produce.
+### B. Send the Connor email + re-smoke impersonation when unblocked
 
-### C. Initial alignment conversation on the security operating plan (~30 min)
+Email is at `docs/CONNOR_DELEGATE_ROLE_REQUEST.md`, ready to copy/paste. After Connor confirms Delegate is granted:
+1. Re-run `/phase-i-dynamics` against request 1002379 with overwrite=true (one-step: restores summary text + re-smokes).
+2. Confirm `_modifiedby_value` on the request resolves to Justin's systemuserid (`29b0de0d-4ff7-ee11-a1fd-000d3a3621c7`).
+3. Confirm `_createdby_value` on the latest `wmkf_ai_run` row for that request — same.
+4. Tail Vercel preview logs — zero `Impersonated write rejected` warnings.
+5. Then ask Connor / kmoses to run a smoke as themselves — that's the real privilege-intersection test the rollout doc anticipated.
+6. If clean, flip `DYNAMICS_IMPERSONATION_ENABLED=true` in production, redeploy, smoke once.
 
-`docs/SECURITY_OPERATING_PLAN.md § Initial Alignment Agenda` lists six decisions for the first planning conversation. Ride a Connor sync.
+### C. Palate cleanser: Dynamics Explorer schema curation
+
+If you want a 1-2 hour task between bigger rocks: walk through `scripts/dynamics-schema-diff.js` output for the priority tables (akoya_request, akoya_requestpayment, contact, account) and add 30-40 user-relevant fields to inline annotations. Tooling is now in place; only the curation work remains. Memory: `project_dynamics_explorer_schema_diff.md`.
 
 ### Externally gated (don't pursue without signal)
 
-- Connor sync on the 6 outstanding intake portal decisions in `docs/CONNOR_INTAKE_PORTAL_SYNC.md`. Doc is send-ready.
-- Phase 0 brief delivery — `docs/CONNOR_BRIEF_PHASE0.md` is send-ready.
-- Interim grant report auto-evaluation. Backend job; blocked on Connor input.
+- Connor sync on intake portal Qs in `docs/CONNOR_INTAKE_PORTAL_SYNC.md` (send-ready).
+- Phase 0 brief delivery — `docs/CONNOR_BRIEF_PHASE0.md` (send-ready).
+- Interim grant report auto-evaluation — blocked on Connor input.
 
 ### Deliberately deferred (still don't do)
 
 - 27-script `setRestrictions` / `bypassRestrictions` migration — cleanup, not blocking.
 - Wave 1 retirement — earliest 2026-05-17 (14-day stability clock from 2026-05-03).
-- ⚠️ Drop Postgres reviewer tables — would break the live Reviewer Finder app.
+- ⚠️ **Drop Postgres reviewer tables** — would break the live Reviewer Finder app.
 
 ## Key files added/modified this session
 
 | File | Purpose |
 |---|---|
-| `CLAUDE.md` | Tightened 51% / 54%; defers detail to authoritative docs |
-| `docs/CONNOR_QUESTIONS_2026-04-15.md` | Trimmed to Q4–Q7 stragglers + resolved-items table |
-| `docs/CONNOR_BRIEF_PHASE0.md` | Status flipped to ready-to-send |
-| `docs/CONNOR_INTAKE_PORTAL_SYNC.md` | Preamble rewritten; async submit note added; checklist updated |
-| `docs/WAVE1_PROD_RUNBOOK.md` | Archive-path reference fix |
-| `docs/archive/CONNOR_PROMPT_TABLE_NOTES.md` | Moved from `docs/` |
-| `docs/archive/CONNOR_PROMPT_TABLE_FOLLOWUP.md` | Moved from `docs/` |
-| `docs/archive/CONNOR_PROMPT_SCHEMA_QUESTIONS.md` | Moved from `docs/` |
-| `.claude-memory/feedback_check_memory_before_asking_user.md` | New feedback memory |
-| `.claude-memory/MEMORY.md` | Index entry for the new memory |
-
-## Production state (sanity)
-
-Unchanged from end of Session 130. No code shipped this session.
-
-- AI payload boundaries: live across every high-volume Anthropic call site.
-- Executor declarative caps: live; `phase-i.summary` first adopter (rawOutputRetention `'hash'`).
-- Dynamics Explorer serializer: live.
-- API route matrix CI gate: live.
-- Identity reconciliation: code-complete; `DYNAMICS_IMPERSONATION_ENABLED` still default off in prod.
-- Wave 1: stability clock running from 2026-05-03 (next eligible drop date 2026-05-17).
-- Reviewer Finder, External Reviewer Intake, Intake portal Entra External ID foundation: all live.
+| `pages/api/dynamics-explorer/chat.js` | Added `applyActiveOnlyFilter` helper; wired into 5 OData tools |
+| `shared/config/prompts/dynamics-explorer.js` | `include_inactive` opt-out param on tool defs; system-prompt rule; AI field annotations on akoya_request |
+| `scripts/dynamics-schema-diff.js` | NEW — definition-based schema diff tool |
+| `.gitignore` | Ignore `scripts/dynamics-schema-diff.json` artifact |
+| `docs/CONNOR_DELEGATE_ROLE_REQUEST.md` | NEW — email + internal diagnosis for the impersonation blocker |
+| `docs/SECURITY_OPERATING_PLAN.md` | Decisions block; weekly cadence trigger updated; Initial Alignment Agenda section removed; wmkf_ai_run watch item annotated |
+| `docs/archive/SECURITY_OPERATING_PLAN_ALIGNMENT_BRIEF.md` | Moved from `docs/` after ratification |
+| `.claude-memory/project_dynamics_explorer_schema_diff.md` | NEW — when to use diff tool vs. mapper |
+| `.claude-memory/project_dynamics_identity_reconciliation.md` | Status flipped to BLOCKED-on-Connor; diagnosis recorded |
+| `.claude-memory/MEMORY.md` | Two index entries refreshed |
 
 ## Testing
 
 ```bash
-# Full suite — unchanged from S130, should be 407/407 (1 skipped, 406 passed)
+# Full suite (should still be 407/407, 1 skipped)
 npm test -- --runInBand
 
 # API route matrix CI gate
 npm run check:api-routes
 
-# Re-verify live phase-i.summary row is in sync with seed source
+# Run the new schema diff tool (any/all annotated tables)
+node scripts/dynamics-schema-diff.js
+node scripts/dynamics-schema-diff.js akoya_request
+
+# Re-verify live phase-i.summary row in sync with seed
 node scripts/diff-phase-i-summary-prompt.js
-# Expect: "✓ No content drift detected."
 ```
