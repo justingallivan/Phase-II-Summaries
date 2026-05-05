@@ -1,0 +1,221 @@
+# Security Operating Plan
+
+Last updated: 2026-05-05
+
+This plan captures the operating rhythm we want after the May 2026 hardening tranche. The goal is to keep the app suite secure and maintainable as it moves further into production use, without turning every week into a fresh security audit.
+
+The source-of-truth inventories are:
+
+- `docs/API_ROUTE_SECURITY_MATRIX.md` — who can call each API route and what boundary protects it.
+- `docs/AI_DATA_FLOW_MATRIX.md` — what data enters external AI/model contexts or durable AI logs.
+
+## Current Posture
+
+The recent hardening tranche closed the current P1 column in the AI/security matrices.
+
+Completed controls:
+
+- API route security matrix and CI gate for new/changed API routes.
+- AI data-flow matrix covering high-volume model paths.
+- Explicit payload boundaries for proposal/report text sent to external AI services.
+- Prompt Executor `dataClass + maxChars` declarative payload caps.
+- Redaction of bounded override values before writing `wmkf_ai_promptoverride`.
+- Raw-output retention modes (`full`, `hash`, `none`) for Executor and `DynamicsService.logAiRun()`.
+- `phase-i.summary` live prompt row activated with `rawOutputRetention: "hash"`.
+- Virtual Review Panel provider allowlist and production fail-closed behavior.
+- Reviewer Finder migration to `LLMClient`.
+- Dynamics Explorer model-context serializer for tool results, search highlights, and export AI-processing records.
+
+Remaining items are operational watch items, not urgent code defects:
+
+- Confirm Dataverse permissions and retention policy for `wmkf_ai_run`.
+- Continue adopting `rawOutputRetention` on future high-volume `logAiRun()` callers.
+- Watch Dynamics Explorer token costs and answer quality after serializer rollout.
+- Keep matrices current during PR review.
+
+## Operating Principles
+
+1. New API routes must update `API_ROUTE_SECURITY_MATRIX.md`.
+2. New or materially changed AI/model calls must update `AI_DATA_FLOW_MATRIX.md`.
+3. High-volume text sent to external AI must have an explicit named boundary, a cap, and a regression test.
+4. Sensitive/high-volume inputs should not be copied into audit logs unless that log is the only durable business record.
+5. Security controls should become shared mechanisms when repeated, not route-specific folklore.
+6. Defer code hardening when the risk is speculative, but write down the watch trigger.
+
+## PR-Time Checklist
+
+Use this on any PR that touches API routes, auth, Dynamics, SharePoint, external AI, file handling, or durable logs.
+
+- Does this add or change a `pages/api/**/*.js` route?
+  - Update `docs/API_ROUTE_SECURITY_MATRIX.md`.
+  - Run `npm run check:api-routes`.
+- Does this send user, proposal, report, CRM, or document data to an AI model?
+  - Update `docs/AI_DATA_FLOW_MATRIX.md`.
+  - Add or verify payload boundary tests.
+  - Confirm provider allowlist behavior if multiple vendors are involved.
+- Does this write model input/output to Dataverse, Postgres, logs, Blob, or SharePoint?
+  - Confirm whether content should be `full`, `hash`, `none`, or redacted.
+  - Avoid duplicating sensitive content when a target business record already stores it.
+- Does this expose downloadable files or proxy external URLs?
+  - Confirm ownership/scope checks and host allowlists.
+- Does this touch Dynamics Explorer?
+  - Confirm model-bound records pass through the serializer.
+  - Watch for bypasses caused by preformatted strings or joined summaries.
+
+## Weekly Cadence
+
+Owner: Justin (sole developer on the app suite).
+
+Timebox: 30-45 minutes. Anchored to the start of a coding session, not a separate calendared block — folds into existing work rhythm rather than creating new overhead.
+
+Checklist:
+
+- Review failed CI/security checks.
+- Run or inspect dependency/security alerts.
+- Review new or changed API routes since the last check.
+- Check whether any AI/model call sites were added without matrix updates.
+- Skim recent high-volume AI usage for unexpected token growth or provider drift.
+- Note any follow-up items in the relevant matrix rather than starting a new one-off document.
+
+Output:
+
+- No change needed, or
+- One short issue/PR with the specific matrix row, route, or call site to update.
+
+## Monthly Cadence
+
+Owner: Justin, with Connor looped in on backend-automation / Dynamics-side topics.
+
+Timebox: 60-90 minutes. Tied to the next regular Connor sync rather than a standalone meeting — the doc-storage work, prompt-row activations, and `wmkf_ai_run` retention review naturally belong in those conversations anyway. If a month passes without a Connor sync, do the Dataverse-side checks solo and queue the rest for the next one.
+
+Checklist:
+
+- Review `wmkf_ai_run` access and retention assumptions.
+- Review high-volume `DynamicsService.logAiRun()` callers:
+  - Should raw output stay `full`?
+  - Is `hash` sufficient because the business output is saved elsewhere?
+  - Is `none` sufficient?
+- Review Dynamics Explorer:
+  - Token cost trend.
+  - Query denial trend.
+  - Any answer-quality regressions caused by serializer redaction.
+  - Any loopback behavior involving generated summaries or raw outputs.
+- Review external AI provider configuration:
+  - `VRP_ALLOWED_PROVIDERS`.
+  - Required keys in production.
+  - Provider set stored with runs/results.
+- Confirm operational secrets and production env vars are documented.
+
+Output:
+
+- Update `AI_DATA_FLOW_MATRIX.md` watch items.
+- Open small implementation tickets only for observed risks or clear policy decisions.
+
+## Quarterly Cadence
+
+Owner: Justin, with the Foundation IT contact looped in for service-principal / tenant-permission topics.
+
+Timebox: half day. Triggered by calendar (every three months) OR by a material change (new app, new external integration, new data class entering AI context, IT permission change) — whichever comes first.
+
+Checklist:
+
+- Re-read `API_ROUTE_SECURITY_MATRIX.md` and `AI_DATA_FLOW_MATRIX.md` end to end.
+- Re-rank open P1/P2/P3 items.
+- Review auth/app-access assumptions against actual staff usage.
+- Review Dataverse and SharePoint service-principal permissions.
+- Review production incidents, near misses, or confusing operator workflows.
+- Confirm whether documented deferrals are still valid.
+
+Output:
+
+- Updated matrix priorities.
+- A short decision log:
+  - What changed?
+  - What remains accepted risk?
+  - What needs code?
+  - What needs IT/admin action?
+
+## Current Watch Items
+
+### `wmkf_ai_run` Retention
+
+Status: partially adopted.
+
+`phase-i.summary` uses hash retention. Grant Reporting deliberately remains `full` because its output currently flows to client-side Word export and the audit row is the only durable copy.
+
+Watch trigger (any one is sufficient):
+
+- A save-to-`akoya_request` path lands for Grant Reporting outputs (Grant Reporting → `'hash'`).
+- A new high-volume `logAiRun()` caller stores derived proposal/report text and the same content lives elsewhere as a business record (new caller → `'hash'`).
+- Dataverse access review shows `wmkf_ai_run` is readable by roles broader than intended (escalate to IT ticket — this is a permission concern, not a code concern).
+
+Escalation threshold:
+
+- Watch becomes a ticket when the Dataverse `wmkf_ai_run` table exceeds 10,000 rows OR when a non-staff role (e.g. external contact, applicant tenant user) gains read access to the table. Until then, the table is small enough and the audience is narrow enough that retention is a watch item, not a defect.
+
+Likely response:
+
+- Adopt `rawOutputRetention: "hash"` or `"none"` for the relevant caller.
+- Document the rationale inline at the call site.
+
+### Dynamics Explorer Serializer
+
+Status: shipped.
+
+The serializer redacts high-risk fields and caps long values before CRM data re-enters Claude context. `wmkf_ai_summary` is intentionally not denylisted; the long-string cap preserves legitimate summary questions while avoiding full 4-8KB summary fan-out.
+
+Watch trigger:
+
+- Token costs rise after more long-text fields enter common tables.
+- Claude cites generated summaries as ground truth in fresh queries.
+- Users report that serializer redaction prevents legitimate answers.
+
+Escalation threshold:
+
+- Watch becomes a ticket when Dynamics Explorer's monthly Anthropic spend exceeds $50, OR when a single user reports a redaction-induced wrong answer (false negative on a legitimate query is a real product bug; cost creep is a config tuning task). Token-cost trend is observable via the existing usage logs in `api_usage_log`.
+
+Likely response:
+
+- Add per-table default `select` pruning for generic queries.
+- Add deliberate field-specific allow paths where justified.
+- Avoid globally disabling the serializer.
+
+### Search Document Fan-Out
+
+Status: accepted watch item.
+
+`search_documents` passes through curated Graph snippets. Per-file snippets are small, but broad queries can join many snippets into a larger context payload.
+
+Watch trigger:
+
+- Search-document queries become a measurable token-cost source.
+- Users run broad document searches routinely.
+
+Escalation threshold:
+
+- Watch becomes a ticket when a single `search_documents` invocation routinely returns more than 50 files, OR when search-tool token usage exceeds 20% of total Dynamics Explorer spend in a month.
+
+Likely response:
+
+- Add a fan-out cap, such as limiting returned snippet lines and reporting `hasMore`.
+
+## Initial Alignment Agenda
+
+For the first planning conversation that anchors this operating plan — whether that's tomorrow or three weeks from now. Once decisions are made, fold them back into the relevant sections above and remove this section.
+
+1. Confirm the hardening tranche is complete.
+2. Confirm Justin owns weekly/monthly/quarterly security operations as drafted, and that the monthly cadence rides along Connor syncs.
+3. Decide whether `wmkf_ai_run` permission/retention review needs an IT ticket now or stays a watch item until the escalation thresholds above trigger.
+4. Decide how strict the PR-time matrix-update check should be — soft prompt vs. CI-blocking.
+5. Decide where to track watch items: matrix rows only, or matrix rows plus GitHub issues. (Memory entries already cover the longer-form rationale.)
+6. Pick the next non-security priority, since this tranche is now at a natural stopping point.
+
+## Definition of Done For Future Security Work
+
+A security hardening item is done when:
+
+- The code change is implemented.
+- The relevant matrix is updated.
+- Tests pin the behavior if regression would matter.
+- Any production activation step is complete or explicitly tracked.
+- The remaining risk is documented as accepted, deferred, or transferred to IT/admin action.
