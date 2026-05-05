@@ -205,11 +205,18 @@ export default async function handler(req, res) {
     // ─── Append-only audit row ──────────────────────────────────────────────
     // Category label keeps raw Dynamics error out of the audit memo (which is
     // itself stored in Dynamics and visible to more users than the API caller).
+    // Retention: the summary itself lands on `akoya_request.wmkf_ai_summary`,
+    // so the audit row only needs correlation metadata, not a duplicate
+    // narrative. Parity with summarize-v2's prompt-row `rawOutputRetention`.
+    // On writeback failure (`needs_review`), the duplicate doesn't exist on
+    // the request yet — but the user retained the response and can retry; the
+    // hash is still sufficient for after-the-fact correlation.
     const auditLogCreated = await tryLogAiRun({
       requestGuid,
       model: modelUsed,
       status: writebackOk ? 'completed' : 'needs_review',
       rawOutput: { summary: summaryText, filename: fileLoad.filename, summaryLength, summaryLevel },
+      rawOutputRetention: 'hash',
       notes: writebackOk
         ? `Phase I Dynamics summarize (${fileLoad.filename}) — wmkf_ai_summary updated`
         : `Phase I Dynamics summarize (${fileLoad.filename}) — writeback ${writebackFailureCategory}`,
@@ -242,7 +249,7 @@ export default async function handler(req, res) {
 // logged but not rethrown — the user-facing flow must continue — however the
 // boolean bubbles to the response as `auditLogCreated` so monitoring can
 // alert on audit gaps.
-async function tryLogAiRun({ requestGuid, model, status, rawOutput, notes, actingUserSystemId }) {
+async function tryLogAiRun({ requestGuid, model, status, rawOutput, rawOutputRetention, notes, actingUserSystemId }) {
   if (!requestGuid) return false;
   try {
     await DynamicsService.logAiRun({
@@ -252,6 +259,7 @@ async function tryLogAiRun({ requestGuid, model, status, rawOutput, notes, actin
       promptVersion: PHASE_I_PROMPT_VERSION,
       status,
       rawOutput,
+      rawOutputRetention,
       notes,
       actingUserSystemId,
     });

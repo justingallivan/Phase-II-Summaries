@@ -519,6 +519,15 @@ function parseJsonResponse(text) {
 
 // Fire-and-log wrapper around DynamicsService.logAiRun. Writeback is best-effort
 // audit logging — a failure here must never break the user's extraction flow.
+//
+// Note on rawOutputRetention: deliberately omitted (defaults to 'full') across
+// every call site. Grant Reporting has no save endpoint — extracted fields and
+// the goals assessment flow only into the client-side Word export, never to a
+// Dynamics field. The wmkf_ai_run row is therefore the ONLY durable copy of
+// the model output, so hashing it would discard the underlying record. If a
+// future iteration adds a save-to-akoya_request path, revisit and switch
+// extract/regenerate to 'hash' (goals likely stays 'full' — see comment in
+// compareProposalToReport).
 async function tryLogAiRun({ requestGuid, model, status, rawOutput, notes, actingUserSystemId }) {
   if (!requestGuid) return;
   try {

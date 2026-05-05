@@ -83,7 +83,7 @@ import { executePrompt } from '../../lib/services/execute-prompt';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function buildPromptRow({ variables, systemPrompt = 'SYS', promptBody = 'BODY: {{proposal_text}}' }) {
+function buildPromptRow({ variables, systemPrompt = 'SYS', promptBody = 'BODY: {{proposal_text}}', rawOutputRetention = 'full' }) {
   return {
     wmkf_ai_promptid: 'prompt-1',
     wmkf_ai_promptname: 'phase-i.summary',
@@ -96,6 +96,7 @@ function buildPromptRow({ variables, systemPrompt = 'SYS', promptBody = 'BODY: {
     wmkf_ai_promptoutputschema: JSON.stringify({
       outputs: [{ name: 'summary', type: 'string', target: { kind: 'none' } }],
       parseMode: 'raw',
+      rawOutputRetention,
     }),
     wmkf_ai_model: 'claude-test',
     wmkf_ai_maxtokens: 1024,
@@ -256,5 +257,38 @@ describe('executePrompt — declarative payload boundary', () => {
     expect(persisted).toMatch(/"summary_length":1/);
     // Audit flag still set.
     expect(runRow.payload.wmkf_ai_promptoverridden).toBe(true);
+  });
+
+  test('rawOutputRetention=hash stores only output hash metadata in wmkf_ai_rawoutput', async () => {
+    PROMPT_ROW = buildPromptRow({
+      rawOutputRetention: 'hash',
+      variables: [
+        {
+          name: 'proposal_text',
+          source: { kind: 'override' },
+          required: true,
+          dataClass: 'proposal_text',
+          maxChars: 100_000,
+        },
+      ],
+    });
+
+    const result = await executePrompt({
+      promptName: 'phase-i.summary',
+      overrideVariables: { proposal_text: 'small proposal' },
+      runSource: 'Vercel Test',
+    });
+
+    expect(result.parsed.summary).toContain('Phase I summary');
+    expect(result.meta.rawOutputRetention).toBe('hash');
+
+    const runRow = createdRunRows.find(c => c.entitySet === 'wmkf_ai_runs');
+    const persisted = JSON.parse(runRow.payload.wmkf_ai_rawoutput);
+    expect(persisted).toEqual(expect.objectContaining({
+      retention: 'hash',
+      originalChars: expect.any(Number),
+      sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    }));
+    expect(runRow.payload.wmkf_ai_rawoutput).not.toContain('A multi-paragraph Phase I summary');
   });
 });

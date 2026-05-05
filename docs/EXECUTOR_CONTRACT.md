@@ -85,7 +85,7 @@ Executor throws (Vercel) or sets failure status (PA) on: prompt not found, varia
 | 6 | Call Claude | HTTP action → Anthropic API | `fetch('https://api.anthropic.com/v1/messages', ...)` |
 | 7 | Parse output | Parse JSON on Claude response `content[0].text` using `wmkf_ai_promptoutputschema.jsonSchema` (or treat as raw text when `parseMode = "raw"`) | Same |
 | 8 | Persist outputs | Apply-to-each target binding + Switch on `target.kind`. PATCH with `If-Match: <etag>` from step 4 (write fails 412 on concurrent edit, surfaced to caller as `writeback_failed`). | Same loop |
-| 9 | Log Execution | Create `wmkf_ai_run`: Lookup to prompt row, `wmkf_ai_promptversion`, `wmkf_ai_runsource`, `wmkf_ai_status`, `wmkf_ai_model`, `wmkf_ai_rawoutput`, token/cache counts in `wmkf_ai_notes`, `wmkf_ai_request` Lookup | Same |
+| 9 | Log Execution | Create `wmkf_ai_run`: Lookup to prompt row, `wmkf_ai_promptversion`, `wmkf_ai_runsource`, `wmkf_ai_status`, `wmkf_ai_model`, `wmkf_ai_rawoutput` according to `rawOutputRetention`, token/cache counts in `wmkf_ai_notes`, `wmkf_ai_request` Lookup | Same |
 | 10 | Return | Return `{ parsed, runId, cacheHit, blocked: false }` | `return { parsed, runId, cacheHit, blocked: false }` |
 
 ---
@@ -223,6 +223,16 @@ Each output may declare a `guard` policy that the Executor applies in step 4 (pr
 
 **`parseMode` (output schema, Phase 0):** `"json"` (default — Claude must return parseable JSON matching `jsonSchema`) or `"raw"` (the entire `content[0].text` becomes the value of the single declared output; `jsonSchema` ignored). Multi-output prompts must use `"json"`.
 
+**`rawOutputRetention` (output schema, added 2026-05-04):** controls what the Executor writes to `wmkf_ai_run.wmkf_ai_rawoutput` after parsing/persisting the model response. Default is `"full"` for backwards compatibility.
+
+| Mode | `wmkf_ai_rawoutput` content |
+|---|---|
+| `full` | Full Claude response text, truncated only by the Dataverse Memo safety cap. |
+| `hash` | Content-free metadata: `{retention:"hash", originalChars, sha256}`. Use when the model output is already persisted to a target field such as `akoya_request.wmkf_ai_summary`. |
+| `none` | Content-free metadata: `{retention:"none", originalChars}`. Use when even hash correlation is unnecessary. |
+
+`phase-i.summary` uses `"hash"` because the summary itself is already written to `akoya_request.wmkf_ai_summary`; the run row only needs correlation metadata.
+
 ---
 
 ## Caching contract
@@ -258,7 +268,7 @@ Every Execution writes one `wmkf_ai_run` row with, at minimum:
 | `wmkf_ai_tasktype` | Derived from the prompt row (future — after `tasktype` lands on `wmkf_ai_prompt`) |
 | `wmkf_ai_status` | `Completed` / `Failed` / `Needs Review` (the last is also used for blocked runs — see *Notes for caller authors*) |
 | `wmkf_ai_model` | The model ID actually used |
-| `wmkf_ai_rawoutput` | Claude's raw response text |
+| `wmkf_ai_rawoutput` | Claude response according to `rawOutputRetention` (`full`, `hash`, or `none`) |
 | `wmkf_ai_request` | Lookup to `akoya_request` (if applicable) |
 | `wmkf_ai_notes` | Input/output token counts + cache hit counts + any error summary |
 | `wmkf_ai_rundatetime` | Set by caller or default to now |

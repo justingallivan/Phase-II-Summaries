@@ -182,6 +182,10 @@ const promptOutputSchema = {
   // value of the single output. No JSON wrapping, no schema validation.
   // See header comment "Output schema — single raw-text output for Phase 0".
   parseMode: 'raw',
+  // The summary is already written to akoya_request.wmkf_ai_summary. Keep
+  // wmkf_ai_run useful for audit/replay correlation without duplicating the
+  // full generated narrative in the raw-output log.
+  rawOutputRetention: 'hash',
 };
 
 const recordData = {

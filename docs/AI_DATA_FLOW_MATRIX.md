@@ -96,11 +96,13 @@ Recommended next step: migrate remaining production Claude callers to `LLMClient
 
 ### P2 - AI-run logs persist generated outputs with large limits
 
-`executePrompt()` stores `wmkf_ai_rawoutput` up to 1,000,000 characters in Dataverse. Grant reporting also stores parsed extraction/goals outputs through `DynamicsService.logAiRun`. These are useful audit records, but may contain sensitive derived proposal/report content.
+`executePrompt()` and `DynamicsService.logAiRun()` can store model output in `wmkf_ai_rawoutput`. These are useful audit records, but may contain sensitive derived proposal/report content.
 
 Code threat: a prompt output can unexpectedly include copied input text or sensitive fields and then persist far longer or wider than the original route response.
 
-Recommended next step: confirm Dataverse permissions and retention for `wmkf_ai_run`. Add a per-prompt raw-output retention mode so high-volume prompts can store structured outputs or hashes instead of full raw output where appropriate.
+**Status (2026-05-04): partially addressed.** Executor output schemas now support `rawOutputRetention: "full" | "hash" | "none"`; `phase-i.summary` is the first adopter and stores hash metadata in `wmkf_ai_rawoutput` because the generated summary is already persisted to `akoya_request.wmkf_ai_summary`. `DynamicsService.logAiRun()` also accepts `rawOutputRetention` for non-Executor callers, but existing grant-reporting/manual callers still need per-call adoption.
+
+Recommended next step: confirm Dataverse permissions and retention for `wmkf_ai_run`, then adopt `rawOutputRetention` on the remaining high-volume `logAiRun()` call sites where full raw output is not needed.
 
 ### P3 - Error/log analysis flow is relatively well minimized
 
@@ -125,8 +127,8 @@ Recommended next step: use this as the model for "redact before external AI, red
 | `/api/analyze-literature` | Anthropic Claude | Literature search results, user topic/proposal context, synthesis prompts | Multiple calls, 4k-6k max output | Analysis returned; usage metadata | App access, `LLMClient` | Medium | Depends on user-supplied context. Search results mostly public; proposal context may raise risk. |
 | `/api/evaluate-multi-perspective` | Anthropic Claude | User concept/proposal text and perspective prompts; optional image/vision payloads | Multiple model calls; 1.5k-3.5k max output | Evaluation returned; manual usage logging | App access, `LLMClient` | Medium | Clarify whether users paste non-public proposal material. |
 | `/api/phase-i-dynamics/summarize` | Anthropic Claude | Proposal file text loaded from SharePoint/upload plus request GUID context | Proposal text bounded at 100,000 chars before prompt construction | Writes summary to `akoya_request.wmkf_ai_summary`; logs AI run/usage | App access, rate limit, overwrite guard, optimistic concurrency, explicit AI payload boundary | High | Code risk is wrong-record writeback or accidental overwrite; concurrency guard is good. Route-level boundary is pinned by a handler test. |
-| `/api/phase-i-dynamics/summarize-v2` via `executePrompt()` | Anthropic Claude | Raw `fileLoad.text` passed via `overrideVariables.proposal_text`; Executor enforces the cap | Executor caps `proposal_text` at 100,000 chars via prompt-row metadata (`dataClass: 'proposal_text'`, `maxChars: 100000`); source string `executor.phase-i.summary.proposal_text` | Writes target fields; stores `wmkf_ai_run` raw output up to 1M chars | App access, executor guard, overwrite controls, Dataverse audit, declarative payload boundary | High | Route-level substring removed in favor of Executor-enforced cap. Boundary metadata surfaces on `result.meta.aiPayloadBoundaries` and in the `wmkf_ai_run` notes. |
-| `lib/services/execute-prompt.js` | Anthropic Claude | Prompt variables from Dynamics, SharePoint text extraction, caller overrides | Per-variable payload boundary when a declaration includes both `dataClass` and `maxChars` (opt-in, backwards compatible); applied uniformly across `kind: override / dynamics / sharepoint` | Writes outputs to Dynamics; creates AI-run audit row with raw output and boundary summary | Centralized prompt executor, output guards, Dataverse audit, declarative payload boundary | High | Mechanism shipped 2026-05-04; first adopter is `phase-i.summary`. Future prompts adopt the metadata fields when touched; raw-output retention policy still open. |
+| `/api/phase-i-dynamics/summarize-v2` via `executePrompt()` | Anthropic Claude | Raw `fileLoad.text` passed via `overrideVariables.proposal_text`; Executor enforces the cap | Executor caps `proposal_text` at 100,000 chars via prompt-row metadata (`dataClass: 'proposal_text'`, `maxChars: 100000`); source string `executor.phase-i.summary.proposal_text` | Writes summary to `akoya_request.wmkf_ai_summary`; stores only hash metadata in `wmkf_ai_rawoutput` via `rawOutputRetention: "hash"` | App access, executor guard, overwrite controls, Dataverse audit, declarative payload boundary and raw-output retention | High | Route-level substring removed in favor of Executor-enforced cap. Boundary metadata surfaces on `result.meta.aiPayloadBoundaries` and in the `wmkf_ai_run` notes. |
+| `lib/services/execute-prompt.js` | Anthropic Claude | Prompt variables from Dynamics, SharePoint text extraction, caller overrides | Per-variable payload boundary when a declaration includes both `dataClass` and `maxChars` (opt-in, backwards compatible); applied uniformly across `kind: override / dynamics / sharepoint` | Writes outputs to Dynamics; creates AI-run audit row with configurable raw-output retention (`full`, `hash`, `none`) and boundary summary | Centralized prompt executor, output guards, Dataverse audit, declarative payload boundary and raw-output retention | High | Mechanism shipped 2026-05-04; first adopter is `phase-i.summary`. Future prompts adopt metadata fields when touched. |
 | `/api/grant-reporting/extract` | Anthropic Claude | Grant report text, proposal text for goals assessment, authoritative Dynamics header fields, current narratives | Report/proposal text bounded at 100,000 chars at each model entry point | Returns structured extraction/goals; logs usage and AI-run outputs | App access, rate limit, `LLMClient`, file loader, explicit AI payload boundary metadata | High | Code risk is multi-document prompt growth and raw-output persistence. Add output retention policy for AI-run records. |
 | `/api/dynamics-explorer/chat` | Anthropic Claude with tool loop | User question, recent conversation, tool definitions, CRM query/search/list document results, possible exported record batches | Streaming `maxTokens: 2048`; batch processing `maxTokens: 4096`; result char caps per tool | Dynamics query log stores query params/counts; usage metadata | App access, Dynamics roles/restrictions, result char caps, conversation trimming | High | Highest CRM-specific code target. Add tool-result field serializer and sensitive-field masking before model context. |
 | `/api/virtual-review-panel` and `PanelReviewService` | Anthropic, OpenAI, Gemini, Perplexity | Bounded proposal text for proposal-bearing stages; extracted claims/search results; parsed reviewer outputs for synthesis | Proposal text bounded at 100,000 chars once at the route boundary; multi-provider fan-out; panel DB stores text hash not raw proposal | Panel results/items/costs stored; provider outputs persisted | App access, rate limit, provider availability checks, `VRP_ALLOWED_PROVIDERS` allowlist, provider set persisted per run, explicit AI payload boundary metadata | High | Provider-set drift mitigated by production fail-closed allowlist. Remaining risk is that Claude is currently mandatory for synthesis and intelligence extraction/collation; future provider changes should make those stages policy-aware. |
@@ -141,15 +143,16 @@ Recommended next step: use this as the model for "redact before external AI, red
 
 ## Recommended Hardening Sequence
 
-1. **Prompt Executor data classification — payload boundary done; retention pending**
+1. **Prompt Executor data classification — payload boundary and first retention policy shipped**
    - ✅ Per-variable `dataClass` + `maxChars` declarations are honored by the Executor (added 2026-05-04). First adopter: `phase-i.summary` row, used by `/api/phase-i-dynamics/summarize-v2`.
    - ✅ Route-level substring removed from `summarize-v2`; `executor.phase-i.summary.proposal_text` is the load-bearing cap.
+   - ✅ `rawOutputRetention` supports `full`, `hash`, and `none`; `phase-i.summary` stores hash metadata rather than duplicating the generated summary in `wmkf_ai_rawoutput`.
    - 🟡 Apply the same metadata to other Dynamics-backed prompts as they're touched (incremental adoption — opt-in per variable).
-   - 🟡 Raw-output retention policy on `wmkf_ai_run` still open — see below.
+   - 🟡 Remaining `DynamicsService.logAiRun()` callers still need per-call retention decisions.
 
 2. **AI-run retention and raw-output review**
    - Confirm who can read `wmkf_ai_run`.
-   - Decide whether high-volume prompt runs should store full raw output, structured output only, or a hash.
+   - Decide which remaining high-volume run logs should store full raw output, structured output only, hash metadata, or no output content.
    - Add cleanup/retention policy if needed.
 
 3. **Dynamics Explorer watch item**

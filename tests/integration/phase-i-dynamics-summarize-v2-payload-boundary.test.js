@@ -114,6 +114,7 @@ const PROMPT_ROW = {
       { name: 'summary', type: 'string', target: { kind: 'akoya_request', field: 'wmkf_ai_summary' }, guard: 'skip-if-populated' },
     ],
     parseMode: 'raw',
+    rawOutputRetention: 'hash',
   }),
   wmkf_ai_model: 'claude-test',
   wmkf_ai_maxtokens: 1024,

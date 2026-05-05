@@ -128,6 +128,27 @@ describe('MSCRMCallerID — composed helpers', () => {
     expect(lastWriteHeaders().MSCRMCallerID).toBe(ACTING_GUID);
   });
 
+  test('logAiRun honors hash rawOutputRetention', async () => {
+    await DynamicsService.logAiRun({
+      requestGuid: '11111111-1111-1111-1111-111111111111',
+      taskType: 'summary',
+      model: 'claude-test',
+      status: 'completed',
+      rawOutput: 'sensitive generated narrative',
+      rawOutputRetention: 'hash',
+      actingUserSystemId: ACTING_GUID,
+    });
+
+    const calls = nonTokenCalls();
+    const body = JSON.parse(calls[calls.length - 1][1].body);
+    expect(body.wmkf_ai_rawoutput).not.toContain('sensitive generated narrative');
+    expect(JSON.parse(body.wmkf_ai_rawoutput)).toEqual(expect.objectContaining({
+      retention: 'hash',
+      originalChars: 'sensitive generated narrative'.length,
+      sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    }));
+  });
+
   test('updateIfEmpty: when the field is empty, the PATCH carries the header', async () => {
     // Token, then GET (empty field), then PATCH
     fetch.mockImplementationOnce((url) =>

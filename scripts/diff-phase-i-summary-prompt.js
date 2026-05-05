@@ -92,6 +92,7 @@ const seedOutputSchema = {
     },
   ],
   parseMode: 'raw',
+  rawOutputRetention: 'hash',
 };
 
 const seedRecord = {
@@ -239,7 +240,7 @@ console.log(`  ${(row.wmkf_ai_notes || '').slice(0, 300)}${(row.wmkf_ai_notes ||
 
 console.log('');
 if (drift === 0) {
-  console.log(`✓ No content drift detected. Seed would only add dataClass + maxChars to proposal_text and bump publisheddatetime.`);
+  console.log(`✓ No content drift detected. Seed source matches the live row except excluded timestamp/notes fields.`);
   process.exit(0);
 } else {
   console.log(`✗ ${drift} field(s) drift between live and seed source.`);
