@@ -91,6 +91,12 @@ export const TABLE_ANNOTATIONS = {
       wmkf_excludedreviewers: 'string — excluded reviewer names and reasons',
       // Text
       wmkf_abstract: 'string — full proposal abstract text (use search tool for keyword discovery)',
+      // AI-generated content (populated by Phase II Summaries app + backend automation; sparsely populated — only on processed records)
+      wmkf_ai_summary: 'memo — AI-generated proposal summary (Phase II / Phase I summarizers write here). May be empty on older or unprocessed records.',
+      wmkf_ai_fitrationale: 'memo — AI-generated rationale for whether the proposal fits Keck program priorities (fit-screen output).',
+      wmkf_ai_dataextract: 'memo — AI-extracted structured data fields from the proposal (JSON-shaped text payload).',
+      wmkf_ai_compliancesummary: 'memo — AI-generated summary of an interim/final report compliance check-in.',
+      wmkf_ai_complianceissues: 'memo — AI-flagged issues from a compliance check-in (paired with wmkf_ai_compliancesummary).',
     },
     rules: [
       'DEFAULT FILTER: Unless the user explicitly asks about concepts, site visits, office visits, phone calls, or "all records", ALWAYS add wmkf_request_type eq 100000001 to filter to grant applications only. This excludes ~9K non-grant records.',

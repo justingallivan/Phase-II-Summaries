@@ -39,5 +39,6 @@ yarn-error.log*
 proposals-for-migration.csv
 # Generated schema output (may contain tokens)
 scripts/dynamics-schema-output.json
+scripts/dynamics-schema-diff.json
 .git.nosync
 tmp/
