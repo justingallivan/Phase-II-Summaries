@@ -78,84 +78,28 @@ A multi-application document processing system using Claude AI for grant-related
 
 ## Environment Variables
 
-```env
-# Required
-CLAUDE_API_KEY=your_api_key
+Full list, defaults, rotation cadence, and diagnostics: **`docs/CREDENTIALS_RUNBOOK.md`**.
 
-# Database (auto-set by Vercel Postgres)
-POSTGRES_URL=...
+Required for any deployment:
+- `CLAUDE_API_KEY`
+- `POSTGRES_URL` (auto-set by Vercel Postgres)
+- `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, `AZURE_AD_CLIENT_ID`, `AZURE_AD_CLIENT_SECRET`, `AZURE_AD_TENANT_ID`
+- `AUTH_REQUIRED` (kill switch; production fails closed unless `EMERGENCY_AUTH_BYPASS=true`)
 
-# Authentication (see docs/AUTHENTICATION_SETUP.md)
-AUTH_REQUIRED=true
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=...
-AZURE_AD_CLIENT_ID=...
-AZURE_AD_CLIENT_SECRET=...
-AZURE_AD_TENANT_ID=...
+Required for production-only paths:
+- `CRON_SECRET` — `/api/cron/*` authentication
+- `EXTERNAL_LINK_SECRET` — 32+ char HMAC for external-reviewer JWTs (separate from `NEXTAUTH_SECRET`)
+- `VRP_ALLOWED_PROVIDERS` — Virtual Review Panel allowlist (intersects with configured API keys; production fails closed if unset; must include `claude`)
+- `EXTERNAL_AZURE_AD_*` (tenant/client/secret) — applicant intake portal; provider only registers when all three are set, so staff-only deployments don't need them
 
-# Optional - Enhanced Features
-SERP_API_KEY=...           # Google Scholar searches
-NCBI_API_KEY=...           # Higher PubMed rate limits
-ORCID_CLIENT_ID=...        # ORCID API access
-ORCID_CLIENT_SECRET=...
-
-# Optional - User Profiles
-USER_PREFS_ENCRYPTION_KEY=...  # 32-byte hex key for API key encryption
-
-# Optional - Dynamics Explorer (CRM queries)
-DYNAMICS_URL=https://wmkf.crm.dynamics.com
-DYNAMICS_TENANT_ID=...
-DYNAMICS_CLIENT_ID=...
-DYNAMICS_CLIENT_SECRET=...
-DYNAMICS_IMPERSONATION_ENABLED=false   # set "true" to attribute user-driven writes to staff via MSCRMCallerID; off by default for safe rollout (privilege intersection means a staff role missing one Dynamics privilege would break that write)
-
-# Optional - SharePoint (uses Dynamics app registration credentials)
-SHAREPOINT_SITE_URL=https://appriver3651007194.sharepoint.com/sites/akoyaGO
-
-# Optional - Cron Jobs & Monitoring
-CRON_SECRET=...               # Vercel cron authentication (required in prod)
-VERCEL_API_TOKEN=...           # Log analysis via Vercel API
-VERCEL_PROJECT_ID=...          # Target project for log analysis
-
-# Optional - Email Notifications (future)
-NOTIFICATION_EMAIL_FROM=...    # Graph API email sender
-NOTIFICATION_EMAIL_TO=...      # Graph API email recipient
-
-# Optional - Spend monitoring (cron/spend-check)
-DAILY_SPEND_ALERT_CENTS=1000              # today's-total threshold (default 1000 = $10)
-ANTHROPIC_BALANCE_ANCHOR_CENTS=...        # manual anchor — top-up amount in cents
-ANTHROPIC_BALANCE_ANCHOR_DATE=2026-04-21  # ISO date of last top-up; usage summed from here
-LOW_BALANCE_ALERT_CENTS=500               # low-balance threshold (default 500 = $5)
-SPEND_ALERT_EMAIL_TO=...                  # optional override; falls back to NOTIFICATION_EMAIL_TO
-SPEND_ALERT_EMAIL_FROM=...                # optional override; must be a Dynamics systemuser email
-
-# Required for external reviewer intake (Phase 4-7)
-EXTERNAL_LINK_SECRET=...                  # 32+ char HMAC secret for magic-link JWTs; separate from NEXTAUTH_SECRET
-REVIEWER_MATERIALS_FOLDERS=...            # optional; comma-separated SharePoint subfolders that count as reviewer-shared. Default: Reviewer_Downloads
-
-# Required in production - Virtual Review Panel allowlist
-VRP_ALLOWED_PROVIDERS=claude,openai           # comma-separated. Intersects with configured-API-keys to gate which vendors VRP may send proposal text to. Production fails closed when unset (empty allowlist); dev/test falls back to "any provider with a key." Must include `claude` for any run — synthesis and intelligence-pass stages call Anthropic Claude unconditionally. Valid values: claude, openai, gemini, perplexity.
-
-# Required for applicant intake portal (Entra External ID, separate tenant from staff)
-EXTERNAL_AZURE_AD_TENANT_ID=...           # External tenant ID (NOT the staff AZURE_AD_TENANT_ID)
-EXTERNAL_AZURE_AD_CLIENT_ID=...           # App registration client ID inside the external tenant
-EXTERNAL_AZURE_AD_CLIENT_SECRET=...       # App registration secret. Provider only registers when all three are set, so staff-only deployments don't need them
-```
+Notable optional flags:
+- `DYNAMICS_IMPERSONATION_ENABLED=true` — sends `MSCRMCallerID` on user-driven Dynamics writes; off by default for safe rollout (see `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md`)
+- `PROMPT_RESOLVER_STRICT=true` — disables bundled-prompt fallback for prompt-dev loops
+- `WAVE1_BACKEND_SETTINGS` / `WAVE1_BACKEND_APP_ACCESS` / `WAVE1_BACKEND_PREFS` — Wave 1 backend dispatch flags
 
 ## Per-App Model Configuration
 
-Each app uses a model optimized for its task. Configured in `shared/config/baseConfig.js`:
-
-| App | Default Model | Override Env Var |
-|-----|---------------|------------------|
-| Literature Analyzer | Sonnet 4 | `CLAUDE_MODEL_LITERATURE_ANALYZER` |
-| Batch Summaries | Sonnet 4 | - |
-| Reviewer Finder | Sonnet 4 | - |
-| Expense Reporter | Haiku 3.5 | `CLAUDE_MODEL_EXPENSE_REPORTER` |
-| Contact Enrichment | Haiku 3.5 | - |
-| Dynamics Explorer | Haiku 4.5 | - |
-| Expertise Finder | Sonnet 4 | `CLAUDE_MODEL_EXPERTISE_FINDER` |
-| Grant Reporting | Sonnet 4 | `CLAUDE_MODEL_GRANT_REPORTING` |
+Defaults live in `shared/config/baseConfig.js` (`getModelForApp()`); admin can override per-app at runtime via `/admin` (persisted in `system_settings`). Per-app `CLAUDE_MODEL_<APP>` env vars also work as a static override.
 
 ## Development
 
@@ -184,12 +128,9 @@ Three-layer defense-in-depth:
 
 ### Dual-provider NextAuth (staff + applicants)
 
-`pages/api/auth/[...nextauth].js` registers two providers in one NextAuth instance:
+`pages/api/auth/[...nextauth].js` registers two providers: `azure-ad` (staff; sessions carry `azureId` / `profileId` / `dynamicsSystemuserId`) and `entra-external` (applicants, separate Entra External ID tenant, OTP-only; sessions carry `contactOid` / `contactEmail`; env-gated on `EXTERNAL_AZURE_AD_*`).
 
-- `azure-ad` — staff (organizational Entra ID tenant). Sessions carry `azureId` / `profileId` / `dynamicsSystemuserId`.
-- `entra-external` — applicants (separate Entra External ID tenant `wmkeckapply.ciamlogin.com`, OTP-only). Sessions carry `contactOid` / `contactEmail`. Provider is env-gated: only registers when `EXTERNAL_AZURE_AD_*` vars are set.
-
-Sessions self-identify with `session.user.userType: 'staff' | 'applicant'`. Staff and applicant fields are mutually exclusive on a session — branch on `userType`, never inspect populated fields to infer identity. Middleware enforces non-crossing both directions: a staff session hitting `/apply/*` (or an applicant session hitting any non-`/apply` route) is rejected outright. `/auth/signin` auto-dispatches to External ID OAuth when `callbackUrl` resolves to `/apply*`. Foundation only as of Session 129 — only the smoke-test page at `/apply` exists; membership / form / submission flows are upcoming.
+Sessions self-identify with `session.user.userType: 'staff' | 'applicant'` — branch on this, never infer from populated fields. Middleware enforces non-crossing both directions: staff sessions can't hit `/apply/*`, applicant sessions can't hit non-`/apply` routes. `/auth/signin` auto-dispatches to External ID OAuth when `callbackUrl` resolves to `/apply*`.
 
 ---
 
@@ -204,67 +145,49 @@ All APIs return consistent structures:
 
 ### Shared Components
 
-Located in `shared/components/`:
-- `Layout.js` - Main layout with navigation (filtered by app access)
-- `FileUploaderSimple.js` - File upload component
-- `ResultsDisplay.js` - Results visualization
-- `RequireAppAccess.js` - Page-level access guard
-- `WelcomeModal.js` - First-login welcome modal for new users
-
-(`ApiKeyManager.js` and `ApiSettingsPanel.js` removed in the 2026-04-26 security pass — Claude/ORCID/NCBI/SerpAPI keys are now centralized server-side via env vars; see `/api/api-capabilities` for the boolean availability surface.)
+Located in `shared/components/`. Notable: `Layout.js` (nav filtered by app access), `FileUploaderSimple.js`, `ResultsDisplay.js`, `RequireAppAccess.js`, `WelcomeModal.js`. API keys are server-side only — UI consumes `/api/api-capabilities` for boolean availability.
 
 ### Shared Config
 
 Located in `shared/config/`:
-- `appRegistry.js` - Single source of truth for all 13 app definitions (keys, names, routes, icons, categories)
+- `appRegistry.js` - Single source of truth for app definitions (keys, names, routes, icons, categories)
 - `baseConfig.js` - Per-app model configuration, `loadModelOverrides()` cache, `getModelForApp()` with DB override support
 
 ### Service Classes
 
-Located in `lib/services/`:
-- `claude-reviewer-service.js` - Claude API with retry/fallback
-- `discovery-service.js` - Multi-database search orchestration
-- `deduplication-service.js` - Name matching, COI filtering
-- `contact-enrichment-service.js` - 5-tier contact lookup
-- `database-service.js` - Vercel Postgres operations
-- `pubmed-service.js` - NCBI E-utilities API
-- `arxiv-service.js` - ArXiv API
-- `biorxiv-service.js` - BioRxiv API
-- `chemrxiv-service.js` - ChemRxiv API
-- `orcid-service.js` - ORCID API
-- `serp-contact-service.js` - Google/Scholar search via SerpAPI
-- `integrity-service.js` - Integrity screening orchestration
-- `integrity-matching-service.js` - Name matching algorithms
-- `dynamics-service.js` - Microsoft Dynamics 365 CRM API (OAuth, OData queries, Dataverse Search, Email Activities). `updateIfEmpty(entitySet, guid, field, value, { overwrite })` composes a read + empty-check + ETag-guarded PATCH for AI-writeback fields; returns discriminated `{ ok, reason }` result. Write helpers (`createRecord` / `updateRecord` / `deleteRecord` / `updateIfEmpty` / `logAiRun` / `createEmailActivity` / `addEmailAttachment` / `sendEmail` / `createAndSendEmail`) accept an optional `actingUserSystemId` — when set AND env var `DYNAMICS_IMPERSONATION_ENABLED=true`, sends `MSCRMCallerID` so Dataverse records the staff member on `createdby`/`modifiedby`/audit. Privilege-intersection is real (Dataverse evaluates the request under the union → intersection of app-user + impersonated-user privileges), so a 403 from an impersonated write triggers a single retry without the header (logged warning); the user's request still completes as the service principal. Plumbed through user-driven API endpoints from `session.user.dynamicsSystemuserId`; left null on cron/external-token/PA-triggered paths so unattended writes correctly attribute to the service principal. Reads never receive the header (would impersonate the user for security-role evaluation and break callers with restricted Dynamics roles). The Dataverse adapter chain (`lib/dataverse/adapters/{contact,potential-reviewer,researcher,reviewer-suggestion}.js`) and `lib/external/token-lifecycle.js` accept `actingUserSystemId` as a trailing opts arg on every write helper and forward it down — so contact-promotion, save-candidates, lifecycle PATCHes, and token mint/revoke/extend all attribute to the staff user.
-- `graph-service.js` - Microsoft Graph API (SharePoint document access, file listing/download, content search)
-- `feedback-service.js` - CRUD for dynamics_feedback table (user feedback + auto-detection)
-- `alert-service.js` - CRUD for system_alerts table (deduplication, auto-resolve)
-- `notification-service.js` - Unified notifications (DB alerts + future Graph API email)
-- `maintenance-service.js` - Database/blob cleanup operations with audit trail
-- `prompt-resolver.js` - Fetches Claude prompt templates from Dynamics (scratch `wmkf_ai_run` row for now; will move to `wmkf_prompt_template` when Connor creates it). 5-min in-memory cache, `{{var}}` interpolation. On Dynamics failure, falls back to a bundled `.js` module (60s cache TTL so the next call retries Dynamics). Set `PROMPT_RESOLVER_STRICT=true` to disable fallback (prompt-dev loop).
-- `program-director-resolver.js` - Bridges the authenticated user to a Dynamics `systemuser`. `resolveByEmail(azureEmail)` returns `{ systemuserid, fullName }` cached 10 min (1 min on miss). Used by Reviewer Finder's PD-filtered proposal picker; filter target is `_wmkf_programdirector_value` on `akoya_request`.
-- `llm-client.js` - Canonical Anthropic API wrapper (`complete()` + `stream()`). `safeFetch` SSRF allowlist + real `AbortController`-bound timeout + retry on 429/529 with retry-after honoured + single fallback-model swap on 529 + `logUsage` on success/failure (cache tokens preserved) + API-key redaction in errors. Streaming preserves the dynamics-explorer/chat semantic — text deltas forward to `onTextDelta` only when no tool_use is detected; `onEvent` exposes raw SSE events for cases like web_search citation collection. Replaces the deleted `shared/api/handlers/claudeClient.js` and 14 ad-hoc fetch sites.
-- `dynamics-context.js` - AsyncLocalStorage-backed restriction context. `withDynamicsContext({ restrictions, requestId }, fn)` / `bypassDynamicsRestrictions(requestId, fn)` — every request gets its own isolated restriction store, threaded through awaits. `DynamicsService.checkRestriction` reads from the store; the legacy `setRestrictions`/`bypassRestrictions` static methods on DynamicsService are deprecated shims kept temporarily for unmigrated scripts.
-- `external-token.js` - HMAC-signed JWT primitive for external-reviewer magic links. `mintToken({ suggestionId, requestId, ops, expiresAt })` returns `{ jwt, jti, hash }`; `verifyToken(jwt)` does signature + expiry only; `hashToken(jwt)` for the row-side authorization check. Algorithm pinned (HS256), 32-char minimum secret. Hash-only storage means revoking or replacing a token is a single PATCH.
-- `intake-draft-service.js` - CRUD over `intake_drafts` for the applicant intake portal. `upsert({contactOid, accountId, requestId, formKey, draftJson, attachments})` switches between two ON CONFLICT targets (one for `request_id IS NOT NULL`, the partial-index pilot path; one for `request_id IS NULL`, future concept-stage drafts). `appendAttachment` / `removeAttachment` are atomic JSONB ops to avoid read-modify-write races during concurrent uploads. `deleteExpired({olderThanDays})` returns `{ count, attachments }` (rows + every attachment record from deleted rows) so the GC cron can purge the matching Vercel Blob objects — Blob URLs would otherwise be unrecoverable after the row is gone.
-- `intake-audit-service.js` - Append-only audit for portal state changes. `log({actorOid, actorType, action, targetEntity, targetId, payload, metadata, ipAddress, userAgent})` sha256-hashes payloads (bytes never stored). Failures are swallowed — audit must not block the primary operation.
-- `review-upload.js` - Shared core for review file uploads. `writeReviewFiles({ suggestionId, files, structuredData, opts })` — used by both the public token-authenticated endpoint and the staff session-authenticated endpoint so the two paths can never drift. Validates files (extension + magic bytes + size), writes to SharePoint at `akoya_request/{request}/Reviewer_Uploads/{LastName_shortId}/`, PATCHes Dataverse, rolls back SharePoint writes on failure. `buildReviewerSubfolder()` exported for testing.
-- `execute-prompt.js` - Implementation of the Executor contract (`docs/EXECUTOR_CONTRACT.md`). Runs one `wmkf_ai_prompt` row end-to-end: resolves the prompt template, interpolates variables, calls Claude via `llm-client`, parses declared outputs, optionally writes back to Dataverse, logs to `wmkf_ai_run`. Mirror of the PowerAutomate `ExecutePrompt` child flow.
-- `multi-llm-service.js` - Provider-agnostic wrapper for Claude / OpenAI / Gemini / Perplexity. Used by Virtual Review Panel for parallel multi-model review.
-- `panel-review-service.js` - Virtual Review Panel orchestration: claim verification, structured per-reviewer review, synthesis. Persists to `panel_reviews` + `panel_review_items`.
-- `literature-search-service.js` - Multi-database literature search orchestration shared by Literature Analyzer and the panel claim-verification step.
-- `settings-service.js` / `dataverse-settings-service.js` - Wave 1 dispatch wrapper + Dataverse adapter for `system_settings` (model overrides, etc.). Reads `WAVE1_BACKEND_SETTINGS` env var.
-- `app-access-service.js` / `dataverse-app-access-service.js` - Wave 1 dispatch wrapper + Dataverse adapter for `user_app_access`. Reads `WAVE1_BACKEND_APP_ACCESS`.
-- `dataverse-prefs-service.js` - Wave 1 Dataverse adapter for `user_preferences`. Dispatch lives in `database-service.js` (`useDataversePrefs()`), reads `WAVE1_BACKEND_PREFS`.
-- `dataverse-identity-map.js` - Bridges `user_profiles` rows to Dynamics `systemuser` records by email; cached. Used by Wave 1 services to attach attribution to writes.
-- `dynamics-identity-service.js` - Persists the user_profiles → Dynamics systemuser mapping into `user_profiles.dynamics_systemuser_id` + `dynamics_reconciled_at`. `reconcileProfile(profileId)` (single, used by NextAuth signIn) and `reconcileBatch({ staleDays, includeNull, includeAll })` (used by cron + CLI). Discriminated results: `linked` / `unchanged` / `no_match` / `disabled` / `skipped_no_email` / `error`. CLI: `scripts/reconcile-dynamics-identities.js`. Plan: `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md`.
-- `model-override-loader.js` - Thin loader that calls into `settings-service` to fetch per-app model overrides; consumed by `baseConfig.js` `getModelForApp()`.
+Located in `lib/services/`. Source files are authoritative; entries below describe purpose at one-line resolution.
 
-Located in `lib/external/`:
-- `token-lifecycle.js` - `mintAndStore` / `revoke` / `ensureToken` / `extendForPostSubmissionWindow` / `buildExternalUrl`. The `ensureToken(suggestionId)` primitive is idempotent — used by the Reviewer Finder accept-flip hook to auto-mint on `wmkf_accepted=true`, and by future PA flows. `extendForPostSubmissionWindow(suggestionId, { days = 7 })` tightens an active token's expiry to a short post-submission modify window — called from `writeReviewFiles` after a successful upload so the link stops being live for the original 90-day mint ceiling. URL base reads from `NEXTAUTH_URL`.
-- `verify-suggestion-token.js` - Combined JWT + suggestion-row check for the three external endpoints. One Dataverse round trip with `wmkf_Request` and `wmkf_PotentialReviewer` expanded; returns a discriminated result with reason codes (`expired`, `revoked`, `hash_mismatch`, etc.) so the landing page can show specific error states.
-- `reviewer-materials.js` - `isReviewerMaterial(folderPath)` enforces the "files outside `Reviewer_Downloads/` are invisible to reviewers" rule at the file-list AND file-download endpoints. Single source of truth; `REVIEWER_MATERIALS_FOLDERS` env var supports multi-name transition windows.
-- `review-form-schema.js` - The 4 structured fields (affiliation, impact, risk, overallRating). Validator supports `{ partial: true }` for the mark-received-no-file path where structured data is optional.
+- `claude-reviewer-service.js` — legacy Claude wrapper with retry/fallback (new code uses `llm-client.js`)
+- `discovery-service.js` — Multi-database literature search orchestration
+- `deduplication-service.js` — Name matching, COI filtering
+- `contact-enrichment-service.js` — 5-tier contact lookup
+- `database-service.js` — Vercel Postgres operations; Wave 1 dispatch lives here
+- `pubmed-service.js`, `arxiv-service.js`, `biorxiv-service.js`, `chemrxiv-service.js`, `orcid-service.js`, `serp-contact-service.js` — external research-DB clients
+- `integrity-service.js`, `integrity-matching-service.js` — Integrity Screener orchestration + name matching
+- `dynamics-service.js` — Dynamics 365 / Dataverse client (OAuth, OData, Dataverse Search, email activities, `updateIfEmpty`, `logAiRun`). Impersonation contract (`actingUserSystemId` + `MSCRMCallerID` + privilege intersection) is documented in `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md`
+- `graph-service.js` — Microsoft Graph (SharePoint files, listing/download, content search)
+- `feedback-service.js`, `alert-service.js`, `notification-service.js`, `maintenance-service.js` — admin/monitoring services
+- `prompt-resolver.js` — Fetches prompts from `wmkf_ai_prompt` (5-min cache, `{{var}}` interpolation). Falls back to bundled `.js` modules on Dynamics failure (60s cache TTL); `PROMPT_RESOLVER_STRICT=true` disables fallback
+- `program-director-resolver.js` — Email → Dynamics `systemuser` bridge for Reviewer Finder's PD-filtered picker
+- `llm-client.js` — Canonical Anthropic API wrapper (`complete()` + `stream()`). SSRF allowlist, abortable timeouts, 429/529 retry, single fallback-model swap, usage logging, API-key redaction. Replaced 14 ad-hoc fetch sites
+- `dynamics-context.js` — AsyncLocalStorage restriction context for per-request scoping; legacy static-method shims deprecated but retained for unmigrated scripts
+- `external-token.js` — HS256 HMAC JWT primitive for external-reviewer magic links; hash-only storage for cheap revocation
+- `intake-draft-service.js`, `intake-audit-service.js` — Applicant intake portal (drafts with attachment JSONB ops; append-only sha256-hashed audit)
+- `review-upload.js` — Shared `writeReviewFiles` core for staff and reviewer-self upload paths; SharePoint write + Dataverse PATCH + rollback on failure
+- `execute-prompt.js` — Implementation of the Executor contract (`docs/EXECUTOR_CONTRACT.md`); mirrors the PA `ExecutePrompt` child flow
+- `multi-llm-service.js`, `panel-review-service.js` — Virtual Review Panel (Claude / GPT / Gemini / Perplexity)
+- `literature-search-service.js` — Multi-database literature search shared by Lit Analyzer + panel claim verification
+- `settings-service.js` / `dataverse-settings-service.js` — Wave 1 `system_settings` (env: `WAVE1_BACKEND_SETTINGS`)
+- `app-access-service.js` / `dataverse-app-access-service.js` — Wave 1 `user_app_access` (env: `WAVE1_BACKEND_APP_ACCESS`)
+- `dataverse-prefs-service.js` — Wave 1 `user_preferences` adapter (env: `WAVE1_BACKEND_PREFS`)
+- `dataverse-identity-map.js`, `dynamics-identity-service.js` — `user_profiles` ↔ Dynamics `systemuser` bridge; reconciliation CLI at `scripts/reconcile-dynamics-identities.js`
+- `model-override-loader.js` — Per-app model overrides for `baseConfig.js`
+
+Located in `lib/external/` (external-reviewer flow):
+- `token-lifecycle.js` — `mintAndStore` / `revoke` / `ensureToken` (idempotent) / `extendForPostSubmissionWindow` / `buildExternalUrl`
+- `verify-suggestion-token.js` — Combined JWT + suggestion-row check; discriminated result with reason codes
+- `reviewer-materials.js` — Enforces "files outside `Reviewer_Downloads/` are invisible to reviewers" at list + download
+- `review-form-schema.js` — 4 structured fields (affiliation, impact, risk, overallRating); supports `{ partial: true }` validation
 
 ### Utility Classes
 
@@ -280,246 +203,54 @@ Located in `lib/utils/`:
 
 ## Database Schema
 
-### User System
+Vercel Postgres. Authoritative source: `lib/db/schema.sql` + `lib/db/migrations/*.sql`. Run `node scripts/setup-database.js` to apply.
 
-**`user_profiles`** - User identity
-| Column | Type | Description |
-|--------|------|-------------|
-| id | SERIAL | Primary key |
-| name | VARCHAR(255) | Unique username |
-| azure_id | VARCHAR(255) | Azure AD user ID (unique) |
-| azure_email | VARCHAR(255) | User's Azure email |
-| is_active | BOOLEAN | Soft delete flag |
-| dynamics_systemuser_id | UUID | Linked Dynamics `systemuser.systemuserid` (V27, nullable) |
-| dynamics_reconciled_at | TIMESTAMP | Last identity-reconcile attempt (V27) |
+| Table | Purpose |
+|-------|---------|
+| `user_profiles` | Identity (azure_id, azure_email, is_active, dynamics_systemuser_id) |
+| `user_preferences` | Per-user settings; values encrypted (AES-256-GCM) when `is_encrypted` |
+| `user_app_access` | Per-user app grants `(user_profile_id, app_key)`; app_key matches `appRegistry.js` |
+| `system_settings` | Generic key-value (model overrides, etc.) |
+| `researchers`, `publications`, `grant_cycles` | Reviewer Finder shared pool |
+| `proposal_searches`, `reviewer_suggestions` | Reviewer Finder per-user state |
+| `retractions`, `integrity_screenings`, `screening_dismissals` | Integrity Screener (Retraction Watch + per-user history) |
+| `dynamics_feedback` | Dynamics Explorer thumbs + auto-detected failures |
+| `expertise_roster`, `expertise_matches` | Expertise Finder roster + match history |
+| `panel_reviews`, `panel_review_items` | Virtual Review Panel persistence |
+| `intake_drafts`, `intake_audit` | Applicant intake portal — drafts (Postgres-only, cleared on submit) + sha256-hashed audit |
+| `system_alerts`, `health_check_history`, `maintenance_runs` | Monitoring + cron job audit trail |
 
-**`user_preferences`** - Per-user settings
-| Column | Type | Description |
-|--------|------|-------------|
-| user_profile_id | INTEGER | FK to user_profiles |
-| preference_key | VARCHAR(100) | Setting name |
-| preference_value | TEXT | Value (encrypted if API key) |
-| is_encrypted | BOOLEAN | Whether AES-256-GCM encrypted |
-
-### User Scoping
-
-| Table | Scoping | Rationale |
-|-------|---------|-----------|
-| `researchers` | Shared | Global pool of expert data |
-| `publications` | Shared | Linked to researchers |
-| `grant_cycles` | Shared | Organization-wide cycles |
-| `reviewer_suggestions` | Per-user | "My Candidates" is user-specific |
-| `proposal_searches` | Per-user | Each user's proposal analyses |
-
-### Reviewer Finder Tables
-
-- `researchers` - Expert researcher profiles with contact info
-- `publications` - Linked publications
-- `grant_cycles` - Grant cycle definitions
-- `proposal_searches` - Proposal analysis results
-- `reviewer_suggestions` - Saved candidates per proposal
-
-### App Access Control
-
-**`user_app_access`** - Per-user app grants
-| Column | Type | Description |
-|--------|------|-------------|
-| user_profile_id | INTEGER | FK to user_profiles |
-| app_key | VARCHAR(100) | App identifier (matches appRegistry.js keys) |
-| granted_by | INTEGER | FK to user_profiles (who granted) |
-| UNIQUE | | (user_profile_id, app_key) |
-
-### System Settings
-
-**`system_settings`** - Generic key-value store (model overrides, etc.)
-| Column | Type | Description |
-|--------|------|-------------|
-| setting_key | VARCHAR(255) | Unique key (e.g., `model_override:expense-reporter:model`) |
-| setting_value | TEXT | Value (e.g., model ID) |
-| updated_by | INTEGER | FK to user_profiles (nullable) |
-
-### Integrity Screener Tables
-
-- `retractions` - Retraction Watch data (~63,000+ entries)
-- `integrity_screenings` - Screening history per user
-- `screening_dismissals` - False positive dismissals
-
-### Dynamics Explorer Feedback
-
-- `dynamics_feedback` - User feedback (thumbs up/down) and auto-detected failures (feedback_type, category, user_note, query_text, conversation_context JSONB, auto_detected, status, admin_note)
-
-### Expertise Finder Tables
-
-- `expertise_roster` - Internal reviewer/consultant/board roster (name, role_type, affiliation, expertise fields, is_active, audit trail)
-- `expertise_matches` - AI proposal-to-reviewer matching history (match_results JSONB, model/token/cost tracking, per-user)
-
-### Intake Portal Tables (V26)
-
-- `intake_drafts` - Applicant intake draft staging (contact_oid, account_id, request_id, form_key, draft_json, attachments JSONB). Postgres-only; cleared on submission. Uniqueness scoped (account_id, request_id, form_key) so an institution can have multiple in-flight drafts per cycle.
-- `intake_audit` - State-changing portal action audit trail (actor_oid, actor_type, action, target_entity, target_id, payload_digest, metadata, ip/UA, created_at). Payloads hashed (sha256), not stored.
-
-### Monitoring & Maintenance Tables
-
-- `system_alerts` - Central alert store (type, severity, title, message, metadata, status, auto_resolve_key)
-- `health_check_history` - Health check trend data (overall_status, services JSONB, response_time_ms)
-- `maintenance_runs` - Cleanup job audit trail (job_name, status, records_processed/deleted, duration)
+User-scoping convention: shared tables for organization-wide reference data; per-user tables for "my X" surfaces. Wave 1 migration (in progress) moves `system_settings`, `user_app_access`, `user_preferences` to Dataverse — see `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md`.
 
 ---
 
 ## API Endpoints
 
-### Document Processing
-- `POST /api/process` - Batch document summarization (streaming)
-- `POST /api/process-phase-i` - Phase I processing
-- `POST /api/qa` - Q&A on processed documents
-- `POST /api/refine` - Summary refinement
+The full route catalogue lives in **`docs/API_ROUTE_SECURITY_MATRIX.md`** (76 routes, CI-gated via `npm run check:api-routes` — PRs touching `pages/api/**` fail without a matrix update). Source files in `pages/api/<app>/` are authoritative for behavior.
 
-### Reviewer Finder
-- `POST /api/reviewer-finder/analyze` - Extract proposal metadata
-- `POST /api/reviewer-finder/discover` - Find candidates (streaming)
-- `POST /api/reviewer-finder/save-candidates` - Save to database
-- `GET/PATCH/DELETE /api/reviewer-finder/my-candidates` - Manage saved candidates
-- `GET /api/reviewer-finder/researchers` - Browse all researchers
-- `GET/POST/PATCH/DELETE /api/reviewer-finder/grant-cycles` - Manage cycles
-- `POST /api/reviewer-finder/enrich-contacts` - Contact lookup (streaming)
-- `POST /api/reviewer-finder/generate-emails` - Generate .eml files (see `docs/REVIEWER_FINDER.md`)
-- `POST /api/reviewer-finder/extract-summary` - Extract summary pages
-- `GET /api/reviewer-finder/my-proposals` - Dataverse-native picker. No `cycleCode` → distinct cycle codes (Jxx/Dxx) the authenticated PD has work in. With `?cycleCode=Jxx` → proposals in that cycle. `?status=actionable` (default) filters to Phase II Pending + no disposition; `?status=all` widens.
-- `POST /api/reviewer-finder/load-proposal` - Given an `akoya_request` GUID, walks SharePoint buckets, picks the proposal best-guess (or `fileKey` override), uploads to Vercel Blob, returns the blob URL for the existing analyze pipeline.
-
-### Review Manager
-- `GET/PATCH /api/review-manager/reviewers` - Accepted reviewers by cycle/proposal, status/notes/URL updates. Surfaces token state (active/revoked/expired/not_minted), structured form values, SharePoint folder pointer per row.
-- `POST /api/review-manager/render-emails` - Preview-only: render per-recipient subject/body drafts. Mints fresh `{{externalLink}}` per recipient when the template body references the placeholder.
-- `POST /api/review-manager/send-emails` - Direct Dynamics send (SSE streaming). Sender resolves from session, regardingobjectid → akoya_request, per-recipient try/catch, lifecycle timestamps update only for sent rows.
-- `POST /api/review-manager/upload-review` - Upload 1..5 completed review files plus structured form data (affiliation, impact, risk, overallRating). Writes to SharePoint via `writeReviewFiles`. (Pre-Phase-5 Vercel Blob path retired 2026-05-03.)
-- `POST /api/review-manager/regenerate-token` - Mint a fresh external-reviewer magic link, store hash, clear revoked. Returns the URL + expiry.
-- `POST /api/review-manager/revoke-token` - Set `wmkf_externaltokenrevoked = true`. Hash retained for audit.
-- `POST /api/review-manager/mark-received-no-file` - Stamp received-at + staff flag without uploading bytes. Optional structured form data; null picklists = "informal feedback, not scored."
-- `GET /api/review-manager/download-review` - Stream a completed review back to staff via Graph from the folder pointed at by `wmkf_reviewsharepointfolder`. Returns 404 if the field is unset.
-
-### External Reviewer Intake (token-authenticated, public)
-- `GET /external/review/[token]` - Public landing page for invited reviewers. Verifies the JWT, fetches proposal info + curated file list + reviewer prefill in one round trip, sets `wmkf_proposalfirstaccessed` on first view.
-- `GET /api/external/review/[token]/context` - JSON bootstrap for the landing page.
-- `GET /api/external/review/[token]/proposal?fileId=&library=` - Streams a proposal file from SharePoint via Graph. Validates the requested file lives under `Reviewer_Downloads/` for the request.
-- `POST /api/external/review/[token]/upload` - Multipart upload (1..5 files + structured form). Calls shared `writeReviewFiles` core with `source: 'reviewer_self_token'`.
-- All routes allowlisted in `middleware.js`; `/external/*` is public and skips the `RequireAuth` wrapper in `pages/_app.js`. See `docs/EXTERNAL_REVIEWER_INTAKE_PLAN.md`.
-
-### Virtual Review Panel
-- `POST /api/virtual-review-panel` - Multi-LLM panel review (Claude, GPT, Gemini, Perplexity) with claim verification, structured per-reviewer output, and synthesis. Streams via SSE. App key `virtual-review-panel`; admin-assigned (not in `DEFAULT_APP_GRANTS`).
-
-### Integrity Screener
-- `POST /api/integrity-screener/screen` - Screen applicants (SSE streaming)
-- `GET/PATCH /api/integrity-screener/history` - Screening history
-- `POST/GET /api/integrity-screener/dismiss` - Manage dismissals
-
-### Dynamics Explorer
-- `POST /api/dynamics-explorer/chat` - Agentic chat with Dynamics 365 CRM (SSE streaming, 11 tools)
-- `GET /api/dynamics-explorer/download-document` - Authenticated proxy for SharePoint file download
-- `POST /api/dynamics-explorer/feedback` - Submit feedback (thumbs up/down)
-- `GET/PATCH /api/dynamics-explorer/feedback` - Admin feedback review (superuser only)
-- `GET/POST/DELETE /api/dynamics-explorer/roles` - User role management (superuser only)
-- `GET/POST/DELETE /api/dynamics-explorer/restrictions` - Table/field restrictions (superuser only)
-
-### Expertise Finder
-- `POST /api/expertise-finder/match` - Match proposal PDF to internal roster (staff assignment, consultant overlap, board interest)
-- `POST /api/expertise-finder/batch-match` - Batch matching across multiple proposals
-- `GET /api/expertise-finder/proposals` - List eligible proposals for matching
-- `GET/POST/PATCH/DELETE /api/expertise-finder/roster` - CRUD for expertise roster members
-- `GET /api/expertise-finder/history` - Match history for current user
-
-### Grant Reporting
-- `POST /api/grant-reporting/lookup-grant` - Look up a request in Dynamics + list its SharePoint documents in one call
-- `POST /api/grant-reporting/extract` - Extract structured fields from a grant report (modes: full / regenerate / regenerate-goals); compares proposal vs. report for goals assessment. Logs every Claude call to `wmkf_ai_run`.
-
-### Phase I Dynamics (Test)
-- `POST /api/phase-i-dynamics/summarize` - Single-request Phase I summarization; PATCHes narrative to `akoya_request.wmkf_ai_summary` and logs to `wmkf_ai_run`. Returns 409 with existing content when the field is already populated unless `overwrite: true`.
-- `POST /api/phase-i-dynamics/summarize-v2` - **Experimental (Session 103).** Same contract as `/summarize` but fetches the prompt from Dynamics via `PromptResolver`, uses system/user split, applies `cache_control`. Toggle on `/phase-i-dynamics` via the "Use Dynamics-stored prompt (v2)" checkbox.
-
-### App Access Control
-- `GET /api/app-access` - Get caller's allowed apps (`?all=true` for superuser admin view)
-- `POST /api/app-access` - Grant apps to a user (superuser only)
-- `DELETE /api/app-access` - Revoke apps from a user (superuser only)
-
-### Admin
-- `GET /api/admin/stats` - Aggregated API usage statistics (superuser only)
-- `GET /api/admin/models` - Per-app model config + available models from Anthropic API (superuser only)
-- `PUT /api/admin/models` - Set/clear model override for an app (superuser only)
-- `GET/PATCH /api/admin/alerts` - List active alerts; acknowledge/resolve (superuser only)
-- `GET /api/admin/maintenance` - Last run per job + retention config (superuser only)
-- `GET/PUT /api/admin/secrets` - Secret expiration status; update rotation dates (superuser only)
-- `GET /api/admin/health-history` - Health check history with uptime % (superuser only)
-- `POST /api/admin/reconcile-identities` - Manual trigger for Dynamics identity reconciliation (superuser only). Body `{ all?: boolean }` — `true` for full backfill, default scans stale + null only. Same code path as the weekly cron, just session-authenticated.
-
-### User Management
-- `GET/POST/PATCH/DELETE /api/user-profiles` - Profile CRUD
-- `GET/POST/DELETE /api/user-preferences` - Preference management
-
-### Authentication
-- `GET /api/auth/status` - Check if auth is enabled
-- `POST /api/auth/link-profile` - Link Azure account to profile
-
-### Operations
-- `GET /api/health` - Service health check (database, Claude, Azure AD, Dynamics, encryption)
-
-### Cron Jobs (Vercel Cron, authenticated via CRON_SECRET)
-- `GET /api/cron/maintenance` - Daily cleanup (3:00 AM UTC)
-- `GET /api/cron/health-check` - Health monitoring (every 15 min)
-- `GET /api/cron/secret-check` - Secret expiration check (8:00 AM UTC daily)
-- `GET /api/cron/log-analysis` - Vercel error log analysis (every 6 hours)
-- `GET /api/cron/spend-check` - AI spend thresholds: daily total + estimated credit balance (hourly); emails via Dynamics on low balance
-- `GET /api/cron/reconcile-identities` - Weekly Dynamics identity reconciliation (Mondays 7:00 AM UTC). Re-runs the resolver for stale (>30d) or null-but-emailed `user_profiles` rows. Catches staff who get their Dynamics account after first app login.
-
-### Document Processing (additional)
-- `POST /api/process-phase-i-writeup` - Single Phase I writeup (called by `phase-i-writeup.js`)
-- `POST /api/process-peer-reviews` - Peer review summarization (called by `peer-review-summarizer.js`)
-- `POST /api/process-legacy` - Retained legacy Phase II processing path (kept for backward compat with older saved sessions)
-
-### Other
-- `GET /api/api-capabilities` - Boolean availability of optional third-party API integrations (ORCID/NCBI/SerpAPI). Used by UI to enable/disable feature toggles without exposing the underlying credentials to the browser.
-- `POST /api/analyze-funding-gap` - Federal funding analysis
-- `POST /api/process-expenses` - Expense extraction
-- `POST /api/upload-handler` - Vercel Blob upload (multipart receive → blob put)
-- `POST /api/upload-file` - Alternative Vercel Blob upload path used by some apps
-- `GET /api/blob-proxy` - Authenticated proxy for fetching Vercel Blob URLs server-side
-- `POST /api/test-email` - Dev-only smoke endpoint for Dynamics email send (paired with `pages/test-email.js`)
+Conventions:
+- App-specific routes use `requireAppAccess(req, res, 'app-key')`. App keys live in `shared/config/appRegistry.js`.
+- Infrastructure routes use `requireAuth()` / `requireAuthWithProfile()` / `requireSuperuser()`.
+- `/api/cron/*` authenticates via `CRON_SECRET`, not session JWT.
+- `/api/external/*` token-authenticated (HMAC JWT); public, allowlisted in `middleware.js`. See `docs/EXTERNAL_REVIEWER_INTAKE_PLAN.md`.
+- Streaming endpoints use SSE; convention is `text/event-stream` with `data: {...}` frames.
 
 ---
 
 ## Extended Documentation
 
-| Document | Content |
-|----------|---------|
-| `docs/guides/GETTING_STARTED.md` | New user onboarding guide |
-| `docs/guides/REVIEWER_FINDER.md` | Reviewer Finder user guide |
-| `docs/guides/REVIEW_MANAGER.md` | Review Manager user guide |
-| `docs/guides/INTEGRITY_SCREENER.md` | Integrity Screener user guide |
-| `docs/guides/DYNAMICS_EXPLORER.md` | Dynamics Explorer user guide |
-| `docs/guides/ADMIN_GUIDE.md` | Administrator operations guide |
-| `docs/AUTHENTICATION_SETUP.md` | Azure AD configuration guide |
-| `docs/REVIEWER_FINDER.md` | Email workflow, templates, settings |
-| `docs/MULTI_MAC_SETUP.md` | Multi-Mac development setup |
-| `docs/PDF_EXPORT.md` | PDF export utility and architecture |
-| `scripts/README.md` | Database utility scripts |
-| `DEVELOPMENT_LOG.md` | Session-by-session history |
-| `docs/DYNAMICS_SCHEMA_ANNOTATION.md` | CRM field annotation plan for Dynamics Explorer |
-| `docs/CREDENTIALS_RUNBOOK.md` | Environment variables, secret rotation, diagnostics |
-| `docs/SYSTEM_OVERVIEW.md` | One-page system overview for administrators |
-| `docs/SECURITY_ARCHITECTURE.md` | Security architecture and threat model |
-| `docs/SECURITY_AUDIT_2026-04-18.md` | Session 104 delta audit against v3.5 baseline — findings + disposition (H/M/L/I) |
-| `docs/TODO_EMAIL_NOTIFICATIONS.md` | Unified notification service (dashboard alerts + future email) |
-| `docs/PENDING_ADMIN_REQUESTS.md` | Azure AD + Dynamics admin permission requests |
-| `docs/BACKEND_AUTOMATION_PLAN.md` | PowerAutomate backend automation roadmap (prompt development, data migration, Dynamics integration) |
-| `docs/EXECUTOR_CONTRACT.md` | **Shared spec** that both PowerAutomate `ExecutePrompt` child flow and Vercel `executePrompt()` service function implement. 9 steps, declarative variable/output metadata, caching contract, logging contract, Phase 0/1/2 scope. Read before any prompt work. |
-| `docs/PROMPT_STORAGE_DESIGN.md` | Design backdrop for Dynamics-backed prompt storage. Live table is `wmkf_ai_prompt` (not `wmkf_prompt_template` as originally spec'd) — see banner at top of doc for field-name reconciliation. For implementation, read EXECUTOR_CONTRACT.md. |
-| `docs/WORKFLOW_CHAINING_DESIGN.md` | Token-efficiency principle for backend workflows — ingest-once / chain-downstream pattern, multi-output prompts. Field `wmkf_ai_promptoutputschema` Memo (live) declares outputs. |
-| `docs/GRANT_CYCLE_LIFECYCLE.md` | Full grant proposal lifecycle with stages, status values, triggers, and AI tasks |
-| `docs/STAGED_REVIEW_PIPELINE.md` | 3-stage automated proposal triage pipeline design (fit screening → intelligence brief → virtual panel) |
-| `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` | Implementation plan for pipeline apps (Fit Screener + Proposal Pipeline) |
-| `docs/RETROSPECTIVE_ANALYSIS_PLAN.md` | Long-term plan for bespoke historical analyses via web apps (division of labor vs. PA backend automation) |
-| `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md` | Per-table migration plan for moving Vercel Postgres data into Dataverse; priority waves + wave 1 schema detail |
-| `modules/expertise_matching/CLAUDE.md` | Expertise Finder module: matching rules, expertise boundaries, CSV schema, known gaps |
-| `modules/expertise_matching/docs/SKILL_reviewer_matching.md` | Full operational procedures for Phase I batch and Phase II individual matching |
+Operational docs to know about (others in `docs/` are design backdrop, roadmaps, or point-in-time audits — find via grep when relevant):
 
----
-
-Last Updated: May 2026
+- **`docs/EXECUTOR_CONTRACT.md`** — shared spec PA `ExecutePrompt` and Vercel `executePrompt()` both implement. Read before any prompt work.
+- **`docs/API_ROUTE_SECURITY_MATRIX.md`** — 76-route catalogue, CI-gated.
+- **`docs/SECURITY_OPERATING_PLAN.md`** — weekly/monthly/quarterly security cadence + watch-item escalation thresholds.
+- **`docs/CREDENTIALS_RUNBOOK.md`** — env vars, secret rotation, diagnostics.
+- **`docs/AUTHENTICATION_SETUP.md`** — Azure AD configuration.
+- **`docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md`** — `MSCRMCallerID` impersonation contract + privilege intersection.
+- **`docs/EXTERNAL_REVIEWER_INTAKE_PLAN.md`** — token primitive, magic-link landing, SharePoint upload flow.
+- **`docs/INTAKE_PORTAL_DESIGN.md`** — applicant intake portal pilot (mid-June 2026 Phase II Research).
+- **`docs/POSTGRES_TO_DATAVERSE_MIGRATION.md`** — Wave 1+ migration plan.
+- **`docs/GRANT_CYCLE_LIFECYCLE.md`** — proposal lifecycle stages, statuses, triggers.
+- **`DEVELOPMENT_LOG.md`** — session-by-session history.
+- **`docs/guides/`** — user-facing guides (one per app).
+- **`modules/expertise_matching/CLAUDE.md`** — Expertise Finder module rules + matching procedures.
