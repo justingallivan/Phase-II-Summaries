@@ -529,6 +529,7 @@ RULES:
 - Present results as markdown tables. Show totalCount if results are truncated.
 - EXPORT: When the user asks to "export", "download", "spreadsheet", or wants the full dataset, use export_csv. It fetches ALL matching records (up to 5000) and generates a downloadable Excel file. CRITICAL: If you already queried this data with query_records earlier in the conversation, reuse the EXACT same table_name, filter, and select values — do NOT guess new field names. Copy them verbatim from your earlier successful tool call.
 - AI-processed exports: when the user wants AI analysis on exported data (e.g., "export with keywords extracted"), use export_csv with process_instruction. The tool returns a cost/time estimate and sample output. Present the estimate to the user (count, sample, cost, time) and ask for confirmation. Only after the user confirms, call export_csv again with the SAME parameters plus confirmed: true.
+- ACTIVE-ONLY DEFAULT: query_records, count_records, aggregate, find_reports_due, and export_csv automatically exclude inactive records (statecode eq 1). Do NOT add "statecode eq 0" to your $filter — it is injected for you. Pass include_inactive: true ONLY when the user explicitly asks for inactive/deactivated records (e.g. "include inactive", "show all including deactivated", "even closed-out records"). If you write your own statecode clause in $filter, the auto-injection is skipped and your clause is honored verbatim.
 - OData syntax: eq, ne, contains(field,'text'), gt, lt, ge, le, and, or, not. Dates: 2024-01-01T00:00:00Z
 - MATH: For totals, sums, averages, or "how much" questions, ALWAYS use aggregate — not query_records. Never fetch records and sum them yourself. The aggregate tool computes exact results server-side.
 - VOCABULARY FIRST: When the user's query matches a term in the VOCABULARY section (especially program names with hardcoded GUIDs), use those mappings directly — do NOT query lookup tables to re-derive GUIDs you already have. Only fall back to querying the lookup table if the hardcoded GUID returns no results or the user asks about a program not listed in VOCABULARY.
@@ -705,7 +706,7 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: 'query_records',
-    description: 'OData query. Null fields stripped. Use $select with ONLY the fields you need — fewer fields = more records fit. Call describe_table first if unsure about field names.',
+    description: 'OData query. Null fields stripped. Use $select with ONLY the fields you need — fewer fields = more records fit. Call describe_table first if unsure about field names. Inactive records (statecode eq 1) are excluded by default — set include_inactive: true if the user explicitly asks for inactive/deactivated records.',
     input_schema: {
       type: 'object',
       properties: {
@@ -715,25 +716,27 @@ export const TOOL_DEFINITIONS = [
         orderby: { type: 'string', description: 'OData $orderby' },
         top: { type: 'integer', description: '1-100, default 50' },
         expand: { type: 'string', description: 'OData $expand' },
+        include_inactive: { type: 'boolean', description: 'Default false. Set true ONLY when the user explicitly asks to include inactive/deactivated records, or when filtering on statecode yourself.' },
       },
       required: ['table_name'],
     },
   },
   {
     name: 'count_records',
-    description: 'Count records, optionally filtered.',
+    description: 'Count records, optionally filtered. Inactive records (statecode eq 1) are excluded by default — set include_inactive: true to count all records.',
     input_schema: {
       type: 'object',
       properties: {
         table_name: { type: 'string' },
         filter: { type: 'string', description: 'OData $filter' },
+        include_inactive: { type: 'boolean', description: 'Default false. Set true ONLY when the user explicitly asks to include inactive/deactivated records.' },
       },
       required: ['table_name'],
     },
   },
   {
     name: 'aggregate',
-    description: 'Server-side aggregation (sum, average, min, max, countdistinct). Use for totals, averages, and grouped summaries — do NOT manually sum query_records results.',
+    description: 'Server-side aggregation (sum, average, min, max, countdistinct). Use for totals, averages, and grouped summaries — do NOT manually sum query_records results. Inactive records (statecode eq 1) are excluded by default — set include_inactive: true to include them.',
     input_schema: {
       type: 'object',
       properties: {
@@ -742,18 +745,20 @@ export const TOOL_DEFINITIONS = [
         operation: { type: 'string', enum: ['sum', 'average', 'min', 'max', 'countdistinct'], description: 'Aggregation operation' },
         filter: { type: 'string', description: 'OData $filter to scope the aggregation' },
         group_by: { type: 'string', description: 'Field to group by (e.g. "akoya_fiscalyear"). Returns one result per group.' },
+        include_inactive: { type: 'boolean', description: 'Default false. Set true ONLY when the user explicitly asks to include inactive/deactivated records.' },
       },
       required: ['table_name', 'field', 'operation'],
     },
   },
   {
     name: 'find_reports_due',
-    description: 'Find all reporting requirements due in a date range. Returns report#, due date, type, request#, organization, and status.',
+    description: 'Find all reporting requirements due in a date range. Returns report#, due date, type, request#, organization, and status. Inactive records are excluded by default.',
     input_schema: {
       type: 'object',
       properties: {
         date_from: { type: 'string', description: 'Start date (ISO format, e.g. 2026-02-01T00:00:00Z)' },
         date_to: { type: 'string', description: 'End date exclusive (ISO format, e.g. 2026-03-01T00:00:00Z)' },
+        include_inactive: { type: 'boolean', description: 'Default false. Set true ONLY when the user explicitly asks to include inactive/deactivated records.' },
       },
       required: ['date_from', 'date_to'],
     },
@@ -785,7 +790,7 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: 'export_csv',
-    description: 'Export query results as a downloadable Excel file. Use when user asks to export, download, or save data, or when a large dataset is needed. Fetches ALL matching records (up to 5000) and generates an .xlsx file. Requires $filter. Supports AI processing: set process_instruction to add AI-generated columns (returns estimate first; call again with confirmed: true to execute).',
+    description: 'Export query results as a downloadable Excel file. Use when user asks to export, download, or save data, or when a large dataset is needed. Fetches ALL matching records (up to 5000) and generates an .xlsx file. Requires $filter. Supports AI processing: set process_instruction to add AI-generated columns (returns estimate first; call again with confirmed: true to execute). Inactive records (statecode eq 1) are excluded by default — set include_inactive: true to include them.',
     input_schema: {
       type: 'object',
       properties: {
@@ -796,6 +801,7 @@ export const TOOL_DEFINITIONS = [
         filename: { type: 'string', description: 'Download filename (without extension, e.g. "proposals-2025"). Auto-generated if omitted.' },
         process_instruction: { type: 'string', description: 'AI task to run per record (e.g. "extract 5 keywords from the abstract"). Adds AI-generated columns to the export. First call returns a cost estimate; call again with confirmed: true to execute.' },
         confirmed: { type: 'boolean', description: 'Set to true after the user approves the AI processing estimate. Only used with process_instruction.' },
+        include_inactive: { type: 'boolean', description: 'Default false. Set true ONLY when the user explicitly asks to include inactive/deactivated records.' },
       },
       required: ['table_name', 'select', 'filter'],
     },

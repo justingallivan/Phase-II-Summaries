@@ -420,6 +420,18 @@ function sanitizeSelect(select) {
   return fields.length > 0 ? fields.join(',') : undefined;
 }
 
+/**
+ * Inject `statecode eq 0` into a Dynamics OData filter so inactive records are
+ * excluded by default. Skipped when the caller opts in via `include_inactive`,
+ * or when the user filter already references statecode (respect explicit intent).
+ */
+function applyActiveOnlyFilter(userFilter, includeInactive) {
+  if (includeInactive) return userFilter;
+  if (userFilter && /\bstatecode\b/i.test(userFilter)) return userFilter;
+  const active = 'statecode eq 0';
+  return userFilter ? `(${userFilter}) and ${active}` : active;
+}
+
 async function executeTool(name, input, sendEvent, userProfileId) {
   switch (name) {
     case 'search':
@@ -438,7 +450,7 @@ async function executeTool(name, input, sendEvent, userProfileId) {
       const entitySet = await DynamicsService.resolveEntitySetName(input.table_name);
       const result = await DynamicsService.queryRecords(entitySet, {
         select: sanitizeSelect(input.select),
-        filter: input.filter,
+        filter: applyActiveOnlyFilter(input.filter, input.include_inactive),
         orderby: input.orderby,
         top: input.top || 50,
         expand: input.expand,
@@ -449,7 +461,10 @@ async function executeTool(name, input, sendEvent, userProfileId) {
 
     case 'count_records': {
       const entitySet = await DynamicsService.resolveEntitySetName(input.table_name);
-      const count = await DynamicsService.countRecords(entitySet, input.filter);
+      const count = await DynamicsService.countRecords(
+        entitySet,
+        applyActiveOnlyFilter(input.filter, input.include_inactive),
+      );
       return { count };
     }
 
@@ -458,7 +473,7 @@ async function executeTool(name, input, sendEvent, userProfileId) {
       const result = await DynamicsService.aggregateRecords(entitySet, {
         field: input.field,
         operation: input.operation,
-        filter: input.filter,
+        filter: applyActiveOnlyFilter(input.filter, input.include_inactive),
         groupBy: input.group_by,
       });
       if (result.results) result.results = result.results.map(stripEmpty);
@@ -1594,15 +1609,16 @@ const MAX_XLSX_BYTES = 3 * 1024 * 1024; // 3MB buffer limit (~4MB base64)
  * 2. process_instruction without confirmed → estimate mode
  * 3. process_instruction with confirmed: true → full AI batch processing + export
  */
-async function exportCsv({ table_name, select, filter, orderby, filename, process_instruction, confirmed }, sendEvent, userProfileId) {
+async function exportCsv({ table_name, select, filter, orderby, filename, process_instruction, confirmed, include_inactive }, sendEvent, userProfileId) {
   const cleanSelect = sanitizeSelect(select);
   const entitySet = await DynamicsService.resolveEntitySetName(table_name);
+  const effectiveFilter = applyActiveOnlyFilter(filter, include_inactive);
 
   // ─── Branch 1: No AI processing — straight export (unchanged) ───
   if (!process_instruction) {
     const result = await DynamicsService.queryAllRecords(entitySet, {
       select: cleanSelect,
-      filter,
+      filter: effectiveFilter,
       orderby,
     });
 
@@ -1620,7 +1636,7 @@ async function exportCsv({ table_name, select, filter, orderby, filename, proces
     // (/$count fails with Edm.Int32 error on complex filters)
     const sampleResult = await DynamicsService.queryRecords(entitySet, {
       select: cleanSelect,
-      filter,
+      filter: effectiveFilter,
       top: 3,
     });
 
@@ -1662,7 +1678,7 @@ async function exportCsv({ table_name, select, filter, orderby, filename, proces
   // ─── Branch 3: Confirmed — full AI batch processing + export ───
   const result = await DynamicsService.queryAllRecords(entitySet, {
     select: cleanSelect,
-    filter,
+    filter: effectiveFilter,
     orderby,
   });
 
@@ -1973,8 +1989,9 @@ function cleanColumnName(field) {
  * Find all reporting requirements due in a date range.
  * Single Dynamics query with _formatted annotations for org/request names.
  */
-async function findReportsDue({ date_from, date_to }) {
-  const filter = `akoya_type eq true and akoya_requirementdue ge ${date_from} and akoya_requirementdue lt ${date_to}`;
+async function findReportsDue({ date_from, date_to, include_inactive }) {
+  const base = `akoya_type eq true and akoya_requirementdue ge ${date_from} and akoya_requirementdue lt ${date_to}`;
+  const filter = applyActiveOnlyFilter(base, include_inactive);
 
   const result = await DynamicsService.queryRecords('akoya_requestpayments', {
     select: 'akoya_paymentnum,akoya_requirementdue,akoya_requirementtype,wmkf_reporttype,_akoya_requestlookup_value,_akoya_requestapplicant_value,statecode',
