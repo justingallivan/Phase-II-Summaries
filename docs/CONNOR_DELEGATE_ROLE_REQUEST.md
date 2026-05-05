@@ -31,8 +31,6 @@
 >
 > How to verify on your end (optional): once you save, the role list for that application user should show Delegate alongside whatever's already there. I'll re-run the preview smoke and confirm in our next sync.
 >
-> One bonus question while you're in there, no rush: who has read access to the `wmkf_ai_run` table today (which roles, basically)? I'm tracking that as a watch item rather than a blocker — just want to confirm the audience is staff-only as I've been assuming. A one-line answer is plenty.
->
 > If you'd rather I walk through it on a call or screenshare, happy to.
 >
 > Thanks,

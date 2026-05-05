@@ -151,7 +151,7 @@ Watch trigger (any one is sufficient):
 
 Escalation threshold:
 
-- Watch becomes a ticket when the Dataverse `wmkf_ai_run` table exceeds 10,000 rows OR when a non-staff role (e.g. external contact, applicant tenant user) gains read access to the table. Until then, the table is small enough and the audience is narrow enough that retention is a watch item, not a defect.
+- Watch becomes a ticket when the Dataverse `wmkf_ai_run` table exceeds 10,000 rows OR when a non-staff role (e.g. external contact, applicant tenant user) gains read access to the table. As of 2026-05-05, staff have read access to all fields across all tables in this Dataverse environment by design — that's the intended audience, not the trigger. Until non-staff exposure happens, the table is small enough and the audience is narrow enough that retention is a watch item, not a defect.
 
 Likely response:
 
@@ -205,7 +205,7 @@ Initial alignment ratified in Session 132. Brief archived at `docs/archive/SECUR
 
 1. **Hardening tranche complete** — confirmed.
 2. **Cadence as drafted** — accepted. Weekly trigger switched from "first session of the week" to a recurring calendar reminder (folded into § Weekly Cadence above).
-3. **`wmkf_ai_run` permission review** — kept as a watch item. Read-access question added to the in-flight Connor Delegate-grant ask (see `docs/CONNOR_DELEGATE_ROLE_REQUEST.md`) for low-cost incremental signal.
+3. **`wmkf_ai_run` permission review** — kept as a watch item. Read access self-answered same day: in this Dataverse environment, staff have read access to all fields across all tables (per Justin). Watch item's "audience is staff-only" assumption confirmed; escalation threshold remains "non-staff role gains read access" (e.g. external contact, applicant tenant user).
 4. **PR-time AI matrix check** — kept as a soft prompt. CI gate revisited if drift accumulates over two consecutive monthly reviews, or if a contributor is onboarded.
 5. **Watch-item tracking** — matrix rows only. Promotion to GitHub issue only when an item's escalation threshold trips.
 6. **Next non-security priority** — intake portal institution/membership flow as primary thread for sessions 133+, with impersonation re-smoke as soon as Connor unblocks the Delegate role and Dynamics Explorer schema curation as a between-rocks palate cleanser.
