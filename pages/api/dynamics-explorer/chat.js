@@ -35,6 +35,11 @@ import { loadModelOverrides } from '../../../lib/services/model-override-loader'
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 import { estimateCostCents } from '../../../lib/utils/usage-logger';
 import { LLMClient } from '../../../lib/services/llm-client';
+import {
+  serializeDynamicsExplorerFieldValueForModel,
+  serializeDynamicsExplorerRecordForModel,
+  serializeDynamicsExplorerToolResult,
+} from '../../../lib/utils/dynamics-explorer-serializer';
 
 export const config = {
   api: {
@@ -193,8 +198,9 @@ export default async function handler(req, res) {
 
         logQuery({ userProfileId, sessionId, queryType: name, tableName: input.table_name || null, queryParams: input, recordCount, executionTime, wasDenied: false });
 
+        const resultForModel = serializeDynamicsExplorerToolResult(result, { toolName: name });
         const charLimit = TOOL_CHAR_LIMITS[name] || MAX_RESULT_CHARS;
-        const resultStr = truncateResult(result, charLimit);
+        const resultStr = truncateResult(resultForModel, charLimit);
 
         return { type: 'tool_result', tool_use_id: id, content: resultStr };
       };
@@ -1625,7 +1631,7 @@ async function exportCsv({ table_name, select, filter, orderby, filename, proces
     const count = sampleResult.totalCount || sampleResult.records.length;
 
     // Run AI on first sample to determine columns and preview output
-    const sampleRecord = stripEmpty(sampleResult.records[0]);
+    const sampleRecord = serializeDynamicsExplorerRecordForModel(stripEmpty(sampleResult.records[0]));
     const { sampleOutput, usage } = await runSampleProcessing(sampleRecord, process_instruction, userProfileId);
 
     // Extrapolate cost: (tokens per record) × total records ÷ batch size
@@ -1798,7 +1804,11 @@ async function processRecordsBatch(records, processInstruction, sendEvent, userP
   const CONCURRENCY = 3;
 
   // First, run sample to get column schema
-  const { sampleOutput } = await runSampleProcessing(records[0], processInstruction, userProfileId);
+  const { sampleOutput } = await runSampleProcessing(
+    serializeDynamicsExplorerRecordForModel(records[0]),
+    processInstruction,
+    userProfileId,
+  );
   const columnNames = Object.keys(sampleOutput);
 
   const systemPrompt = `You are a data processing assistant. Process each record according to the instruction and return a JSON array of objects.
@@ -1831,7 +1841,10 @@ Return ONLY the JSON array, no other text.`;
 
     const results = await Promise.allSettled(
       chunk.map(async (batch) => {
-        const batchRecords = batch.records.map((r, idx) => ({ index: idx + 1, ...r }));
+        const batchRecords = batch.records.map((r, idx) => ({
+          index: idx + 1,
+          ...serializeDynamicsExplorerRecordForModel(r),
+        }));
         const userMessage = `Instruction: ${processInstruction}
 
 Records (${batchRecords.length}):
@@ -2043,9 +2056,12 @@ async function searchRecords({ search, entities, top }) {
       } else if (entity === 'account') {
         label = `${a.name || '?'} | ${a.address1_city || ''}, ${a.address1_stateorprovince || ''}`;
       } else if (entity === 'annotation') {
-        label = `Note: ${(a.subject || a.notetext || '').substring(0, 80)}`;
+        const noteField = a.subject ? 'subject' : 'notetext';
+        const notePreview = serializeDynamicsExplorerFieldValueForModel(noteField, a.subject || a.notetext || '', { maxStringChars: 80 });
+        label = `Note: ${String(notePreview).substring(0, 80)}`;
       } else if (entity === 'email') {
-        label = `Email: ${(a.subject || '').substring(0, 80)} | ${a.createdon || ''}`;
+        const subjectPreview = serializeDynamicsExplorerFieldValueForModel('subject', a.subject || '', { maxStringChars: 80 });
+        label = `Email: ${String(subjectPreview).substring(0, 80)} | ${a.createdon || ''}`;
       } else {
         label = `${a.wmkf_name || a.akoya_title || r.objectId}`;
       }
@@ -2054,8 +2070,11 @@ async function searchRecords({ search, entities, top }) {
       const hlParts = [];
       for (const [field, values] of Object.entries(r.highlights)) {
         const cleanValues = (Array.isArray(values) ? values : [values])
-          .map(v => v.replace(/\{crmhit\}/g, '**').replace(/\{\/crmhit\}/g, '**'));
-        hlParts.push(`${field}: ${cleanValues[0].substring(0, 200)}`);
+          .map(v => {
+            const clean = v.replace(/\{crmhit\}/g, '**').replace(/\{\/crmhit\}/g, '**');
+            return serializeDynamicsExplorerFieldValueForModel(field, clean, { maxStringChars: 200 });
+          });
+        hlParts.push(`${field}: ${String(cleanValues[0]).substring(0, 200)}`);
       }
 
       return `${label}\n  ID: ${r.objectId}\n  ${hlParts.join('\n  ')}`;
