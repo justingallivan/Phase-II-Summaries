@@ -14,10 +14,10 @@ Each Mac has its own local clone. GitHub is the source of truth. Use `/start` an
 
 ```bash
 # Create directory if needed
-mkdir -p ~/Programming
+mkdir -p ~/Programming/WMKF_Apps
 
 # Clone the repo
-cd ~/Programming
+cd ~/Programming/WMKF_Apps
 git clone https://github.com/justingallivan/Phase-II-Summaries.git
 cd Phase-II-Summaries
 ```
@@ -74,7 +74,7 @@ Memory is checked into the repo at `.claude-memory/` so it stays in sync across 
 
 ```bash
 # From the repo root
-PROJECT_SLUG="-Users-$(whoami)-Programming-Phase-II-Summaries"
+PROJECT_SLUG="-Users-$(whoami)-Programming-WMKF-Apps-Phase-II-Summaries"
 TARGET=~/.claude/projects/$PROJECT_SLUG
 mkdir -p "$TARGET"
 # Remove existing memory dir if present (back it up first if it has unique content)

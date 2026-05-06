@@ -1,7 +1,6 @@
 # Project Memory
 
 ## Operational
-- [Office Mac memory reconciliation](project_office_mac_memory_sync.md) — one-shot procedure: snapshot office memory to iCloud BEFORE opening Claude Code, then symlink. Reconcile from anywhere. Delete entry after both Macs are symlinked.
 - [Verify before destructive carryover](feedback_verify_before_destructive_carryover.md) — drop/remove/retire/archive items from carryover lists must be grep-verified first. Carryover lists go stale; one nearly broke Reviewer Finder on 2026-05-03.
 - [Check memory before asking the user](feedback_check_memory_before_asking_user.md) — pre-send "has X happened" items are lookup tasks, not user-confirm tasks. Scan MEMORY.md + recent commits first; rewrite stale doc framing without asking.
 
