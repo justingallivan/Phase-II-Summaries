@@ -1,47 +1,46 @@
-# Session 134 Prompt: Reviewer interaction design — colleague feedback loop
+# Session 135 Prompt: Reviewer interaction read-ahead + intake portal slice
 
 ## Heads up
 
-Session 133 was a pure design conversation. No code, no schema, no endpoints — one artifact: `docs/REVIEWER_INTERACTION_DESIGN.md`. The brief is the seed for a PD-facing read-ahead and slide deck (intended to be drafted in a browser session with a cheaper model rather than here, since the iterative writing benefits from cheap iteration and the brief carries the substance).
+Session 134 was an unplanned detour: the office Mac memory reconciliation procedure (`docs/OFFICE_MAC_MEMORY_SYNC.md`) failed because of a wrong project slug — the doc used `Programming-Phase-II-Summaries` but the repo lives under `WMKF_Apps/`, so the actual slug is `Programming-WMKF-Apps-Phase-II-Summaries`. The reconcile is now complete (both Macs symlinked), and the same bug was patched in `docs/MULTI_MAC_SETUP.md` so future-Mac onboarding won't trip on it.
 
-The S132 carryover — intake portal, Connor email + impersonation re-smoke, Dynamics Explorer schema curation — is unchanged. None of those were touched. They remain on deck.
+The S133 carryover — reviewer interaction read-ahead/slides, intake portal, Connor email + impersonation re-smoke, Dynamics Explorer schema curation — is unchanged. None were touched. They remain on deck.
 
-## Session 133 summary
+## Session 134 summary
 
 ### What was completed
 
-1. **Reviewer interaction design brief** (`eb4c538`).
-   - Walked through the full reviewer journey across six stages: invitation email, pre-materials landing page (2a), accept/decline events, working window (2b after materials drop), submission form, post-submit.
-   - Locked in design rails: binary adoption per PD (no comparative dashboards), defaults work without configuration, no jargon in UI, AkoyaGO is the implicit competitor, reviewer history is automatic (no opt-in profiling).
-   - Designed a same-URL flow with state changes between 2a (no materials) and 2b (materials available, review form). Magic link works the whole journey; calendar invites embed the same URL.
-   - Settled on click-to-acknowledge for COI + AI policy (replacing signed forms), with a flexible 1..N policy framework for future additions (honorarium acknowledgment foreseen). Storage in new Dataverse entities `wmkf_policy` and `wmkf_reviewer_acknowledgment` — same editable-by-staff pattern as `wmkf_ai_prompt`.
-   - Contact-info confirmation step added to Stage 2a — pre-fill from Dynamics, reviewer confirms/edits, direct write back to contact record with audit trail. Solves form-prefill quality and database hygiene in one step.
-   - Two single-event calendar invites (materials-delivery date + due date) sent at accept, with embedded magic link; ICS `UID`s tracked for reschedule messages.
-   - Decline page captures referral first (single freeform textbox), reason second (optional structured + free text). Referrals trigger automated PD email with deep link to "add reviewer" page; never auto-invite.
-   - Submission form: structured ratings always on page (radio buttons, single-select enforced by UI — solves the multi-check problem in the current Word form). Narratives via reviewer choice between inline textboxes or Word upload. AI extraction with HITL confirmation at submit time documented as Phase 2 future work, not built at MVP.
-   - Reminder cadence per-staff-preference, default = nudge all, T-7/T-2/T+0. PD-initiated "we're full" cancellation added as a new lifecycle state (`Withdrawn-Sufficient`).
-   - Post-submit: brief read-only window (existing `extendForPostSubmissionWindow` primitive), no outcome notification (portfolio balance considerations), no reciprocal "review again?" prompt — history emerges automatically.
-   - "Fundable elsewhere" question retained.
-   - Open items deliberately left for staff feedback: whether existing 8 narrative questions still pull weight, read-only window length, additional policy texts, PD-specific workflow needs.
+1. **Office Mac memory reconciliation** (`6ea8f2e`).
+   - Snapshotted office Mac's pre-symlink memory (2 files: `MEMORY.md`, `project_sharepoint_write_permissions.md`) to iCloud, then symlinked `~/.claude/projects/-Users-gallivan-Programming-WMKF-Apps-Phase-II-Summaries/memory` → repo's `.claude-memory/`.
+   - Reconcile was effectively a no-op: the office snapshot's only unique memory entry (`project_sharepoint_write_permissions.md`) was already superseded by a richer inline SharePoint entry in the home `MEMORY.md`.
+   - Cleaned up: pre-reconcile backup, iCloud snapshot dir, an unexpected macOS `memory 2` duplicate, the reconcile doc itself, the corresponding memory file, and the MEMORY.md index line.
 
-### Commits (Session 133)
+2. **Slug-bug fix in `docs/MULTI_MAC_SETUP.md`** (same commit).
+   - Step 1 clone path: `~/Programming/` → `~/Programming/WMKF_Apps/`.
+   - Step 4 `PROJECT_SLUG`: `…-Programming-Phase-II-Summaries` → `…-Programming-WMKF-Apps-Phase-II-Summaries`.
 
-- `eb4c538` — Add reviewer interaction design brief
+3. **Skipped Step 4 of the reconcile doc** (carryover-hygiene rule append to `start` skill).
+   - The doc claimed the `start` skill lives in user-global Claude config; it actually lives in the repo at `.claude/skills/start/SKILL.md`.
+   - The proposed rule is also already present in `CLAUDE.md`'s "Carryover Hygiene" section, which loads into every session — adding it to the skill would be redundant.
+
+### Commits (Session 134)
+
+- `6ea8f2e` — Complete office Mac memory reconciliation; fix multi-Mac setup slug
 
 ### Memory updates this session
 
-None. Design conversation — substance lives in the brief.
+None. The reconcile doc's memory entry (`project_office_mac_memory_sync.md`) was deleted as planned.
 
 ## Production state
 
-Unchanged from end of S132.
+Unchanged from end of S132/S133.
 
 - Vercel preview env: `DYNAMICS_IMPERSONATION_ENABLED=true`. BLOCKED on Connor granting Delegate role to `# WMK: Research Review App Suite` app user.
 - Vercel production env: `DYNAMICS_IMPERSONATION_ENABLED` unchanged (off / unset).
 - Request 1002379's `wmkf_ai_summary` still contains `(impersonation probe — ignore)` — restore on impersonation re-smoke.
 - Wave 1 stability clock still running from 2026-05-03.
 
-## Where to pick up — Session 134
+## Where to pick up — Session 135
 
 ### A. **Browser-session work (cheaper model): produce the colleague-shareable artifacts**
 
@@ -91,7 +90,14 @@ Walk `scripts/dynamics-schema-diff.js` output for priority tables (akoya_request
 
 | File | Purpose |
 |---|---|
-| `docs/REVIEWER_INTERACTION_DESIGN.md` | NEW — full reviewer journey design brief, six stages, ~7 pages, seed for read-ahead + slides |
+| `docs/MULTI_MAC_SETUP.md` | MODIFIED — corrected clone path + project slug to include `WMKF-Apps` segment |
+| `docs/OFFICE_MAC_MEMORY_SYNC.md` | DELETED — one-shot procedure complete |
+| `.claude-memory/project_office_mac_memory_sync.md` | DELETED — corresponding memory entry |
+| `.claude-memory/MEMORY.md` | MODIFIED — removed reconcile-procedure index line |
+
+## Home Mac follow-up
+
+Once at home: `git pull` will sync today's changes. Optional sanity check: `ls ~/.claude/projects/-Users-gallivan-Programming-WMKF-Apps-Phase-II-Summaries/` — should show only `memory` (symlink) plus session `.jsonl` files. Anything else (e.g. `memory.bak`, `memory 2`) is leftover from the home Mac's own earlier symlink switch and can be deleted.
 
 ## Testing
 
