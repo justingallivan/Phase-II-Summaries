@@ -29,7 +29,7 @@
 - [Phase I summary app winddown](project_phase_i_summary_app_winddown.md) — strategic deprioritization, NOT a freeze. `/phase-i-dynamics` still actively iterated as a prompt-tuning surface (v2 PromptResolver, A/B scripts). Backend automation owns volume.
 - [Dynamics as staff-prompt ground truth](project_dynamics_as_prompt_ground_truth.md) — `wmkf_ai_prompt` should hold all staff-facing prompts (content readable/editable by non-technical staff). New prompts default there; migrate user-driven apps when touched. Discoverability principle: one table everyone can browse vs. scattered `.js`.
 - [App roadmap 2026-04-25](project_app_roadmap_2026-04-25.md) — Concept Evaluator deprecating; Grant Reporting + Integrity Screener growing PA triggers (dual-caller); Reviewer Finder is top post-cycle priority and may need agent-loop support outside Executor contract.
-- [Reviewer Finder Dataverse-native entry path](project_reviewer_finder_dataverse_entry_path.md) — picker + save-candidates SHIPPED. Postgres reviewer tables are NOT dormant — still load-bearing for browse/email/grant-cycles flows. Do not drop.
+- [Reviewer Finder Dataverse-native entry path](project_reviewer_finder_dataverse_entry_path.md) — per-proposal picker + save-candidates SHIPPED. Postgres reviewer tables (researchers/publications/etc.) still load-bearing for browse/email/grant-cycles flows; do not drop *until* the migration ships (now active per `project_reviewer_postgres_to_dataverse_migration.md`).
 - [Contact promotion verified working](project_contact_promotion_permission.md) — AppendTo on Contact (BU) granted 2026-05-01; send-emails fully links potentialreviewer → contact
 - [External reviewer file access architecture](project_external_reviewer_file_access.md) — SHIPPED 2026-05-03. Token primitive, /external/* endpoints, SharePoint upload, event-driven token expiry all live. Reusable for intake portal.
 - [akoya_request PD fields](project_akoya_request_pd_fields.md) — `wmkf_programdirector` is the lead PD (filter on this); `wmkf_programdirector2` is secondary and does NOT assign reviewers; `ownerid` is the integration service account, not the PD
@@ -42,6 +42,9 @@
 - [External ID auth foundation SHIPPED (S129)](project_intake_portal_external_id_foundation.md) — tenant `04a1406b...`, NextAuth `entra-external` provider, `/apply` route auth round-trip verified. Membership/forms/Dynamics writes still ahead.
 - [Skinny pilot scope, not feature-for-feature](project_intake_portal_skinny_scope.md) — pilot sized like external reviewer intake; Phase II Research mid-June 2026; design doc at `docs/INTAKE_PORTAL_DESIGN.md`
 - [Capture machine-legible structured data](project_machine_legible_form_capture.md) — split budgets/rosters/milestones into structured fields, not narrative; Sarah + Connor own form wishlists
+- [Pilot decisions locked 2026-05-06](project_intake_portal_pilot_decisions_2026-05-06.md) — six-decision walkthrough w/ Connor; T&C via magic link to AO+Liaison; Calendly scheduling step; staff approvals one-click magic links; structured tables = real child entities; AO/Liaison institutional contacts on `account`
+- [Reviewer Postgres → Dataverse migration is now top priority](project_reviewer_postgres_to_dataverse_migration.md) — gates pilot; aggressive timeline (Connor 2026-05-06: "let's pull the band-aid off"); per-proposal lifecycle already Dataverse-native, org-wide enrichment pool migrates now
+- [Dataverse creator privileges delegated](project_dataverse_creator_privileges.md) — Connor 2026-05-06 OK'd direct entity creation for pilot scope w/ summary-after model; maintain `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` audit catalog
 
 ## Dynamics Explorer
 - [Multi-library + subfolder document listing shipped](project_dynamics_explorer_archive_libs.md) — `list_documents` and `search_documents` now walk archives + nested folders via `lib/utils/sharepoint-buckets.js`
@@ -60,7 +63,7 @@
 ## Dynamics CRM Users
 - **16 licensed staff users** (Read-Write, `@wmkeck.org`) + ~180 Microsoft service accounts
 - All staff already have Dynamics licenses — OBO flow would not require additional licensing (but is not recommended due to complexity)
-- [Identity reconciliation SHIPPED](project_dynamics_identity_reconciliation.md) — DB bridge + MSCRMCallerID on user-driven writes + adapter chain + token lifecycle (S127–S129). Preview flag flipped + smoked S132 (2026-05-05); rollout BLOCKED on Connor granting **Delegate** role to app user `# WMK: Research Review App Suite` (app user lacks `prvActOnBehalfOfAnotherUser`). 403 fallback keeps prod safe; preview flag left on.
+- [Identity reconciliation SHIPPED](project_dynamics_identity_reconciliation.md) — DB bridge + MSCRMCallerID on user-driven writes + adapter chain + token lifecycle (S127–S129). Preview flag flipped + smoked S132 (2026-05-05). **UNBLOCKED 2026-05-06**: Connor granted Delegate role to app user `# WMK: Research Review App Suite`; impersonation re-smoke PASS for both Justin and cnoda (`scripts/probe-impersonation-resmoke.js`, `scripts/probe-impersonation-as-user.js`). Remaining: full `/phase-i-dynamics overwrite=true` run on req 1002379 (sentinel left in `wmkf_ai_summary`), then flip prod env flag.
 
 ## SharePoint Document Integration
 - Documents attached to requests are stored in **SharePoint**, not Dynamics
