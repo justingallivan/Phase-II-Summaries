@@ -1,9 +1,33 @@
 # Reviewer Postgres → Dataverse Migration Plan (Wave 2)
 
 **Created:** 2026-05-06 (Session 136)
+**Last revision:** 2026-05-07 (S137) — corrections from R3 Codex review applied; cross-references to `docs/APPLICATION_STATE_ATLAS.md` added
 **Status:** Draft — pre-Connor sign-off on contact form / cleanup cron / history feature scope
 **Priority:** Top — gates the intake portal pilot (mid-June 2026 Phase II Research)
 **Target environment:** WM Keck Sandbox first; managed-solution export to prod
+
+## Read this first: ground truth lives in the Atlas
+
+For live state of any entity/table this plan touches, the canonical reference is the **Application State Atlas** (`docs/APPLICATION_STATE_ATLAS.md` + per-entity pages under `docs/atlas/`). Verified 2026-05-07 via `scripts/audit-postgres-state.js` + `scripts/audit-dataverse-state.js`. When this plan and an Atlas page disagree, the Atlas is authoritative — this plan describes the *target* state and the migration *steps*; the Atlas describes *current* state.
+
+## Spec'd vs. built (verified 2026-05-07)
+
+This plan refers to scripts and endpoints by name. Most are **specifications, not yet built**. Only one exists today.
+
+| Artifact | Status | Notes |
+|---|---|---|
+| `scripts/backfill-reviewer-suggestions-parity.js` | **BUILT** (S136) | Dry-run classification of all 337 Postgres rows |
+| `scripts/audit-postgres-state.js`, `scripts/audit-dataverse-state.js` | **BUILT** (S136/S137) | Live-state probes |
+| `scripts/backfill-reviewer-suggestions-to-dataverse.js` | spec'd | Idempotent commit-mode backfill of the 2.4% delta |
+| `scripts/restore-from-cleanup-backup.js` | spec'd | Reverse the cleanup-cron pre-delete backup blob |
+| `scripts/repair-divergence-postflip.js` | spec'd | Replay Dataverse-window writes back into Postgres if a flag-flip rolls back |
+| `scripts/reconcile-reviewer-migration.js` | spec'd | Pre/post-cutover reconciliation report |
+| `pages/api/reviewer-finder/contact-history.js` | spec'd | Batched contact history lookup for match-on-discovery badges |
+| `pages/api/reviewer-finder/add-candidate-manual.js` | spec'd | Net-new "add candidate by hand" endpoint, replaces retired Database tab |
+| `lib/services/contact-history-service.js` | spec'd | Match-on-discovery aggregation helper |
+| `WAVE2_BACKEND_*` env-flag dispatch in services | spec'd | Modeled on Wave 1's pattern; zero matches in code today |
+
+Treat any unbuilt artifact as **work to do**, not as something to invoke. Order of build: backfill commit-mode → contact-history endpoint + service → flag-dispatch → restore/repair/reconcile (post-cutover).
 
 ## What this doc supersedes
 
@@ -59,7 +83,7 @@ The migration question is therefore **"do we deploy what's already designed, or 
 
 | Table | Rows (2026-05-06) | Disposition |
 |---|---|---|
-| `publications` | 0 | **Retire** (deploy decision: skip). Writer is dead (`DatabaseService.addPublication` has no callers, table empty). A designed Dataverse counterpart exists (`wave2/wmkf_app_publication.json` + junction `wave2/wmkf_app_z_publication_author.json`), but with zero data to migrate and the `researchers.js` admin UI being retired (its only reader), the rational call is to **skip deployment** of the publication entities entirely. Reviewer Finder discovery already rescrapes per-search; no need for a cached table. |
+| `publications` | 0 | **Retire** (deploy decision: skip). Writer is dead and reader `DatabaseService.getRecentPublications` (line 313) has **zero external callers** (verified 2026-05-07 via repo-wide grep — Codex R3 #7 resolved). The Dataverse counterpart `wmkf_apppublication` IS already deployed (14 custom attrs verified live 2026-05-07) but holds 0 rows; the junction `wmkf_app_z_publication_author` is **NOT deployed** (404 on entity set). With zero data on either side and the `researchers.js` admin UI being retired, the rational call is to **skip deployment** of the junction and let the empty `wmkf_apppublication` entity sit unused for now. Reviewer Finder discovery already rescrapes per-search; no need for a cached table. |
 | `proposal_searches` | 0 | **Reckon.** Writer is dead but `extract-summary.js` reads it as an IDOR ownership guard (`pages/api/reviewer-finder/extract-summary.js:57`). Empty table → guard always fails → extract-summary is functionally broken today. A designed Dataverse counterpart exists (`wave2/wmkf_app_proposal_search.json`), but with zero data and a broken endpoint, **decision is: retire `extract-summary` entirely**. UI removal of any callers required (Reviewer Finder picker calls `/api/reviewer-finder/extract-summary` from `pages/reviewer-finder.js:3538`). Skip deployment of `wmkf_app_proposal_search`. |
 | `researchers` | 331 | **Drain.** Don't migrate. Cycle close empties via cleanup cron. Read path in `researchers.js` is the blocker (admin UI). |
 | `researcher_keywords` | 1,028 | **Drain.** Coverage moves to `wmkf_appresearcher.wmkf_keywords` for new rows. Same read-path blocker as above. |
@@ -191,17 +215,15 @@ This means the contact's history surface is just `wmkf_potentialreviewer` filter
 
 ## New work in scope
 
-### 1. `wmkf_appgrantcycle` entity (deploy `wave2/wmkf_app_grant_cycle.json`)
+### 1. `wmkf_appgrantcycle` entity — patch schema-as-code, then deploy
 
-**Not net-new — already designed.** The schema file `lib/dataverse/schema/wave2/wmkf_app_grant_cycle.json` was authored in an earlier session and sits in the repo undeployed. W1 work is a deployment, not a fresh design.
+**Status (verified 2026-05-07 via `scripts/audit-dataverse-state.js` + EntityDefinitions metadata probe):** the entity IS already deployed (10 custom attrs live), but **with 0 rows and a partial schema** — see [`docs/atlas/postgres-grant-cycles.md`](atlas/postgres-grant-cycles.md) and [`docs/atlas/dataverse-wmkf-apppublication-and-appgrantcycle.md`](atlas/dataverse-wmkf-apppublication-and-appgrantcycle.md). This work is NOT a fresh deploy of the schema-as-code; it's a **schema patch** to add fields the deployed entity is missing.
 
-The file defines:
-- `schemaName: wmkf_AppGrantCycle`, `OrganizationOwned`
-- Primary name: `wmkf_DisplayName` (max 255)
-- `wmkf_FiscalYearCode` alt key (max 50)
-- `wmkf_MeetingDate`, `wmkf_SummaryPages`, and the rest of the standard cycle attributes
+The schema-as-code file `lib/dataverse/schema/wave2/wmkf_app_grant_cycle.json` defines 8 attributes (`wmkf_FiscalYearCode`, `wmkf_MeetingDate`, `wmkf_SummaryPages`, `wmkf_ReviewReturnDeadline`, `wmkf_ReviewTemplateUrl`, `wmkf_ReviewTemplateFilename`, `wmkf_AdditionalAttachments`, `wmkf_IsActive`) plus the primary name `wmkf_DisplayName`. **The schema-as-code is missing three fields the migration requires:** `wmkf_ShortCode`, `wmkf_ProgramName`, `wmkf_CustomFields`. These are also absent from the live deployment.
 
-Compare against the Postgres `grant_cycles` schema (probed live 2026-05-06) and patch any gaps before deploying:
+**W1 task:** patch `lib/dataverse/schema/wave2/wmkf_app_grant_cycle.json` to add the three missing attributes, then re-run `apply-dataverse-schema.js`. After patch the deployment will catch up.
+
+The full field mapping below names every Postgres column. Postgres columns marked **0% populated** in live data are non-blocking — schema captured for forward compatibility, no data to migrate.
 
 **Full field mapping** (every Postgres column accounted for):
 
@@ -212,7 +234,7 @@ Compare against the Postgres `grant_cycles` schema (probed live 2026-05-06) and 
 | `name` | `wmkf_displayname` | Text (255) | Primary name attribute. e.g., `"June 2026 Board Meeting"`. |
 | `program_name` | `wmkf_programname` | Text (100) | Friendly program label per cycle. |
 | `summary_pages` | `wmkf_summarypages` | Text (50) | Per-cycle reviewer summary length config (e.g. `"2"`, `"1,2"`). |
-| `review_deadline` | `wmkf_reviewdeadline` | Date | **0% populated in live data.** Optional. (Column is `review_deadline`, not `review_return_deadline` as original spec assumed.) |
+| `review_deadline` | `wmkf_reviewreturndeadline` | Date | **0% populated in live data.** Optional. Renamed to `wmkf_reviewreturndeadline` to match deployed entity. |
 | `review_template_blob_url`, `review_template_filename` | `wmkf_reviewtemplateurl`, `wmkf_reviewtemplatefilename` | Text (500) | Vercel Blob URL + filename. **0% populated in live data.** Schema captured for forward compatibility; no data to migrate. |
 | `additional_attachments` | `wmkf_additionalattachments` | Multi-line text | JSONB → JSON-as-text. **0% populated in live data (verified 2026-05-06).** Optional column; no migration logic needed. |
 | `custom_fields` | `wmkf_customfields` | Multi-line text | JSONB → JSON-as-text. **0% populated in live data.** Optional column. |
@@ -459,9 +481,9 @@ Audit: are there other 100-char (or other) caps elsewhere in the adapter set? Ru
 **Service-layer rewrites:**
 
 - `lib/services/database-service.js` — researcher/publication/keyword paths gutted; suggestion paths point at `wmkf_appreviewersuggestion`.
-- `lib/services/discovery-service.js` — `findResearcher` cache lookup replaced by match-on-discovery against `contact`.
-- `lib/services/contact-enrichment-service.js` — no functional change; still does email/ORCID enrichment. Output now feeds match-on-discovery.
-- `lib/services/deduplication-service.js` — reads candidates from Dataverse instead of Postgres; logic unchanged.
+- `lib/services/discovery-service.js` — calls `DatabaseService.findResearcher` (1 of 3 callers, verified via Atlas). Replace with match-on-discovery against `contact`.
+- `lib/services/deduplication-service.js` — calls `DatabaseService.findResearcher` (2 of 3 callers). Reads candidates from Dataverse instead of Postgres; logic unchanged.
+- `lib/services/contact-enrichment-service.js` — **active Postgres writer (Codex round-3 correction).** Calls `DatabaseService.createOrUpdateResearcher` (writer) and `findResearcher` (3rd caller). Migration scope: rewrite the writer to upsert against `wmkf_potentialreviewers` + `wmkf_appresearcher` via the existing adapters (`upsertByEmail`, `upsertByPotentialReviewer`). Output continues to feed match-on-discovery; the storage destination changes.
 - New: `lib/services/contact-history-service.js` — encapsulates the match-on-discovery + history aggregation.
 
 **No change:** `pubmed-service.js`, `arxiv-service.js`, `biorxiv-service.js`, `chemrxiv-service.js`, `orcid-service.js`, `serp-contact-service.js`, `claude-reviewer-service.js`. External-DB clients don't care where we persist.
@@ -512,7 +534,7 @@ Hard constraints (each blocks the step after it):
 
 ### No dual-write — single-source-of-truth flips
 
-To be explicit (Codex flagged this as a missing stance): **this migration does not run a dual-write window**. Per-table `WAVE2_BACKEND_*` flags swap the source-of-truth atomically per HTTP request. Before flip: Postgres write, Dataverse read-after-fallback. After flip: Dataverse write, Postgres untouched.
+To be explicit (Codex flagged this as a missing stance): **this migration does not run a dual-write window**. Per-table `WAVE2_BACKEND_*` flags **(spec'd, not yet built — verified 2026-05-07: zero matches in `lib/`/`pages/`/`scripts/`. Build alongside the endpoint rewrites; modeled on Wave 1's `WAVE1_BACKEND_*` flag dispatch in `app-access-service.js` / `settings-service.js` / `dataverse-prefs-service.js`)** swap the source-of-truth atomically per HTTP request. Before flip: Postgres write, Dataverse read-after-fallback. After flip: Dataverse write, Postgres untouched.
 
 There is no period where both backends are simultaneously authoritative. This avoids the divergence-detection-via-reconciliation trap, but means **a Dataverse write failure in the post-flip window surfaces as a user-visible error**, not silent dual-write success. Rollback = flag flip, not transactional rewind.
 
