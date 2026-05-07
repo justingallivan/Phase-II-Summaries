@@ -42,7 +42,9 @@ Field names normalized to `wmkf_ai_*` no-underscore-after-prefix convention (per
 
 **Scope:** Net-new junction entity tracking PI/co-PI participation across `akoya_request` history. Resolves the S136 lock (`project_reviewer_postgres_to_dataverse_migration.md`) and Connor's 2026-05-07 sign-off on vendor-data junctions.
 
-**Status:** Schema not yet deployed. Backfill script not yet written.
+**Status (2026-05-07):** Schema deployed to prod (`lib/dataverse/schema/wave2/wmkf_app_request_person.json` applied via `apply-dataverse-schema.js --target=prod --wave=2 --execute`). Entity, both attrs, both lookups, and alt key all confirmed live. Backfill script not yet written.
+
+Deploy hit Dataverse 429 throttling between metadata customizations (concurrent `EntityCustomization` lock). The apply script is idempotent so a 30s-backoff retry loop completed it cleanly. Future schema deploys should expect the same — bake retry-with-backoff into any wrapper script.
 
 **Schema:**
 - `wmkf_request` — Lookup → `akoya_request`

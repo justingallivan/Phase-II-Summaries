@@ -1,0 +1,64 @@
+{
+  "name": "wmkf_app_request_person",
+  "kind": "new-entity",
+  "schemaName": "wmkf_AppRequestPerson",
+  "displayName": "App Request Person",
+  "displayCollectionName": "App Request People",
+  "description": "Junction tracking PI / co-PI participation across akoya_request history. One row per (request, contact, role). Replaces the legacy 6-OR query against akoya_request._wmkf_projectleader_value + _wmkf_copi1..5_value. Backfilled once from existing slot fields; ongoing sync is owned by Connor's net-new PA flows on akoya_request create/update. Read-side strategy is UNION with akoya_request._wmkf_projectleader_value (NOT junction-first/fallback) — see docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md §5.",
+  "ownershipType": "OrganizationOwned",
+  "primaryNameAttribute": {
+    "schemaName": "wmkf_AssignmentKey",
+    "displayName": "Assignment Key",
+    "description": "Synthetic primary name (request number + role + position) for picker display.",
+    "maxLength": 200,
+    "requiredLevel": "ApplicationRequired"
+  },
+  "attributes": [
+    {
+      "type": "Picklist",
+      "schemaName": "wmkf_Role",
+      "displayName": "Role",
+      "description": "PI or co-PI. AO/Liaison are account-level (pilot scope) and not in this junction; reviewers stay on wmkf_potentialreviewer.",
+      "requiredLevel": "ApplicationRequired",
+      "options": [
+        { "value": 100000000, "label": "PI" },
+        { "value": 100000001, "label": "Co-PI" }
+      ]
+    },
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_AuthorPosition",
+      "displayName": "Author Position",
+      "description": "Provenance from legacy slot fields: 0 for PI (from _wmkf_projectleader_value), 1–5 for co-PI (from _wmkf_copi1..5_value). Optional; PA-flow-created rows may leave this null.",
+      "minValue": 0,
+      "maxValue": 5
+    }
+  ],
+  "relationships": [
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_apprequestperson_request",
+      "referencedEntity": "akoya_request",
+      "lookupSchemaName": "wmkf_Request",
+      "lookupDisplayName": "Request",
+      "lookupDescription": "The proposal this person is associated with.",
+      "required": "ApplicationRequired"
+    },
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_apprequestperson_contact",
+      "referencedEntity": "contact",
+      "lookupSchemaName": "wmkf_Contact",
+      "lookupDisplayName": "Contact",
+      "lookupDescription": "The person playing the PI/co-PI role.",
+      "required": "ApplicationRequired"
+    }
+  ],
+  "alternateKeys": [
+    {
+      "schemaName": "wmkf_request_contact_role",
+      "displayName": "Request + Contact + Role",
+      "keyAttributes": ["wmkf_request", "wmkf_contact", "wmkf_role"]
+    }
+  ]
+}
