@@ -14,22 +14,22 @@ Compact summary for the Postgres tables outside the reviewer-finder domain. Prom
 **Cross-system:** `dynamics_systemuser_id` joins to Dataverse `systemusers.systemuserid`. See `lib/services/dataverse-identity-map.js`.
 **Migration:** Wave 1 dispatch flag `WAVE1_BACKEND_*` exists but identity stays Postgres for now.
 
-### `user_app_access` (80 rows)
-**Source of truth (refreshed 2026-05-07):** **Dataverse `wmkf_appuserappaccesses`** (live entity set; flag flipped 2026-05-03). Postgres copy held read-only as a fallback until 2026-05-17 retirement window.
+### `user_app_access` (Postgres 80 rows / Dataverse 84 rows, 2026-05-07)
+**Source of truth (refreshed 2026-05-07):** **Dataverse `wmkf_appuserappaccesses`** (84 rows, live; flag flipped 2026-05-03). Postgres copy held read-only as a fallback until 2026-05-17 retirement window. The 4-row delta is post-flip activity in Dataverse; Postgres is frozen.
 **Live Dataverse adapter:** `lib/services/dataverse-app-access-service.js` — uses `client.post('/wmkf_appuserappaccesses', ...)` (note the entity-set name has no underscore between `app` and `userappaccesses`, even though the schema-as-code file is `wmkf_app_user_app_access.json`).
 **Schema:** `(user_profile_id, app_key)` unique grant rows.
 **Read/write:** 3/3 files. `lib/services/app-access-service.js` is the legacy reader; the dataverse-* sibling is the new path.
 **Migration:** Wave 1 retirement earliest 2026-05-17 (14-day stability clock from 2026-05-03).
 
-### `user_preferences` (25 rows)
-**Source of truth (refreshed 2026-05-07):** **Dataverse `wmkf_appuserpreferences`** (live entity set; flag flipped 2026-05-03).
+### `user_preferences` (Postgres 25 rows / Dataverse 20 rows, 2026-05-07)
+**Source of truth (refreshed 2026-05-07):** **Dataverse `wmkf_appuserpreferences`** (20 rows, live; flag flipped 2026-05-03). Postgres has more rows because preferences allow DELETE — some have been deleted on the Dataverse side post-flip while Postgres holds the older snapshot.
 **Live Dataverse adapter:** `lib/services/dataverse-prefs-service.js`.
 **Encryption:** values AES-256-GCM when `is_encrypted = true`.
 **Read/write:** 5/2 files. **3 DELETE callers** (per write-grep) — verify before drop.
 **Migration:** Same as `user_app_access`.
 
-### `system_settings` (45 rows)
-**Source of truth (refreshed 2026-05-07):** **Dataverse `wmkf_appsystemsettings`** (live entity set; flag flipped 2026-05-03).
+### `system_settings` (Postgres 45 rows / Dataverse 45 rows, 2026-05-07)
+**Source of truth (refreshed 2026-05-07):** **Dataverse `wmkf_appsystemsettings`** (45 rows, live; flag flipped 2026-05-03). Counts match exactly — settings are append-mostly so no drift.
 **Live Dataverse adapter:** `lib/services/dataverse-settings-service.js`.
 **Schema:** generic key-value (model overrides, feature flags, etc.).
 **Read/write:** 3/1 raw SQL files — but reads are **fanned out via `lib/services/settings-service.js`** to ≥5 distinct call sites (admin-models page, secrets management, maintenance flows, model overrides loader, cron secret-check). Treat the service as the canonical reader; the SQL grep undercounts because callers go through it.

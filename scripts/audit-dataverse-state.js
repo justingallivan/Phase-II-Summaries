@@ -88,12 +88,18 @@ async function countRecords(token, entitySet, filter) {
 }
 
 const CUSTOM_ENTITIES = [
+  // Wave 2 — reviewer finder
   { entitySet: 'wmkf_appresearchers', describe: 'Bibliometric sidecar (1:1 to wmkf_potentialreviewers)' },
   { entitySet: 'wmkf_appreviewersuggestions', describe: 'Suggestion lifecycle ledger ((reviewer, request) pairs)' },
   { entitySet: 'wmkf_apppublications', describe: 'Publication records (per Wave 2 schema-as-code)' },
   { entitySet: 'wmkf_appgrantcycles', describe: 'Grant cycle definitions (per Wave 2 schema-as-code)' },
   { entitySet: 'wmkf_appproposalsearches', describe: 'Proposal search history (per Wave 2 schema-as-code)' },
   { entitySet: 'wmkf_app_z_publication_authors', describe: 'Publication ↔ researcher junction' },
+  // Wave 1 — user/access foundation (live entity sets, no underscore between app and <name>)
+  { entitySet: 'wmkf_appsystemsettings', describe: 'Wave 1: system_settings → Dataverse (flag flipped 2026-05-03)' },
+  { entitySet: 'wmkf_appuserpreferences', describe: 'Wave 1: user_preferences → Dataverse' },
+  { entitySet: 'wmkf_appuserappaccesses', describe: 'Wave 1: user_app_access → Dataverse' },
+  // Vendor entities with extensions
   { entitySet: 'wmkf_potentialreviewerses', describe: 'Vendor person record (Connor) — has extension fields' },
 ];
 
