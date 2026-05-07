@@ -105,6 +105,7 @@ There are no open findings from the initial matrix pass as of this update. New f
 | `/api/reviewer-finder/analyze` | POST | App | `requireAppAccess('reviewer-finder')` | `access.profileId` passed | Low | Existing auth tests cover representative route. |
 | `/api/reviewer-finder/discover` | POST | App | `requireAppAccess('reviewer-finder')` | `access.profileId` passed | Low | External discovery APIs / AI review. |
 | `/api/reviewer-finder/enrich-contacts` | POST | App | `requireAppAccess('reviewer-finder')` | Request payload | Low | Rate-limited; server-side credentials only. |
+| `/api/reviewer-finder/contact-history` | GET | App | `requireAppAccess('reviewer-finder')` | Org-visible Dataverse data; reads junction + projectleader for `?contactId=<guid>` | Low | UNION read of `wmkf_apprequestperson` + `akoya_request._wmkf_projectleader_value`. No write side. |
 | `/api/reviewer-finder/extract-summary` | POST | App | `requireAppAccess('reviewer-finder')` | `proposal_id` scoped by `user_profile_id` | Low | Good scoping pattern. |
 | `/api/reviewer-finder/generate-emails` | POST | App | `requireAppAccess('reviewer-finder')` | `user_profile_id` scoped | Low | Existing cross-user tests cover representative behavior. |
 | `/api/reviewer-finder/grant-cycles` | GET, POST, PATCH, DELETE | App | `requireAppAccess('reviewer-finder')` | Shared grant cycles | Medium | Shared mutable records; confirm app-level access is enough. |
