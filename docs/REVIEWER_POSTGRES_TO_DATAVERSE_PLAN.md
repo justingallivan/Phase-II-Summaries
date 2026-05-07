@@ -93,42 +93,60 @@ So the "JSON validation" and "blob URL reachability" gymnastics in the plan can 
 
 ## Locked decisions
 
-### Data model: 1:1 stays
+### Data model: 1:1 stays — but the entities are not what the original plan implied
 
-`wmkf_appresearcher` remains 1:1 with `wmkf_potentialreviewer`. Researchers are transient cycle scratch; permanent reviewer identity lives in `contact`. No researcher pool table.
+**Corrected 2026-05-07 after re-reading adapters carefully.** The live model:
 
-Rationale: Reviewer Finder surfaces ~25 candidates per proposal. Selected reviewers promote to `contact` (permanent record). Unselected candidates have no value post-adjudication. Historical lookups about "have we worked with this person before" go through `contact` and the surviving `wmkf_potentialreviewer` rows linked to it.
+- `wmkf_potentialreviewer` is **global per-person**, identified by email. Lookup is `getByEmail(email)`. One person across N proposals = ONE potentialreviewer row.
+- `wmkf_appresearcher` is **1:1 with `wmkf_potentialreviewer`** (per-person bibliometric snapshot — h_index, ORCID, Scholar). Not per-proposal.
+- `wmkf_appreviewersuggestion` is **per-(person, request)** — the lifecycle ledger for "this person was suggested for this proposal." Identified by `findByPotentialReviewerAndRequest(prId, requestId)`.
+
+So one John Smith on 5 proposals = 1 `wmkf_potentialreviewer` + 1 `wmkf_appresearcher` + 5 `wmkf_appreviewersuggestion`.
+
+**Implications that earlier sections of this plan got wrong** (left in earlier drafts as "slot" framing — corrected throughout this revision):
+
+- The cleanup cron drops `wmkf_appreviewersuggestion` rows (per-proposal scratch), NOT `wmkf_potentialreviewer` rows. Dropping a potentialreviewer would erase the whole person.
+- The 1:1 sidecar is between potentialreviewer and appresearcher, NOT between either of those and a proposal.
+- A potentialreviewer with zero remaining suggestions is itself effectively orphaned — not currently part of cleanup-cron scope, but worth a follow-up: should orphan potentialreviewers also drop, or persist as a stub for future re-suggestion?
+
+Rationale unchanged: Reviewer Finder surfaces ~25 candidates per proposal. Selected reviewers promote to `contact` (permanent record). Per-proposal scratch (suggestions for proposals we never invited them to) post-adjudication has no value. Historical lookups about "have we worked with this person before" go through `contact` and the surviving `wmkf_appreviewersuggestion` rows linked to that person's potentialreviewer.
 
 ### Cleanup cron
 
 Cron runs weekly; only acts twice a year in practice (after June and December meeting dates).
 
-**Logic:**
+**Logic** (corrected 2026-05-07: drops suggestion rows, not potentialreviewer rows):
 
 ```
 For each akoya_request where wmkf_meetingdate < (today - 14 days):
-  For each wmkf_potentialreviewer row linked to that request:
-    If the slot is "engaged" (defined below): keep
-    Otherwise: delete (cascade-drops the 1:1 wmkf_appresearcher sidecar)
+  For each wmkf_appreviewersuggestion row linked to that request:
+    If the suggestion is "engaged" (defined below): keep
+    Otherwise: delete the suggestion row only.
+    Do NOT delete the linked wmkf_potentialreviewer (global per-person).
+    Do NOT delete the linked wmkf_appresearcher (1:1 with potentialreviewer).
 ```
 
-**"Engaged" predicate** — keep any slot where the slot OR its linked `wmkf_appreviewersuggestion` shows any engagement signal:
+**"Engaged" predicate** — keep any `wmkf_appreviewersuggestion` row where any of these signals is populated. Either via the suggestion itself or via the linked `wmkf_potentialreviewer` (global per-person):
 
-On `wmkf_potentialreviewer`:
-- `wmkf_contact` populated (contact promotion happened)
-- `wmkf_emailsentat` populated (we sent them anything)
-- `wmkf_responsetype` populated (they responded)
-
-On the linked `wmkf_appreviewersuggestion`:
+On the suggestion (`wmkf_appreviewersuggestion`):
 - `wmkf_selected = true`
+- `wmkf_emailsentat` populated (we sent invitation/materials)
+- `wmkf_responsetype` populated (they responded)
 - `wmkf_ExternalTokenIssued` populated (we issued a magic link)
 - `wmkf_ProposalFirstAccessed` populated (they engaged with the link)
 - `wmkf_ReviewSharePointFolder` populated (review folder was created)
 - Any of `wmkf_ReviewerImpact`, `wmkf_ReviewerRisk`, `wmkf_ReviewerOverallRating` populated (they submitted a review form)
 
+On the linked `wmkf_potentialreviewer` (global per-person):
+- `wmkf_contact` populated (contact promotion happened — applies to ANY suggestion this person has)
+
+If the linked potentialreviewer has `wmkf_contact` populated (e.g., they accepted on a different proposal), keep the suggestion regardless of its own state — that's a "this person became engaged with us at some point" signal worth preserving for cross-proposal history.
+
 The 14-day grace lets staff dip back into the unselected pool if late acceptances fall through. Reading `wmkf_meetingdate` at cron time handles board-moves-the-meeting cases automatically.
 
-**Pre-delete backup**: before any delete, the cron exports the doomed rows (slot + sidecar + suggestion) to a JSON blob in Vercel Blob storage with 30-day retention. Provides a manual-restore path if a predicate-bug deletes wrongly. Restore script TBD; documenting the export is the gate.
+**Orphan potentialreviewer policy** (open follow-up): after cron runs, some `wmkf_potentialreviewer` rows may have zero remaining `wmkf_appreviewersuggestion` rows. Decision deferred — initial implementation leaves them as stubs. If they accumulate, a separate orphan-cleanup pass can be added later.
+
+**Pre-delete backup**: before any delete, the cron exports the doomed rows (suggestion only) to a JSON blob in Vercel Blob storage with 30-day retention. Provides a manual-restore path if a predicate-bug deletes wrongly. Restore script (`scripts/restore-from-cleanup-backup.js`) reads the blob and re-CREATEs the suggestion via `reviewerSuggestionAdapter.upsert`. Idempotent via alt key.
 
 ### Engaged slots = de facto reviewer-history child entity
 
@@ -270,15 +288,36 @@ Confirm `wmkf_appreviewersuggestion` (where reviewer-portal data lives — see "
 
 ## Reviewer suggestions backfill
 
-The 337 Postgres `reviewer_suggestions` rows are not all replaceable by current Dataverse `wmkf_appreviewersuggestion` data — `save-candidates.js` only started writing Dataverse partway through cycle activity. So the Postgres rows fall into four groups; each needs a different action.
+### Parity probe result (2026-05-06)
 
-**Group A — already in Dataverse**: a Dataverse `wmkf_appreviewersuggestion` row exists for the same (request, reviewer-email) pair. **Action**: leave Dataverse row alone if all lifecycle fields are populated. If Dataverse has gaps that Postgres has data for, **patch only the gaps** — never overwrite an existing Dataverse value. Patch precedence: Dataverse is authoritative for any field it has data in; Postgres fills empties only.
+`scripts/backfill-reviewer-suggestions-parity.js` ran a dry-run classification of all 337 Postgres `reviewer_suggestions` rows against live Dataverse. **Result:**
 
-**Group B — active cycle, only in Postgres**: J26 (or future) cycle, no Dataverse counterpart. **Action**: backfill into Dataverse via the suggestion adapter. Need to also ensure a `wmkf_potentialreviewer` slot + `wmkf_appresearcher` sidecar exists for the candidate (may need to create if save-candidates was never re-run).
+```
+A   already in Dataverse (matching wmkf_appreviewersuggestion):  329 rows  (97.6%)
+B   active cycle, would backfill:                                  0 rows
+C2  closed cycle + engagement, backfill for history:               0 rows
+C1  closed cycle, no engagement, discard:                          0 rows
+Anomaly:                                                           8 rows
+```
 
-**Group C1 — closed cycle, no engagement signal**: closed-cycle Postgres row where ALL of `email_sent_at`, `materials_sent_at`, `response_type`, `response_received_at`, `review_received_at` are null. **Action**: discard. Pure pre-adjudication scratch; no forward use.
+**The backfill workstream collapses.** No Group B or Group C2 rows means there is nothing meaningful to copy from Postgres → Dataverse. The 329 Postgres rows in Group A are stale duplicates of already-existing Dataverse rows; dropping the Postgres table at decommission loses no data.
 
-**Group C2 — closed cycle, has engagement** (NEW — corrects original Group C): closed-cycle Postgres row where ANY of `email_sent_at`, `materials_sent_at`, `response_type`, `response_received_at`, `review_received_at`, or any review-blob field is populated. **Action**: backfill anyway for permanent reviewer history. Live audit shows 43 invitations, 22 responses, 1 received review across Postgres — that engagement record is the basis for future "have we worked with this person before" lookups and must be preserved regardless of cycle closure.
+The 8 anomalies trace cleanly to known data-quality gaps in the audit:
+- 4 rows missing email (exactly the 4 `researchers` rows where email is null)
+- 4 rows missing `request_number` (exactly the 4 `reviewer_suggestions` with null request_number)
+- All 8 are J26 (current cycle); zero overlap between the two anomaly types
+
+**Action**: triage the 8 anomalies manually before decommission. Most likely: the 4 missing-email rows are saved candidates whose email failed enrichment but who never got invited (no engagement signals on any of them, verifiable in raw data); the 4 missing-`request_number` rows pre-date the addition of the `request_number` column. Either fix or accept loss; document each.
+
+### Why this collapse is real
+
+`pages/api/reviewer-finder/save-candidates.js` writes Dataverse-only today, but at some prior point it wrote both Postgres and Dataverse — the 97.6% Group A overlap is consistent with sustained dual-write history rather than recent Dataverse adoption. The Postgres-only window must have been brief.
+
+**Operational implication**: the W2 "reviewer-suggestions backfill" critical-path item is removed. W3 no longer waits on backfill commit. Endpoint rewrites become the W3 critical path.
+
+### Patch precedence (residual, only matters if anomaly triage finds anything migrate-worthy)
+
+In the unlikely case that any of the 8 anomalies turns out to be a real Postgres-only row that should land in Dataverse, the patch precedence rules below apply. Otherwise these are vestigial.
 
 ### Identity contract (resolves Codex BLOCKER)
 
@@ -382,7 +421,9 @@ Audit: are there other 100-char (or other) caps elsewhere in the adapter set? Ru
 | `pages/api/reviewer-finder/researchers.js` | Admin pool CRUD over `researchers` / `researcher_keywords` / `publications` | **Retire** (locked S136 2026-05-06). Database tab loses meaning under 1:1 model. Replaced by net-new "Add candidate by hand" feature (see below). |
 | `pages/api/reviewer-finder/generate-emails.js` | Reads `reviewer_suggestions`, writes `email_sent_at` | Read from `wmkf_appreviewersuggestion`; write `wmkf_emailsentat` on the slot. |
 | `pages/api/reviewer-finder/extract-summary.js` | Writes `proposal_searches.summary_blob_url`, updates `reviewer_suggestions` | If `proposal_searches` is dead, just keep the suggestion update path on Dataverse. |
-| `pages/api/reviewer-finder/grant-cycles.js` | Direct `sql\`\`` against `grant_cycles` (5+ sites) | Rewrite all sites against `wmkf_appgrantcycle` (alt-key by fiscal year). |
+| `pages/api/reviewer-finder/grant-cycles.js` | Direct `sql\`\`` against `grant_cycles` (5+ sites) | Rewrite all sites against `wmkf_appgrantcycle` (alt-key by short_code). |
+| **`pages/api/review-manager/render-emails.js`** (scope addition, surfaced by grep gate 2026-05-06) | `loadCycleConfigs()` reads `grant_cycles.{short_code, name, program_name, review_deadline, custom_fields}` | Rewrite to read `wmkf_appgrantcycle`. Was missed in earlier scoping which described Review Manager as fully Dataverse-only. |
+| **`pages/api/review-manager/send-emails.js`** (scope addition) | `loadCycleConfigs()` reads `grant_cycles.{short_code, review_template_blob_url, additional_attachments}` | Same rewrite. |
 | `pages/api/reviewer-finder/my-proposals.js` | Mixed Postgres + Dataverse | Pick Dataverse; remove Postgres path. |
 
 **New endpoints:**
@@ -553,8 +594,8 @@ Today: 2026-05-06. Pilot: mid-June 2026 (~6 weeks). Updated to address Codex fee
 | Week | Target | Critical-path notes |
 |---|---|---|
 | W1 (now → 2026-05-13) | **Decisions + sandbox-deploy only — no application code.** `researchers.js` rewrite-vs-retire decision (Justin) — **already locked S136 to retire**. `extract-summary.js` retire-or-rewrite decision (Justin). Connor sign-off on cleanup-cron predicate, 14-day grace, contact form view, junction implementation, missing reviewer-portal field set. Sandbox `wmkf_appgrantcycle` + suggestion-extension fields deployed; field mapping verified against live Postgres audit. **Buffer**: if Connor sign-off slips into W2, sandbox-deploy still completes since schema is Justin-owned. | Schema before code. Connor lead-time absorbed by parallel sandbox work. |
-| W2 (2026-05-13 → 2026-05-20) | `grant-cycles.js` rewrite + `wmkf_appgrantcycle` migration (cycle data first — emails depend on it). Reviewer-suggestions backfill script written + parity dry-run + identity-contract verification. Reconciliation script skeleton (moved from W1). Cleanup cron written, dry-run only. `maintenance-service.js` blob scanner rewrite. Junction backfill script (if Connor green-light). Contact form subgrid (Connor). | Cycle migration unblocks email migration. Identity contract validated by parity-dry-run output. |
-| W3 (2026-05-20 → 2026-05-27) | Reviewer-suggestions backfill committed + parity report clean (zero anomalies). Endpoint rewrites: `generate-emails.js`, `my-proposals.js`, `extract-summary.js` (or its retirement + UI removal). Match-on-discovery service + `/api/reviewer-finder/contact-history` endpoint. | Suggestion backfill is the gating step for everything downstream. |
+| W2 (2026-05-13 → 2026-05-20) | `grant-cycles.js` rewrite + `wmkf_appgrantcycle` migration (cycle data first — emails depend on it). **Review Manager cycle reads** (`render-emails.js`, `send-emails.js`) refactored to point at the new entity. **Anomaly triage** for the 8 parity-report outliers (4 missing email + 4 missing request_number). Reconciliation script skeleton. Cleanup cron written, dry-run only. `maintenance-service.js` blob scanner rewrite. Junction backfill script (if Connor green-light). Contact form subgrid (Connor). | Cycle migration unblocks email migration. Suggestion backfill is no longer a workstream — parity probe (S136) showed 329/337 already match Dataverse, only 8 anomalies. |
+| W3 (2026-05-20 → 2026-05-27) | Endpoint rewrites: `generate-emails.js`, `my-proposals.js`, `extract-summary.js` (or its retirement + UI removal). Match-on-discovery service + `/api/reviewer-finder/contact-history` endpoint. | Endpoint rewrites are now the W3 critical path (suggestion backfill collapsed in S136). |
 | W4 (2026-05-27 → 2026-06-03) | `discover.js` rewrite. `researchers.js` retirement (per W1 lock) — API removal AND Database tab UI removal AND test/doc cleanup, with grep gates. "Add candidate by hand" feature. History badges in UI (descopable if W3 slipped). Cross-user-isolation test rewrite. **Dataverse readiness checklist** completed. Production-rehearsal dry-run with reconciliation script. | History badges are slip-eligible; readiness checklist is not. |
 | W5 (2026-06-03 → 2026-06-10) | Production cutover (per-table, watching dashboards). Postgres marked read-only. Pilot launch readiness review. Repair script tested in sandbox. | Watch dashboards live before any flag flip. |
 | W6 (2026-06-10 → 2026-06-17) | Pilot launch (mid-June Phase II Research). Cleanup cron stays in dry-run. | Cron real-mode flip is post-pilot. |
@@ -567,8 +608,9 @@ Today: 2026-05-06. Pilot: mid-June 2026 (~6 weeks). Updated to address Codex fee
 - Contact form subgrid: defers to post-pilot if Connor schedule doesn't accommodate W2
 
 **What's NOT in the slip budget** (gate cutover, no descope):
-- Backfill identity contract + parity report (zero anomalies)
+- 8 parity-anomaly triage decisions documented (recover or accept loss, per row)
 - `wmkf_appgrantcycle` migration
+- Review Manager cycle-read refactor (`render-emails.js`, `send-emails.js`)
 - `maintenance-service.js` blob-scanner rewrite
 - Per-user scoping documentation + test rewrite
 - Email-generation smoke + lifecycle-count parity
