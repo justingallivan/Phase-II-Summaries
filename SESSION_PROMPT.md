@@ -1,153 +1,129 @@
-# Session 138 Prompt: Pick up after the 5-phase remediation completion
+# Session 139 Prompt: Wave 2 build kickoff + remaining doc-triage refresh
 
 ## Heads up — read before doing anything
 
-Session 137 was almost entirely about closing the ground-truth gap that S136 surfaced. **All 5 phases of `docs/CLAUDE_REMEDIATION_PLAN.md` are now complete**, plus an additional self-test mechanism that makes coverage tools regression-resistant. The migration plan (`docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`) is corrected against ground truth. The Wave 1 doc (`docs/POSTGRES_TO_DATAVERSE_MIGRATION.md`) is reconciled.
+Session 138 was a Connor-present working session that resolved every open Connor question on the books, plus a doc-currency triage that archived 36 closed/historical docs. Both fronts moved. The major design surface that changed is the **`wmkf_apprequestperson` junction read-strategy**: contact-history now does a UNION (junction OR `_wmkf_projectleader_value`), not a junction-first/6-OR-fallback. Critical nuance — read `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` §5 before touching the contact-history endpoint.
 
-Per the remediation acceptance criterion, **the next major plan should pass Codex review without producing corrections about live state of existing code** — only about proposed work. 12 Codex passes on the Atlas were needed to reach a clean signal; the migration plan corrections passed in 1 pass; the Wave 1 reconciliation passed with one cat-1 finding (gate holes in `check:atlas` itself, since closed and self-tested).
+Also: **`wmkf_ai_run` audit columns Q6 turned out to already exist** (`wmkf_ai_promptoverridden`, `wmkf_ai_runsource`) — this was caught by Codex review of the same-day commit. The pattern is the kind of ground-truth miss `CLAUDE_REMEDIATION_PLAN.md` is meant to prevent. Carryover memo: **before marking anything as "to build under delegation," grep the codebase first.**
 
-**Important new artifact:** `docs/CLAUDE_COVERAGE_LESSONS.md` + `scripts/check-coverage-self-test.js`. When you build or modify a coverage tool (`scripts/check-*.js`), the self-test must pass; when external review catches a new structural pattern an existing gate missed, the order is mandatory: lesson → fixture → fix → commit together. CLAUDE.md "Ground-truth requirement" section now codifies this.
+A new `scripts/check-doc-currency.js` flags drift signals beyond the age + status-verb probe — code-name mismatches, table-liveness drift, source-of-truth drift, path-contract drift. Run it before doc edits in living plans.
 
-## Session 137 summary
+## Session 138 summary
 
 ### What was completed (in chronological order)
 
-1. **Phase 1 — Application State Atlas** (`b2b0af1`).
-   - 12 per-entity pages in `docs/atlas/` covering reviewer-finder Postgres tables, custom Dataverse entities, vendor entities with extensions, and infrastructure tables.
-   - `docs/APPLICATION_STATE_ATLAS.md` index with entity catalog, adapter inventory, service-layer matrix, cross-system join keys, as-built/as-designed reconciliation.
-   - New probe script: `scripts/audit-dataverse-state.js` (read-only, idempotent).
-   - 11 rounds of Codex stress-testing before clean signal — caught 38+ structural findings across rounds (mix of misattributed read/write paths, schema gaps, internal contradictions, file-citation errors). Each round informed subsequent fixes.
+1. **Verified Connor docs were stale before drafting agenda.** `CONNOR_QUESTIONS_2026-04-15.md` had Q5/Q6 framed as Connor asks but they were already under the 2026-05-06 creator-privilege delegation (Q5) or already deployed in production (Q6 — only caught later by Codex). `CONNOR_BRIEF_PHASE0.md` was send-ready but priority-stale (reviewer migration outranks PA-side ExecutePrompt build). Built a 4-item live agenda from the surviving questions plus pilot-junction items.
 
-2. **Round-3 migration plan corrections** (`43818b6`).
-   - Patched `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` against the 7 outstanding Codex round-3 findings. All 7 PASS per Codex follow-up review.
-   - Added "Read this first" pointer + "Spec'd vs. built" table at top.
+2. **Resolved every agenda item with Connor in the room** (`4005e7e`):
+   - **Q4 (Field Set B)** — cleared to build skeleton; flat publication fields chosen over JSON; starting choice values for overall rating accepted as v1.
+   - **Q7 (PD expertise on systemuser)** — Connor created `wmkf_expertise` Memo. Three docs updated to flip the dependency to done.
+   - **`wmkf_apprequestperson` junction** (collapsed items 2+3 of agenda) — vendor-data junction approved. Connor builds net-new PA flows (`akoya_request` create/update → create contacts as needed → write junction rows + dual-write `_wmkf_projectleader_value`). Justin/Claude owns schema deploy + backfill. Critical detail: PI lookup field stays live (other flows depend on it); only co-PI slots become obsolete.
+   - **Phase 0 PA-side ExecutePrompt** — bandwidth confirmed, build proceeds in parallel with pilot work; echo-prompt parity oracle approved as drift detector.
+   - Sent Connor a memo email recapping resolutions + per-side work split.
 
-3. **Phase 2 — Atlas CI gate** (`e332de5`).
-   - `scripts/check-application-state-atlas.js` enforces Postgres-table + Dataverse-entity coverage in source vs. Atlas pages.
-   - Wired to `npm run check:atlas`; CLAUDE.md updated.
-   - Surfaced 3 vendor-side Dataverse entities the Atlas v1 missed (`akoya_programs`, `akoya_requestpayments`, `annotations`); documented in the index.
+3. **Codex review of the Connor-sync commit caught real issues** (`9827802`):
+   - **CRITICAL** — junction read strategy was specified as "junction-first / 6-OR fallback," which fails in two transition windows. Revised to UNION (junction OR projectleader-field) as steady-state.
+   - **IMPORTANT** — Q6 columns (`wmkf_ai_promptoverridden`, `wmkf_ai_runsource`) already exist in production via `lib/services/execute-prompt.js`. Reframed Q6 from "to build under delegation" to "already done — doc was stale."
+   - Several smaller catalog-completeness gaps closed (Q5 fields, echo-prompt oracle, goals-assessment JSON exception called out).
 
-4. **Phase 4 — Wave 1 doc reconciliation + CI gate hole closed** (`5705bd3`).
-   - Patched `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md` with as-built corrections (naming convention, person model, Wave 1 status, Wave 2 entity list).
-   - Closed CI gate hole: original gate only matched `DynamicsService.*`; extended to catch raw `client.<verb>('/<entitySet>'` calls + `/api/data/v9.X/<entitySet>` URL fragments. Added platform-entity allowlist.
+4. **Doc-currency triage Step 1+2** (`192e6e1`):
+   - 119 markdown docs categorized into Buckets A (authoritative) / B (living plans) / C (point-in-time) / D (per-app guides) / E (Atlas) / Other.
+   - `docs/DOC_TRIAGE_2026-05-07.md` artifact captures the analysis with explicit Bucket C allowlist (36 files).
+   - `scripts/check-doc-currency.js` implements four drift probes Codex suggested: code-name drift, table-liveness mismatch, source-of-truth drift, path-contract drift. Pattern-configured for easy extension when new drift modes get caught.
+   - Codex review (gpt-5.3-codex) of the triage flagged two corrections (API_ROUTE_SECURITY_MATRIX has known gap; DYNAMICS_SCHEMA_ANNOTATION is cited as Atlas-reconciliation input, not "Other"). Folded in.
 
-5. **Wave 1 verification + CI wiring** (`40440d6`).
-   - Live-probed Wave 1 entity sets via `audit-dataverse-state.js`: `wmkf_appsystemsettings` (45 rows, exact match to Postgres), `wmkf_appuserpreferences` (20 vs Postgres 25 — DELETE drift post-flip), `wmkf_appuserappaccesses` (84 vs Postgres 80 — INSERT drift post-flip).
-   - Wired `check:atlas` into `.github/workflows/test.yml`.
-
-6. **Codex flagged 3 more CI gate holes** (`adbf4ae`).
-   - `client.delete_` (reserved-word alias missed)
-   - `DynamicsService.{count,aggregate,search}Records` (helper methods missed)
-   - `<NAME>_ENTITY` constants (parallel naming convention to `ENTITY_SET`)
-   - All three regression-tested.
-
-7. **Coverage self-test mechanism — the binding artifact** (`f9befb9`).
-   - `docs/CLAUDE_COVERAGE_LESSONS.md` catalogs every pattern the gate detects, with example call sites + why each was originally missed.
-   - `scripts/check-coverage-self-test.js` exercises every pattern via runtime-generated synthetic fixtures — fails CI if the gate stops detecting any. Verified by deliberately removing `countRecords|aggregateRecords` from the gate and confirming the self-test catches it.
-   - `npm run check:atlas:self-test` wired into CI alongside `check:atlas`.
-   - CLAUDE.md mandate: when external review catches a new pattern, lesson → fixture → fix → commit together.
+5. **Doc-currency triage Step 3** (`f191f24` + `<wrap-commit>`):
+   - 36 closed/historical docs moved via `git mv` to `docs/archive/`.
+   - 5 living plans had path citations rewritten via sed.
+   - `PROMPT_STORAGE_DESIGN.md` drift fix folded in (stale column names → live production names).
+   - End state: `docs/` top-level dropped from 97 → 57 files; `docs/archive/` grew from 4 → 40.
 
 ### Commits
 
-- `b2b0af1` — Build Application State Atlas (Phase 1 of remediation plan)
-- `43818b6` — Address Codex round-3 findings on reviewer migration plan
-- `e332de5` — Add Atlas CI gate (Phase 2 of remediation plan)
-- `5705bd3` — Reconcile Wave 1 doc against Atlas + close CI gate hole
-- `40440d6` — Verify Wave 1 entity sets live + wire check:atlas into CI
-- `adbf4ae` — Close additional CI gate holes flagged by Codex review
-- `f9befb9` — Bind coverage lessons to a CI self-test
+- `4005e7e` — Resolve all open Connor questions; seed schema-changes catalog
+- `9827802` — Address Codex review of 2026-05-07 Connor sync commit
+- `192e6e1` — Doc triage Step 1+2: categorize 119 docs, add drift detector
+- `f191f24` — Doc triage Step 3: archive 36 closed/historical docs to docs/archive/
+- `<wrap-commit>` — Fold in path rewrites + drift fixes that should have been in f191f24
 
 ### Memory updates this session
 
-None. Memory was *consulted* (per the new session-start protocol from S136); no new memories were written. Domain memories that informed this session:
-
-- `project_reviewer_postgres_to_dataverse_migration.md` (locked decisions, cleanup-cron predicate)
-- `project_reviewer_finder_dataverse_entry_path.md` (what's shipped vs. open)
-- `project_external_reviewer_file_access.md` (token lifecycle, SharePoint folder pattern)
-- `project_reviewer_history_data_quality.md` (pre-J26 caveat)
-- `project_dynamics_identity_reconciliation.md` (impersonation contract)
-- `project_dynamics_ai_writeback.md` (v3 spec, field-set status)
-- `project_wave1_pending.md` (flag-flip date, elevation revert held)
+None written. Domain memories that informed the session:
+- `project_dataverse_creator_privileges.md` (delegation scope)
+- `project_intake_portal_pilot_decisions_2026-05-06.md` (six-decision walkthrough resolutions)
+- `project_reviewer_postgres_to_dataverse_migration.md` (S136 lock state)
+- `project_dynamics_ai_writeback.md` (Field Set v3 status)
+- `project_codex_recurring_review.md` (Codex-as-input pattern)
 
 ## Production state
 
-- **Atlas + CI gate live and self-tested.** Any future schema or call-site change that breaks coverage triggers `npm run check:atlas` (or `:self-test`) on PR.
-- **Wave 1 in steady state.** Flag flipped 2026-05-03; 14-day stability clock ends 2026-05-17 (Postgres tables can drop after).
-- **Wave 2 migration plan is corrected and Codex-verified.** Ready for execution; `WAVE2_BACKEND_*` flags still need to be built (spec'd in plan, modeled on Wave 1).
-- **Impersonation rollout still complete from S136** (prod flag on, Justin attribution verified end-to-end).
+- **Connor's plate (his next build):** PA-side `ExecutePrompt` child flow + PA flows on `akoya_request` create/update for junction sync. Both unblocked.
+- **Justin/Claude's plate (5 build items, all unstarted):**
+  1. Echo-prompt parity oracle row in `wmkf_ai_prompt` (smallest, ~30 min)
+  2. `wmkf_apprequestperson` schema deploy via `apply-dataverse-schema.js` + alt key
+  3. `scripts/backfill-request-person-junction.js` (~3,000 rows from existing slot fields)
+  4. Field Set B skeleton + 6 workflow-chaining fields on `akoya_request` (~22 fields total in one batch)
+  5. `/api/reviewer-finder/contact-history` endpoint with the **UNION read strategy** (junction OR projectleader-field, NOT junction-first fallback)
+- **Atlas + CI gate live and self-tested.** `npm run check:atlas` + `:self-test` still green.
+- **Wave 1 in steady state.** Stability clock ends 2026-05-17.
 
-## Where to pick up — Session 138
+## Where to pick up — Session 139
 
-### A. **Wave 2 migration execution kickoff** (PRIMARY candidate)
+### A. **Wave 2 / pilot build kickoff** (PRIMARY candidate)
 
-The plan is now correct. Codex has signed off. The blocking question is **what to build first.** Per the migration plan's build order:
+The 5 work items above are independent and orderable. Suggested sequence smallest-first:
 
-1. Backfill commit-mode (`scripts/backfill-reviewer-suggestions-to-dataverse.js`) — replays the ~2.4% delta the parity probe identified.
-2. Patch `wmkf_appgrantcycle` schema-as-code with `wmkf_ShortCode` / `wmkf_ProgramName` / `wmkf_CustomFields`, redeploy via `apply-dataverse-schema.js`.
-3. Build `pages/api/reviewer-finder/contact-history.js` + `lib/services/contact-history-service.js`.
-4. Build `WAVE2_BACKEND_*` flag dispatch in service layer (modeled on Wave 1).
+1. **Echo-prompt parity oracle row** — single seed in `wmkf_ai_prompt` named `executor.echo-parity`, identity transformation. Useful as a smoke test for both Vercel `executePrompt()` and (later) PA-side `ExecutePrompt`.
+2. **`wmkf_apprequestperson` schema deploy** — net-new entity per `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` §5 + `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md`. Use existing `apply-dataverse-schema.js` pattern. Includes alt key `(wmkf_request, wmkf_contact, wmkf_role)`.
+3. **Backfill script** — walks `akoya_request`, emits one row per populated PI/co-PI lookup. ~3,000 rows in a single `$batch`. Read existing backfill scripts for batching patterns first.
+4. **Field Set B + workflow-chaining fields** — 22 fields in one schema batch. Field shapes locked per `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md`.
+5. **`/api/reviewer-finder/contact-history`** — UNION read strategy. Critical: not junction-first / fallback.
 
-Post-cutover artifacts (don't write yet): `restore-from-cleanup-backup.js`, `repair-divergence-postflip.js`, `reconcile-reviewer-migration.js`.
+### B. Doc-triage cleanup (smaller scope, completes the doc work)
 
-### B. **Two narrow Connor questions** (still pending from S137)
+- **Bucket A refresh** — `AUTHENTICATION_SETUP.md` (98d, dual-provider Entra External shipped since), `CREDENTIALS_RUNBOOK.md` (73d), `API_ROUTE_SECURITY_MATRIX.md` (endpoint persistence annotation per Atlas v1 known-gaps).
+- **Bucket B "flagged for refresh"** — STRATEGY.md (56d), GRANT_CYCLE_LIFECYCLE.md (28d), REVIEWER_LIFECYCLE_PROPOSAL.md (40d, Phase A shipped), STAGED_REVIEW_PIPELINE.md + STAGED_PIPELINE_IMPLEMENTATION_PLAN.md (36d), DYNAMICS_SCHEMA_ANNOTATION.md.
+- **"Other" archive batch** — 6 candidates not in Bucket C: `DYNAMICS_AI_FIELDS_SPEC_v2.md`, `DYNAMICS_AI_FIELDS_SPEC_cn-notes.md`, `DYNAMICS_EXPLORER_DOCUMENT_LISTING_PLAN.md`, `CRM_EMAIL_SEND_PLAN.md`, `ENTRA_ID_INTEGRATION_SUMMARY.md`, `SHAREPOINT_DOCUMENT_ACCESS.md` (verify-then-archive).
+- **Step 4** — promote `check-doc-currency.js` selected probes to a CI gate (extending `check:atlas:self-test` pattern).
+- **Bucket D guides refresh** — 6 per-app guides last touched 78d ago; spot-check vs current app behavior.
 
-Both nested under junction implementation:
-1. Existing PA flow on `akoya_request` create/update we can extend, or net-new?
-2. Junction-table preference — extends to indexes against vendor data, or only net-new app tables?
+### C. Externally gated (don't pursue without signal)
 
-Independent of Wave 2 execution start. Can be asked in any sync.
-
-### C. **Connor email queue** (send-ready, not blocked)
-
-- `docs/CONNOR_BRIEF_PHASE0.md` — Phase 0 Executor handoff brief
-- `docs/CONNOR_QUESTIONS_2026-04-15.md` — Q4–Q7 (Field Set B timeline, etc.)
-
-### D. Atlas v1 known gaps (promote-on-touch)
-
-Listed at the bottom of `docs/APPLICATION_STATE_ATLAS.md`:
-- Endpoint persistence annotation in `API_ROUTE_SECURITY_MATRIX.md` not yet merged.
-- Vendor `contact` / `account` extension fields not enumerated yet (needed for intake portal pilot).
-- `wmkf_apprequestperson` junction not yet deployed (locked S136).
-- Intake portal entities not yet created.
-
-### Externally gated (don't pursue without signal)
-
-- Migration EXECUTION (vs planning) — start with §A above.
-- Cleanup cron real-mode — post-pilot regardless.
 - Wave 1 retirement — earliest 2026-05-17.
+- Connor's PA-side ExecutePrompt build progress — no Vercel-side work depends on it landing first.
 
 ## Key files added/modified this session
 
 | File | Status | Purpose |
 |---|---|---|
-| `docs/APPLICATION_STATE_ATLAS.md` | NEW | Atlas index — entity catalog, adapter inventory, service matrix, cross-system join keys |
-| `docs/atlas/*.md` (12 files) | NEW | Per-entity pages |
-| `docs/CLAUDE_COVERAGE_LESSONS.md` | NEW | Pattern catalog for coverage tools — binding via self-test |
-| `scripts/audit-dataverse-state.js` | NEW | Read-only Dataverse state probe |
-| `scripts/check-application-state-atlas.js` | NEW | CI gate: Postgres tables + Dataverse entities must be in Atlas |
-| `scripts/check-coverage-self-test.js` | NEW | CI gate: regression-test the gate's pattern detection |
-| `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` | EDITED | Round-3 corrections + ground-truth pointer |
-| `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md` | EDITED | Wave 1 reconciliation — naming convention, person model, status, Wave 2 entity list |
-| `CLAUDE.md` | EDITED | Atlas pointer + coverage self-test mandate |
-| `package.json` | EDITED | Added `check:atlas` + `check:atlas:self-test` scripts |
-| `.github/workflows/test.yml` | EDITED | Wired both Atlas gates into CI |
+| `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` | NEW | Audit catalog for delegated schema changes (running list) |
+| `docs/DOC_TRIAGE_2026-05-07.md` | NEW | Triage analysis snapshot + Bucket C allowlist + Step 3 execution result |
+| `scripts/check-doc-currency.js` | NEW | Drift detector for living plans (4 probes) |
+| `docs/CONNOR_QUESTIONS_2026-04-15.md` | EDITED → archived | Q4–Q7 marked resolved; later moved to `docs/archive/` |
+| `docs/CONNOR_BRIEF_PHASE0.md` | EDITED → archived | Marked superseded; moved to archive |
+| `docs/CONNOR_INTAKE_PORTAL_SYNC.md` | archived | Six decisions resolved 2026-05-06 |
+| `docs/CONNOR_DELEGATE_ROLE_REQUEST.md` | archived | Role granted |
+| `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md` | EDITED | Field Set B cleared to build; flat publication fields; goals-assessment JSON exception called out |
+| `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md` | EDITED | PD-expertise dependency flipped to done |
+| `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` | EDITED | §5 junction read strategy revised to UNION; resolution items |
+| `docs/PROMPT_STORAGE_DESIGN.md` | EDITED | Stale column names → live production names |
+| `docs/archive/` | +36 files | Bucket C sweep |
 
 ## Testing
 
 ```bash
-# Run the gates in the order CI runs them
+# Gates remain green
 npm run check:api-routes
 npm run check:atlas
 npm run check:atlas:self-test
 npm run test:ci
 
-# Re-probe live state when working on data-layer changes
-node scripts/audit-postgres-state.js
-node scripts/audit-dataverse-state.js
+# New flagging tool — run before editing living plans
+node scripts/check-doc-currency.js
 ```
 
-## How to know Session 138 went well
+## How to know Session 139 went well
 
-If §A (Wave 2 execution kickoff): the plan goes through Codex review without corrections about *existing* code state — only about the proposed work. That's the remediation acceptance criterion.
+If §A (Wave 2 build): at least the echo-prompt oracle row and `wmkf_apprequestperson` schema land in sandbox. The full 5-item set is more than one session.
 
-If §B/§C/§D: smaller scope; success is just landing the discrete chunk.
+If §B (doc triage cleanup): at least Bucket A refresh + Other archive batch land. The Bucket B refresh is more involved per doc.
