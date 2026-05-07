@@ -1,8 +1,12 @@
 # Connor brief — Phase 0 Executor handoff
 
-**Status:** Ready to send (2026-05-05). The May 1 2026 cycle ran cleanly past the stability bar; Phase 0 is confirmed stable in production. Pre-send checklist below cleared.
+**Status:** ~~Ready to send~~ **Superseded 2026-05-07** — handoff happened verbally with Connor in the room. Resolutions:
+- **Bandwidth:** good — PA-side `ExecutePrompt` build proceeds in parallel with reviewer migration + intake portal pilot work.
+- **Echo-prompt parity oracle:** approved. Justin/Claude to seed a `wmkf_ai_prompt` row that echoes inputs as outputs, then both Executors get diffed on `wmkf_ai_run` rows for identical inputs.
 
-Edit freely before sending — the structure below is just to make sure nothing important gets dropped.
+Document retained as historical reference for the spec pointers below; not for sending.
+
+---
 
 ---
 

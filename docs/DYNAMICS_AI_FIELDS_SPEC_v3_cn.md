@@ -1,7 +1,7 @@
 # Dynamics Custom Fields for AI Output — Implementation Spec
 
 **Author:** Connor
-**Status:** v3 — **Implementation complete.** `wmkf_ai_run` table, Field Sets A & C, Choices, and permissions all created in Dynamics. Field Set B remains on hold.
+**Status:** v3 — `wmkf_ai_run` table, Field Sets A & C, Choices, and permissions live in Dynamics. **Field Set B cleared to build 2026-05-07** (Connor); skeleton creation pending under delegated creator privileges.
 **Date:** 2026-04-14
 **Based on:** Justin's v2 spec (`input/DYNAMICS_AI_FIELDS_SPEC.md`)
 
@@ -114,9 +114,9 @@ A `wmkf_ai_run` row is still created with `wmkf_ai_tasktype = 682090003` (PD Ass
 
 ## Field Set B — Grant Report Extraction
 
-**ON HOLD — pending further staff review before implementation.** Field definitions below are provisional and may change based on feedback.
+**Status: cleared to build (2026-05-07).** Connor approved building the skeleton as currently spec'd; expect iteration as staff feedback comes in. Schema additions logged to `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md`.
 
-**Naming note:** Field names below have been updated from Justin's original spec to follow the `wmkf_ai_` prefix convention with no additional underscores (e.g., `wmkf_ai_report_postdocs` → `wmkf_ai_reportpostdocs`). Some publication fields were also shortened (e.g., `wmkf_ai_report_publications_total` → `wmkf_ai_reportpubstotal`). These will be added to the translation key when the hold is lifted.
+**Naming note:** Field names below follow the `wmkf_ai_` prefix convention with no additional underscores (e.g., `wmkf_ai_report_postdocs` → `wmkf_ai_reportpostdocs`). Some publication fields are shortened (e.g., `wmkf_ai_report_publications_total` → `wmkf_ai_reportpubstotal`).
 
 Provenance lives in `wmkf_ai_run` with `wmkf_ai_tasktype = 682090001` (Report).
 
@@ -144,17 +144,21 @@ Multi-line text fields on `akoya_request`. Staff can edit after the AI produces 
 |-------|------|---------|
 | `wmkf_ai_reportprojectimpacts` | Multi-line text | Multi-paragraph project impacts narrative |
 | `wmkf_ai_reportawardsandhonors` | Multi-line text | Awards and honors received during grant period |
-| `wmkf_ai_reportpublication1` | Multi-line text (JSON) | `{citation, abstract, source}` for top publication |
-| `wmkf_ai_reportpublication2` | Multi-line text (JSON) | `{citation, abstract, source}` for second publication |
+| `wmkf_ai_reportpub1citation` | Multi-line text | Citation for top publication |
+| `wmkf_ai_reportpub1abstract` | Multi-line text | Abstract for top publication |
+| `wmkf_ai_reportpub1source` | Single-line text | Source flag (verbatim vs AI-summarized) for top publication |
+| `wmkf_ai_reportpub2citation` | Multi-line text | Citation for second publication |
+| `wmkf_ai_reportpub2abstract` | Multi-line text | Abstract for second publication |
+| `wmkf_ai_reportpub2source` | Single-line text | Source flag for second publication |
 | `wmkf_ai_reportimplications` | Multi-line text | Staff-draft implications for future grantmaking |
 
-**Publication fields note:** Each publication has citation + abstract + a flag for whether the abstract was verbatim or AI-summarized. JSON blob keeps these together. Alternative: flat fields per publication (`wmkf_ai_reportpub1citation`, `wmkf_ai_reportpub1abstract`, `wmkf_ai_reportpub1source` x2). Decision still open.
+**Publication fields decision (2026-05-07):** Flat fields chosen over JSON blob — easier for staff to edit per-cell and native Dynamics views/filtering work without custom rendering.
 
 ### Goals assessment (structured)
 
 | Field | Type | Purpose |
 |-------|------|---------|
-| `wmkf_ai_reportoverallrating` | Choice (on hold) | `successful`, `mixed`, `unsuccessful` |
+| `wmkf_ai_reportoverallrating` | Choice | `successful`, `mixed`, `unsuccessful` (starting set, 2026-05-07; full rating mechanism not yet spec'd) |
 | `wmkf_ai_reportoutcomesummary` | Multi-line text | 2–4 sentence summary of overall delivery |
 | `wmkf_ai_reportgoalsassessment` | Multi-line text (JSON) | Full per-goal breakdown (see sample below) |
 | `wmkf_ai_reportnotesforstaff` | Multi-line text | Things a PD should double-check |

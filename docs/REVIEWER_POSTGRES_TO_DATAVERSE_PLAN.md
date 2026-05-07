@@ -326,7 +326,11 @@ Alt key: `(wmkf_request, wmkf_contact, wmkf_role)`.
 2. **Ongoing sync** — PA flow on `akoya_request` create/update reads PI + co-PI 1–5, upsert/delete junction rows. **Connor's territory.**
 3. **Read-side fallback during pilot** — `/api/reviewer-finder/contact-history` reads the junction first; falls back to the 6-OR-clause query on `akoya_request` if the junction has no rows for that contact. Catches PA flow sync gaps. Removed post-pilot after one clean cycle.
 
-**Open Connor questions** (nested under §6 below): is there an existing PA flow on `akoya_request` updates we can extend? Does his junction-table preference extend to us building one against vendor data?
+**Resolved 2026-05-07** (both open Connor questions, jointly):
+- Junction-table preference **does** extend to vendor-indexed data — `wmkf_apprequestperson` proceeds as spec'd.
+- Ongoing sync is **net-new PA flows**, not an extension. Connor will build PA flows on `akoya_request` create/update that (a) create `contact` records as needed and (b) write junction rows directly.
+- **`_wmkf_projectleader_value` (PI lookup) stays live** — used by other flows unrelated to reviewers; PA flows dual-write (projectleader field + junction `pi` row). Only the **co-PI slots** (`_wmkf_copi1..5_value`) become obsolete read-only legacy data once backfill + PA flows are live.
+- Backfill script remains Justin/Claude's job.
 
 ### 6. Reviewer-portal field audit
 
@@ -525,9 +529,11 @@ Hard constraints (each blocks the step after it):
 3. **`researchers.js` admin UI** — **resolved 2026-05-06**: retire. Database tab goes away. Replaced by "Add candidate by hand" feature (§4 above).
 4. **Net-new reviewer-portal columns on `wmkf_appreviewersuggestion`** — **resolved 2026-05-06**: add `wmkf_DeclineReason` (multi-line text) + `wmkf_ResponseReceivedAt` (datetime). Late/on-time flag and response-latency hours derive at query time.
 5. **Contact form "Reviewer history" view** — **resolved 2026-05-06**: separate ask of Connor (not bundled with pilot's account-form work; pilot doesn't touch the contact form). Justin opted in rather than deferring post-pilot.
-6. **PI/co-PI junction (`wmkf_apprequestperson`)** — **resolved 2026-05-06**: junction approach locked (cleaner long-term + Connor's preference for junctions). Two implementation questions remain open for Connor:
-   - **Existing PA flow extension?** Is there a current PA flow on `akoya_request` create/update we can hook into for keeping the junction in sync, or is this net-new automation?
-   - **Junction against vendor data?** Does Connor's junction-table preference extend to us building one indexed against existing `akoya_request` person fields, or only to net-new app tables?
+6. **PI/co-PI junction (`wmkf_apprequestperson`)** — **fully resolved 2026-05-07**: junction approach locked S136; both implementation questions answered jointly:
+   - Junction-table preference extends to vendor-indexed data — proceed.
+   - Sync is net-new PA flows (Connor's build), not an extension. PA flows on `akoya_request` create/update will create `contact` records as needed and write junction rows directly.
+   - `_wmkf_projectleader_value` (PI lookup) **stays live** — used by other flows unrelated to reviewers. PA flows dual-write (projectleader field + junction `pi` row). Only the co-PI slots (`_wmkf_copi1..5_value`) become obsolete once backfill + PA flows are live.
+   - Backfill script (`scripts/backfill-request-person-junction.js`) is Justin/Claude's job.
 7. **`is_archived` on `grant_cycles`** — **resolved 2026-05-06**: column does not exist in Postgres; spec corrected (`is_active` handles active/archive distinction). Original Codex concern was a false alarm.
 
 ## Rollback strategy

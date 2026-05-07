@@ -121,7 +121,7 @@ Add one line to `/admin` user management: each row shows "Dynamics: ✓ linked" 
 
 **For (5):** requires the write permission grant we're already waiting on. Impersonation header works with any write-capable security role.
 
-**For (3) to fully replace hardcoded PD prompts:** Connor would need to add a custom field to `systemuser` for PD expertise description. Out of scope for this plan — this plan only builds the identity bridge; dynamic PD lookup is a separate follow-up that depends on it.
+**For (3) to fully replace hardcoded PD prompts:** ~~Connor would need to add a custom field to `systemuser` for PD expertise description.~~ **Done 2026-05-07** — Connor added `wmkf_expertise` (Memo) on `systemuser`. Out of scope for this plan; the swap-out of hardcoded PD lists is a separate downstream task.
 
 ## Out of scope
 
