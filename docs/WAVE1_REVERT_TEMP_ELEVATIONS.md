@@ -99,6 +99,6 @@ Justin's explicit call: we may want to rerun one of the scripts (sync, verify, r
 ## Related docs
 
 - `docs/WAVE1_PROD_RUNBOOK.md` — original cutover runbook
-- `docs/WAVE1_PROD_PRIVILEGE_REQUEST.md` — the System Customizer request
-- `docs/WAVE1_PROD_PRIVILEGE_REQUEST_2.md` — the `prvAssignRole` request
+- `docs/archive/WAVE1_PROD_PRIVILEGE_REQUEST.md` — the System Customizer request
+- `docs/archive/WAVE1_PROD_PRIVILEGE_REQUEST_2.md` — the `prvAssignRole` request
 - `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md` — flag-flip rollout plan

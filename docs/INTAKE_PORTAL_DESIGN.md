@@ -1,6 +1,6 @@
 # WMKF Grant Intake Portal — Design Document
 
-**Status:** Design v2 (2026-05-02). Pilot scope locked. Largest external blocker is Entra External ID tenant provisioning (IT request sent 2026-05-04 — see `docs/IT_ENTRA_EXTERNAL_TENANT_REQUEST_2026-05-04.md`). Internal pre-launch blockers also remain: virus scanning approach, `wmkf_portal_membership` shape sign-off (Connor), Phase II Research field inventory (Sarah + Connor), reviewer-consumable artifact decision, and PA trigger confirmation. See "Open questions / open work."
+**Status:** Design v2 (2026-05-02). Pilot scope locked. Largest external blocker is Entra External ID tenant provisioning (IT request sent 2026-05-04 — see `docs/archive/IT_ENTRA_EXTERNAL_TENANT_REQUEST_2026-05-04.md`). Internal pre-launch blockers also remain: virus scanning approach, `wmkf_portal_membership` shape sign-off (Connor), Phase II Research field inventory (Sarah + Connor), reviewer-consumable artifact decision, and PA trigger confirmation. See "Open questions / open work."
 
 **Related:**
 - `docs/EXTERNAL_REVIEWER_INTAKE_PLAN.md` — reference implementation pattern for token-authenticated public surface
@@ -160,7 +160,7 @@ We own the pilot schema work directly (same pattern we used for the reviewer-sug
 
 ### Applicants — Entra External ID, OTP
 
-Separate external tenant `wmkeckapply.onmicrosoft.com`, OTP-only, isolated from the organizational tenant. Justin + Connor as Global Admin guests. Detail in `docs/IT_ENTRA_EXTERNAL_TENANT_REQUEST_2026-05-04.md`.
+Separate external tenant `wmkeckapply.onmicrosoft.com`, OTP-only, isolated from the organizational tenant. Justin + Connor as Global Admin guests. Detail in `docs/archive/IT_ENTRA_EXTERNAL_TENANT_REQUEST_2026-05-04.md`.
 
 **Why Entra and not HMAC magic links** (which would be cheaper to build and match the external reviewer portal pattern): the real unit of identity for grant applications is the **institution**, not the individual. Magic links are person-centric and bake in the wrong abstraction. The institution-as-identity model needs:
 
@@ -552,7 +552,7 @@ New env var: `CLOUDMERSIVE_API_KEY`. Pilot uses the free tier; production cycle 
 2. **`wmkf_portal_membership` shape sign-off** with Connor — including the new approval-state fields.
 3. **Phase II Research field inventory** with Sarah + Connor — drives the form module.
 4. **PA trigger confirmation** — which existing `'Phase II Pending'` flows fire for portal-originated submissions vs. which need updating.
-5. **Structured-tables persistence contract** with Connor — pick one storage pattern (real child entities, JSON columns on `akoya_request`, or defer) so submit endpoints can be wired. See `docs/CONNOR_INTAKE_PORTAL_SYNC.md` § 6.
+5. **Structured-tables persistence contract** with Connor — pick one storage pattern (real child entities, JSON columns on `akoya_request`, or defer) so submit endpoints can be wired. See `docs/archive/CONNOR_INTAKE_PORTAL_SYNC.md` § 6.
 
 **Resolved (decisions made, build remaining):**
 

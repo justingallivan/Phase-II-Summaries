@@ -688,7 +688,7 @@ Today: 2026-05-06. Pilot: mid-June 2026 (~6 weeks). Updated to address Codex fee
 - `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md` — Wave 1 (shipped) + the original Wave 2 spec this doc supersedes
 - `docs/INTAKE_PORTAL_DESIGN.md` — pilot design; the workstream this gates
 - `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` — pilot Dataverse schema audit (sibling)
-- `docs/CONNOR_INTAKE_PORTAL_SYNC.md` — 2026-05-06 walkthrough
+- `docs/archive/CONNOR_INTAKE_PORTAL_SYNC.md` — 2026-05-06 walkthrough
 - `docs/EXTERNAL_REVIEWER_INTAKE_PLAN.md` — reviewer portal field shape
 - `lib/dataverse/adapters/{contact, potential-reviewer, researcher, reviewer-suggestion}.js` — live adapter code
 - `lib/utils/cycle-code.js` — `meetingDateToCycleCode(d)` for badge rendering

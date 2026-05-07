@@ -11,7 +11,7 @@ Per `project_dataverse_creator_privileges.md` (2026-05-06), Connor delegated ent
 
 ## 2026-05-07 — Workflow-chaining fields on `akoya_request` (planned, Justin/Claude)
 
-**Scope:** 6 `wmkf_ai_*` fields on `akoya_request` that downstream prompts (compliance, PD assignment, reviewer matching) read instead of re-parsing the full proposal. Closes Q5 in `docs/CONNOR_QUESTIONS_2026-04-15.md`. Falls under 2026-05-06 creator-privilege delegation.
+**Scope:** 6 `wmkf_ai_*` fields on `akoya_request` that downstream prompts (compliance, PD assignment, reviewer matching) read instead of re-parsing the full proposal. Closes Q5 in `docs/archive/CONNOR_QUESTIONS_2026-04-15.md`. Falls under 2026-05-06 creator-privilege delegation.
 
 **Status:** Not yet applied.
 

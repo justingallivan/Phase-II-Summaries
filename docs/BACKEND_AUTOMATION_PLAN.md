@@ -33,7 +33,7 @@ See `docs/GRANT_CYCLE_LIFECYCLE.md` for the full proposal lifecycle with stage-b
 
 > **Update — Session 103, 2026-04-17:** Three empirical findings affect PA flow design:
 >
-> 1. **`{{var}}` interpolation syntax verified on the Next.js side** (still needs a PA-side confirmation). Dataverse Memo fields holding `{{proposal_text}}`-style placeholders round-trip cleanly through OData — `{{` is not interpreted as an expression. See `docs/CONNOR_QUESTIONS_2026-04-15.md` Q3.
+> 1. **`{{var}}` interpolation syntax verified on the Next.js side** (still needs a PA-side confirmation). Dataverse Memo fields holding `{{proposal_text}}`-style placeholders round-trip cleanly through OData — `{{` is not interpreted as an expression. See `docs/archive/CONNOR_QUESTIONS_2026-04-15.md` Q3.
 > 2. **Sonnet 4.6's empirical cache minimum is ~2,048 tokens** (docs say 1,024). PA flows should only bother assembling `cache_control` JSON when the stable prefix (tools + system + cached user blocks) comfortably exceeds 2K tokens. For smaller prompts the marker is a no-op. See `docs/PROMPT_CACHING_PLAN.md`.
 > 3. **Image handling creates a path asymmetry.** PA backend strips images in a pre-filter (lean, text-only); user-side Vercel paths likely keep PDFs with images intact. The cached content profiles differ significantly — a user-side PDF with figures may be 12–20K tokens vs. 5–7K text-only. Caching ROI is correspondingly higher on the user-side path.
 >

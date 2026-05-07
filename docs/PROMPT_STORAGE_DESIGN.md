@@ -162,9 +162,9 @@ The run log already exists (Connor's side). Three additions for override and pro
 | Column | Type | Notes |
 |---|---|---|
 | `wmkf_ai_promptversion` | Integer | Existing. Points at the base version the call started from, even when overridden. |
-| `wmkf_prompt_override` | Memo (nullable) | **New.** Full override text if the user modified the prompt for this run. NULL if the call used the published body unmodified. Same memo cap as `wmkf_ai_promptbody`. |
-| `wmkf_prompt_was_overridden` | Bool | **New.** Denormalized flag for fast filtering ("show me all runs that used overrides"). |
-| `wmkf_run_source` | Choice | **New.** `pa-auto` \| `vercel-user` \| `vercel-test-run` \| `vercel-interactive`. Distinguishes PA auto-drafts from user overrides from superuser test-runs, which is necessary for cost attribution and eval filtering. |
+| `wmkf_ai_promptoverride` | Memo (nullable) | Full override text if the user modified the prompt for this run. NULL if the call used the published body unmodified. Same memo cap as `wmkf_ai_promptbody`. **Live** (truncated to 4000 chars at write time per `lib/services/execute-prompt.js`). |
+| `wmkf_ai_promptoverridden` | Bool | Denormalized flag for fast filtering ("show me all runs that used overrides"). **Live** (`execute-prompt.js:549/553`). |
+| `wmkf_ai_runsource` | Choice | Picklist value mapped from `RUN_SOURCE` (e.g., `Vercel User`, `Vercel Interactive`, `PowerAutomate Auto`). Distinguishes PA auto-drafts from user overrides from superuser test-runs, used for cost attribution and eval filtering. **Live** (`execute-prompt.js:535`). |
 
 ## What PowerAutomate inherits by composing Claude calls itself
 
@@ -198,7 +198,7 @@ When the panel is expanded, any user can edit the body and run with their overri
 
 - The override exists only for the current run. The next page load reverts to the published default. (No persistent personal libraries in v1.)
 - Submission sends `{prompt_body_override, input_variables}` to the existing API endpoint. The endpoint runs Claude with the override instead of fetching from Dynamics.
-- `wmkf_ai_run` records the full override text in `wmkf_prompt_override` and flips `wmkf_prompt_was_overridden = true`. Provenance never breaks.
+- `wmkf_ai_run` records the full override text in `wmkf_ai_promptoverride` and flips `wmkf_ai_promptoverridden = true`. Provenance never breaks.
 - A "Restore default" button is always present.
 - A future "Promote to draft" button (deferred to v2) packages an override into a new `wmkf_ai_prompt` draft row for superuser publish review. Gives users a path from "I tweaked this and it's better" to "this should become canonical."
 

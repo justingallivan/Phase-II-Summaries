@@ -102,7 +102,7 @@ The Step 3 protocol requires an **explicit filename allowlist**. Below is the ve
 - WAVE1_REVERT_TEMP_ELEVATIONS.md
 - WAVE1_VERCEL_FLAG_ROLLOUT.md
 
-**Total Bucket C archive count: 28** (counted explicitly).
+**Total Bucket C archive count: 36** (counted explicitly post-Codex review; my earlier hand-counts of "~28" were drift in my own analysis, exactly the failure mode Codex flagged).
 
 ## Bucket D — Per-app guides (6)
 
@@ -172,9 +172,18 @@ The age-plus-status-verb probe used in this triage misses several drift modes Co
 
 Run `node scripts/check-doc-currency.js` to surface candidates the age probe missed.
 
+## Step 3 execution result (2026-05-07)
+
+Bucket C archive executed: **36 files** moved to `docs/archive/` via `git mv`. Pre-move grep-verify identified live citers in 6 living plans (INTAKE_PORTAL_DESIGN.md, REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md, BACKEND_AUTOMATION_PLAN.md, INTAKE_PORTAL_SCHEMA_CHANGES.md, WAVE1_REVERT_TEMP_ELEVATIONS.md, GEMINI.md); citation paths rewritten to `docs/archive/`.
+
+Post-move broken-link check: remaining stale paths are all in historical/snapshot files (DEVELOPMENT_LOG.md, SESSION_PROMPT.md, `.claude-memory/`) where point-in-time references are by convention. SESSION_PROMPT.md will refresh on `/stop`.
+
+Drift fixes also applied: `docs/PROMPT_STORAGE_DESIGN.md` columns renamed from pre-rename names (`wmkf_prompt_was_overridden`, `wmkf_run_source`) to live production names (`wmkf_ai_promptoverridden`, `wmkf_ai_runsource`).
+
 ## Open follow-ups
 
-- Step 3 execution: not yet run
 - Step 4: lightweight CI gate (extend `check:atlas` self-test pattern to docs)
 - Bucket D refresh: 6 guides last-touched 78d ago
-- Bucket B "flagged for refresh" list: 6 docs need state pass
+- Bucket B "flagged for refresh" list: 6 docs need state pass (STRATEGY.md, GRANT_CYCLE_LIFECYCLE.md, REVIEWER_LIFECYCLE_PROPOSAL.md, STAGED_REVIEW_PIPELINE.md, STAGED_PIPELINE_IMPLEMENTATION_PLAN.md, DYNAMICS_SCHEMA_ANNOTATION.md)
+- Bucket A refresh: AUTHENTICATION_SETUP.md (98d), CREDENTIALS_RUNBOOK.md (73d), API_ROUTE_SECURITY_MATRIX.md (endpoint persistence annotation)
+- Other: 6 archive candidates identified but not part of Bucket C (DYNAMICS_AI_FIELDS_SPEC_v2.md, DYNAMICS_AI_FIELDS_SPEC_cn-notes.md, DYNAMICS_EXPLORER_DOCUMENT_LISTING_PLAN.md, CRM_EMAIL_SEND_PLAN.md, ENTRA_ID_INTEGRATION_SUMMARY.md, SHAREPOINT_DOCUMENT_ACCESS.md) — defer to a future triage
