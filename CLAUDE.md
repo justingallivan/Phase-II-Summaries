@@ -27,6 +27,8 @@ This rule does NOT apply to additive work (new features, endpoints, tables) — 
 
 The **Application State Atlas** at `docs/APPLICATION_STATE_ATLAS.md` (with per-entity pages in `docs/atlas/`) is the canonical reference for live-state lookups. Read the relevant per-entity page before any plan claim about that entity's schema, source-of-truth, read paths, or write paths. Re-run the probe scripts (`scripts/audit-postgres-state.js`, `scripts/audit-dataverse-state.js`) if a page hasn't been touched in 60+ days and you're planning destructive work.
 
+CI gates the Atlas: `npm run check:atlas` fails if a Postgres table or Dataverse entity referenced in source isn't mentioned in any Atlas page. Run before committing data-layer changes.
+
 ---
 
 ## Project Overview

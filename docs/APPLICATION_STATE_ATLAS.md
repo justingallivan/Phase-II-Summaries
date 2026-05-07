@@ -54,6 +54,18 @@ The canonical reference for the live state of the application's data layer.
 | `wmkf_ai_run` | 325 | append-only AI invocation audit ledger | [dataverse-wmkf-ai-run-and-prompt.md](atlas/dataverse-wmkf-ai-run-and-prompt.md) |
 | `wmkf_ai_prompt` | 10 | staff-editable prompt rows for Executor | same page |
 
+### Vendor entities — Dynamics Explorer read-only
+
+The Dynamics Explorer (`pages/api/dynamics-explorer/chat.js`) traverses several vendor entities for natural-language queries. These are **read-only from the app's perspective** — no migration scope, no app-owned writes.
+
+| Entity set | Purpose |
+|---|---|
+| `akoya_programs` | Grant program definitions; lookup target from `akoya_request.wmkf_grantprogram` |
+| `akoya_requestpayments` | Per-request payment ledger; explorer payments tool reads here |
+| `annotations` | Vendor-standard Dataverse notes entity; explorer annotations tool reads. App registration does NOT have `prvCreateNote` (per `project_dynamics_ai_writeback.md`) — read-only by design. |
+
+Promote any of these to a per-entity page if app code starts writing to it.
+
 ### Other Postgres (compact summary, promote on touch)
 
 | Group | Tables | Page |
