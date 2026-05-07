@@ -16,6 +16,17 @@ Quick pre-flight: grep for live callers, read the most likely ones to confirm th
 
 This rule does NOT apply to additive work (new features, endpoints, tables) — only destructive work.
 
+## Ground-truth requirement
+
+**Probe live state before drafting plans.** Session 136 produced three rounds of plan corrections because state claims weren't being verified. Self-correction rules live in **`docs/CLAUDE_REMEDIATION_PLAN.md`** (read this before starting any migration / integration / data-layer work):
+
+1. **Probe-before-plan** — every state claim labeled `[VERIFIED via X]` or `[ASSUMED — needs verification]`
+2. **Memory hygiene** — read full memory entries that match the work, not just the index
+3. **Adjacent-context survey** — when citing a file, `ls` its parent; when citing a doc, `ls docs/`; before claiming "X has no Y", grep for Y
+4. **Active doubt on state claims** — "the convention is X" / "the design landed at Y" need three independent sources before stating
+
+The Application State Atlas (Phase 1 of the remediation plan, in flight as of S137) will be the canonical reference for live-state lookups. Until it's complete, lean heavily on `scripts/audit-postgres-state.js` and ad-hoc adapter reads.
+
 ---
 
 ## Project Overview
