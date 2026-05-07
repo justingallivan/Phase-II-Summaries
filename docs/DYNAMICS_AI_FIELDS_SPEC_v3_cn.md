@@ -152,7 +152,7 @@ Multi-line text fields on `akoya_request`. Staff can edit after the AI produces 
 | `wmkf_ai_reportpub2source` | Single-line text | Source flag for second publication |
 | `wmkf_ai_reportimplications` | Multi-line text | Staff-draft implications for future grantmaking |
 
-**Publication fields decision (2026-05-07):** Flat fields chosen over JSON blob — easier for staff to edit per-cell and native Dynamics views/filtering work without custom rendering.
+**Publication fields decision (2026-05-07):** Flat fields chosen over JSON blob — easier for staff to edit per-cell and native Dynamics views/filtering work without custom rendering. **Note:** This decision is publication-specific; `wmkf_ai_reportgoalsassessment` (below) intentionally stays a JSON Memo because the per-goal payload is variable-shape.
 
 ### Goals assessment (structured)
 

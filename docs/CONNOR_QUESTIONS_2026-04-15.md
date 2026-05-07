@@ -6,21 +6,28 @@ Originally a longer list of seven items; Q1/Q2/Q3 shipped (the `wmkf_ai_prompt` 
 
 ---
 
-## ~~Q4. Field Set B timeline~~ — **Resolved 2026-05-07**
+## ~~Q4. Field Set B timeline~~ — **Decisions resolved 2026-05-07; schema build pending**
 
-Connor: build the skeleton as currently spec'd; expect iteration as staff feedback comes in. Publication fields chosen flat (not JSON) for staff editability. Schema additions logged to `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md`; spec updated in `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md`. Choice values for `wmkf_ai_reportoverallrating` still pending.
-
----
-
-## ~~Q5. Intermediate fields on `akoya_request`~~ — **Closed 2026-05-07** (under delegation)
-
-The 6 `wmkf_ai_*` workflow-chaining fields (keywords, methodologies, risk_flags, team_info, budget_summary, timeline) fall under the schema-creation delegation Connor granted 2026-05-06. Justin/Claude to build directly; logged to `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md`. Not a Connor ask.
+Connor: build the skeleton as currently spec'd; expect iteration as staff feedback comes in. Publication fields chosen flat (not JSON) for staff editability. Goals-assessment field stays JSON (per-goal breakdown). Schema additions logged to `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md`; spec updated in `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md`. Choice values for `wmkf_ai_reportoverallrating` accepted as starting set; full rating mechanism not yet spec'd. Skeleton fields not yet deployed to Dataverse.
 
 ---
 
-## ~~Q6. Two remaining columns on `wmkf_ai_run`~~ — **Closed 2026-05-07** (under delegation)
+## ~~Q5. Intermediate fields on `akoya_request`~~ — **Decisions resolved 2026-05-07; build pending**
 
-`wmkf_prompt_was_overridden` (Bool) + `wmkf_run_source` (Choice: `pa-auto / vercel-user / vercel-test-run / vercel-interactive`) fall under the same delegation. Justin/Claude to build directly; logged to `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md`.
+The 6 `wmkf_ai_*` workflow-chaining fields (keywords, methodologies, riskflags, teaminfo, budgetsummary, timeline) fall under the schema-creation delegation Connor granted 2026-05-06. Justin/Claude to build directly under summary-after model. Field shapes + naming logged to `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md`. Not a Connor ask. Not a Connor blocker — but not yet deployed either.
+
+---
+
+## ~~Q6. Two `wmkf_ai_run` columns~~ — **Already exist (verified 2026-05-07 via Codex review)**
+
+Ground-truth check: both columns are already deployed in production and in active use by `lib/services/execute-prompt.js`:
+
+| Asked-for name | Live name | Where written |
+|---|---|---|
+| `wmkf_prompt_was_overridden` (Bool) | `wmkf_ai_promptoverridden` (Boolean) | `execute-prompt.js:549,553` |
+| `wmkf_run_source` (Choice) | `wmkf_ai_runsource` (Picklist, populated from `RUN_SOURCE` map) | `execute-prompt.js:535` |
+
+Atlas page `docs/atlas/dataverse-wmkf-ai-run-and-prompt.md` documents both. The original Q6 was stale framing; nothing to do.
 
 ---
 

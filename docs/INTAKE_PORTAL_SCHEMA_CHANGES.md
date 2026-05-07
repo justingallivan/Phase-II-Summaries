@@ -9,6 +9,35 @@ Per `project_dataverse_creator_privileges.md` (2026-05-06), Connor delegated ent
 
 ---
 
+## 2026-05-07 — Workflow-chaining fields on `akoya_request` (planned, Justin/Claude)
+
+**Scope:** 6 `wmkf_ai_*` fields on `akoya_request` that downstream prompts (compliance, PD assignment, reviewer matching) read instead of re-parsing the full proposal. Closes Q5 in `docs/CONNOR_QUESTIONS_2026-04-15.md`. Falls under 2026-05-06 creator-privilege delegation.
+
+**Status:** Not yet applied.
+
+| Field | Type |
+|---|---|
+| `wmkf_ai_keywords` | Memo (JSON array) |
+| `wmkf_ai_methodologies` | Memo (JSON array) |
+| `wmkf_ai_riskflags` | Memo (JSON array) |
+| `wmkf_ai_teaminfo` | Memo (JSON) |
+| `wmkf_ai_budgetsummary` | Multi-line text |
+| `wmkf_ai_timeline` | Multi-line text |
+
+Field names normalized to `wmkf_ai_*` no-underscore-after-prefix convention (per v3 spec naming rule), so `wmkf_ai_risk_flags` → `wmkf_ai_riskflags`, etc.
+
+---
+
+## 2026-05-07 — Echo-prompt parity oracle row in `wmkf_ai_prompt` (planned, Justin/Claude)
+
+**Scope:** Single seeded `wmkf_ai_prompt` row that echoes its inputs as outputs. Approved by Connor 2026-05-07 as a parity test oracle: both Vercel `executePrompt()` and the upcoming PA-side `ExecutePrompt` child flow should produce byte-identical `wmkf_ai_run` rows for identical inputs. Cheap drift-detector across the two Executor implementations.
+
+**Status:** Not yet seeded. No new schema — just a new row in the existing `wmkf_ai_prompt` table.
+
+**Naming proposal:** `executor.echo-parity` (`<domain>.<purpose>` per `project_prompt_storage_strategy.md`).
+
+---
+
 ## 2026-05-07 — `wmkf_apprequestperson` junction (planned, Justin/Claude to deploy)
 
 **Scope:** Net-new junction entity tracking PI/co-PI participation across `akoya_request` history. Resolves the S136 lock (`project_reviewer_postgres_to_dataverse_migration.md`) and Connor's 2026-05-07 sign-off on vendor-data junctions.
@@ -28,7 +57,7 @@ Per `project_dataverse_creator_privileges.md` (2026-05-06), Connor delegated ent
 - Ongoing sync — **Connor's net-new PA flows** on `akoya_request` create/update. PA flows create `contact` records as needed and write junction rows directly.
 - **`_wmkf_projectleader_value` (PI lookup) stays live** — used by other flows unrelated to reviewers. PA flows dual-write (projectleader field + junction `pi` row). Only the **co-PI slots** (`_wmkf_copi1..5_value`) become obsolete read-only legacy data post-migration.
 
-**Read-side fallback (transition only):** `/api/reviewer-finder/contact-history` reads junction first, falls back to 6-OR query on legacy slot fields. Removed post-pilot after one clean cycle.
+**Read-side strategy (steady state, revised 2026-05-07):** `/api/reviewer-finder/contact-history` UNIONs junction rows (role = pi OR copi) with `akoya_request._wmkf_projectleader_value` matches. Not a fallback — projectleader stays authoritative for PI in parallel with the junction. Avoids transition-window failure modes (junction stale on a projectleader-only update, or vice versa).
 
 ---
 

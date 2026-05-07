@@ -309,7 +309,19 @@ Today the Reviewer Finder Database tab has a "Create researcher" button that add
 
 ### 5. `wmkf_apprequestperson` junction (PI + co-PI history)
 
-Net-new junction table to support the PI/co-PI history badge. Replaces the 6-OR-clause query (`_wmkf_projectleader_value` + `_wmkf_copi1..5_value`) with a single `wmkf_contact eq <id>` filter. Locked S136 2026-05-06 — Connor's preference for junctions + cleaner long-term shape.
+Net-new junction table to support the PI/co-PI history badge. Locked S136 2026-05-06 — Connor's preference for junctions + cleaner long-term shape.
+
+**Read strategy** (revised 2026-05-07 after Codex review): the junction supersedes the **co-PI** half of the legacy query (`_wmkf_copi1..5_value`) but **not** the PI half. Since `_wmkf_projectleader_value` stays live and is used by other flows that are not aware of the junction, the contact-history endpoint must read it as an authoritative parallel source — **not** treat it as a fallback that gets suppressed when the junction has any rows. Effective query:
+
+```
+junction rows for contact (role = pi OR copi)
+  UNION
+akoya_request rows where _wmkf_projectleader_value = contact
+```
+
+This avoids both transition-window failure modes Codex flagged: (a) backfill ran, PA dual-write hasn't, projectleader changes silently disappear from history; (b) PA misses an update, junction `pi` row goes stale, projectleader is right but ignored.
+
+Pre-junction-deploy (today): the 6-OR query continues to work. Post-junction-deploy, pre-PA-flow-cutover: the UNION above. Post-PA-flow-cutover: same UNION (PA dual-writes; either source is authoritative for PI; junction is sole source for co-PI).
 
 | Column | Type | Notes |
 |---|---|---|
@@ -324,7 +336,7 @@ Alt key: `(wmkf_request, wmkf_contact, wmkf_role)`.
 
 1. **One-time backfill** (`scripts/backfill-request-person-junction.js`) — walks every `akoya_request`, writes one row per populated PI/co-PI lookup. ~1,000 requests × ~3 populated avg ≈ ~3,000 rows. Single `$batch` op.
 2. **Ongoing sync** — PA flow on `akoya_request` create/update reads PI + co-PI 1–5, upsert/delete junction rows. **Connor's territory.**
-3. **Read-side fallback during pilot** — `/api/reviewer-finder/contact-history` reads the junction first; falls back to the 6-OR-clause query on `akoya_request` if the junction has no rows for that contact. Catches PA flow sync gaps. Removed post-pilot after one clean cycle.
+3. **Read-side strategy (revised 2026-05-07)** — `/api/reviewer-finder/contact-history` does the UNION described in **Read strategy** above (junction OR `_wmkf_projectleader_value`). Not a fallback — projectleader stays authoritative for PI in parallel with the junction. This is the steady-state read; nothing to remove post-pilot.
 
 **Resolved 2026-05-07** (both open Connor questions, jointly):
 - Junction-table preference **does** extend to vendor-indexed data — `wmkf_apprequestperson` proceeds as spec'd.
@@ -657,7 +669,7 @@ Today: 2026-05-06. Pilot: mid-June 2026 (~6 weeks). Updated to address Codex fee
 **Slip budget** (descopable from pilot, ship post-launch if needed):
 - History badges + match-on-discovery (W3–W4): pure additive UX
 - Cleanup cron real-mode: post-pilot regardless
-- `wmkf_apprequestperson` junction: if Connor pushback, fall back to OR-clause queries on `akoya_request._wmkf_projectleader_value` + `_wmkf_copi1..5_value`. History badges still work; just less performant. No incremental risk.
+- `wmkf_apprequestperson` junction: if Connor pushback, fall back to OR-clause queries on `akoya_request._wmkf_projectleader_value` + `_wmkf_copi1..5_value`. History badges still work; just less performant. No incremental risk. (Connor approved 2026-05-07 — no rollback needed.)
 - "Add candidate by hand" feature: nice-to-have replacement for retired Database tab; pilot can launch without it (PDs save via discovery flow only)
 - Contact form subgrid: defers to post-pilot if Connor schedule doesn't accommodate W2
 
