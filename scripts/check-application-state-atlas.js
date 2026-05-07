@@ -112,11 +112,13 @@ function enumerateDataverseEntitySets() {
   const entities = new Set();
 
   // Pattern A: DynamicsService.<method>('<entitySet>', ...)
-  const dsRe = /DynamicsService\.(?:queryRecords|queryAllRecords|getRecord|createRecord|updateRecord|deleteRecord|logAiRun)\s*\(\s*['"]([a-z_][a-z0-9_]*)['"]/g;
+  // Includes search/count/aggregate helpers as well as CRUD.
+  const dsRe = /DynamicsService\.(?:queryRecords|queryAllRecords|getRecord|createRecord|updateRecord|deleteRecord|countRecords|aggregateRecords|searchRecords|logAiRun)\s*\(\s*['"]([a-z_][a-z0-9_]*)['"]/g;
 
-  // Pattern B: Wave-1-style raw client calls — client.{get,post,patch,delete}('/<entitySet>...')
+  // Pattern B: Wave-1-style raw client calls — client.{get,post,patch,delete,delete_,put}('/<entitySet>...')
+  // (`delete_` because `delete` is a JS reserved word — the Dataverse client exposes it with a trailing underscore.)
   // The path may have query params, GUIDs, etc. — capture only the entity-set segment.
-  const clientRe = /\bclient\.(?:get|post|patch|delete|put)\s*\(\s*['"`]\/([a-z_][a-z0-9_]*)/g;
+  const clientRe = /\bclient\.(?:get|post|patch|delete_?|put)\s*\(\s*['"`]\/([a-z_][a-z0-9_]*)/g;
 
   // Pattern C: $expand / $batch URL fragments that name the entity set inline.
   // Less common but appears in some adapters. (Conservative — may miss URL builders.)
@@ -134,8 +136,11 @@ function enumerateDataverseEntitySets() {
     }
   }
 
-  // Adapter ENTITY_SET constants are also entity sets — surface those too.
-  const setRe = /(?:^|\s)(?:const|let)\s+ENTITY_SET\s*=\s*['"]([a-z_][a-z0-9_]*)['"]/gm;
+  // Constants holding entity-set names — match any `<NAME>_ENTITY = 'wmkf_*'`
+  // or `ENTITY_SET = 'wmkf_*'` const/let declarations. Catches the
+  // PROMPTS_ENTITY / REQUESTS_ENTITY / RUNS_ENTITY pattern in execute-prompt.js
+  // as well as the older ENTITY_SET pattern in adapter modules.
+  const setRe = /(?:^|\s)(?:const|let)\s+(?:[A-Z][A-Z0-9_]*_ENTITY|ENTITY_SET)\s*=\s*['"]([a-z_][a-z0-9_]*)['"]/gm;
   for (const dir of SCAN_DIRS) {
     for (const file of walk(dir)) {
       if (!file.endsWith('.js')) continue;
