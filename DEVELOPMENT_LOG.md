@@ -2453,6 +2453,35 @@ Bonus: built a binding self-test mechanism after recognizing "remember to grep f
 - `adbf4ae` — Close additional CI gate holes flagged by Codex review
 - `f9befb9` — Bind coverage lessons to a CI self-test
 
+### Session 139 — May 7, 2026
+
+**Wave 2 build — full 5-item set shipped in one session**
+
+All five planned Wave 2 / pilot build items landed and were verified live against prod Dataverse:
+
+1. **Echo-prompt parity oracle** — seeded `executor.echo-parity` row in `wmkf_ai_prompts`. Both Vercel `executePrompt()` runs against the same `(requestId, echo_text)` produced byte-identical `wmkf_ai_rawoutput` and the second run reported `cacheHit=true`. First haiku attempt failed cache assertion because Anthropic's ephemeral cache has model-specific minimum-token thresholds (1024 sonnet, 2048 haiku); switching to sonnet-4 + adding stable filler in the system block (cache-load-bearing, documented inline) resolved it. Once Connor's PA-side `ExecutePrompt` lands, the parity oracle compares cross-side.
+
+2. **`wmkf_apprequestperson` junction entity** — net-new schema deployed to prod: table + Role picklist + AuthorPosition int + 2 lookups (request, contact) + alt key `(wmkf_request, wmkf_contact, wmkf_role)`. Sandbox is structurally unsuitable (no AkoyaGo solution, no `wmkf_appreviewersuggestion`); standing pattern is direct-to-prod. Hit Dataverse 429 EntityCustomization throttling between metadata writes — apply script is idempotent so a 30s-backoff retry loop completed it.
+
+3. **Junction backfill** — `scripts/backfill-request-person-junction.js` walks all 25,561 `akoya_request` rows, reads the 6 legacy slot fields, emits one row per populated slot. Final: 4,488 PI + 1,073 Co-PI = 5,561 rows, 0 failures, ~8 min at 11/s. Two findings caught during smoke that would have wrecked a full-volume run: `queryAllRecords` caps at 5000 (replaced with raw paginated fetch + Prefer odata.maxpagesize=5000), and `@odata.bind` keys must use the lookup *schema name* (PascalCase wmkf_Request, wmkf_Contact), not lowercase logical names — lowercase produces 0x80048d19 "Error identified in Payload" 400.
+
+4. **28 fields on akoya_request** — single-batch deploy of 6 workflow-chaining fields + 22 Field Set B (grant report extraction): 8 whole-number counts, 7 multi-line text (one JSON-payload exception for goalsassessment), 6 flat publication fields (Connor 2026-05-07: flat not JSON list), 1 choice (overallrating with successful/mixed/unsuccessful starting set). Same throttle-and-backoff pattern as item 2.
+
+5. **`/api/reviewer-finder/contact-history` UNION endpoint** — GET endpoint reading `wmkf_apprequestperson` UNION `akoya_request._wmkf_projectleader_value` per `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` §5. Live-tested three cases: PI dual-source rows (sources=[junction,projectleader]), co-PI single-source rows (sources=[junction]), empty-history zero-GUID. Per-row `sources` array lets UI distinguish during the pre-PA-cutover transition window. Auth: `requireAppAccess('reviewer-finder')`. API_ROUTE_SECURITY_MATRIX updated; 77 routes (was 76).
+
+**Commits:**
+- `2eda700` — Seed executor.echo-parity prompt + harness for two-side parity oracle
+- `c8cbfe1` — Deploy wmkf_apprequestperson junction entity to prod Dataverse
+- `8b9b287` — Backfill 5,561 wmkf_apprequestperson rows from akoya_request slot fields
+- `b536121` — Deploy 28 wmkf_ai_* fields on akoya_request (workflow-chaining + Field Set B)
+- `b23586c` — Add /api/reviewer-finder/contact-history with UNION read strategy
+
+**Cross-cutting findings worth carrying forward:**
+- Dataverse `EntityCustomization` 429 throttling between metadata writes is the rule, not the exception, on multi-attribute deploys. Wrap `apply-dataverse-schema.js` calls in a 30s-backoff retry loop for any future schema work.
+- `@odata.bind` keys are case-sensitive (PascalCase nav-property name); plain field reads/writes are not (lowercase logical name). The smoke `--limit 50` flag caught this before a full 5,500-row commit would have failed silently into the audit-log.
+- Anthropic ephemeral prompt caching has per-model minimum-token thresholds; tiny smoke prompts can't satisfy them without padding, and the `cache_control` marker is silently ignored below threshold.
+- The standing schema-deploy pattern remains "direct-to-prod" — sandbox lacks AkoyaGo vendor entities and Connor's pre-codebase custom entities, so any custom schema that lookups into them can't be tested in sandbox without a vendor-licensing change.
+
 ---
 
 Last Updated: May 7, 2026
