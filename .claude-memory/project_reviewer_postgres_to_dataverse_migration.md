@@ -1,51 +1,54 @@
 ---
-name: Reviewer Postgres → Dataverse migration is now active top priority
-description: Connor approved aggressive timeline 2026-05-06; migration is now prerequisite for intake portal pilot (mid-June 2026). Was strategic-horizon, now active work.
+name: Reviewer Postgres → Dataverse migration plan locked (S136)
+description: Migration scope, model decisions, and feature scope locked 2026-05-06. Most "migration" is drain, not move. Match-on-discovery + history badges are first-class scope.
 type: project
+originSessionId: 064dffdf-ba31-44c3-81f2-73bf4d3b908f
 ---
+**Status as of 2026-05-06 (S136)**: Plan rewritten against ground truth. Authoritative doc: `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`. Pilot deadline mid-June 2026 stands.
 
-**Status as of 2026-05-06**: Active top priority. Was on the strategic horizon for "long-term" (`project_strategy_direction.md`); promoted to **active prerequisite for intake portal pilot** in the 2026-05-06 sync with Connor. Connor: "let's pull the band-aid off."
+## Ground truth (what's already done)
 
-**Why**: Portal pilot architecture writes to Dataverse-only world. Connor explicitly preferred Option A (migrate first, then build portal) over Option B (decouple, build portal independent of migration). Pilot date does not slip (mid-June 2026), so migration must land in ~3 weeks.
+Significant migration was already shipped before S136. Live in Dataverse:
+- `wmkf_potentialreviewer` (per-proposal slot)
+- `wmkf_appresearcher` (1:1 sidecar with the slot)
+- `wmkf_appreviewersuggestion`
+- Adapters in `lib/dataverse/adapters/`
+- Endpoints fully migrated: `save-candidates`, `my-candidates`, `load-proposal`, all of Review Manager
 
-**How to apply**:
-- Treat reviewer migration as the gating workstream for pilot. Portal pilot work that doesn't depend on reviewer data can proceed in parallel; anything reviewer-touching waits.
-- The note in `project_reviewer_finder_dataverse_entry_path.md` saying "Postgres reviewer tables are NOT dormant — do not drop" remains factually correct *until* the migration ships, but the strategic stance "do not drop" is now temporary, not indefinite.
+## Locked decisions (don't re-litigate)
 
-## Scope (what migrates)
+1. **1:1 model is correct, not a compromise.** Researchers are cycle-bounded transient candidate scratch (~25/proposal). Permanent reviewer identity lives in `contact` via promotion. No researcher pool table — Wave 1 doc's pool design is superseded.
+2. **No new role-tracking child entity.** Engaged `wmkf_potentialreviewer` rows ARE the per-contact reviewer history. The cleanup cron is what turns the table from "scratch" into "history."
+3. **Cleanup cron** runs weekly; only acts twice a year. Drops slots where `wmkf_meetingdate < today - 30 days` AND none of (`wmkf_contact`, `wmkf_emailsentat`, `wmkf_responsetype`, selected suggestion) populated. Cascade-drops 1:1 sidecar.
+4. **Postgres tables drain, mostly don't migrate.** Real numbers (verified 2026-05-06 via `scripts/db-row-counts.js`): publications=0 (dead writer), proposal_searches=0, researchers=331, researcher_keywords=1028, reviewer_suggestions=337, grant_cycles=13. All <12 months old. Only `grant_cycles` migrates (→ new `wmkf_appgrantcycle`); rest drain via cleanup cron + cycle close.
+5. **Naming follows live convention** `wmkf_app<name>` (no underscore), NOT the Wave 1 doc's proposed `wmkf_app_<name>`.
 
-| Postgres table | Dataverse target | Notes |
-|---|---|---|
-| `researchers` | TBD: extend `contact` (recommended) **or** new `wmkf_researcher` entity | Design fork open; recommend extending `contact` since per-proposal lifecycle already converges there |
-| `publications` | New `wmkf_publication` (child of contact/researcher) **or** JSON longtext **or** retire-and-rescrape | Design fork open; tens of thousands of rows |
-| `proposal_searches` | Per-PD state, could stay Postgres or move | Lower stakes |
-| `grant_cycles` | Already maps to Dynamics request stages — likely retire | Read-only references |
-| `reviewer_suggestions` | Per-PD suggestion tracking, could stay Postgres or move | Lower stakes |
+## First-class new scope: match-on-discovery + history badges
 
-## Vercel-side rewrite scope
+The visible payoff of finishing the migration. Not optional UX polish — it's the user-facing reason to do this.
 
-- 5+ endpoints under `pages/api/reviewer-finder/` — `researchers`, `grant-cycles`, `my-proposals`, `extract-summary`, `generate-emails`
-- `pages/reviewer-finder.js` — 18+ Postgres call sites
-- `lib/services/`: `discovery-service.js`, `contact-enrichment-service.js`, `deduplication-service.js`, `database-service.js`
-- Enrichment jobs (Google Scholar / ORCID / PubMed) — pipe writes to Dataverse instead of Postgres
-- Email generation flow
+- **Match-on-discovery** (not just match-on-promote): during Reviewer Finder discovery, after enrichment, look up each candidate against `contact.emailaddress1` then `contact.wmkf_orcid`. Skip name+affiliation fuzzy at discovery time.
+- **History lookup** for matched candidates: reviewer history (`wmkf_potentialreviewer` filtered by `wmkf_contact eq <id>` AND engagement) + PI/co-PI history (`akoya_request._wmkf_projectleader_value` OR `_wmkf_copi1_value..5`).
+- **Badges on each candidate card**: 🔁 reviewed (recency-colored), 🚫 declined (separate signal), 💰 funded PI. Click → modal with full history.
+- **Batched lookup**: new endpoint `/api/reviewer-finder/contact-history` POST `{ contactIds }`. 25 candidates × 2 queries = use `$batch` or pre-fetch via `in (...)`.
+- Justin's framing (S136): *"We don't want to wear out our welcome."* PD sees recency at a glance, decides whether to invite.
 
-## Per-proposal vs. enrichment-pool — what's already done
+## Open Connor questions (in plan doc)
 
-The 2026-05-03 entry path (`project_reviewer_finder_dataverse_entry_path.md`) covers the **per-proposal lifecycle** only:
-- Picker UI reads from Dataverse
-- Save-candidates writes `wmkf_potentialreviewer` records
-- Contact promotion at invite works (verified 2026-05-01)
+1. Cleanup cron engagement predicate — right shape?
+2. 30-day grace period — right length?
+3. `researchers.js` admin UI — rewrite vs. retire?
+4. Reviewer-portal field set on `wmkf_potentialreviewer` — what's planned for capture?
+5. Contact form "Reviewer history" view — bundle into pilot's contact-form work?
+6. Co-PI lookup via 5 OR clauses — acceptable performance?
 
-The **org-wide enrichment pool** is what's still Postgres and migrates now.
+## RR program code (probed S136)
 
-## Open design forks
+`akoya_program = "Research Reviewer"`, `wmkf_code = "RR"`, GUID `7e744a42-37eb-f011-8543-6045bd02b4cc`. **Exists but unused.** No contact has it (no `_akoya_program_value` field on contact at all). Zero requests use it. No N:N table. **No existing convention to follow** for tagging contacts as reviewers — engagement-history approach is the answer, not a flag.
 
-1. **Researcher entity model** — extend `contact` (single identity per person across all WMKF roles) vs. new `wmkf_researcher` entity (researchers can exist without `contact` rows). Lean: extend `contact`.
-2. **Publications model** — child entity (queryable, expensive migration) vs. JSON longtext (simple, less queryable) vs. retire-and-rescrape on advancement (drops historical pile, recovers on demand). Lean: child entity for query power, but rescrape worth a real conversation.
+## How to apply
 
-Both forks need decision before code lands. Justin owns; Connor will react to draft plan.
-
-## Doc to write
-
-`docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` — same shape as existing `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md` for Wave 1. Skeleton + entity design + endpoint rewrite list + dependency order + rollback strategy.
+- Treat the Wave 1 doc's "Wave 2 — preview spec" as historical. Live model differs structurally (1:1 vs. pool) and naming-wise (no underscore). Read `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` instead.
+- When working on Reviewer Finder code: confirm live state matches what the plan doc says. If something on the Postgres-only list got migrated independently, update both this memory and the plan.
+- Don't propose adding a `wmkf_iscontactreviewer` boolean or similar denormalized role flag. Decision is engaged-slot-history; flags lose data the history preserves.
+- Don't propose dropping Postgres reviewer tables outside the cleanup-cron path. The drain is intentional and gated on cycle close + 14-day clean window.

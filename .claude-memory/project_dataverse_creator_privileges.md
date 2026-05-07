@@ -2,8 +2,8 @@
 name: Dataverse entity-creation authority delegated to Justin/Claude (2026-05-06)
 description: Connor approved standing authorization to create new Dataverse entities + fields directly via creator privileges, with summary-after model rather than design-review-before
 type: project
+originSessionId: 064dffdf-ba31-44c3-81f2-73bf4d3b908f
 ---
-
 **Status as of 2026-05-06**: Standing authorization. Granted by Connor in the intake portal sync 2026-05-06.
 
 **Why**: Connor said "we still have creator privileges. Connor has given the go ahead to create new entities for this project. We can do it and just give him a summary of what's been created." Removes a coordination bottleneck for portal pilot work where many small schema changes were going to gate on Connor design review.
@@ -22,6 +22,6 @@ type: project
 - New `account` fields for institutional documents: `wmkf_governingboardfile`, `wmkf_govtunit`, `wmkf_groupexempt`, `wmkf_declarationofstatusfile`
 - New `wmkf_reviewerstate` choice on `wmkf_potentialreviewer`
 - Lifecycle stage values on `akoya_request` (`Awaiting T&C`, `T&C Signed`, `Awaiting Scheduling Call`, `Call Scheduled`)
-- Reviewer migration entities: `wmkf_publication` and possibly `wmkf_researcher` or `contact` extensions
+- Reviewer migration entities (S136 lock): `wmkf_appgrantcycle` (new); new fields on `wmkf_potentialreviewer` for reviewer-portal capture (TBD); no new researcher pool or publications entity (drain instead)
 
 All without per-change Connor coordination — but each change goes into the schema-changes catalog.

@@ -43,7 +43,7 @@
 - [Skinny pilot scope, not feature-for-feature](project_intake_portal_skinny_scope.md) — pilot sized like external reviewer intake; Phase II Research mid-June 2026; design doc at `docs/INTAKE_PORTAL_DESIGN.md`
 - [Capture machine-legible structured data](project_machine_legible_form_capture.md) — split budgets/rosters/milestones into structured fields, not narrative; Sarah + Connor own form wishlists
 - [Pilot decisions locked 2026-05-06](project_intake_portal_pilot_decisions_2026-05-06.md) — six-decision walkthrough w/ Connor; T&C via magic link to AO+Liaison; Calendly scheduling step; staff approvals one-click magic links; structured tables = real child entities; AO/Liaison institutional contacts on `account`
-- [Reviewer Postgres → Dataverse migration is now top priority](project_reviewer_postgres_to_dataverse_migration.md) — gates pilot; aggressive timeline (Connor 2026-05-06: "let's pull the band-aid off"); per-proposal lifecycle already Dataverse-native, org-wide enrichment pool migrates now
+- [Reviewer migration plan locked S136](project_reviewer_postgres_to_dataverse_migration.md) — 1:1 model is correct; most Postgres tables drain not migrate; match-on-discovery + history badges in scope; auth doc `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`
 - [Dataverse creator privileges delegated](project_dataverse_creator_privileges.md) — Connor 2026-05-06 OK'd direct entity creation for pilot scope w/ summary-after model; maintain `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` audit catalog
 
 ## Dynamics Explorer
