@@ -2430,4 +2430,29 @@ Changes across 3 files:
 
 ---
 
-Last Updated: March 12, 2026
+### Session 137 — May 7, 2026
+
+**Application State Atlas + remediation plan completion + binding self-test mechanism**
+
+S136 surfaced a trust gap: the reviewer migration plan went through 3 Codex rounds because state claims weren't being verified. S137 closed that gap structurally instead of procedurally.
+
+Five-phase `docs/CLAUDE_REMEDIATION_PLAN.md` now complete:
+- Phase 1 (Atlas) — `docs/APPLICATION_STATE_ATLAS.md` + 12 per-entity pages in `docs/atlas/`. 11 Codex stress-test rounds before clean signal across cat 1/3/4/5.
+- Phase 2 (CI gate) — `scripts/check-application-state-atlas.js` enforces Postgres-table + Dataverse-entity coverage. Wired to CI.
+- Phases 0/3 (rules + CLAUDE.md) — done concurrently with Phase 1.
+- Phase 4 (Wave 1+2 doc reconciliation) — both migration docs corrected against ground truth; Wave 2 plan passes Codex review on first follow-up.
+
+Bonus: built a binding self-test mechanism after recognizing "remember to grep for parallel patterns" was advisory. `docs/CLAUDE_COVERAGE_LESSONS.md` catalogs every detected pattern; `scripts/check-coverage-self-test.js` runs each through the gate via runtime-generated synthetic fixtures, fails CI if any pattern stops being detected.
+
+**Commits:**
+- `b2b0af1` — Build Application State Atlas (Phase 1 of remediation plan)
+- `43818b6` — Address Codex round-3 findings on reviewer migration plan
+- `e332de5` — Add Atlas CI gate (Phase 2 of remediation plan)
+- `5705bd3` — Reconcile Wave 1 doc against Atlas + close CI gate hole
+- `40440d6` — Verify Wave 1 entity sets live + wire check:atlas into CI
+- `adbf4ae` — Close additional CI gate holes flagged by Codex review
+- `f9befb9` — Bind coverage lessons to a CI self-test
+
+---
+
+Last Updated: May 7, 2026
