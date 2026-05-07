@@ -33,14 +33,35 @@ The visible payoff of finishing the migration. Not optional UX polish — it's t
 - **Batched lookup**: new endpoint `/api/reviewer-finder/contact-history` POST `{ contactIds }`. 25 candidates × 2 queries = use `$batch` or pre-fetch via `in (...)`.
 - Justin's framing (S136): *"We don't want to wear out our welcome."* PD sees recency at a glance, decides whether to invite.
 
-## Open Connor questions (in plan doc)
+## Codex stress-test addressed (S136 evening)
 
-1. Cleanup cron engagement predicate — right shape?
-2. 30-day grace period — right length?
-3. `researchers.js` admin UI — rewrite vs. retire?
-4. Reviewer-portal field set on `wmkf_potentialreviewer` — what's planned for capture?
-5. Contact form "Reviewer history" view — bundle into pilot's contact-form work?
-6. Co-PI lookup via 5 OR clauses — acceptable performance?
+Codex review found three top concerns + many smaller gaps. Plan rewritten end-to-end:
+- Reviewer-suggestions backfill: three-group classification (Group A already-in-DV / Group B active-Postgres-only / Group C closed-discard); parity report; idempotent UPSERT; `--commit` gated.
+- Grant-cycle field mapping: full Postgres-to-Dataverse mapping (probed live schema 2026-05-06; corrected `meeting_date`/`fiscal_year` not in Postgres, `is_archived` doesn't exist, `review_deadline` not `review_return_deadline`).
+- Schema ownership corrected: reviewer-portal data is on `wmkf_appreviewersuggestion` per `wmkf_appreviewersuggestion-extensions.json`, NOT `wmkf_potentialreviewer`. Plan and engaged-predicate updated.
+- Other gaps closed: SSE in-flight handling, rollback triggers (quantitative thresholds), maintenance-service blob-scanner cutover dependency, picklist value mapping, per-user scoping intentional model change documented, cross-user-isolation test rewrite plan.
+
+## Open Connor questions resolved S136 (locked)
+
+| Q | Resolution |
+|---|---|
+| Cleanup cron predicate | Locked as-is (8 signals across slot + suggestion: contact, emailsentat, responsetype, selected, ExternalTokenIssued, ProposalFirstAccessed, ReviewSharePointFolder, any review-form picklist) |
+| Grace period | **14 days** (matches Wave 1 stability-clock pattern) |
+| `researchers.js` | **Retire**. Database tab loses meaning under 1:1 model. Replaced by net-new "Add candidate by hand" feature in My Candidates tab |
+| New suggestion fields | Add `wmkf_DeclineReason` (text) + `wmkf_ResponseReceivedAt` (datetime). Late/on-time + response-latency derive |
+| Contact form "Reviewer history" view | **Add to pilot** (separate Connor ask; pilot's account-form work doesn't touch contact form) |
+| PI/co-PI lookup | **`wmkf_apprequestperson` junction** (PI \| copi roles). One-time backfill ~3K rows; PA flow for ongoing sync; OR-clause fallback during pilot |
+| `is_archived` on grant_cycles | Doesn't exist in Postgres (probed live); spec corrected |
+
+## Two narrow questions left for Connor (Justin asking 2026-05-07)
+
+Both nested under junction implementation:
+1. Existing PA flow on `akoya_request` create/update we can extend, or net-new?
+2. Junction-table preference — extends to indexes against vendor data, or only net-new app tables?
+
+## Out-of-scope but flagged
+
+- UI cleanup pass on Reviewer Finder + Review Manager (stale `.eml` references, etc.) — its own session, not migration scope.
 
 ## RR program code (probed S136)
 
