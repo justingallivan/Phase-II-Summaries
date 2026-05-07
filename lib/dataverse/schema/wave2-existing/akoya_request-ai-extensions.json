@@ -1,0 +1,216 @@
+{
+  "name": "akoya_request-ai-extensions",
+  "kind": "extensions-on-existing",
+  "entityLogicalName": "akoya_request",
+  "_comment": "AI workflow-chaining + Grant Report (Field Set B) extensions on akoya_request. Catalogued in docs/INTAKE_PORTAL_SCHEMA_CHANGES.md (2026-05-07 entries). Field naming follows the v3 spec rule: wmkf_ai_<concept> with no underscore between concept words (so wmkf_ai_riskflags, NOT wmkf_ai_risk_flags). Multi-line text + JSON payloads use Memo; single-line strings use String.",
+  "attributes": [
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_Keywords",
+      "displayName": "AI Keywords",
+      "description": "JSON array of extracted keywords from the proposal. Workflow-chaining input for downstream prompts (PD assignment, reviewer matching) so they don't re-parse the full narrative.",
+      "maxLength": 4000
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_Methodologies",
+      "displayName": "AI Methodologies",
+      "description": "JSON array of identified research methodologies. Workflow-chaining input for compliance + reviewer matching.",
+      "maxLength": 4000
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_RiskFlags",
+      "displayName": "AI Risk Flags",
+      "description": "JSON array of compliance/risk flags surfaced during initial extraction (e.g. dual-use research, human subjects, animal models). Reviewed by staff; not action-by-itself.",
+      "maxLength": 4000
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_TeamInfo",
+      "displayName": "AI Team Info",
+      "description": "JSON object summarizing the proposal team (PI, co-PIs, key personnel, affiliations). Cached so reviewer-matching prompts don't have to re-parse the proposal.",
+      "maxLength": 8000
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_BudgetSummary",
+      "displayName": "AI Budget Summary",
+      "description": "Multi-line narrative summary of the proposed budget (totals, allocation, equipment, personnel). Human-readable; downstream prompts may quote.",
+      "maxLength": 8000
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_Timeline",
+      "displayName": "AI Timeline",
+      "description": "Multi-line narrative summary of the proposal timeline (phases, milestones, dependencies).",
+      "maxLength": 8000
+    },
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_ai_ReportPostdocs",
+      "displayName": "Report - Postdocs",
+      "description": "Grant final report: number of postdocs supported. Field Set B (extracted by report-extraction prompt; logged via wmkf_ai_run with wmkf_ai_tasktype = Report).",
+      "minValue": 0,
+      "maxValue": 1000
+    },
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_ai_ReportGradStudents",
+      "displayName": "Report - Grad Students",
+      "description": "Grant final report: number of graduate students supported.",
+      "minValue": 0,
+      "maxValue": 1000
+    },
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_ai_ReportUndergrads",
+      "displayName": "Report - Undergrads",
+      "description": "Grant final report: number of undergraduates supported.",
+      "minValue": 0,
+      "maxValue": 1000
+    },
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_ai_ReportPubsTotal",
+      "displayName": "Report - Publications Total",
+      "description": "Grant final report: total publications resulting from the grant.",
+      "minValue": 0,
+      "maxValue": 10000
+    },
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_ai_ReportPubsPeerReviewed",
+      "displayName": "Report - Peer-Reviewed Publications",
+      "description": "Grant final report: peer-reviewed subset of total publications.",
+      "minValue": 0,
+      "maxValue": 10000
+    },
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_ai_ReportPubsNonPeerReviewed",
+      "displayName": "Report - Non-Peer-Reviewed Publications",
+      "description": "Grant final report: non-peer-reviewed subset of total publications.",
+      "minValue": 0,
+      "maxValue": 10000
+    },
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_ai_ReportPatentsAwarded",
+      "displayName": "Report - Patents Awarded",
+      "description": "Grant final report: number of patents awarded.",
+      "minValue": 0,
+      "maxValue": 1000
+    },
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_ai_ReportPatentsSubmitted",
+      "displayName": "Report - Patents Submitted",
+      "description": "Grant final report: number of patents submitted (filed but not yet awarded).",
+      "minValue": 0,
+      "maxValue": 1000
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_ReportAdditionalFunding",
+      "displayName": "Report - Additional Funding",
+      "description": "Grant final report: narrative summary of additional funding the team obtained during the grant period (often as a result of the Keck-funded work).",
+      "maxLength": 8000
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_ReportProjectImpacts",
+      "displayName": "Report - Project Impacts",
+      "description": "Grant final report: narrative summary of project impacts.",
+      "maxLength": 8000
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_ReportAwardsAndHonors",
+      "displayName": "Report - Awards and Honors",
+      "description": "Grant final report: narrative summary of awards and honors received during the grant period.",
+      "maxLength": 8000
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_ReportImplications",
+      "displayName": "Report - Implications",
+      "description": "Grant final report: narrative summary of broader implications and follow-on directions.",
+      "maxLength": 8000
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_ReportOutcomeSummary",
+      "displayName": "Report - Outcome Summary",
+      "description": "Grant final report: high-level outcome summary for board / staff readout.",
+      "maxLength": 8000
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_ReportGoalsAssessment",
+      "displayName": "Report - Goals Assessment (JSON)",
+      "description": "Grant final report: per-goal assessment as a JSON payload. Documented exception to the 'flat fields preferred' convention — full per-goal breakdown is too irregular across grants to flatten cleanly. Schema is stable across runs of the same prompt; consumers parse JSON.",
+      "maxLength": 32000
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_ReportNotesForStaff",
+      "displayName": "Report - Notes for Staff",
+      "description": "Grant final report: free-form notes for foundation staff (questions, concerns, follow-up flags).",
+      "maxLength": 8000
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_ReportPub1Citation",
+      "displayName": "Report - Publication 1 Citation",
+      "description": "Grant final report: citation for the most-significant publication (flat per Connor 2026-05-07; not a JSON list).",
+      "maxLength": 2000
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_ReportPub1Abstract",
+      "displayName": "Report - Publication 1 Abstract",
+      "description": "Grant final report: abstract for the most-significant publication.",
+      "maxLength": 8000
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ai_ReportPub1Source",
+      "displayName": "Report - Publication 1 Source",
+      "description": "Grant final report: source attribution for publication 1 (e.g. 'PubMed PMID:12345', 'arXiv:2401.12345', 'self-reported').",
+      "maxLength": 200
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_ReportPub2Citation",
+      "displayName": "Report - Publication 2 Citation",
+      "description": "Grant final report: citation for the second-most-significant publication.",
+      "maxLength": 2000
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_ai_ReportPub2Abstract",
+      "displayName": "Report - Publication 2 Abstract",
+      "description": "Grant final report: abstract for the second-most-significant publication.",
+      "maxLength": 8000
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ai_ReportPub2Source",
+      "displayName": "Report - Publication 2 Source",
+      "description": "Grant final report: source attribution for publication 2.",
+      "maxLength": 200
+    },
+    {
+      "type": "Picklist",
+      "schemaName": "wmkf_ai_ReportOverallRating",
+      "displayName": "Report - Overall Rating",
+      "description": "Grant final report: overall rating of grant outcomes. Connor 2026-05-07: starting choice set; full rating mechanism not yet spec'd, expect iteration.",
+      "options": [
+        { "value": 100000000, "label": "Successful" },
+        { "value": 100000001, "label": "Mixed" },
+        { "value": 100000002, "label": "Unsuccessful" }
+      ]
+    }
+  ]
+}

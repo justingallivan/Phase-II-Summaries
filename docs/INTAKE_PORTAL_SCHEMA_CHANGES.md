@@ -9,11 +9,11 @@ Per `project_dataverse_creator_privileges.md` (2026-05-06), Connor delegated ent
 
 ---
 
-## 2026-05-07 — Workflow-chaining fields on `akoya_request` (planned, Justin/Claude)
+## 2026-05-07 — Workflow-chaining fields on `akoya_request` + Field Set B (deployed, Justin/Claude)
 
-**Scope:** 6 `wmkf_ai_*` fields on `akoya_request` that downstream prompts (compliance, PD assignment, reviewer matching) read instead of re-parsing the full proposal. Closes Q5 in `docs/archive/CONNOR_QUESTIONS_2026-04-15.md`. Falls under 2026-05-06 creator-privilege delegation.
+**Scope:** 6 workflow-chaining `wmkf_ai_*` fields + 22 Field Set B fields on `akoya_request` (28 total). Deployed to prod 2026-05-07 in a single batch via `lib/dataverse/schema/wave2-existing/akoya_request-ai-extensions.json`. Closes Q5 in `docs/archive/CONNOR_QUESTIONS_2026-04-15.md` and the Field Set B skeleton entry below.
 
-**Status:** Not yet applied.
+**Status:** Live in prod. All 28 attributes confirmed via `apply-dataverse-schema.js --target=prod --wave=2 --execute` (idempotent rerun shows `· exists` on all).
 
 | Field | Type |
 |---|---|
@@ -73,11 +73,9 @@ Deploy hit Dataverse 429 throttling between metadata customizations (concurrent 
 
 ---
 
-## 2026-05-07 — Field Set B (Grant Report Extraction) skeleton
+## 2026-05-07 — Field Set B (Grant Report Extraction) skeleton — SUPERSEDED
 
-**Scope:** Add Field Set B fields to `akoya_request` per `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md`. Connor's call: build the skeleton as currently spec'd; iterate later based on staff feedback.
-
-**Status:** Cleared to build. Not yet applied.
+**Status:** Deployed as part of the combined batch in the "Workflow-chaining fields on `akoya_request` + Field Set B" entry above. Field shapes below preserved for diff-reference; refer to `lib/dataverse/schema/wave2-existing/akoya_request-ai-extensions.json` for the live spec.
 
 **Counts (Whole number, nullable):**
 - `wmkf_ai_reportpostdocs`
