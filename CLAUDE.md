@@ -25,7 +25,7 @@ This rule does NOT apply to additive work (new features, endpoints, tables) — 
 3. **Adjacent-context survey** — when citing a file, `ls` its parent; when citing a doc, `ls docs/`; before claiming "X has no Y", grep for Y
 4. **Active doubt on state claims** — "the convention is X" / "the design landed at Y" need three independent sources before stating
 
-The Application State Atlas (Phase 1 of the remediation plan, in flight as of S137) will be the canonical reference for live-state lookups. Until it's complete, lean heavily on `scripts/audit-postgres-state.js` and ad-hoc adapter reads.
+The **Application State Atlas** at `docs/APPLICATION_STATE_ATLAS.md` (with per-entity pages in `docs/atlas/`) is the canonical reference for live-state lookups. Read the relevant per-entity page before any plan claim about that entity's schema, source-of-truth, read paths, or write paths. Re-run the probe scripts (`scripts/audit-postgres-state.js`, `scripts/audit-dataverse-state.js`) if a page hasn't been touched in 60+ days and you're planning destructive work.
 
 ---
 

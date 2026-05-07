@@ -1,0 +1,45 @@
+# Atlas: Reviewer-side Postgres tables (small / dead)
+
+**Last verified:** 2026-05-07 via `scripts/audit-postgres-state.js`
+
+Covers four Postgres tables in the reviewer-finder domain that don't warrant individual pages: `researcher_keywords`, `proposal_searches`, `search_cache`, and the placeholder `playing_with_neon`.
+
+## `researcher_keywords` (1,028 rows)
+
+**Source of truth:** Postgres-only.
+
+Schema: `id`, `researcher_id` (FK CASCADE), `keyword`, `relevance_score` (0-1), `source` (`publications | profile | manual`), `created_at`. UNIQUE `(researcher_id, keyword, source)`.
+
+**Read/write paths:** `lib/services/database-service.js`, `pages/api/reviewer-finder/researchers.js`, `scripts/backfill-postgres-to-dataverse.js`, `scripts/clear-all-database.js`.
+
+**Cross-system:** Migrates to `wmkf_appresearcher.wmkf_keywords` as a single Memo field (comma-joined per the schema-as-code). The 1:N → 1:1 collapse is intentional — the current Postgres design over-models keyword provenance.
+
+## `proposal_searches` (0 rows)
+
+**Source of truth:** dead. Writer is dead code (per S136 audit + plan).
+
+Schema: 20 columns including `proposal_title`, `proposal_hash`, `claude_suggestions` (jsonb), `search_queries` (jsonb), `summary_blob_url`, `request_number`, `user_profile_id`. UNIQUE on `proposal_hash` (implicit via writer).
+
+**Read/write paths:** `lib/services/maintenance-service.js`, `pages/api/reviewer-finder/extract-summary.js`, `scripts/{clear-all-database,assign-orphan-records,import-user-assignments}.js`. The IDOR guard always fails (rows never exist).
+
+**Load-bearing JOIN site (verified 2026-05-07):** `pages/api/reviewer-finder/grant-cycles.js` lines 60-72 does `LEFT JOIN proposal_searches ps ON ps.grant_cycle_id = gc.id` to compute proposal counts in the cycle UI. The JOIN returns 0 (table is empty) but **dropping the table without removing the JOIN breaks the cycle picker.** Sequence: rewrite/remove the JOIN first, then drop.
+
+**Dataverse counterpart:** `wmkf_appproposalsearch` schema-as-code exists at `lib/dataverse/schema/wave2/wmkf_app_proposal_search.json` but **the entity is NOT deployed** (404 on entity set query 2026-05-07). Codex round-3 finding confirmed.
+
+**Migration disposition:** Skip — the Postgres table is empty and the Dataverse entity isn't deployed. Drop the Postgres table during cleanup; defer Dataverse deployment until a real use case appears.
+
+## `search_cache` (0 rows)
+
+**Source of truth:** Postgres-only; cache table.
+
+Schema: `id`, `source`, `query_hash` (sha256), `query_text`, `results` (jsonb), `result_count`, `created_at`, `expires_at`. UNIQUE `(source, query_hash)`. Index on `expires_at` for `cleanup_expired_cache()` plpgsql function.
+
+**Read/write paths:** `lib/services/database-service.js`, `scripts/clear-all-database.js`, `scripts/cleanup-database.js`.
+
+**Live state:** 0 rows. Cache is either disabled or never enabled. The `cleanup_expired_cache()` function exists in `schema.sql` but no cron job calls it.
+
+**Migration disposition:** Drop. Pure ephemeral cache; reconstitute via Dataverse cache-table or in-process LRU if needed.
+
+## `playing_with_neon` (10 rows)
+
+Test/scratch table. Drop. No callers in source.

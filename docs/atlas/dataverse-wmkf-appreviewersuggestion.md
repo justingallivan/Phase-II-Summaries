@@ -1,0 +1,110 @@
+# Atlas: `wmkf_appreviewersuggestion` (Dataverse)
+
+**Last verified:** 2026-05-07 via `scripts/audit-dataverse-state.js` + EntityDefinitions metadata probe
+**Live row count:** 336
+**Entity set:** `wmkf_appreviewersuggestions`
+**Adapter:** `lib/dataverse/adapters/reviewer-suggestion.js`
+**Extension manifest:** `lib/dataverse/schema/wave2-existing/wmkf_appreviewersuggestion-extensions.json`
+
+## Source of truth
+
+**Active.** Per-(reviewer, request) suggestion + outreach lifecycle. Reviewer Finder writes here on save-candidates; Review Manager updates lifecycle here on send/receive/thank-you. Postgres `reviewer_suggestions` (337 rows) is the legacy mirror — ~97.6% parity per S136 probe.
+
+## Schema (live, 52 custom attrs)
+
+Identity / linkage:
+- `wmkf_appreviewersuggestionid` (PK)
+- `wmkf_potentialreviewer` (Lookup → `wmkf_potentialreviewers`) + `wmkf_potentialreviewername` (virtual denorm)
+- `wmkf_request` (Lookup → `akoya_requests`) + `wmkf_requestname` (virtual)
+- alt-key `(wmkf_potentialreviewer, wmkf_request)` (per adapter `findByPotentialReviewerAndRequest`)
+
+Suggestion content:
+- `wmkf_suggestionlabel` (String, primary name attr)
+- `wmkf_grantcyclecode` (String, e.g. `J26`)
+- `wmkf_programarea` (String)
+- `wmkf_relevancescore` (Double)
+- `wmkf_matchreason` (Memo)
+- `wmkf_sources` (String, comma-joined provenance)
+- `wmkf_notes` (Memo)
+
+Lifecycle bools (each has a `*name` virtual):
+- `wmkf_selected`, `wmkf_invited`, `wmkf_accepted`, `wmkf_declined`
+
+Outreach timestamps:
+- `wmkf_emailsentat`, `wmkf_emailopenedat`
+- `wmkf_responsereceivedat`, `wmkf_responsetype` (Picklist: `accepted=100000000 | declined=100000001 | no_response=100000002`)
+- `wmkf_materialssentat`, `wmkf_remindersentat`, `wmkf_remindercount`
+- `wmkf_reviewreceivedat`, `wmkf_thankyousentat`
+
+Review status: `wmkf_reviewstatus` (Picklist: `accepted=100000000 | materials_sent | under_review | review_received | complete=100000004`).
+
+External-reviewer intake (S128–S130):
+- `wmkf_externaltokenhash`, `wmkf_externaltokenissued`, `wmkf_externaltokenexpires`, `wmkf_externaltokenrevoked`
+- `wmkf_proposalfirstaccessed`
+- `wmkf_proposalurl`, `wmkf_proposalpassword`
+- `wmkf_reviewbloburl`, `wmkf_reviewfilename`
+- `wmkf_reviewsharepointfolder`
+- `wmkf_reviewuploadedbystaff`
+
+Structured review fields (S130 schema additions):
+- `wmkf_revieweraffiliation` (String)
+- `wmkf_reviewerimpact` (Picklist)
+- `wmkf_reviewerrisk` (Picklist)
+- `wmkf_revieweroverallrating` (Picklist)
+
+## Adapter contract (`lib/dataverse/adapters/reviewer-suggestion.js`)
+
+Methods:
+- `findByPotentialReviewerAndRequest`, `findById`
+- `findByRequest(requestId, { selectedOnly })` — used by Review Manager request views
+- `findByPD(systemuserid, { cycleCode, selectedOnly })` — two-step: query `akoya_requests` by lead PD then suggestions by request OR-chain (chunks of 25)
+- `findAcceptedByPD` — same shape, `wmkf_accepted eq true` filter
+- `upsert` — save-candidates path
+- `updateLifecycle(id, updates, { actingUserSystemId })` — partial update with picklist mapping for `responseType`/`reviewStatus`
+- `softDelete(id)` — sets `wmkf_selected = false`
+- `bulkUpdateByRequest` — UI's "assign cycle/program area to whole proposal" action
+
+Picklist maps live in the adapter (`RESPONSE_TYPE_MAP`, `REVIEW_STATUS_MAP`). Callers pass legacy Postgres string values; adapter translates.
+
+## Read / write paths
+
+Read:
+- `pages/api/review-manager/{render-emails,send-emails,reviewers,download-review,regenerate-token}.js` — `download-review.js` resolves the SharePoint folder; `regenerate-token.js` reads the suggestion (≈line 62) before minting a replacement token
+- `pages/api/reviewer-finder/{save-candidates,my-candidates}.js`
+- `lib/external/verify-suggestion-token.js` — load-bearing for every `/external/review/*` endpoint; reads with `$expand=wmkf_Request($select=...),wmkf_PotentialReviewer($select=...)` to hydrate the reviewer landing page in one round trip
+- `pages/api/external/review/[token]/context.js` — reader (via `verify-suggestion-token`) AND best-effort writer (`wmkf_proposalfirstaccessed` stamp on first access; non-fatal on failure)
+
+Write (verified 2026-05-07):
+- `pages/api/reviewer-finder/save-candidates.js` — adapter `upsert` (per-(reviewer,request) suggestion creation)
+- `pages/api/reviewer-finder/my-candidates.js` — adapter `updateLifecycle` (single suggestion lifecycle PATCH), `bulkUpdateByRequest` (per-proposal cycle/program-area assignment), `softDelete` (`wmkf_selected = false`); when `accepted` flips to `true` (≈line 354) calls `ensureToken` from `lib/external/token-lifecycle.js` which is idempotent but may write `wmkf_externaltoken*` fields if no usable token exists
+- `pages/api/review-manager/render-emails.js` — `mintAndStore` from `lib/external/token-lifecycle.js`; mints + stores HMAC token hash on `wmkf_externaltokenhash` + `wmkf_externaltokenissued` + `wmkf_externaltokenexpires` per recipient before email render
+- `pages/api/review-manager/send-emails.js` — adapter `updateLifecycle` (sets `wmkf_emailsentat`, etc.)
+- `pages/api/review-manager/regenerate-token.js` — `mintAndStore` from `lib/external/token-lifecycle.js`; sets `wmkf_externaltoken*` fields
+- `pages/api/review-manager/revoke-token.js` — `revoke` from same; flips `wmkf_externaltokenrevoked`
+- `pages/api/review-manager/mark-received-no-file.js` — direct `DynamicsService.updateRecord('wmkf_appreviewersuggestions', ...)` for review-received marker
+- `lib/services/review-upload.js` `writeReviewFiles` — direct `DynamicsService.updateRecord` setting `wmkf_reviewsharepointfolder` + `wmkf_reviewfilename` + `wmkf_reviewreceivedat` + `wmkf_reviewuploadedbystaff` after SharePoint write (with rollback). Also calls `extendForPostSubmissionWindow` (≈line 191) which patches `wmkf_externaltokenexpires` to enable the 7-day post-submission edit window.
+- `pages/api/external/review/[token]/context.js` — best-effort `wmkf_proposalfirstaccessed` stamp on first reviewer access (non-fatal on failure)
+- `scripts/backfill-postgres-to-dataverse.js` — `suggestionAdapter.upsert` (≈line 216) and `updateLifecycle` (≈line 229) for Wave 2 backfill, preserving outreach/reminder timestamps
+
+## Cross-system
+
+Postgres `reviewer_suggestions` (337 rows) is parity at ~97.6% per S136 probe (`scripts/backfill-reviewer-suggestions-parity.js`). Cutover plan retires the Postgres table and switches all readers/writers to this entity.
+
+## Planned schema additions (locked S136) [ASSUMED — per `project_reviewer_postgres_to_dataverse_migration.md`]
+
+> **Memory correction (2026-05-07, R5 stress-test):** the locked-S136 list named two fields, but **only `wmkf_DeclineReason` is actually new.** `wmkf_responsereceivedat` is already deployed (verified 2026-05-07 via metadata probe and adapter `FIELD_SELECT` line 27). The migration plan needs to drop the second item.
+
+Field locked for addition:
+- `wmkf_DeclineReason` (Memo/text) — capture why a reviewer declined; replaces free-form `wmkf_notes` for that purpose
+
+Apply via `apply-dataverse-schema.js` before backfill ships. Verify with a metadata probe after deployment.
+
+## Token lifecycle (live, per `project_external_reviewer_file_access.md`)
+
+- 90-day mint ceiling; 7-day post-submission modify window (`extendForPostSubmissionWindow` in `lib/external/token-lifecycle.js`).
+- Token expiry is **event-driven**, not absolute — extension on submission, revocation on regenerate.
+- `wmkf_reviewbloburl` retains historical Vercel Blob URLs for legacy rows but the active write target is `wmkf_reviewsharepointfolder` (Vercel Blob retired 2026-05-03 via commit `2277d23`).
+
+## Migration disposition [ASSUMED — per migration plan]
+
+In active backfill. See `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`. Pending: 4 Postgres rows missing `request_number` (orphans), Review Manager `grant_cycles` Postgres dependency.
