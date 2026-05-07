@@ -29,6 +29,8 @@ The **Application State Atlas** at `docs/APPLICATION_STATE_ATLAS.md` (with per-e
 
 CI gates the Atlas: `npm run check:atlas` fails if a Postgres table or Dataverse entity referenced in source isn't mentioned in any Atlas page. Run before committing data-layer changes.
 
+**Coverage tools have a binding self-test.** When modifying any `scripts/check-*.js` gate (or building a new one), `npm run check:atlas:self-test` must pass — it exercises every pattern documented in `docs/CLAUDE_COVERAGE_LESSONS.md` against the gate. When external review (Codex, etc.) catches a structural pattern an existing gate missed, the order is mandatory: (1) update `CLAUDE_COVERAGE_LESSONS.md` with the new pattern + parallels, (2) add a fixture to `check-coverage-self-test.js` that exercises it, (3) patch the gate, (4) commit all four changes (lesson, fixture, fix, atlas page if needed) together. Skip step 1 and you'll forget the lesson; skip step 2 and the gate can regress silently.
+
 ---
 
 ## Project Overview

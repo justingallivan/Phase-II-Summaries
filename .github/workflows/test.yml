@@ -18,4 +18,5 @@ jobs:
       - run: npm ci
       - run: npm run check:api-routes
       - run: npm run check:atlas
+      - run: npm run check:atlas:self-test
       - run: npm run test:ci

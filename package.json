@@ -15,7 +15,8 @@
     "test:utils": "jest tests/unit/utils",
     "test:ci": "jest --ci --coverage --watchAll=false",
     "check:api-routes": "node scripts/check-api-route-security-matrix.js",
-    "check:atlas": "node scripts/check-application-state-atlas.js"
+    "check:atlas": "node scripts/check-application-state-atlas.js",
+    "check:atlas:self-test": "node scripts/check-coverage-self-test.js"
   },
   "dependencies": {
     "@vercel/analytics": "^1.6.1",
