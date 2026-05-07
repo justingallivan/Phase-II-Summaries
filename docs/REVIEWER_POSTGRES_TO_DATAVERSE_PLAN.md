@@ -31,21 +31,36 @@ To prevent scope creep — destructive carryover items that name "drop Postgres 
 
 ## Where the migration actually stands today
 
-**Already in Dataverse (live):**
+**Already in Dataverse (live)** — three custom entities + extensions on `wmkf_potentialreviewer` (vendor-pattern existing entity):
 
-- `wmkf_potentialreviewer` — per-proposal slot; canonical person/identity for that slot
-- `wmkf_appresearcher` — 1:1 sidecar with the slot; bibliometric snapshot (h_index, ORCID, Scholar)
-- `wmkf_appreviewersuggestion` — suggestion-log row per (reviewer, proposal)
+- `wmkf_potentialreviewer` — global per-person identity (by email). One person across N proposals = ONE row. Source: pre-existing entity, extended per `lib/dataverse/schema/wave2-existing/wmkf_potentialreviewers-extensions.json`.
+- `wmkf_appresearcher` — 1:1 sidecar to `wmkf_potentialreviewer`; bibliometric snapshot (h_index, ORCID, Scholar) — though h_index/citations are 0% populated in live data.
+- `wmkf_appreviewersuggestion` — per-(person, request) lifecycle ledger. Extended per `wave2-existing/wmkf_appreviewersuggestion-extensions.json` with token fields, review-form picklists, and SharePoint folder.
 - Adapters: `lib/dataverse/adapters/{contact, potential-reviewer, researcher, reviewer-suggestion}.js`
 - Endpoints fully on Dataverse: `save-candidates.js`, `my-candidates.js`, `load-proposal.js`
-- Review Manager fully on Dataverse: `reviewers.js`, `render-emails.js`, `send-emails.js`
+- **Review Manager is mostly Dataverse but partially Postgres**: `reviewers.js` reads/writes Dataverse for the per-proposal lifecycle, but `render-emails.js` and `send-emails.js` both call `loadCycleConfigs()` which reads Postgres `grant_cycles`. (Surfaced by grep gate 2026-05-06; was incorrectly described as "fully Dataverse" in earlier revisions of this plan.)
+
+**Pre-existing schema-as-code (designed but not deployed):**
+
+The `lib/dataverse/schema/wave2/` directory holds six schema-as-code files written in an earlier session that designed the original Wave 2 entities. These were never deployed to sandbox or prod, but they describe the intended Wave 2 shape and **already encode the 1:1 sidecar model** (not the pool model the Wave 1 design doc text implied):
+
+- `wmkf_app_grant_cycle.json` — `wmkf_AppGrantCycle` entity, OrganizationOwned, alt-keyed on `wmkf_FiscalYearCode`
+- `wmkf_app_proposal_search.json` — `wmkf_AppProposalSearch` entity, UserOwned per-search analysis log
+- `wmkf_app_publication.json` — `wmkf_AppPublication` entity, OrganizationOwned, alt-keyed on DOI; `authorsRaw` text + junction for tracked authors
+- `wmkf_app_researcher.json` — `wmkf_AppResearcher`, **described in the file as "1:1 sidecar to wmkf_potentialreviewers"**
+- `wmkf_app_reviewer_suggestion.json` — `wmkf_AppReviewerSuggestion`, UserOwned lifecycle ledger
+- `wmkf_app_z_publication_author.json` — junction (the `z_` prefix is for create-order; junctions need both endpoints created first)
+
+**Important**: filenames use snake_case for human readability; schemaName uses PascalCase (`wmkf_AppGrantCycle`); deployed logical names would be lowercase concatenated (`wmkf_appgrantcycle`). All three are internally consistent with the live entities' deployed naming. There is no "naming convention divergence" — earlier drafts of this plan claimed there was one, that was a misreading.
+
+The migration question is therefore **"do we deploy what's already designed, or modify the designs first?"**, not "what should we design?" Most of the Wave 2 design work happened months ago.
 
 **Postgres data still load-bearing:**
 
 | Table | Rows (2026-05-06) | Disposition |
 |---|---|---|
-| `publications` | 0 | **Retire.** Writer is dead (`DatabaseService.addPublication` has no callers, table empty since at least 2026-05). Note: `researchers.js` admin UI still *reads* this table (publication browse + duplicate detection); read paths must be stubbed before the table can be dropped. |
-| `proposal_searches` | 0 | **Reckon.** Writer is dead (no INSERT site found anywhere) **but `extract-summary.js` reads it as an IDOR ownership guard** (`pages/api/reviewer-finder/extract-summary.js:57`). Because the table is empty, the guard currently always fails — extract-summary is functionally broken today. **Decision needed**: (a) retire `extract-summary` entirely if it's unused (verify against UI), or (b) rewrite the IDOR guard against Dataverse (`wmkf_appreviewersuggestion._ownerid_value` or request-level access). |
+| `publications` | 0 | **Retire** (deploy decision: skip). Writer is dead (`DatabaseService.addPublication` has no callers, table empty). A designed Dataverse counterpart exists (`wave2/wmkf_app_publication.json` + junction `wave2/wmkf_app_z_publication_author.json`), but with zero data to migrate and the `researchers.js` admin UI being retired (its only reader), the rational call is to **skip deployment** of the publication entities entirely. Reviewer Finder discovery already rescrapes per-search; no need for a cached table. |
+| `proposal_searches` | 0 | **Reckon.** Writer is dead but `extract-summary.js` reads it as an IDOR ownership guard (`pages/api/reviewer-finder/extract-summary.js:57`). Empty table → guard always fails → extract-summary is functionally broken today. A designed Dataverse counterpart exists (`wave2/wmkf_app_proposal_search.json`), but with zero data and a broken endpoint, **decision is: retire `extract-summary` entirely**. UI removal of any callers required (Reviewer Finder picker calls `/api/reviewer-finder/extract-summary` from `pages/reviewer-finder.js:3538`). Skip deployment of `wmkf_app_proposal_search`. |
 | `researchers` | 331 | **Drain.** Don't migrate. Cycle close empties via cleanup cron. Read path in `researchers.js` is the blocker (admin UI). |
 | `researcher_keywords` | 1,028 | **Drain.** Coverage moves to `wmkf_appresearcher.wmkf_keywords` for new rows. Same read-path blocker as above. |
 | `reviewer_suggestions` | 337 | **Backfill spec needed** — see "Reviewer suggestions backfill" section below. Naive "active-cycle migrate, closed-cycle discard" is not enough. |
@@ -93,23 +108,24 @@ So the "JSON validation" and "blob URL reachability" gymnastics in the plan can 
 
 ## Locked decisions
 
-### Data model: 1:1 stays — but the entities are not what the original plan implied
+### Data model: 1:1 sidecar (consistent across schema-as-code and live deployment)
 
-**Corrected 2026-05-07 after re-reading adapters carefully.** The live model:
+The model:
 
-- `wmkf_potentialreviewer` is **global per-person**, identified by email. Lookup is `getByEmail(email)`. One person across N proposals = ONE potentialreviewer row.
-- `wmkf_appresearcher` is **1:1 with `wmkf_potentialreviewer`** (per-person bibliometric snapshot — h_index, ORCID, Scholar). Not per-proposal.
-- `wmkf_appreviewersuggestion` is **per-(person, request)** — the lifecycle ledger for "this person was suggested for this proposal." Identified by `findByPotentialReviewerAndRequest(prId, requestId)`.
+- `wmkf_potentialreviewer` is **global per-person**, identified by email. `getByEmail(email)` returns one row. One person across N proposals = ONE potentialreviewer.
+- `wmkf_appresearcher` is **1:1 with `wmkf_potentialreviewer`** (per-person bibliometric snapshot — h_index, ORCID, Scholar). Not per-proposal. Per-`wmkf_app_researcher.json`'s file description: *"1:1 sidecar to wmkf_potentialreviewers"*.
+- `wmkf_appreviewersuggestion` is **per-(person, request)** — the lifecycle ledger. `findByPotentialReviewerAndRequest(prId, requestId)`.
 
 So one John Smith on 5 proposals = 1 `wmkf_potentialreviewer` + 1 `wmkf_appresearcher` + 5 `wmkf_appreviewersuggestion`.
 
-**Implications that earlier sections of this plan got wrong** (left in earlier drafts as "slot" framing — corrected throughout this revision):
+This model is **consistent across both** the live deployed entities AND the schema-as-code in `wave2/`. Earlier drafts of this plan framed a "pool vs 1:1" decision as an open fork — that was based on misreading the Wave 1 design doc's text rather than checking the schema-as-code in the repo. The schema-as-code already has the 1:1 design. There was never a real fork.
 
-- The cleanup cron drops `wmkf_appreviewersuggestion` rows (per-proposal scratch), NOT `wmkf_potentialreviewer` rows. Dropping a potentialreviewer would erase the whole person.
+**Cleanup-cron implications** (corrected from "slot" framing in earlier drafts):
+- Drops `wmkf_appreviewersuggestion` rows (per-proposal scratch), NOT `wmkf_potentialreviewer` rows. Dropping a potentialreviewer would erase the whole person.
 - The 1:1 sidecar is between potentialreviewer and appresearcher, NOT between either of those and a proposal.
-- A potentialreviewer with zero remaining suggestions is itself effectively orphaned — not currently part of cleanup-cron scope, but worth a follow-up: should orphan potentialreviewers also drop, or persist as a stub for future re-suggestion?
+- Orphan-potentialreviewer policy (a person with zero remaining suggestions): defer; persist as stub for future re-suggestion.
 
-Rationale unchanged: Reviewer Finder surfaces ~25 candidates per proposal. Selected reviewers promote to `contact` (permanent record). Per-proposal scratch (suggestions for proposals we never invited them to) post-adjudication has no value. Historical lookups about "have we worked with this person before" go through `contact` and the surviving `wmkf_appreviewersuggestion` rows linked to that person's potentialreviewer.
+Rationale: Reviewer Finder surfaces ~25 candidates per proposal. Selected reviewers promote to `contact` (permanent record). Per-proposal scratch (suggestions for proposals we never invited them to) post-adjudication has no value. Historical lookups about "have we worked with this person before" go through `contact` and the surviving `wmkf_appreviewersuggestion` rows linked to that person's potentialreviewer.
 
 ### Cleanup cron
 
@@ -175,9 +191,17 @@ This means the contact's history surface is just `wmkf_potentialreviewer` filter
 
 ## New work in scope
 
-### 1. `wmkf_appgrantcycle` entity
+### 1. `wmkf_appgrantcycle` entity (deploy `wave2/wmkf_app_grant_cycle.json`)
 
-Net-new Dataverse table. Replaces Postgres `grant_cycles` (13 rows).
+**Not net-new — already designed.** The schema file `lib/dataverse/schema/wave2/wmkf_app_grant_cycle.json` was authored in an earlier session and sits in the repo undeployed. W1 work is a deployment, not a fresh design.
+
+The file defines:
+- `schemaName: wmkf_AppGrantCycle`, `OrganizationOwned`
+- Primary name: `wmkf_DisplayName` (max 255)
+- `wmkf_FiscalYearCode` alt key (max 50)
+- `wmkf_MeetingDate`, `wmkf_SummaryPages`, and the rest of the standard cycle attributes
+
+Compare against the Postgres `grant_cycles` schema (probed live 2026-05-06) and patch any gaps before deploying:
 
 **Full field mapping** (every Postgres column accounted for):
 
@@ -290,6 +314,8 @@ Confirm `wmkf_appreviewersuggestion` (where reviewer-portal data lives — see "
 
 ### Parity probe result (2026-05-06)
 
+The Wave 2 backfill was a known forward task per memory entry `project_reviewer_history_data_quality.md`, which previously cited *"the Wave 2 backfill (333 Postgres rows → Dataverse)"*. The parity probe confirms what that memory implied — most rows already match.
+
 `scripts/backfill-reviewer-suggestions-parity.js` ran a dry-run classification of all 337 Postgres `reviewer_suggestions` rows against live Dataverse. **Result:**
 
 ```
@@ -300,7 +326,7 @@ C1  closed cycle, no engagement, discard:                          0 rows
 Anomaly:                                                           8 rows
 ```
 
-**The backfill workstream collapses.** No Group B or Group C2 rows means there is nothing meaningful to copy from Postgres → Dataverse. The 329 Postgres rows in Group A are stale duplicates of already-existing Dataverse rows; dropping the Postgres table at decommission loses no data.
+**The backfill workstream collapses to anomaly triage.** No Group B or Group C2 rows means there is nothing meaningful to copy from Postgres → Dataverse beyond the 8 anomalies. The 329 Postgres rows in Group A are stale duplicates of already-existing Dataverse rows; dropping the Postgres table at decommission loses no data.
 
 The 8 anomalies trace cleanly to known data-quality gaps in the audit:
 - 4 rows missing email (exactly the 4 `researchers` rows where email is null)

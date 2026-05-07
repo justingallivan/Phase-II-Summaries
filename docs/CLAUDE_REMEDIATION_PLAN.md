@@ -19,6 +19,8 @@ Over Session 136 (and earlier), the reviewer migration plan has been wrong about
 | Codex round 2 | `wmkf_potentialreviewer` is per-proposal slot | It's global per-person; suggestions are per-(person, proposal) |
 | Codex round 2 | Review Manager is fully Dataverse | `render-emails.js` + `send-emails.js` read `grant_cycles` from Postgres |
 | Parity probe | Backfill is critical path workstream | 97.6% of Postgres rows are stale duplicates of existing Dataverse rows; backfill is essentially done |
+| Memory survey (S136 evening) | Wave 2 schema was undesigned, naming convention was settled, "pool vs 1:1" was a real fork | `lib/dataverse/schema/wave2/` had **6 fully designed schema-as-code files** for months; the schema described the 1:1 model already (no fork existed); the "naming convention divergence" was a misread of snake_case filenames vs. PascalCase schemaName vs. lowercase deployed names — the schema-as-code is internally consistent |
+| Memory survey (same) | The reviewer migration was discovery work | Memory entry `project_reviewer_history_data_quality.md` had previously cited "the Wave 2 backfill (333 Postgres rows → Dataverse)" — the backfill was a known plan, not a discovery |
 
 Each correction came from a probe (live audit, grep gate, adapter re-read, parity script). **None of these facts were documented anywhere I could read; all of them are derivable from the source code I authored.** The cycle is: write a plan from memory → Codex catches a guess → I probe → I correct → I get to a new layer of misunderstanding → repeat.
 
@@ -54,15 +56,34 @@ When I draft a migration or integration plan, the Atlas is the first thing I rea
 
 ### Phase 0 — Stop the bleeding (S137 or earlier)
 
-Before continuing migration execution work, I commit to:
+Before continuing migration execution work, I commit to these rules. They apply effective immediately. The cost is a few extra tool calls per session; the savings is dramatic vs. the rework cycle that S136 surfaced.
 
-1. **Probe-before-plan rule**: any plan claim about live state is labeled with one of:
-   - `[VERIFIED 2026-05-07 via scripts/X.js]` — actually probed
-   - `[ASSUMED — needs verification]` — guess, don't act on it without checking
-2. **No "is X the case" without checking**: if I can't cite a probe or a recent grep, I run one before answering. Default response shape: "Let me check" + tool call, not "I think X."
-3. **All probes commit their scripts** to `scripts/` so the result is reproducible.
+**Probe-before-plan rule.** Any plan claim about live state is labeled with one of:
+- `[VERIFIED 2026-05-07 via scripts/X.js]` — actually probed
+- `[ASSUMED — needs verification]` — guess, don't act on it without checking
 
-These rules apply effective immediately. They cost a few extra tool calls per session and are dramatically cheaper than the rework cycle.
+**No "is X the case" without checking.** If I can't cite a probe or a recent grep, I run one before answering. Default response shape: "Let me check" + tool call, not "I think X."
+
+**Commit probe scripts.** Every probe gets committed to `scripts/` so the result is reproducible.
+
+**Memory hygiene rule** (added 2026-05-07 after surfacing that I had not been reading memory entries even when they were directly relevant):
+- At session start, after seeing the index, I **read full memory entries** for any memory whose name matches the work I'm about to do. Reading the index line is not enough.
+- If the work I'm starting touches a domain (e.g., "reviewer migration"), I `cat` every memory file matching `*reviewer*`, `*migration*`, or `*<domain>*` before drafting any plan content.
+- **Memory drift detection**: if the memory directory looks suspiciously sparse for a domain that I know has been worked on (e.g., a Reviewer Finder project history but only one memory entry mentioning it), I flag the gap and ask whether unsynced memory exists on another machine.
+- I tell the user, plainly, what memory I read before answering — not as a brag but as evidence of grounding.
+
+**Adjacent-context survey rule** (added 2026-05-07 after the `wave2/` directory miss):
+- When I cite a single file (e.g., `lib/dataverse/schema/wave2-existing/wmkf_appreviewersuggestion-extensions.json`), I `ls` its **parent directory** before treating my citation as authoritative.
+- When I cite a doc (e.g., `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md`), I `ls docs/` to see what siblings exist with related names.
+- When I'm about to claim "X has no Y" (e.g., "publications has no Dataverse counterpart"), I grep for Y in plausible locations before asserting.
+- This rule is mechanical, not stylistic. The grep cost is bounded; the rework cost when I miss adjacent work is unbounded.
+
+**Active doubt on state claims rule** (added 2026-05-07 after the "naming convention" non-issue):
+- When I'm about to write "the convention is X," "the design landed at Y," or "live state is Z," I treat that as a **flag**, not a conclusion.
+- Default: read three independent sources (live entity / schema-as-code / memory entry) before stating a "convention" or "settled" claim.
+- If sources conflict (as `wave2/` underscored filenames vs. live no-underscore deployment did), I name the conflict and let the user resolve, rather than guessing which is right.
+
+**Sycophancy and "I think" hedging** are different and unrelated rules. The above is about ground-truth, not tone.
 
 ### Phase 1 — Inventory (~1 session)
 
@@ -140,9 +161,12 @@ If the migration timeline tightens, Phase 1 takes priority over Phases 2–4, be
 
 ## Acceptance — how I know I'm done
 
-When the next plan I draft (e.g., Wave 3 Integrity Screener migration) goes through Codex review and **does not produce corrections about the live state of the existing codebase**, only about the proposed work, the remediation has succeeded.
+Two acceptance signals, both required:
 
-Until then, I'm still in the regression zone.
+1. **Codex review of the next major plan does not produce corrections about the live state of the existing codebase** — only about the proposed work.
+2. **Justin doesn't have to surface unread memory or unread directories** — if he says "you missed X," X is something I genuinely couldn't have surfaced via the rules above (e.g., off-machine state I have no access to), not something that was in memory or `ls`'d adjacent to a file I cited.
+
+Until both, I'm still in the regression zone.
 
 ## Failure mode to watch for
 
