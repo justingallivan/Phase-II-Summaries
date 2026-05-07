@@ -51,6 +51,20 @@ const ALLOWED_UNDOCUMENTED_TABLES = new Set([
 // vendor entities we never touch beyond a one-off probe go here.
 const ALLOWED_UNDOCUMENTED_ENTITIES = new Set([
   'sharepointdocumentlocations', // vendor-only, accessed via lookup not direct
+
+  // Platform/security entities — read by setup/role scripts, not the app:
+  'roles',                  // scripts/apply-security-role.js — manage app user role
+  'privileges',             // scripts/apply-security-role.js — privilege list lookups
+  'businessunits',          // scripts/apply-security-role.js — root BU resolve
+  'publishers',             // scripts/apply-dataverse-schema.js — solution publisher
+  'solutions',              // scripts/apply-dataverse-schema.js — solution metadata
+
+  // Microsoft Graph / SharePoint platform entities (Dataverse-side mirrors):
+  'sharepointdocuments',    // virtual entity, vendor doc tracking — see graph-service.js
+  'sharepointsites',        // vendor SharePoint site registration
+
+  // Activity entities — used only by email-attachment paths:
+  'activitymimeattachments', // SendEmail attachment binding (lib/services/dynamics-service.js)
 ]);
 
 function walk(dir) {
@@ -96,14 +110,27 @@ function enumeratePostgresTables() {
 //   deleteRecord}('<entitySet>'  — the first string arg is the entity set name.
 function enumerateDataverseEntitySets() {
   const entities = new Set();
-  const re = /DynamicsService\.(?:queryRecords|queryAllRecords|getRecord|createRecord|updateRecord|deleteRecord|logAiRun)\s*\(\s*['"]([a-z_][a-z0-9_]*)['"]/g;
+
+  // Pattern A: DynamicsService.<method>('<entitySet>', ...)
+  const dsRe = /DynamicsService\.(?:queryRecords|queryAllRecords|getRecord|createRecord|updateRecord|deleteRecord|logAiRun)\s*\(\s*['"]([a-z_][a-z0-9_]*)['"]/g;
+
+  // Pattern B: Wave-1-style raw client calls — client.{get,post,patch,delete}('/<entitySet>...')
+  // The path may have query params, GUIDs, etc. — capture only the entity-set segment.
+  const clientRe = /\bclient\.(?:get|post|patch|delete|put)\s*\(\s*['"`]\/([a-z_][a-z0-9_]*)/g;
+
+  // Pattern C: $expand / $batch URL fragments that name the entity set inline.
+  // Less common but appears in some adapters. (Conservative — may miss URL builders.)
+  const odataPathRe = /\/api\/data\/v9\.[12]\/([a-z_][a-z0-9_]*)/g;
 
   for (const dir of SCAN_DIRS) {
     for (const file of walk(dir)) {
       if (!file.endsWith('.js')) continue;
       const src = readFileSafe(file);
-      let m;
-      while ((m = re.exec(src)) !== null) entities.add(m[1].toLowerCase());
+      for (const re of [dsRe, clientRe, odataPathRe]) {
+        re.lastIndex = 0;
+        let m;
+        while ((m = re.exec(src)) !== null) entities.add(m[1].toLowerCase());
+      }
     }
   }
 
@@ -117,6 +144,16 @@ function enumerateDataverseEntitySets() {
       while ((m = setRe.exec(src)) !== null) entities.add(m[1].toLowerCase());
     }
   }
+
+  // Strip out non-entity matches that the regexes can pick up:
+  // OAuth resource paths (`oauth2`, `tenants`), search paths (`query`),
+  // metadata (`entitydefinitions`).
+  const NON_ENTITIES = new Set([
+    'oauth2', 'tenants', 'query', 'entitydefinitions', 'globaloptionsetdefinitions',
+    'permissions', 'token', 'common', 'authorize', 'me', 'sites', 'drives',
+    'preferences', 'drive', 'root', 'children', 'items',
+  ]);
+  for (const e of NON_ENTITIES) entities.delete(e);
 
   return entities;
 }

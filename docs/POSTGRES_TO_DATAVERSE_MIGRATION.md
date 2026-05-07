@@ -4,6 +4,17 @@
 **Status:** Planning — schema design; no creation code yet
 **Target environment:** WM Keck Sandbox (`https://orgd9e66399.crm.dynamics.com`) first, then prod after managed-solution export
 
+## Read this first: ground truth lives in the Atlas
+
+**This doc was written assuming a researcher-pool design that was NOT what landed.** For live state of any entity/table, the canonical reference is now the Application State Atlas (`docs/APPLICATION_STATE_ATLAS.md`). When this doc and an Atlas page disagree, the Atlas is authoritative.
+
+Specific divergences between this doc and the as-built system (verified 2026-05-07):
+
+- **Naming convention.** This doc proposes `wmkf_app_<name>` (with underscore between `app` and `<name>`). Live deployments use `wmkf_app<name>` (no underscore). Wave 1 entities are deployed as `wmkf_appuserappaccesses`, `wmkf_appuserpreferences`, `wmkf_appsystemsettings`. Wave 2 entities: `wmkf_appresearcher`, `wmkf_appreviewersuggestion`, `wmkf_apppublication`, `wmkf_appgrantcycle`. Treat all `wmkf_app_<name>` references in this doc as the underscored-schema-as-code names; production is the no-underscore variant.
+- **Person model (Wave 2 preview).** This doc's "Person model" section described a free-standing researcher pool (`wmkf_app_researcher` accumulated across cycles, optional `wmkf_contact` lookup at promotion). What got built is a **1:1 sidecar** (`wmkf_appresearcher` ↔ `wmkf_potentialreviewer`, scoped to per-proposal slots). See `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` (Session 136) for the corrected design.
+- **Wave 1 status.** "Three feature flags ... default to `postgres` until flipped" is stale. **Flags flipped 2026-05-03**; preview + prod both running on Dataverse since then. 14-day stability clock started 2026-05-03 (earliest retirement 2026-05-17). See `project_wave1_pending.md`.
+- **Wave 2 entity list.** This doc mentions `wmkf_app_proposal_search` and `wmkf_app_publication_author` as Wave 2 deliverables. Per Atlas: `wmkf_appproposalsearch` is **NOT deployed** (404 on entity set); `wmkf_app_z_publication_author` is **NOT deployed**. Both are on hold pending demand.
+
 ## Purpose
 
 Every Postgres table in the current system, categorized by migration disposition — **migrate**, **merge**, **stay**, **eliminate** — with proposed Dataverse targets, column mappings, relationship shapes, and ownership decisions. This doc is the schema spec we hand to Connor before any creation code runs.
@@ -229,12 +240,12 @@ Migration doesn't happen all at once. Wave 1 is fully specified below; later wav
 
 Why first: everything downstream looks back at `systemuser`. Get ownership and access-grant plumbing working before any data table moves.
 
-**Status:** prod cutover complete 2026-04-24 (Session 108). Dataverse is a verified byte-for-byte shadow of Postgres (66/66). Three feature flags (`WAVE1_BACKEND_SETTINGS`, `_PREFS`, `_APP_ACCESS`) gate the read/write path; all default to `postgres` until flipped. See `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md` for the flip sequence and explicit retirement criterion.
+**Status (refreshed 2026-05-07):** prod cutover complete 2026-04-24 (Session 108). Dataverse is a verified byte-for-byte shadow of Postgres. Three feature flags (`WAVE1_BACKEND_SETTINGS`, `WAVE1_BACKEND_PREFS`, `WAVE1_BACKEND_APP_ACCESS`) gate the read/write path. **Flags flipped to `dataverse` on 2026-05-03** (after a 6-day silent-fallback gotcha — see `project_wave1_pending.md`). Live entity sets: `wmkf_appsystemsettings`, `wmkf_appuserpreferences`, `wmkf_appuserappaccesses`. 14-day stability clock started 2026-05-03 (earliest retirement 2026-05-17).
 
 **Outstanding follow-ups:**
-- Flip the three flags one at a time (~3 days calendar; <1 hour active work)
-- Remove temp role elevations per `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md`
-- Drop the three Postgres tables once flags have been on `dataverse` for 14+ days without regression
+- ~~Flip the three flags one at a time~~ — done 2026-05-03.
+- Remove temp role elevations per `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md` — **deliberately held** until intake portal schema work lands (app user needs `prvCreateEntity`/`prvCreateAttribute` for new entity creation).
+- Drop the three Postgres tables once flags have been on `dataverse` for 14+ days without regression — earliest 2026-05-17.
 
 ### Wave 2 — Reviewer Finder core
 `wmkf_app_researcher`, `wmkf_app_publication`, `wmkf_app_publication_author`, `wmkf_app_proposal_search`, `wmkf_app_reviewer_suggestion`, `wmkf_app_grant_cycle`
