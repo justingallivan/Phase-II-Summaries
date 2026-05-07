@@ -35,6 +35,44 @@ Connor (2026-05-06) confirmed the underlying intuition: researcher rows are **cy
 
 Total live data is ~1,700 rows. The "migration" is mostly **letting Postgres data drain** as J26 closes, plus rewriting the few endpoints that still talk to Postgres.
 
+### Verified live state (2026-05-06, `scripts/audit-postgres-state.js`)
+
+Per-column population probed against live Neon Postgres. Highlights driving plan decisions:
+
+**`reviewer_suggestions` (337 rows, 37 columns)** — richer than originally documented:
+- 100% populated: `proposal_id`, `proposal_title`, `researcher_id`, `relevance_score`, `match_reason`, `sources`, `suggested_at`, `selected`, `invited`, `declined`, `grant_cycle_id`, `program_area`, `user_profile_id`, `proposal_authors`, `proposal_institution`, `reminder_count`
+- 99%: `request_number` ← **direct join to `akoya_request.akoya_requestnum`**; basis for active/closed determination
+- 97%: `proposal_abstract`
+- 55%: `summary_blob_url`
+- 13%: `email_sent_at` (43 invitations sent)
+- 7%: `response_received_at`, `response_type` (22 responses)
+- 6%: `materials_sent_at`, `review_status`
+- 5%: `proposal_url`, `proposal_password`
+- 1%: `review_received_at`, `review_blob_url`, `review_filename`, `thankyou_sent_at`, `notes`
+- 0%: `co_investigators`, `co_investigator_count`, `email_opened_at`
+
+**`researchers` (331 rows)** — bibliometric infrastructure was built but **never wired up**:
+- 100%: `name`, `normalized_name`
+- 99%: `email`
+- 97%: `primary_affiliation`
+- 42%: `website`
+- 4%: `email_source`
+- 2%: `contact_enriched_at`
+- 1%: `orcid`, `google_scholar_id`, `orcid_url`, `google_scholar_url`, `metrics_updated_at`
+- **0%: `h_index`, `i10_index`, `total_citations`, `last_checked`, `email_year`, `email_verified_at`, `faculty_page_url`, `contact_enrichment_source`, `notes`, `department` (1%)**
+
+**Implication for `wmkf_appresearcher` (1:1 sidecar):** the bibliometric fields it carries (`wmkf_hindex`, `wmkf_i10index`, `wmkf_totalcitations`, `wmkf_lastchecked`) will continue to be null in practice. The match-on-discovery framing should not promise rich h-index data in history badges — we don't have it. What badges CAN show is engagement history (saved, invited, accepted, declined, reviewed) — which IS captured.
+
+**`grant_cycles` (13 rows, 10 active)** — sparser than schema suggests:
+- 100%: `name`, `short_code`, `program_name`, `summary_pages`, `is_active`
+- **0%: `review_deadline`, `review_template_blob_url`, `review_template_filename`, `additional_attachments`, `custom_fields`**
+
+So the "JSON validation" and "blob URL reachability" gymnastics in the plan can be simplified — those columns have no data to migrate. They remain in the Dataverse schema for forward compatibility.
+
+**Cycles enumerated**: J26, D25, J25, D24, J24, D23, J23, D26, J27, D27 active; rows 11–13 are inactive duplicates of D26/J27/D27 (data hygiene cleanup, not load-bearing).
+
+**Per-cycle suggestion volume**: ~10–30 rows per cycle prefix, all with `selected = true`. The "transient unselected scratch" the cleanup cron was originally framed against does not appear in live Postgres data — every Postgres `reviewer_suggestion` row is already a "saved" candidate. The cron's value remains forward-looking (future cycles, future code paths), not retroactive housekeeping.
+
 ## Locked decisions
 
 ### Data model: 1:1 stays
@@ -114,10 +152,10 @@ Net-new Dataverse table. Replaces Postgres `grant_cycles` (13 rows).
 | `name` | `wmkf_displayname` | Text (255) | Primary name attribute. e.g., `"June 2026 Board Meeting"`. |
 | `program_name` | `wmkf_programname` | Text (100) | Friendly program label per cycle. |
 | `summary_pages` | `wmkf_summarypages` | Text (50) | Per-cycle reviewer summary length config (e.g. `"2"`, `"1,2"`). |
-| `review_deadline` | `wmkf_reviewdeadline` | Date | When reviewers must submit. (Postgres column is `review_deadline`, not `review_return_deadline` as the original spec assumed.) |
-| `review_template_blob_url`, `review_template_filename` | `wmkf_reviewtemplateurl`, `wmkf_reviewtemplatefilename` | Text (500) | Vercel Blob URL + filename. |
-| `additional_attachments` | `wmkf_additionalattachments` | Multi-line text | JSONB → JSON-as-text. **Validation**: `JSON.parse` round-trip on read; fail closed if invalid. |
-| `custom_fields` | `wmkf_customfields` | Multi-line text | JSONB → JSON-as-text. Same validation. |
+| `review_deadline` | `wmkf_reviewdeadline` | Date | **0% populated in live data.** Optional. (Column is `review_deadline`, not `review_return_deadline` as original spec assumed.) |
+| `review_template_blob_url`, `review_template_filename` | `wmkf_reviewtemplateurl`, `wmkf_reviewtemplatefilename` | Text (500) | Vercel Blob URL + filename. **0% populated in live data.** Schema captured for forward compatibility; no data to migrate. |
+| `additional_attachments` | `wmkf_additionalattachments` | Multi-line text | JSONB → JSON-as-text. **0% populated in live data (verified 2026-05-06).** Optional column; no migration logic needed. |
+| `custom_fields` | `wmkf_customfields` | Multi-line text | JSONB → JSON-as-text. **0% populated in live data.** Optional column. |
 | `is_active` | `wmkf_isactive` | Yes/No | Drives the active-vs-archived distinction; **Postgres has no `is_archived` column**, the original Codex-flagged concern was unfounded. |
 | `created_at`, `updated_at` | native `createdon`, `modifiedon` | DateTime | Built-in. |
 
@@ -222,7 +260,9 @@ The 337 Postgres `reviewer_suggestions` rows are not all replaceable by current 
 
 **Group C — closed cycle, only in Postgres**: D25, J25, prior. **Action**: discard. The proposals are adjudicated; the candidate data has no forward use.
 
-**Active vs. closed determination**: read the cycle code from `reviewer_suggestions.proposal_id` (forms like `J26-NN`, `D25-NN`) or from the joined `proposal_searches` if present. Closed = associated `akoya_request.wmkf_meetingdate` < today. Edge case: any J26 row is active (current cycle) regardless of meeting date.
+**Active vs. closed determination** (verified against live data 2026-05-06): use `reviewer_suggestions.request_number` (99% populated) to join against `akoya_request.akoya_requestnum` and read `akoya_request.wmkf_meetingdate`. Active = meeting date in future or within last 14 days. Closed = meeting date older than 14 days. Don't parse `proposal_id` — its first chars are the proposal title, not a cycle code.
+
+For the 1% of rows missing `request_number`, use `grant_cycle_id` (100% populated) → `grant_cycles.short_code` → derive the cycle's typical meeting date. Borderline cases: log to `Anomalies` count for human review.
 
 **Backfill script** (`scripts/backfill-reviewer-suggestions-to-dataverse.js`) writes a parity report before acting:
 
@@ -313,7 +353,7 @@ Hard constraints (each blocks the step after it):
 4. **`grant-cycles.js` rewrite + `wmkf_appgrantcycle` migration.** Must complete **before email flows are migrated** — `generate-emails.js` reads cycle attachment settings (`grant-cycles.js:144`), so a flag flip on email without grant-cycle being Dataverse-resident would break.
 5. **Reviewer-suggestions backfill.** Run dry, review parity report, then commit. Required before `generate-emails.js` and `my-proposals.js` flag flips.
 6. **`my-proposals.js` lifecycle counts.** Currently labeled in code as "Postgres remains source of truth for lifecycle state until the wave-2 ledger backfill happens" (`pages/api/reviewer-finder/my-proposals.js:153`). Cannot flip until the suggestion backfill (step 5) is verified.
-7. **`maintenance-service.js` blob orphan scanner.** Reads Postgres `proposal_searches`, `grant_cycles`, `reviewer_suggestions` to find live blob URLs (`lib/services/maintenance-service.js:84`). **Must rewrite to read Dataverse before cutover** — otherwise the next cron run after cutover will misclassify Dataverse-referenced blobs as orphaned and delete them.
+7. **`maintenance-service.js` blob orphan scanner.** Reads Postgres `proposal_searches`, `grant_cycles`, `reviewer_suggestions` to find live blob URLs (`lib/services/maintenance-service.js:84`). **Live-data note**: `proposal_searches` is empty, `grant_cycles.review_template_blob_url` is 0% populated; only `reviewer_suggestions.summary_blob_url` (55%) and `review_blob_url` (1%) carry real data. So the scanner runs against essentially one populated source today. Still must rewrite to read Dataverse before cutover, but the urgency is lower than originally framed — risk is bounded by the small number of populated source rows.
 8. **Cleanup cron (engaged predicate).** Build with backup-on-delete logic. Run dry-only for at least one full cycle before any real delete.
 9. **Match-on-discovery + history endpoints + service.** Read-only; can ship anytime after step 3. Independent of cutover.
 10. **History badges in UI.** Stacks on (9). Descope to post-pilot if W3–W4 compresses.

@@ -63,9 +63,16 @@ Both nested under junction implementation:
 
 - UI cleanup pass on Reviewer Finder + Review Manager (stale `.eml` references, etc.) — its own session, not migration scope.
 
-## RR program code (probed S136)
+## Live Postgres state probed S136 (`scripts/audit-postgres-state.js`)
 
-`akoya_program = "Research Reviewer"`, `wmkf_code = "RR"`, GUID `7e744a42-37eb-f011-8543-6045bd02b4cc`. **Exists but unused.** No contact has it (no `_akoya_program_value` field on contact at all). Zero requests use it. No N:N table. **No existing convention to follow** for tagging contacts as reviewers — engagement-history approach is the answer, not a flag.
+Plan was updated against live data, not assumptions. Key findings:
+
+- **`reviewer_suggestions` has 37 columns**, not the ~15 I originally listed. Crucially, `request_number` is 99% populated — directly joins to `akoya_request.akoya_requestnum`, so active/closed determination doesn't need to parse `proposal_id` (whose first chars are the proposal *title*, not a cycle code).
+- **`researchers` bibliometric data is 0% populated** for h_index, i10_index, total_citations. Infrastructure exists, was never wired up. Match-on-discovery history badges should not promise rich bibliometrics — we don't capture them. Engagement history (invited, accepted, reviewed) IS captured and IS the right basis.
+- **`grant_cycles` is sparser than schema suggests**: only 5 of 13 columns populated. JSON columns (`additional_attachments`, `custom_fields`), `review_deadline`, `review_template_blob_url`, `review_template_filename` all 0%. Migration spec simplified accordingly.
+- **`maintenance-service.js` blob-scanner concern partially evaporates** — only `reviewer_suggestions.summary_blob_url` (55%) is a real source today. Still rewrite for cutover, lower urgency.
+- **Cleanup cron is forward-looking only** — every existing `reviewer_suggestions` row has `selected=true`. The "transient unselected scratch" pattern doesn't appear in live data; cron's value is future code paths.
+- All data 2026-01-03 → 2026-04-30; matches "<12 months old" claim.
 
 ## How to apply
 
@@ -73,3 +80,8 @@ Both nested under junction implementation:
 - When working on Reviewer Finder code: confirm live state matches what the plan doc says. If something on the Postgres-only list got migrated independently, update both this memory and the plan.
 - Don't propose adding a `wmkf_iscontactreviewer` boolean or similar denormalized role flag. Decision is engaged-slot-history; flags lose data the history preserves.
 - Don't propose dropping Postgres reviewer tables outside the cleanup-cron path. The drain is intentional and gated on cycle close + 14-day clean window.
+- **Re-run `scripts/audit-postgres-state.js` before any migration work begins** to confirm state hasn't drifted from S136 ground truth.
+
+## RR program code (probed S136)
+
+`akoya_program = "Research Reviewer"`, `wmkf_code = "RR"`, GUID `7e744a42-37eb-f011-8543-6045bd02b4cc`. **Exists but unused.** No contact has it (no `_akoya_program_value` field on contact at all). Zero requests use it. No N:N table. **No existing convention to follow** for tagging contacts as reviewers — engagement-history approach is the answer, not a flag.
