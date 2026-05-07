@@ -11,6 +11,24 @@ The Wave 2 spec in `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md` (Session 106) was w
 
 Connor (2026-05-06) confirmed the underlying intuition: researcher rows are **cycle-bounded transient candidate scratch**, not a permanent bibliometric pool. The 1:1 model coincidentally got this right. This doc operationalizes the migration around that ground truth.
 
+## Out of scope (Postgres tables this migration does NOT touch)
+
+To prevent scope creep — destructive carryover items that name "drop Postgres tables" must explicitly exclude:
+
+| Table | Why it stays | Owner |
+|---|---|---|
+| `retractions` | 63K+ rows, GIN-indexed array search; load-bearing for Integrity Screener | Wave 3 (separate plan) |
+| `integrity_screenings`, `screening_dismissals` | Per-user history for Integrity Screener | Wave 3 |
+| `dynamics_feedback` | Dynamics Explorer thumbs/auto-detected failures | Wave 5 |
+| `expertise_roster`, `expertise_matches` | Expertise Finder roster + history | Wave 4 |
+| `panel_reviews`, `panel_review_items` | Virtual Review Panel persistence | Wave 4 |
+| `intake_drafts`, `intake_audit` | Applicant intake portal (separate workstream) | Pilot scope, not migration |
+| `system_alerts`, `health_check_history`, `maintenance_runs` | Time-series monitoring; correctly stays in Postgres per Wave 1 doc | Stays Postgres permanently |
+| `api_usage_log`, `dynamics_query_log` | High-volume audit logs; correctly stays in Postgres per Wave 1 doc | Stays Postgres permanently |
+| `user_profiles`, `user_preferences`, `user_app_access`, `system_settings` | Wave 1 — already migrated | Done |
+
+**Rule**: any decommission script in this migration explicitly enumerates the Postgres tables it drops; never wildcards. See "Pre-drop grep gates" under Rollback Strategy.
+
 ## Where the migration actually stands today
 
 **Already in Dataverse (live):**
@@ -248,34 +266,80 @@ Alt key: `(wmkf_request, wmkf_contact, wmkf_role)`.
 
 ### 6. Reviewer-portal field audit
 
-Walk through what the reviewer portal will capture (response time, decline reason, late/on-time, quality rating, etc.) and confirm `wmkf_potentialreviewer` has columns for each. Add what's missing. Connor coordination on net-new columns.
+Confirm `wmkf_appreviewersuggestion` (where reviewer-portal data lives — see "Reviewer-portal data lives on `wmkf_appreviewersuggestion`" section above) has columns for everything the portal will capture. Net-new fields locked S136: `wmkf_DeclineReason`, `wmkf_ResponseReceivedAt`. Late/on-time and response-latency derive from existing timestamps. Connor coordination only on whether anything else surfaces during portal build that isn't in the extensions JSON.
 
 ## Reviewer suggestions backfill
 
-The 337 Postgres `reviewer_suggestions` rows are not all replaceable by current Dataverse `wmkf_appreviewersuggestion` data — `save-candidates.js` only started writing Dataverse partway through cycle activity. So the Postgres rows fall into three groups; each needs a different action.
+The 337 Postgres `reviewer_suggestions` rows are not all replaceable by current Dataverse `wmkf_appreviewersuggestion` data — `save-candidates.js` only started writing Dataverse partway through cycle activity. So the Postgres rows fall into four groups; each needs a different action.
 
-**Group A — already in Dataverse**: a Dataverse `wmkf_appreviewersuggestion` row exists for the same (proposal, reviewer-email) pair. **Action**: discard the Postgres row; verify Dataverse row's `wmkf_emailsentat`, `wmkf_responsetype`, summary blob URL, etc. are populated. If gaps, patch from Postgres.
+**Group A — already in Dataverse**: a Dataverse `wmkf_appreviewersuggestion` row exists for the same (request, reviewer-email) pair. **Action**: leave Dataverse row alone if all lifecycle fields are populated. If Dataverse has gaps that Postgres has data for, **patch only the gaps** — never overwrite an existing Dataverse value. Patch precedence: Dataverse is authoritative for any field it has data in; Postgres fills empties only.
 
 **Group B — active cycle, only in Postgres**: J26 (or future) cycle, no Dataverse counterpart. **Action**: backfill into Dataverse via the suggestion adapter. Need to also ensure a `wmkf_potentialreviewer` slot + `wmkf_appresearcher` sidecar exists for the candidate (may need to create if save-candidates was never re-run).
 
-**Group C — closed cycle, only in Postgres**: D25, J25, prior. **Action**: discard. The proposals are adjudicated; the candidate data has no forward use.
+**Group C1 — closed cycle, no engagement signal**: closed-cycle Postgres row where ALL of `email_sent_at`, `materials_sent_at`, `response_type`, `response_received_at`, `review_received_at` are null. **Action**: discard. Pure pre-adjudication scratch; no forward use.
 
-**Active vs. closed determination** (verified against live data 2026-05-06): use `reviewer_suggestions.request_number` (99% populated) to join against `akoya_request.akoya_requestnum` and read `akoya_request.wmkf_meetingdate`. Active = meeting date in future or within last 14 days. Closed = meeting date older than 14 days. Don't parse `proposal_id` — its first chars are the proposal title, not a cycle code.
+**Group C2 — closed cycle, has engagement** (NEW — corrects original Group C): closed-cycle Postgres row where ANY of `email_sent_at`, `materials_sent_at`, `response_type`, `response_received_at`, `review_received_at`, or any review-blob field is populated. **Action**: backfill anyway for permanent reviewer history. Live audit shows 43 invitations, 22 responses, 1 received review across Postgres — that engagement record is the basis for future "have we worked with this person before" lookups and must be preserved regardless of cycle closure.
 
-For the 1% of rows missing `request_number`, use `grant_cycle_id` (100% populated) → `grant_cycles.short_code` → derive the cycle's typical meeting date. Borderline cases: log to `Anomalies` count for human review.
+### Identity contract (resolves Codex BLOCKER)
 
-**Backfill script** (`scripts/backfill-reviewer-suggestions-to-dataverse.js`) writes a parity report before acting:
+The backfill writer must establish three precise mappings before writing any Dataverse row. **No `(proposal_id, email)` shortcut** — Postgres `proposal_id` is the first chars of the proposal title, NOT a cycle code or request identifier.
+
+**1. Postgres `request_number` → Dataverse request GUID**
 
 ```
-   Group A (already in Dataverse, optional patch):  N rows
-   Group B (active, needs backfill):                M rows
-   Group C (closed, discard):                       K rows
-   Anomalies (no proposal mapping, malformed):      X rows  ← STOP if X > 0
+SELECT akoya_requestid FROM akoya_request WHERE akoya_requestnum = $1
 ```
 
-Run dry-first; require explicit `--commit` flag to write. Idempotent: re-running matches existing Dataverse rows by `(proposal_id, email)` and patches rather than duplicating.
+`reviewer_suggestions.request_number` is 99% populated. For the 1% missing, use `grant_cycle_id → grant_cycles.short_code` to identify the cycle, then **fail with manual-reconciliation flag** rather than guess. Do not auto-resolve ambiguous rows.
 
-**Per-user scoping change**: Postgres `reviewer_suggestions` filters by `user_profile_id` in places (e.g., `generate-emails.js:57` enforces "only your own saved candidates"). Dataverse `wmkf_appreviewersuggestion` is org-visible by default. **This is an intentional model change**: post-migration, all PDs see all suggestions; the "my candidates" filter becomes a UX convenience (filter on `_ownerid_value` or `_wmkf_programdirector_value` of the linked request), not a security boundary. Document explicitly so the cross-user-isolation tests can be updated rather than failing silently.
+**2. Postgres email → Dataverse `wmkf_potentialreviewer` slot**
+
+```
+SELECT wmkf_potentialreviewerid FROM wmkf_potentialreviewer
+WHERE wmkf_email = $1
+  AND <slot is on the request from step 1, via _akoya_request_value or its slot relationship>
+```
+
+Email source: `researchers.email` joined via `reviewer_suggestions.researcher_id` (99% populated). If no matching slot exists on the request (Group B/C2 cases), create one via `potentialReviewerAdapter.upsertByEmail` — same code path `save-candidates.js` uses.
+
+**3. Idempotency on Dataverse write**
+
+Use the alt key `(wmkf_request, wmkf_potentialreviewer)` on `wmkf_appreviewersuggestion`. Dataverse adapter `reviewerSuggestionAdapter.upsert` already does this; the backfill calls into it rather than reimplementing.
+
+### Patch precedence (Group A handling)
+
+When a Dataverse row already exists for `(request, slot)`:
+
+| Field type | Rule |
+|---|---|
+| Lifecycle timestamps (`wmkf_emailsentat`, `wmkf_responsereceivedat`, `wmkf_reviewreceivedat`, etc.) | Patch only if Dataverse field is null AND Postgres has a value. Dataverse is authoritative once populated. |
+| `wmkf_responsetype`, `wmkf_reviewstatus` | Same as above. Picklist values mapped per "Picklist value mapping" section. |
+| `wmkf_summaryblobeurl`, `wmkf_reviewblobeurl` | Patch only if Dataverse null. URL validation: `HEAD` request must return 200; if 404, log as anomaly and skip the field. |
+| `wmkf_selected`, `wmkf_invited`, `wmkf_declined`, `wmkf_accepted` (legacy booleans) | Patch only if Dataverse null. |
+| Any field already populated in Dataverse | **Never overwrite.** Log as `PRESERVED_DV` in parity report. |
+
+### Backfill execution model + partial-failure repair
+
+`scripts/backfill-reviewer-suggestions-to-dataverse.js`:
+
+1. **Build parity report (dry-run, no writes)**:
+   ```
+      Group A (in DV, may need gap-patch):    N rows
+      Group B (active, full backfill):        M rows
+      Group C1 (closed, no engagement, discard): K1 rows
+      Group C2 (closed, has engagement, backfill for history): K2 rows
+      Anomalies (missing request_number, missing email, malformed): X rows  ← STOP if X > 0
+   ```
+2. **Human review.** Anomalies must be zero before commit.
+3. **Commit phase** (`--commit` flag required): processes in batches of 50. After each batch, writes a checkpoint to `backfill-progress.json` recording `{ lastProcessedPostgresId, dataverseGuidsCreated[], errors[] }`.
+4. **Failure mid-batch**: rerun resumes from `lastProcessedPostgresId + 1`. Idempotent because of step 3's alt-key UPSERT — re-attempting a created row patches rather than duplicates.
+5. **Catastrophic failure (Dataverse outage mid-commit)**: pause the cron / flag flips, fix Dataverse, rerun. Checkpoint protects forward progress.
+
+**No dual-write window.** The backfill is a one-shot data move, not a sustained dual-write pattern. Once done, the per-table `WAVE2_BACKEND_*` flag flip swaps source-of-truth atomically. See "No dual-write" subsection under Rollback Strategy below.
+
+### Per-user scoping change
+
+Postgres `reviewer_suggestions` filters by `user_profile_id` in places (e.g., `generate-emails.js:57` enforces "only your own saved candidates"). Dataverse `wmkf_appreviewersuggestion` is org-visible by default. **This is an intentional model change**: post-migration, all PDs see all suggestions; the "my candidates" filter becomes a UX convenience (filter on `_ownerid_value` or `_wmkf_programdirector_value` of the linked request), not a security boundary. Document explicitly so the cross-user-isolation tests can be updated rather than failing silently.
 
 ## Picklist value mapping
 
@@ -379,14 +443,50 @@ Hard constraints (each blocks the step after it):
 
 ## Rollback strategy
 
-Per step, mostly reversible until cutover:
+### No dual-write — single-source-of-truth flips
+
+To be explicit (Codex flagged this as a missing stance): **this migration does not run a dual-write window**. Per-table `WAVE2_BACKEND_*` flags swap the source-of-truth atomically per HTTP request. Before flip: Postgres write, Dataverse read-after-fallback. After flip: Dataverse write, Postgres untouched.
+
+There is no period where both backends are simultaneously authoritative. This avoids the divergence-detection-via-reconciliation trap, but means **a Dataverse write failure in the post-flip window surfaces as a user-visible error**, not silent dual-write success. Rollback = flag flip, not transactional rewind.
+
+### Per step, mostly reversible until cutover
 
 1. Schema creation: delete table from solution; no prod impact.
 2. Match-on-discovery + history: read-only; turn off via feature flag (`REVIEWER_FINDER_HISTORY_BADGES=false`) — no data implications.
-3. Cleanup cron: dry-run mode logs what it would delete without acting. Run dry-run for one full cycle before turning on for real. Once acting, pre-delete export to blob with 30-day retention provides manual restore path.
+3. Cleanup cron: dry-run mode logs what it would delete without acting. Run dry-run for one full cycle before turning on for real. Once acting, pre-delete export to blob with 30-day retention provides manual restore path. **Restore script** (`scripts/restore-from-cleanup-backup.js`): reads the JSON blob, re-CREATEs slot + sidecar + suggestion via existing adapters (`potentialReviewerAdapter`, `researcherAdapter`, `reviewerSuggestionAdapter`). Idempotent via alt keys. Half-day to write; **must exist before cron's first real-mode run**, no longer "TBD."
 4. Endpoint rewrites: behind a `WAVE2_BACKEND_*` env flag pattern (modeled on Wave 1). Per-table flip; rollback = flip back to Postgres.
 5. Cutover: Postgres tables set read-only but not dropped. If cutover regresses, re-enable Postgres path, investigate.
 6. Decommission: only after 14 days clean. Final blob backup.
+
+### Partial-write recovery (post-flip rollback handling)
+
+If a flag flip happens, Dataverse takes a few writes, then we discover a problem and flip back to Postgres — those Dataverse-written rows are now divergent from the next Postgres-write attempts.
+
+**Recovery procedure** (`scripts/repair-divergence-postflip.js`):
+
+1. **Note the flip-back timestamp.** All Dataverse rows on the affected entity with `createdon > flipForwardTimestamp AND createdon < flipBackTimestamp` are candidates for reconciliation.
+2. **Dump the candidates** as JSON via the relevant adapter (`reviewerSuggestionAdapter.findRecent({ since })`).
+3. **Replay into Postgres** via the legacy `DatabaseService` write paths. Idempotent on Postgres side via the existing UNIQUE constraints (`(proposal_id, researcher_id)` on `reviewer_suggestions`, etc.).
+4. **Re-flip forward** only after reconciliation script reports zero drift between the dumped Dataverse set and the replayed Postgres set.
+
+**Acceptance**: don't re-flip until repair script's parity report shows zero drift. If repair fails (Postgres write rejects, etc.), the Dataverse rows stay; flag stays Postgres; manual triage required before retry.
+
+### Pre-drop grep gates (per CLAUDE.md carryover hygiene)
+
+Before any destructive step, an explicit `rg` check must show zero live callers:
+
+| Step | Grep targets | Pass condition |
+|---|---|---|
+| Drop `pages/api/reviewer-finder/researchers.js` | `rg "/api/reviewer-finder/researchers"` across `pages/`, `lib/`, `scripts/`, `tests/` | Zero matches |
+| Drop Database tab from `pages/reviewer-finder.js` | `rg "fetch.*reviewer-finder/researchers"` in same scope | Zero matches |
+| Drop Postgres `researchers` table | `rg "FROM researchers\b\|INTO researchers\b\|UPDATE researchers\b"` in `lib/`, `pages/`, `scripts/` | Zero matches |
+| Drop Postgres `researcher_keywords` table | `rg "researcher_keywords"` in same scope | Zero matches |
+| Drop Postgres `publications` table | `rg "FROM publications\b\|INTO publications\b\|UPDATE publications\b"` in same scope | Zero matches (verified 2026-05-06: writer is dead) |
+| Drop Postgres `proposal_searches` table | `rg "proposal_searches"` in same scope | Zero matches outside ad-hoc scripts |
+| Drop Postgres `reviewer_suggestions` table | `rg "FROM reviewer_suggestions\b\|INTO reviewer_suggestions\b\|UPDATE reviewer_suggestions\b"` in same scope | Zero matches |
+| Drop Postgres `grant_cycles` table | `rg "FROM grant_cycles\b\|INTO grant_cycles\b\|UPDATE grant_cycles\b"` in same scope | Zero matches |
+
+Each gate runs **immediately before** the destructive command, not at planning time. Output captured in the migration log. If any gate finds a live caller (added since cutover, missed in the rewrite), **stop and re-investigate** — do not proceed with `--force` or equivalent.
 
 ### Rollback triggers (when to flip back)
 
@@ -423,30 +523,57 @@ Pre-cutover and post-cutover, run a reconciliation script (`scripts/reconcile-re
 - Direct override (`?requestId=<guid>`) returns regardless of PD.
 - Negative test: an applicant or external token hitting `/api/reviewer-finder/*` is still rejected.
 
+## Dataverse readiness checklist
+
+Before W3 application-code rewrites depend on Dataverse schema, every item below must have a check + date + owner. Captured in this doc; a checked-and-dated copy lives in the W2 PR description.
+
+| Item | Owner | Due | Verification |
+|---|---|---|---|
+| `wmkf_appgrantcycle` entity created in sandbox | Justin | W1 | Solution browser shows the entity under `ResearchReviewAppSuite`. |
+| Alt key `wmkf_shortcode` on `wmkf_appgrantcycle` confirmed unique-enforced | Justin | W1 | Manual duplicate-create attempt returns Dataverse alt-key violation. |
+| Contact form "Reviewer history" subgrid added | Connor | W2 | Sandbox contact form renders the subgrid; data appears for known reviewer contacts. |
+| `wmkf_appreviewersuggestion` extensions deployed (`wmkf_DeclineReason`, `wmkf_ResponseReceivedAt`) | Justin | W1 | Adapter `select` includes them; sandbox row shows them when set. |
+| `wmkf_apprequestperson` junction created (if Connor approves) | Connor + Justin | W2 | Schema present; alt key `(wmkf_request, wmkf_contact, wmkf_role)` enforced. |
+| OData filter performance: `wmkf_appreviewersuggestion` filtered by `wmkf_grantcyclecode` | Justin | W2 | Sandbox query of 100 rows returns < 500ms P95. |
+| OData filter performance: `wmkf_potentialreviewer` filtered by `wmkf_contact` | Justin | W2 | Same. |
+| OData filter performance: `wmkf_apprequestperson` filtered by `wmkf_contact` (if junction exists) | Justin | W2 | Same. |
+| `$batch` reviewer-suggestion writes succeed at 50-row batches | Justin | W2 | Sandbox batch test against synthetic data. |
+| Managed-solution export from sandbox produces clean ZIP | Justin | W4 | Maker portal export; download + inspect XML; no missing-dependency errors. |
+| Sandbox→prod managed-solution import dry-run | Justin | W4 | Import to a separate scratch environment if available, else paper-only review with Connor. |
+| Smoke test: `save-candidates` against new schema in sandbox | Justin | W4 | One end-to-end discovery + save flow against the new entities. |
+| Smoke test: `generate-emails` against migrated suggestion data in sandbox | Justin | W4 | One end-to-end email-generation flow with backfilled suggestions. |
+| Smoke test: contact history endpoint batched lookup | Justin | W4 | 25-contact batch returns < 1s P95. |
+
+**Failure of any item postpones cutover.** No partial passes; if a smoke test reveals a regression, fix before flipping flags.
+
 ## Revised pilot timing
 
-Today: 2026-05-06. Pilot: mid-June 2026 (~6 weeks). Updated to address Codex feedback on sequencing realism:
+Today: 2026-05-06. Pilot: mid-June 2026 (~6 weeks). Updated to address Codex feedback on sequencing realism + lead-time buffers.
 
 | Week | Target | Critical-path notes |
 |---|---|---|
-| W1 (now → 2026-05-13) | **Decisions, not code.** `researchers.js` rewrite-vs-retire decision (Justin). `extract-summary.js` retire-or-rewrite decision. Connor sign-off on cleanup-cron predicate, 14-day grace, contact form view, missing reviewer-portal field set. Sandbox `wmkf_appgrantcycle` schema deployed; field mapping verified. Reconciliation script (`scripts/reconcile-reviewer-migration.js`) skeleton. | Schema before code. |
-| W2 (2026-05-13 → 2026-05-20) | `grant-cycles.js` rewrite + `wmkf_appgrantcycle` migration (cycle data first — emails depend on it). Reviewer-suggestions backfill script written + dry-run. Cleanup cron written, dry-run only. `maintenance-service.js` blob scanner rewrite. | Cycle migration unblocks email migration. |
-| W3 (2026-05-20 → 2026-05-27) | Reviewer-suggestions backfill committed + parity report clean. Endpoint rewrites: `generate-emails.js`, `my-proposals.js`, `extract-summary.js` (or its retirement). Match-on-discovery service + `/api/reviewer-finder/contact-history` endpoint. | Suggestion backfill is the gating step. |
-| W4 (2026-05-27 → 2026-06-03) | `discover.js` rewrite. `researchers.js` rewrite OR retirement. History badges in UI (descopable if W3 slipped). Cross-user-isolation test rewrite. Production-rehearsal dry-run with the reconciliation script. | History badges are slip-eligible. |
-| W5 (2026-06-03 → 2026-06-10) | Production cutover (per-table, watching dashboards). Postgres marked read-only. Pilot launch readiness review. | Watch dashboards live before flag flips. |
+| W1 (now → 2026-05-13) | **Decisions + sandbox-deploy only — no application code.** `researchers.js` rewrite-vs-retire decision (Justin) — **already locked S136 to retire**. `extract-summary.js` retire-or-rewrite decision (Justin). Connor sign-off on cleanup-cron predicate, 14-day grace, contact form view, junction implementation, missing reviewer-portal field set. Sandbox `wmkf_appgrantcycle` + suggestion-extension fields deployed; field mapping verified against live Postgres audit. **Buffer**: if Connor sign-off slips into W2, sandbox-deploy still completes since schema is Justin-owned. | Schema before code. Connor lead-time absorbed by parallel sandbox work. |
+| W2 (2026-05-13 → 2026-05-20) | `grant-cycles.js` rewrite + `wmkf_appgrantcycle` migration (cycle data first — emails depend on it). Reviewer-suggestions backfill script written + parity dry-run + identity-contract verification. Reconciliation script skeleton (moved from W1). Cleanup cron written, dry-run only. `maintenance-service.js` blob scanner rewrite. Junction backfill script (if Connor green-light). Contact form subgrid (Connor). | Cycle migration unblocks email migration. Identity contract validated by parity-dry-run output. |
+| W3 (2026-05-20 → 2026-05-27) | Reviewer-suggestions backfill committed + parity report clean (zero anomalies). Endpoint rewrites: `generate-emails.js`, `my-proposals.js`, `extract-summary.js` (or its retirement + UI removal). Match-on-discovery service + `/api/reviewer-finder/contact-history` endpoint. | Suggestion backfill is the gating step for everything downstream. |
+| W4 (2026-05-27 → 2026-06-03) | `discover.js` rewrite. `researchers.js` retirement (per W1 lock) — API removal AND Database tab UI removal AND test/doc cleanup, with grep gates. "Add candidate by hand" feature. History badges in UI (descopable if W3 slipped). Cross-user-isolation test rewrite. **Dataverse readiness checklist** completed. Production-rehearsal dry-run with reconciliation script. | History badges are slip-eligible; readiness checklist is not. |
+| W5 (2026-06-03 → 2026-06-10) | Production cutover (per-table, watching dashboards). Postgres marked read-only. Pilot launch readiness review. Repair script tested in sandbox. | Watch dashboards live before any flag flip. |
 | W6 (2026-06-10 → 2026-06-17) | Pilot launch (mid-June Phase II Research). Cleanup cron stays in dry-run. | Cron real-mode flip is post-pilot. |
 
-**Slip budget**:
-- History badges + match-on-discovery (W3–W4): pure additive UX. Slip to post-pilot if needed.
-- Cleanup cron real-mode: post-pilot regardless. Built but dry-run only through cutover.
-- `researchers.js` full rewrite: only fits if it gets the W1 decision early. Realistically expect **retire**, not rewrite, given pilot time pressure. Justin to confirm in W1.
+**Slip budget** (descopable from pilot, ship post-launch if needed):
+- History badges + match-on-discovery (W3–W4): pure additive UX
+- Cleanup cron real-mode: post-pilot regardless
+- `wmkf_apprequestperson` junction: if Connor pushback, fall back to OR-clause queries on `akoya_request._wmkf_projectleader_value` + `_wmkf_copi1..5_value`. History badges still work; just less performant. No incremental risk.
+- "Add candidate by hand" feature: nice-to-have replacement for retired Database tab; pilot can launch without it (PDs save via discovery flow only)
+- Contact form subgrid: defers to post-pilot if Connor schedule doesn't accommodate W2
 
-**What's NOT in the slip budget** (these gate cutover, no descope):
-- Suggestion backfill + parity report
+**What's NOT in the slip budget** (gate cutover, no descope):
+- Backfill identity contract + parity report (zero anomalies)
 - `wmkf_appgrantcycle` migration
 - `maintenance-service.js` blob-scanner rewrite
 - Per-user scoping documentation + test rewrite
 - Email-generation smoke + lifecycle-count parity
+- Pre-delete restore script written + tested
+- Dataverse readiness checklist 100% complete
 
 ## Related
 
