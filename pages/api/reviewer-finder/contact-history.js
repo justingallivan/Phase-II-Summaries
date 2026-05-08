@@ -78,21 +78,31 @@ export default async function handler(req, res) {
       // ── Pull both sources in parallel ──────────────────────────────────
       const escapedContactId = contactId.replace(/'/g, "''");
 
+      // Both source queries use queryAllRecords (paginates via @odata.nextLink,
+      // capped at 5000). queryRecords' top:100 silently truncated high-volume
+      // historian PIs/co-PIs; the cap flag below surfaces the boundary if we
+      // ever brush against it (no live contact comes anywhere near).
       const [junctionResp, projectLeaderResp] = await Promise.all([
         // Junction rows for this contact (any role).
-        DynamicsService.queryRecords('wmkf_apprequestpersons', {
+        DynamicsService.queryAllRecords('wmkf_apprequestpersons', {
           select: '_wmkf_request_value,wmkf_role,wmkf_authorposition',
           filter: `_wmkf_contact_value eq ${escapedContactId} and wmkf_role ne null`,
-          top: 100,
         }),
         // akoya_request rows where this contact is the project leader.
         // Role inferred = pi, position = 0 (matches backfill convention).
-        DynamicsService.queryRecords('akoya_requests', {
+        DynamicsService.queryAllRecords('akoya_requests', {
           select: 'akoya_requestid',
           filter: `_wmkf_projectleader_value eq ${escapedContactId}`,
-          top: 100,
         }),
       ]);
+
+      if (junctionResp.capped || projectLeaderResp.capped) {
+        console.warn(
+          `[contact-history] source-query cap hit for contact ${contactId}: ` +
+          `junction=${junctionResp.capped ? 'capped' : 'ok'} ` +
+          `projectleader=${projectLeaderResp.capped ? 'capped' : 'ok'}`
+        );
+      }
 
       // ── Merge into a dedupe-keyed map ──────────────────────────────────
       // Key = `${requestId}|${role}`. Same contact + same request can hold
@@ -127,41 +137,34 @@ export default async function handler(req, res) {
       const rows = Array.from(rowMap.values());
 
       // ── Fetch request metadata once per distinct requestId ─────────────
+      // Chunk into batches of CHUNK_SIZE per OData `or`-filter request to keep
+      // URL length and per-query top within bounds. queryAllRecords would not
+      // help here — each batch needs its own filter, not pagination of one.
       const distinctRequestIds = [...new Set(rows.map(r => r.requestId))];
       const requestMetaById = new Map();
+      const CHUNK_SIZE = 50;
 
-      if (distinctRequestIds.length > 0) {
-        // OData `or` chain — bounded by junction.top (100) + projectleader.top (100).
-        // Worst-case 200 distinct requests; usually far fewer.
-        const orFilter = distinctRequestIds
-          .map(id => `akoya_requestid eq ${id}`)
-          .join(' or ');
+      for (let i = 0; i < distinctRequestIds.length; i += CHUNK_SIZE) {
+        const chunk = distinctRequestIds.slice(i, i + CHUNK_SIZE);
+        const orFilter = chunk.map(id => `akoya_requestid eq ${id}`).join(' or ');
         const meta = await DynamicsService.queryRecords('akoya_requests', {
           select: REQUEST_SELECT,
           filter: orFilter,
-          top: 100,
+          top: CHUNK_SIZE,
         });
         for (const r of meta.records || []) {
           requestMetaById.set(r.akoya_requestid, r);
         }
-        // If we exceeded top=100 the meta query truncates; do a second pass
-        // for any remaining ids.
-        if (distinctRequestIds.length > meta.records.length) {
-          const remaining = distinctRequestIds.filter(id => !requestMetaById.has(id));
-          if (remaining.length > 0) {
-            const secondFilter = remaining
-              .map(id => `akoya_requestid eq ${id}`)
-              .join(' or ');
-            const more = await DynamicsService.queryRecords('akoya_requests', {
-              select: REQUEST_SELECT,
-              filter: secondFilter,
-              top: 100,
-            });
-            for (const r of more.records || []) {
-              requestMetaById.set(r.akoya_requestid, r);
-            }
-          }
-        }
+      }
+
+      const unresolvedMeta = distinctRequestIds.filter(id => !requestMetaById.has(id));
+      if (unresolvedMeta.length > 0) {
+        // Should be unreachable — every source row's request id should resolve.
+        // Surface as a warning so the response's null-meta rows are diagnosable.
+        console.warn(
+          `[contact-history] ${unresolvedMeta.length}/${distinctRequestIds.length} ` +
+          `request ids unresolved for contact ${contactId}`
+        );
       }
 
       // ── Project + sort ──────────────────────────────────────────────────

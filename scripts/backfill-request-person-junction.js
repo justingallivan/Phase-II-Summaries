@@ -75,22 +75,46 @@ const JUNCTION_ENTITY = 'wmkf_apprequestpersons';
 // after Connor's PA flows have written some rows) we use this set to skip
 // rows already present. The alt-key lookup avoids relying on Dataverse to
 // reject duplicates — failures are then real failures, not "already there".
+//
+// DynamicsService.queryAllRecords caps at 5000; the backfill itself created
+// 5,561 rows, so a rerun must use raw @odata.nextLink pagination. Mirrors the
+// pattern used in Step 2 below for akoya_request.
 // ────────────────────────────────────────────────────────────────────────────
-console.log('Pre-fetching existing junction rows for dedupe...');
+console.log('Pre-fetching existing junction rows for dedupe (raw paginated fetch)...');
 const existingKeys = new Set();
 {
-  const { records, capped, totalCount } = await DynamicsService.queryAllRecords(JUNCTION_ENTITY, {
-    select: '_wmkf_request_value,_wmkf_contact_value,wmkf_role',
-    filter: 'wmkf_role ne null',
+  const token = await DynamicsService.getAccessToken();
+  const baseUrl = process.env.DYNAMICS_URL;
+  const params = new URLSearchParams({
+    $select: '_wmkf_request_value,_wmkf_contact_value,wmkf_role',
+    $filter: 'wmkf_role ne null',
+    $count: 'true',
   });
-  if (capped) {
-    console.error(`✗ Existing junction count exceeds export cap (${records.length}). Manual triage required.`);
-    process.exit(1);
+  let url = `${baseUrl}/api/data/v9.2/${JUNCTION_ENTITY}?${params.toString()}`;
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'OData-Version': '4.0',
+    Accept: 'application/json',
+    Prefer: 'odata.maxpagesize=5000',
+  };
+  let totalCount = null;
+  let pulled = 0;
+  let page = 0;
+  while (url) {
+    const resp = await fetch(url, { headers });
+    if (!resp.ok) throw new Error(`junction prefetch failed (${resp.status}): ${await resp.text()}`);
+    const data = await resp.json();
+    if (totalCount === null && data['@odata.count'] !== undefined) {
+      totalCount = data['@odata.count'];
+    }
+    for (const r of (data.value || [])) {
+      existingKeys.add(`${r._wmkf_request_value}|${r._wmkf_contact_value}|${r.wmkf_role}`);
+      pulled++;
+    }
+    page++;
+    url = data['@odata.nextLink'] || null;
   }
-  for (const r of records) {
-    existingKeys.add(`${r._wmkf_request_value}|${r._wmkf_contact_value}|${r.wmkf_role}`);
-  }
-  console.log(`  ${records.length} existing junction rows (totalCount=${totalCount})`);
+  console.log(`  ${pulled} existing junction rows over ${page} page(s) (totalCount=${totalCount ?? pulled})`);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
