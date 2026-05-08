@@ -336,4 +336,4 @@ All within Connor's access — no external IT or vendor dependencies.
 | `pages/api/review-manager/reviewers.js` | Add Dynamics write-back (Phase 2) |
 | `docs/GRANT_CYCLE_LIFECYCLE.md` | Full lifecycle reference |
 | `docs/PENDING_ADMIN_REQUESTS.md` | Permission requests |
-| `docs/CRM_EMAIL_SEND_PLAN.md` | Phase A, independent but complementary |
+| `docs/archive/CRM_EMAIL_SEND_PLAN.md` | Phase A, independent but complementary (archived; shipped S77) |

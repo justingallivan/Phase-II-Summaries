@@ -4,7 +4,7 @@ description: Canonical field names + write-access state for AI writeback to Dyna
 type: project
 originSessionId: 09e7e972-ba80-4cd8-88a7-6fa9bffc5036
 ---
-**Canonical spec:** `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md` (Connor, 2026-04-14). v2 (`docs/DYNAMICS_AI_FIELDS_SPEC_v2.md`) is archived — field names, Choice values, and child-table schema in v2 do NOT match what's actually live. Always refer to v3.
+**Canonical spec:** `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md` (Connor, 2026-04-14). v2 (`docs/archive/DYNAMICS_AI_FIELDS_SPEC_v2.md`) is archived — field names, Choice values, and child-table schema in v2 do NOT match what's actually live. Always refer to v3.
 
 **Why:** Connor implemented v3 in Dynamics and renamed several fields (no underscores after `wmkf_ai_` prefix, some renamed: `structured_data` → `dataextract`, `task_type` → `tasktype`, etc.). Writing code against v2 names will fail.
 

@@ -186,4 +186,4 @@ Drift fixes also applied: `docs/PROMPT_STORAGE_DESIGN.md` columns renamed from p
 - Bucket D refresh: 6 guides last-touched 78d ago
 - Bucket B "flagged for refresh" list: 6 docs need state pass (STRATEGY.md, GRANT_CYCLE_LIFECYCLE.md, REVIEWER_LIFECYCLE_PROPOSAL.md, STAGED_REVIEW_PIPELINE.md, STAGED_PIPELINE_IMPLEMENTATION_PLAN.md, DYNAMICS_SCHEMA_ANNOTATION.md)
 - Bucket A refresh: AUTHENTICATION_SETUP.md (98d), CREDENTIALS_RUNBOOK.md (73d), API_ROUTE_SECURITY_MATRIX.md (endpoint persistence annotation)
-- Other: 6 archive candidates identified but not part of Bucket C (DYNAMICS_AI_FIELDS_SPEC_v2.md, DYNAMICS_AI_FIELDS_SPEC_cn-notes.md, DYNAMICS_EXPLORER_DOCUMENT_LISTING_PLAN.md, CRM_EMAIL_SEND_PLAN.md, ENTRA_ID_INTEGRATION_SUMMARY.md, SHAREPOINT_DOCUMENT_ACCESS.md) — defer to a future triage
+- ~~Other: 6 archive candidates identified but not part of Bucket C~~ — **completed S141 (2026-05-08)**: all 6 archived to `docs/archive/`. Live citers rewritten in `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md`, `docs/BACKEND_AUTOMATION_PLAN.md`, `.claude-memory/project_dynamics_ai_writeback.md`.
