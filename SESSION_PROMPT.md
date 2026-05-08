@@ -1,120 +1,107 @@
-# Session 140 Prompt: Post-Wave-2 follow-ups + doc-triage cleanup
+# Session 141 Prompt: Resume S140 carryover (doc triage / migration sweep) on a green-gate base
 
 ## Heads up — read before doing anything
 
-S139 shipped the entire Wave 2 build set in one go (5/5 items). That clears the build backlog from S138's hand-off. The remaining work falls into three buckets, and **none of them are urgent** — pick whatever matches the available bandwidth and energy.
+S140 was meant to be Codex review of the S139 build set. It became, instead, a small accountability moment plus rubric repair. Two things happened:
 
-Two cross-cutting findings from S139 that should shape any future schema work:
+1. **The Codex review found three real bugs** (all Dataverse pagination completeness — same family). Fixed in `aa9bd09`.
+2. **The Atlas gate had been red on `main` since S139** because S139 deployed a junction entity (`wmkf_apprequestperson`) without an Atlas page. I noticed during S140 and originally classified it as a side-note. Justin called this out as a rubric violation — exactly the failure mode the remediation plan exists to prevent. Fixed in `33902a5`, which also codified a hard rule and patched the /start skill so future sessions can't repeat it.
 
-1. **Dataverse `EntityCustomization` 429 throttling between metadata writes is the rule.** `apply-dataverse-schema.js` should be invoked through a 30s-backoff retry loop for any multi-attribute deploy. Idempotent reruns are safe.
-2. **`@odata.bind` keys are case-sensitive** (PascalCase nav-property name from the schema spec, NOT lowercase logical name). Plain field read/writes use lowercase; only `@odata.bind` cares. This bit us once during the junction backfill smoke.
+The mechanical takeaway lives in CLAUDE.md "Ground-truth requirement" and `feedback_red_gates_are_p0.md`. Read those before any data-layer work.
 
-Useful as standing memory for the next person touching either area.
-
-## Session 139 summary
+## Session 140 summary
 
 ### What was completed
 
-All 5 Wave 2 build items landed and verified live (commits below):
+1. **Codex review of S139 commits** (commit `aa9bd09`)
+   - Independent review via codex-rescue agent on the 5 build commits (`2eda700`, `c8cbfe1`, `8b9b287`, `b536121`, `b23586c`).
+   - Three findings, all "wrote pagination for the small case":
+     - **High** — `pages/api/reviewer-finder/contact-history.js`: source queries used `queryRecords` `top:100`, silently truncating high-volume PIs/co-PIs. Switched to `queryAllRecords` (5000-cap, paginated) with cap-hit warning.
+     - **Medium** — same file: request-metadata fetch did one "remaining" pass — only worked because sources were pre-capped. Replaced with deterministic 50-id chunked OR-filter and unresolved-id sweep with warning.
+     - **Medium** — `scripts/backfill-request-person-junction.js`: existing-row prefetch used `queryAllRecords` (5000 cap). Backfill itself created 5,561 rows, so reruns aborted at the cap-guard. Switched to raw `@odata.nextLink` pagination, mirroring the Step 2 pattern already in the same file.
+   - Schema deploys (`c8cbfe1`, `b536121`) and echo-parity harness (`2eda700`) came back clean.
 
-1. **`executor.echo-parity` prompt row** seeded; both Vercel `executePrompt()` runs produce byte-identical raw output and the second hits cache. Sonnet-4 with cache-load-bearing filler in the system block (haiku's 2048-token cache minimum couldn't be cleared with a tiny smoke prompt).
-2. **`wmkf_apprequestperson` junction entity** deployed (table + 2 attrs + 2 lookups + alt key). Spec at `lib/dataverse/schema/wave2/wmkf_app_request_person.json`.
-3. **Junction backfill** — 5,561 rows (4,488 PI + 1,073 Co-PI) inserted from legacy slot fields in 8 minutes. Idempotent on rerun. Script at `scripts/backfill-request-person-junction.js`.
-4. **28 fields on `akoya_request`** — 6 workflow-chaining + 22 Field Set B (grant report extraction). Spec at `lib/dataverse/schema/wave2-existing/akoya_request-ai-extensions.json`.
-5. **`/api/reviewer-finder/contact-history`** UNION endpoint — reads junction OR projectleader-field with per-row source provenance. Live-tested with PI dual-source, co-PI single-source, and empty-history cases.
+2. **Atlas gap close + rubric reinforcement** (commit `33902a5`)
+   - **Atlas page for `wmkf_apprequestperson`** (`docs/atlas/dataverse-wmkf-apprequestperson.md`): documents the 5,561-row junction, UNION-read strategy, PascalCase `@odata.bind` requirement, `queryAllRecords` 5000-cap gotcha, and Connor PA dual-write pending.
+   - **`dataverse-akoya-request.md` updated** for S139 reality: 6 workflow-chaining `wmkf_ai_*` fields enumerated, Field Set B status flipped from "on hold" to "DEPLOYED" with all 22 field shapes summarized, junction-relationship section added.
+   - **`APPLICATION_STATE_ATLAS.md` index** updated: replaced "Planned ... not yet deployed" line with deployed-status link, added junction row to the reviewer-finder Dataverse table.
+   - **Hard rule in `CLAUDE.md`** under "Ground-truth requirement": red `npm run check:*` gate on `main` blocks all data-layer commits until green. "Pre-existing" / "out of scope" / "not my regression" explicitly disallowed as reasons to proceed.
+   - **`/start` skill patched** (`~/.claude/skills/start/skill.md`): Step 2 runs `check:atlas` / `:atlas:self-test` / `:api-routes` before context loading; red gates get reported first in the summary as P0 blockers.
+   - **Feedback memory** added: `feedback_red_gates_are_p0.md`, indexed in `MEMORY.md`.
 
 ### Commits
 
-- `2eda700` — Seed executor.echo-parity prompt + harness for two-side parity oracle
-- `c8cbfe1` — Deploy wmkf_apprequestperson junction entity to prod Dataverse
-- `8b9b287` — Backfill 5,561 wmkf_apprequestperson rows from akoya_request slot fields
-- `b536121` — Deploy 28 wmkf_ai_* fields on akoya_request (workflow-chaining + Field Set B)
-- `b23586c` — Add /api/reviewer-finder/contact-history with UNION read strategy
+- `aa9bd09` — Address Codex review of S139 build set: Dataverse pagination completeness
+- `33902a5` — Close Atlas gap from S139 + codify red-gate-is-P0 rule
 
-### Memory updates this session
+### Memory updates
 
-None written. Domain memories that informed the session:
-- `project_reviewer_postgres_to_dataverse_migration.md` (junction read strategy)
-- `project_dataverse_creator_privileges.md` (delegation scope)
-- `project_dynamics_ai_writeback.md` (Field Set B v3 status)
-- `project_prompt_storage_strategy.md` (executor naming convention)
-
-The cross-cutting findings above are good candidates for new feedback memories if/when they bite a future session.
+- New: `feedback_red_gates_are_p0.md` — "red `check:*` gate on main is a rubric violation right now; fix before any data-layer commits, regardless of who broke it"
+- `MEMORY.md` index updated with the new entry under Operational
 
 ## Production state
 
-- **Connor's plate (still his):** PA-side `ExecutePrompt` child flow + PA flows on `akoya_request` create/update for junction sync. Both unblocked since 2026-05-07. Status update in next sync.
-- **Justin/Claude's plate:** post-Wave-2. The 5-item build set is closed.
-- **Atlas + CI gate live and self-tested.** `npm run check:atlas` + `:self-test` + `:api-routes` (now 77 routes) all green.
-- **Wave 1 in steady state.** Stability clock ends 2026-05-17.
-- **5,561 junction rows in production.** Connor's ongoing-sync PA flows must (a) preserve them on update and (b) dual-write `_wmkf_projectleader_value` + `pi` junction row for new requests. Until those flows ship, the contact-history endpoint's per-row `sources` array shows transition-state honestly.
+- All three CI gates green: 28 Postgres tables, 25 Dataverse entities, 77 API routes covered.
+- Wave 2 build set (S139) remains live and unchanged in semantics — only the pagination edges were patched.
+- No production writes happened this session.
+- Wave 1 stability clock: still ticking until 2026-05-17.
 
-## Where to pick up — Session 140
+## Where to pick up — Session 141
 
-### A. **Doc-triage cleanup** (PRIMARY candidate, picks up §B from S139)
+The S140 prompt's three candidate threads are all still on the table — none of them were touched this session because the rubric-repair path took priority.
 
-S138 ran Step 1+2+3 of doc-triage (categorization + 36-doc archive). The remaining steps are all small-to-medium and complete the doc-currency story.
+### A. **Doc-triage cleanup** (still the primary candidate)
 
-- **Bucket A refresh** (3 docs): `AUTHENTICATION_SETUP.md` (98d, dual-provider Entra External shipped since), `CREDENTIALS_RUNBOOK.md` (73d), `API_ROUTE_SECURITY_MATRIX.md` (endpoint-persistence annotation per Atlas v1 known-gaps).
-- **"Other" archive batch** (6 candidates not in original Bucket C): `DYNAMICS_AI_FIELDS_SPEC_v2.md`, `DYNAMICS_AI_FIELDS_SPEC_cn-notes.md`, `DYNAMICS_EXPLORER_DOCUMENT_LISTING_PLAN.md`, `CRM_EMAIL_SEND_PLAN.md`, `ENTRA_ID_INTEGRATION_SUMMARY.md`, `SHAREPOINT_DOCUMENT_ACCESS.md` (verify-then-archive).
-- **Bucket B "flagged for refresh"** (more involved per doc): `STRATEGY.md` (56d), `GRANT_CYCLE_LIFECYCLE.md` (28d), `REVIEWER_LIFECYCLE_PROPOSAL.md` (40d, Phase A shipped since), `STAGED_REVIEW_PIPELINE.md` + `STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` (36d), `DYNAMICS_SCHEMA_ANNOTATION.md`.
-- **Bucket D guides refresh** (6 per-app guides last touched 78d): spot-check vs current app behavior.
+S138 ran Step 1+2+3 of doc-triage (categorization + 36-doc archive). The remaining steps:
+
+- **Bucket A refresh** (3 docs): `AUTHENTICATION_SETUP.md` (101d, dual-provider Entra External shipped since), `CREDENTIALS_RUNBOOK.md` (76d), `API_ROUTE_SECURITY_MATRIX.md` (endpoint-persistence annotation per Atlas v1 known-gaps).
+- **"Other" archive batch** (6 candidates): `DYNAMICS_AI_FIELDS_SPEC_v2.md`, `DYNAMICS_AI_FIELDS_SPEC_cn-notes.md`, `DYNAMICS_EXPLORER_DOCUMENT_LISTING_PLAN.md`, `CRM_EMAIL_SEND_PLAN.md`, `ENTRA_ID_INTEGRATION_SUMMARY.md`, `SHAREPOINT_DOCUMENT_ACCESS.md` (verify-then-archive).
+- **Bucket B "flagged for refresh"**: `STRATEGY.md` (59d), `GRANT_CYCLE_LIFECYCLE.md` (31d), `REVIEWER_LIFECYCLE_PROPOSAL.md` (43d, Phase A shipped since), `STAGED_REVIEW_PIPELINE.md` + `STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` (39d), `DYNAMICS_SCHEMA_ANNOTATION.md`.
+- **Bucket D guides refresh**: 6 per-app guides, last touched 81d. Spot-check vs current app behavior.
 - **Promote `check-doc-currency.js` to CI** — extend the `check:atlas:self-test` pattern to bind drift probes into the CI gate.
 
-### B. **Codex review of S139 commits** (smaller scope, defensive)
+### B. **REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md status sweep**
 
-Five new commits in one session is a lot of new code/schema. Worth running `gpt-5.3-codex` against the diff to surface anything the in-loop testing missed. Per `project_codex_recurring_review.md`, treat findings as input, not a to-do list.
+The plan has a lot of "W2 owner: Justin" rows that are now done (Wave 2 build set landed S139). Worth sweeping to mark completion and identify what's actually next on the critical path. Cycle gating: aligned with Connor cadence, so don't strand it ahead of the next sync.
 
-Specifically worth checking:
-- The contact-history endpoint's two-stage request-meta fetch (top=100 + remaining-pass) handles edge cases correctly.
-- The backfill script's `_wmkf_request_value` dedupe handles the cross-request same-contact pattern.
-- The Field Set B field shapes (Memo lengths, choice values) match what downstream prompts will need.
-
-### C. **REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md status sweep**
-
-The plan has a lot of "W2 owner: Justin" rows that are now done. Worth sweeping to mark completion and identify what's actually next on the critical path. Cycle gating: this plan is aligned with Connor-collaboration cadence, so don't strand it ahead of the next sync.
-
-### D. Externally gated (don't pursue without signal)
+### C. **Externally gated** (don't pursue without signal)
 
 - **Wave 1 retirement** — earliest 2026-05-17.
 - **Connor's PA-side `ExecutePrompt` build** — when it lands, run the parity oracle from both sides and verify byte-identical `wmkf_ai_rawoutput`. The Vercel side is ready (`scripts/test-echo-parity.js`).
-- **Connor's `akoya_request` create/update PA flows** — when they ship, the contact-history endpoint's per-row `sources` array stops showing single-source `[junction]` for newly-PI-touched data; that's the signal to consider the migration "in steady state."
+- **Connor's `akoya_request` create/update PA flows** — when they ship, the contact-history endpoint's per-row `sources` array stops showing single-source `[junction]` for newly-PI-touched data.
 
-## Key files added/modified this session
+## Key files added/modified
 
 | File | Status | Purpose |
 |---|---|---|
-| `scripts/seed-echo-parity-prompt.js` | NEW | Idempotent seed for the executor parity oracle row |
-| `scripts/test-echo-parity.js` | NEW | Two-run parity smoke (rawOutput identical + cacheHit on run 2) |
-| `lib/dataverse/schema/wave2/wmkf_app_request_person.json` | NEW | Junction entity spec |
-| `scripts/backfill-request-person-junction.js` | NEW | One-time backfill from legacy slot fields; idempotent on rerun |
-| `lib/dataverse/schema/wave2-existing/akoya_request-ai-extensions.json` | NEW | 28-field spec (6 workflow-chaining + 22 Field Set B) |
-| `pages/api/reviewer-finder/contact-history.js` | NEW | UNION-read endpoint for PI/co-PI history |
-| `scripts/smoke-contact-history.js` | NEW | Handler-level smoke (kept for regression) |
-| `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` | EDITED | Audit catalog updated for junction + Field Set B deploys |
-| `docs/API_ROUTE_SECURITY_MATRIX.md` | EDITED | Added `/api/reviewer-finder/contact-history` row (77 routes) |
+| `pages/api/reviewer-finder/contact-history.js` | EDITED | Switched both source queries to `queryAllRecords`; chunked metadata fetch (50 ids/batch) with unresolved sweep |
+| `scripts/backfill-request-person-junction.js` | EDITED | Replaced 5K-capped prefetch with raw `@odata.nextLink` pagination |
+| `docs/atlas/dataverse-wmkf-apprequestperson.md` | NEW | Atlas page for the S139 junction (5,561 rows) |
+| `docs/atlas/dataverse-akoya-request.md` | EDITED | Field Set B deployed status; 6 workflow-chaining fields; junction relationship |
+| `docs/APPLICATION_STATE_ATLAS.md` | EDITED | Junction added to Reviewer-finder Dataverse table; "Planned" line replaced |
+| `CLAUDE.md` | EDITED | "Red gates are P0 blockers, not side-notes" rule under Ground-truth requirement |
+| `~/.claude/skills/start/skill.md` | EDITED | New Step 2 runs `check:*` gates before context loading; red-gate-first reporting |
+| `.claude-memory/feedback_red_gates_are_p0.md` | NEW | Lesson-from-failure feedback memory |
+| `.claude-memory/MEMORY.md` | EDITED | Indexed new feedback memory under Operational |
 
 ## Testing
 
 ```bash
-# Gates remain green
-npm run check:api-routes
+# All three should be green at session start (and stay that way)
 npm run check:atlas
 npm run check:atlas:self-test
-npm run test:ci
+npm run check:api-routes
 
-# Re-verify the parity oracle whenever the Executor or model config changes
-node scripts/test-echo-parity.js
+# Pagination fixes — no automated test, but the smoke handles the happy path
+# (requires npm run dev or fixed ESM-import resolution; pre-existing limitation)
+node scripts/smoke-contact-history.js --contactId <guid>
 
-# Schema rerun is idempotent — useful for sanity checks
-node scripts/apply-dataverse-schema.js --target=prod --wave=2
-
-# Endpoint smoke (requires dev server on :3000)
-curl -s "http://localhost:3000/api/reviewer-finder/contact-history?contactId=<guid>" | python3 -m json.tool
+# Backfill rerun is now safe above the 5K threshold
+node scripts/backfill-request-person-junction.js --dry-run
 ```
 
-## How to know Session 140 went well
+## How to know Session 141 went well
 
-- **If §A (doc-triage cleanup):** at least the Bucket A refresh + "Other" archive batch land. The Bucket B refreshes are bigger and may take a full session each.
-- **If §B (Codex review):** findings triaged into either fix-now / fix-later / not-a-bug, with the fix-now bucket actually patched. The S138 pattern is the model.
-- **If §C (plan sweep):** completion status accurately reflects S139 deliveries; next critical-path item is identified for the post-2026-05-17 window.
+- The /start skill ran the gates and they were green (rubric stayed enforced).
+- Whatever thread got picked up landed deliberately (doc-triage cleanup OR plan sweep), with commits + an updated SESSION_PROMPT for S142.
+- No new entity / table / endpoint shipped without an Atlas update in the same commit.
