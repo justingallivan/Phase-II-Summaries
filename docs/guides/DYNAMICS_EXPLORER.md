@@ -41,6 +41,8 @@ Content searches use the Dataverse Search API, which searches across all indexed
 - "Show me the review history for this proposal"
 - "What documents are linked to this request?"
 
+Document lookups walk the active library plus three archive libraries (`akoya_request`, `RequestArchive1`, `RequestArchive2`, `RequestArchive3`) and recurse into subfolders, so older grants whose files were migrated from a previous system still surface correctly.
+
 ## Understanding Results
 
 Results are displayed as formatted tables or summaries depending on the query type:
@@ -63,6 +65,7 @@ The AI remembers previous results and can refine or drill into them.
 ## Exporting Data
 
 - Click **Export Chat** to download the conversation including all query results
+- Query results can also be exported as Excel (`.xlsx`) for tabular data
 - Tables in results can be copied to clipboard for pasting into spreadsheets
 
 ## Tips

@@ -16,10 +16,10 @@ The suite uses your organization's Microsoft account for authentication.
 After signing in, you'll see the home page with cards for each application you have access to. Click any card to open that app.
 
 Apps are organized into categories:
-- **Concepts** — Evaluate early-stage research ideas
+- **Concepts** — Multi-Perspective Evaluator (Concept Evaluator was retired 2026-04-25)
 - **Phase I** — Process and summarize Phase I proposals
 - **Phase II** — Process and summarize Phase II proposals
-- **Other** — Specialized tools (expenses, literature, CRM queries, integrity screening)
+- **Other** — Specialized tools (Reviewer Finder, Review Manager, Integrity Screener, Dynamics Explorer, Expertise Finder, Grant Reporting, Funding Analysis, Literature Analyzer, Peer Review Summarizer, Expense Reporter)
 
 ## Default Access
 

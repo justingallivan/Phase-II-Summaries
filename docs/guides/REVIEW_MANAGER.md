@@ -1,5 +1,7 @@
 # Review Manager Guide
 
+> **Note (2026-05-08):** Email sending now happens directly through Dynamics CRM (`/api/review-manager/send-emails`) — emails appear as activities on the request with a full audit trail. The legacy `.eml`-file workflow is still available, but the CRM-direct path is the primary flow. Reviewers also receive **magic-link tokens** (HMAC JWT, hash-stored) so they can upload completed reviews directly via `/external/review/[token]/*` without staff intermediation; uploads auto-file to SharePoint `Reviewer_Uploads/`. Token mint / regenerate / revoke are visible in the reviewer card. See `docs/EXTERNAL_REVIEWER_INTAKE_PLAN.md` for the underlying flow. The walkthrough below describes the staff-facing UI; some details (especially around the email-send buttons) may differ slightly from current production — refer to the in-app help (`?` button) for canonical UX.
+
 Manage the peer review lifecycle from sending materials through collecting completed reviews.
 
 ## Overview
