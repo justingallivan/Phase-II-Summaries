@@ -48,7 +48,12 @@ WMKF AI writeback fields (canonical: `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md` —
 - `wmkf_ai_dataextract` (Memo, JSON) — domain tags / structured extract. **Field Set A: ready.**
 - `wmkf_ai_complianceissues` (Memo, JSON), `wmkf_ai_compliancesummary` (Memo). **Field Set C: ready.** (v3 also reuses existing `akoya_submissionaccepted`.) Note: live probe shows a numeric `wmkf_ai_compliancecheck` field on the entity; per the v3 spec this is part of an earlier draft that Connor is reconciling — do not write to `compliancecheck`, write to `complianceissues` + `compliancesummary`.
 - `wmkf_ai_fitassessment` (Picklist) + `wmkf_ai_fitrationale` (Memo) — **Field Set D: ready.**
-- **Field Set B (Grant Report):** on hold pending staff input; Grant Reporting app continues without writeback.
+
+**Workflow-chaining fields (S139, deployed `b536121`)** — cached extractions so downstream prompts don't re-parse the narrative:
+- `wmkf_ai_keywords` (Memo, JSON array, 4000), `wmkf_ai_methodologies` (Memo, JSON array, 4000), `wmkf_ai_riskflags` (Memo, JSON array, 4000)
+- `wmkf_ai_teaminfo` (Memo, JSON object, 8000), `wmkf_ai_budgetsummary` (Memo, narrative, 8000), `wmkf_ai_timeline` (Memo, narrative, 8000)
+
+**Field Set B (Grant Report) — DEPLOYED (S139, `b536121`).** 22 fields covering counts (postdocs / grad students / undergrads / pubs total / pubs peer-reviewed / pubs non-peer-reviewed / patents awarded / patents submitted), narrative summaries (additional funding, project impacts, awards & honors, implications, outcome summary, notes for staff), per-goal JSON (`wmkf_ai_reportgoalsassessment` at 32000 chars — documented exception to the flat-fields convention), top-2 publication triples (`wmkf_ai_reportpub{1,2}{citation,abstract,source}`), and overall rating (Picklist: Successful / Mixed / Unsuccessful). Schema spec: `lib/dataverse/schema/wave2-existing/akoya_request-ai-extensions.json`. Naming follows the v3 rule (`wmkf_ai_<concept>` with no underscore between concept words — so `wmkf_ai_riskflags`, NOT `wmkf_ai_risk_flags`). Wired up to Grant Reporting writeback when staff is ready; field shapes are stable.
 
 **Cruft / do-not-write fields** [VERIFIED via `project_dynamics_ai_writeback.md`]:
 - `wmkf__ai_summary` (double underscore) — exists alongside the real `wmkf_ai_summary`; Connor will delete. Do not target.
@@ -87,6 +92,10 @@ Sample row had **364 total fields** (vendor + WMKF + standard Dataverse audit fi
 > - `pages/api/integrity-screener/*` writes screenings to **Postgres** `integrity_screenings` via `IntegrityService.saveScreening`; no `akoya_request` writes exist anywhere in integrity-screener or integrity service files.
 
 All user-driven writes use `MSCRMCallerID` (impersonation contract per `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md`); preview + prod flag now ON.
+
+## Junction relationship (S139)
+
+`wmkf_apprequestperson` is the new PI/co-PI history junction (5,561 rows after backfill). UNION-read with `_wmkf_projectleader_value` per `pages/api/reviewer-finder/contact-history.js`. Connor's PA flows (not yet shipped) will dual-write the junction alongside the projectleader lookup on create/update. Until then, the legacy `wmkf_copi1..5` slot lookups remain the only co-PI write path. Full details: [`atlas/dataverse-wmkf-apprequestperson.md`](dataverse-wmkf-apprequestperson.md).
 
 ## SharePoint linkage
 

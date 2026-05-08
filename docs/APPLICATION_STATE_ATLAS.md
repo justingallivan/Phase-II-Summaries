@@ -42,6 +42,7 @@ The canonical reference for the live state of the application's data layer.
 | `wmkf_appgrantcycle` | 0 | deployed (partial schema), no callers | same page |
 | `wmkf_appproposalsearch` | n/a | NOT DEPLOYED (schema-as-code only) | same page |
 | `wmkf_app_z_publication_author` | n/a | NOT DEPLOYED | same page |
+| `wmkf_apprequestperson` | 5,561 | active junction (S139); awaiting Connor PA dual-write | [dataverse-wmkf-apprequestperson.md](atlas/dataverse-wmkf-apprequestperson.md) |
 
 ### Vendor entities (master records)
 
@@ -161,7 +162,7 @@ Useful summary of how Postgres ↔ Dataverse currently join (or will join post-c
 - **Endpoint persistence annotation** not yet merged into `API_ROUTE_SECURITY_MATRIX.md`.
 - **Vendor `contact` and `account` extension fields** not enumerated yet — needed for intake portal pilot work (AO/Liaison fields per `project_intake_portal_pilot_decisions_2026-05-06.md`).
 - **`wmkf_ai_prompt` and `wmkf_ai_run`**: per-entity page at [`atlas/dataverse-wmkf-ai-run-and-prompt.md`](atlas/dataverse-wmkf-ai-run-and-prompt.md). Both schemas now documented from live code (verified 2026-05-07 via `execute-prompt.js:193-200,535-553`).
-- **Planned `wmkf_apprequestperson` junction** (locked S136 per `project_reviewer_postgres_to_dataverse_migration.md`) — PI/co-PI history mechanism, replaces `akoya_request.wmkf_copi1..5` slots over time. Not yet deployed; needs an Atlas page when it lands.
+- **`wmkf_apprequestperson` junction** — DEPLOYED S139 (`c8cbfe1`); 5,561 rows backfilled (`8b9b287`). Atlas page: [`atlas/dataverse-wmkf-apprequestperson.md`](atlas/dataverse-wmkf-apprequestperson.md). Steady-state still pending Connor's PA dual-write flows.
 - **Intake portal entities** not yet created (per pilot scope) — `wmkf_portal_membership`, `wmkf_budgetline`, `wmkf_personnel`, `wmkf_priorsupport`, `wmkf_milestone`, plus `account` / `wmkf_potentialreviewer` extensions. Catalog goes in `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md`; once entities exist, link from this Atlas.
 
 ## Probe re-run
