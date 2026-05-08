@@ -21,14 +21,43 @@ Only two credentials expire automatically. Everything else is stable until manua
 
 | Variable | Purpose | Source | Rotation |
 |----------|---------|--------|----------|
-| `CLAUDE_API_KEY` | AI processing for all 13 apps | [Anthropic Console](https://console.anthropic.com) → API Keys | Create new key, update in Vercel, revoke old one |
+| `CLAUDE_API_KEY` | AI processing for all apps | [Anthropic Console](https://console.anthropic.com) → API Keys | Create new key, update in Vercel, revoke old one |
 | `NEXTAUTH_URL` | Production URL for OAuth callbacks | Your Vercel domain | Set to `https://wmkfresearch.vercel.app` — no rotation needed |
 | `NEXTAUTH_SECRET` | Signs JWT session tokens | Self-generated | `openssl rand -base64 32` — rotating logs out all users |
-| `AUTH_REQUIRED` | Enable/disable SSO (`true`/`false`) | Manual | Kill switch — set `false` for emergency access |
+| `AUTH_REQUIRED` | Enable/disable SSO (`true`/`false`) | Manual | Kill switch — see `EMERGENCY_AUTH_BYPASS` for production |
+| `EMERGENCY_AUTH_BYPASS` | Required to disable auth in production (`true`/`false`) | Manual | Production fails closed unless this is `true` even when `AUTH_REQUIRED=false` |
 | `AZURE_AD_CLIENT_ID` | SSO app registration ID | Azure Portal → App registrations → Overview | Never changes |
 | `AZURE_AD_CLIENT_SECRET` | SSO app secret | Azure Portal → App registrations → Certificates & secrets | See [Rotating Azure AD Secrets](#rotating-azure-ad-secrets) |
 | `AZURE_AD_TENANT_ID` | Organization tenant | Azure Portal → Azure AD → Properties | Never changes |
 | `USER_PREFS_ENCRYPTION_KEY` | Encrypts stored API keys (AES-256) | Self-generated | `openssl rand -hex 32` — rotating requires re-entering all saved API keys |
+
+### Required in Production
+
+| Variable | Purpose | Source | Notes |
+|----------|---------|--------|-------|
+| `CRON_SECRET` | Authenticates `/api/cron/*` endpoints | Self-generated (`openssl rand -base64 32`) | Required for cron jobs (secret-check, retraction-watch, etc.) |
+| `EXTERNAL_LINK_SECRET` | HMAC-signs external-reviewer JWTs (`/api/external/*`) | Self-generated (32+ chars; `openssl rand -base64 32`) | **Must be separate from `NEXTAUTH_SECRET`**; used by `lib/external/token-lifecycle.js` |
+| `VRP_ALLOWED_PROVIDERS` | Comma-separated allowlist for Virtual Review Panel | Manual (e.g., `claude,openai,gemini`) | Must include `claude`. Production fails closed if unset. Intersects with configured API keys |
+
+### Optional — Applicant Intake Portal (dual-provider auth)
+
+The `/apply/*` intake portal authenticates against a separate Entra External ID tenant. The `entra-external` NextAuth provider only registers when **all three** vars are set; staff-only deployments can leave them unset.
+
+| Variable | Purpose | Source |
+|----------|---------|--------|
+| `EXTERNAL_AZURE_AD_TENANT_ID` | External ID tenant | Azure Portal → External tenant Properties |
+| `EXTERNAL_AZURE_AD_CLIENT_ID` | App registration ID in External tenant | Azure Portal → App registrations (External tenant) |
+| `EXTERNAL_AZURE_AD_CLIENT_SECRET` | App secret in External tenant | Azure Portal → Certificates & secrets (External tenant) |
+
+### Optional — Virtual Review Panel (multi-LLM)
+
+Each provider key is independent; `VRP_ALLOWED_PROVIDERS` further gates which are exposed to the panel.
+
+| Variable | Purpose | Source |
+|----------|---------|--------|
+| `OPENAI_API_KEY` | GPT panel reviewer | [OpenAI Platform](https://platform.openai.com/api-keys) |
+| `GOOGLE_AI_API_KEY` | Gemini panel reviewer | [Google AI Studio](https://aistudio.google.com/) |
+| `PERPLEXITY_API_KEY` | Perplexity panel reviewer (claim verification) | [Perplexity API](https://docs.perplexity.ai/) |
 
 ### Vercel-Managed (Auto-configured)
 
@@ -46,6 +75,10 @@ Only two credentials expire automatically. Everything else is stable until manua
 | `DYNAMICS_TENANT_ID` | Azure tenant for CRM | Same as `AZURE_AD_TENANT_ID` |
 | `DYNAMICS_CLIENT_ID` | CRM app registration ID | Azure Portal → separate app registration |
 | `DYNAMICS_CLIENT_SECRET` | CRM app secret | Azure Portal → same app → Certificates & secrets |
+| `DYNAMICS_SANDBOX_URL` | Sandbox CRM instance (probe scripts only) | `https://wmkfsandbox.crm.dynamics.com` |
+| `DYNAMICS_IMPERSONATION_ENABLED` | Send `MSCRMCallerID` on user-driven Dynamics writes | Manual (`true` to enable) — off by default; see `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md` |
+| `SHAREPOINT_SITE_URL` | SharePoint Graph base | e.g., `https://appriver3651007194.sharepoint.com/sites/akoyaGO` |
+| `REVIEWER_MATERIALS_FOLDERS` | Allowlist for external reviewer file visibility | Manual (default `Reviewer_Downloads`) |
 
 ### Optional — Research APIs
 
@@ -55,6 +88,26 @@ Only two credentials expire automatically. Everything else is stable until manua
 | `ORCID_CLIENT_ID` | Researcher contact lookup | [ORCID Developer Tools](https://orcid.org/developer-tools) | Free |
 | `ORCID_CLIENT_SECRET` | ORCID authentication | Created with client ID | Free |
 | `SERP_API_KEY` | Google Scholar + PubPeer search | [SerpAPI](https://serpapi.com/) | ~$0.01/search |
+
+### Optional — Operational Flags
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `PROMPT_RESOLVER_STRICT` | Disable bundled-prompt fallback in `lib/services/prompt-resolver.js` | unset (fallback enabled) |
+| `WAVE1_BACKEND_SETTINGS` | `postgres` (default) or `dataverse` — `system_settings` source | `postgres` |
+| `WAVE1_BACKEND_APP_ACCESS` | `postgres` (default) or `dataverse` — `user_app_access` source | `postgres` |
+| `WAVE1_BACKEND_PREFS` | `postgres` (default) or `dataverse` — `user_preferences` source | `postgres` |
+| `DEBUG_REVIEWER_FINDER` | Verbose logging for Reviewer Finder pipeline | unset |
+
+### Optional — Notifications & Spend Alerts
+
+| Variable | Purpose |
+|----------|---------|
+| `NOTIFICATION_EMAIL_FROM` / `NOTIFICATION_EMAIL_TO` | Generic notification routing |
+| `SPEND_ALERT_EMAIL_FROM` / `SPEND_ALERT_EMAIL_TO` | Anthropic balance / daily-spend alert routing |
+| `LOW_BALANCE_ALERT_CENTS` / `DAILY_SPEND_ALERT_CENTS` | Threshold tuning for alerts |
+| `ANTHROPIC_BALANCE_ANCHOR_CENTS` / `ANTHROPIC_BALANCE_ANCHOR_DATE` | Manual baseline for the Anthropic balance estimator (last known balance + date) |
+| `VERCEL_API_TOKEN` / `VERCEL_PROJECT_ID` | Used by maintenance/health utilities that pull deployment metadata |
 
 ---
 

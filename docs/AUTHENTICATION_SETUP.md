@@ -4,12 +4,25 @@ This guide explains how to configure Azure AD (Microsoft Entra ID) authenticatio
 
 ## Overview
 
-The app uses Microsoft Azure AD for single sign-on (SSO). When enabled:
-- All pages require authentication
-- All API endpoints require authentication
-- Only users in your organization's Azure AD tenant can access the app
+The app uses Microsoft Entra ID (Azure AD) for single sign-on (SSO). When enabled:
+- A **server-side middleware gate** (`middleware.js`, Edge Runtime + `next-auth/middleware`) validates the session JWT before any HTML/JS is served — unauthenticated users are redirected before the app code is reachable.
+- All API endpoints additionally enforce auth via `lib/utils/auth.js` (`requireAuth`, `requireAuthWithProfile`, `requireAppAccess`, `requireSuperuser`).
+- Client-side guards (`RequireAuth`, `RequireAppAccess`) provide UX-level defense-in-depth.
 
-A **kill switch** (`AUTH_REQUIRED` environment variable) allows you to disable authentication without code changes if something goes wrong.
+This is a three-layer defense-in-depth model — middleware → API auth → client guards. See CLAUDE.md "Authentication Architecture" for the full description.
+
+### Dual-provider NextAuth (staff + applicants)
+
+Two NextAuth providers are registered in `pages/api/auth/[...nextauth].js`:
+
+- **`azure-ad`** — staff (single-tenant, Sessions carry `azureId` / `profileId` / `dynamicsSystemuserId`). Configuration steps below cover this provider.
+- **`entra-external`** — applicants (separate Entra External ID tenant, OTP-only sign-in, env-gated on `EXTERNAL_AZURE_AD_*`). Used by the `/apply/*` intake portal. The provider only registers when all three `EXTERNAL_AZURE_AD_*` env vars are set, so staff-only deployments don't need to configure this.
+
+Sessions self-identify via `session.user.userType: 'staff' | 'applicant'`; middleware blocks cross-traffic in both directions (staff sessions can't reach `/apply/*`, applicant sessions can't reach non-`/apply/*` routes).
+
+### Kill switch
+
+A **kill switch** (`AUTH_REQUIRED` environment variable) allows you to disable authentication without code changes if something goes wrong. **In production, the kill switch fails closed** — you must also set `EMERGENCY_AUTH_BYPASS=true` to disable auth in a production environment. This guards against accidentally shipping `AUTH_REQUIRED=false` to prod. See `lib/utils/auth-policy.js`.
 
 ---
 
@@ -256,19 +269,26 @@ View sign-in logs in Azure Portal:
 
 | Resource | Protection Method |
 |----------|-------------------|
-| All pages | `RequireAuth` wrapper in `_app.js` |
-| API routes | `requireAuth()` in each handler |
-| Auth routes (`/api/auth/*`) | Public (required for OAuth flow) |
+| All non-API routes | `middleware.js` (Edge Runtime `withAuth`) — fails closed before page code runs |
+| App-specific API routes | `requireAppAccess(req, res, 'app-key')` — combines CSRF origin check + auth + `is_active` check + per-app grant |
+| Infrastructure API routes (auth/admin/health) | `requireAuth()` / `requireAuthWithProfile()` / `requireSuperuser()` |
+| Cron routes (`/api/cron/*`) | `CRON_SECRET` (not session JWT) — excluded from middleware |
+| External-reviewer routes (`/api/external/*`) | HMAC JWT (`EXTERNAL_LINK_SECRET`) — public, allowlisted in middleware |
+| Auth routes (`/api/auth/*`) | Public (required for OAuth flow) — excluded from middleware |
+| Client UI | `RequireAuth` / `RequireAppAccess` (defense-in-depth, not the security boundary) |
 
 ### Key Files
 
 | File | Purpose |
 |------|---------|
-| `pages/_app.js` | Global auth wrapper |
-| `lib/utils/auth.js` | Server-side auth utilities |
-| `pages/api/auth/[...nextauth].js` | NextAuth configuration |
+| `middleware.js` | Server-side auth gate (Edge Runtime, `withAuth`/`jose`) + CSP nonce generation |
+| `lib/utils/auth-policy.js` | Edge-compatible `isAuthRequired()` — production fails closed unless `EMERGENCY_AUTH_BYPASS=true` |
+| `lib/utils/auth.js` | Server-side auth helpers (`requireAuth`, `requireAuthWithProfile`, `requireAppAccess`, `requireSuperuser`) — 2-min in-memory cache including `isActive` flag |
+| `pages/api/auth/[...nextauth].js` | NextAuth dual-provider configuration (`azure-ad` + `entra-external`) |
 | `pages/api/auth/status.js` | Auth status endpoint (checks kill switch) |
 | `shared/components/RequireAuth.js` | Client-side auth guard |
+| `shared/components/RequireAppAccess.js` | Client-side per-app access guard |
+| `shared/config/appRegistry.js` | Single source of truth for app keys + `DEFAULT_APP_GRANTS` |
 
 ---
 
