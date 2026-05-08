@@ -16,7 +16,7 @@ This is a three-layer defense-in-depth model — middleware → API auth → cli
 Two NextAuth providers are registered in `pages/api/auth/[...nextauth].js`:
 
 - **`azure-ad`** — staff (single-tenant, Sessions carry `azureId` / `profileId` / `dynamicsSystemuserId`). Configuration steps below cover this provider.
-- **`entra-external`** — applicants (separate Entra External ID tenant, OTP-only sign-in, env-gated on `EXTERNAL_AZURE_AD_*`). Used by the `/apply/*` intake portal. The provider only registers when all three `EXTERNAL_AZURE_AD_*` env vars are set, so staff-only deployments don't need to configure this.
+- **`entra-external`** — applicants (separate Entra External ID tenant, OTP-only sign-in, env-gated on `EXTERNAL_AZURE_AD_*`). Used by the `/apply/*` intake portal. The provider registers when `EXTERNAL_AZURE_AD_TENANT_ID` and `EXTERNAL_AZURE_AD_CLIENT_ID` are set (the well-known OpenID config URL is derived from the tenant ID). `EXTERNAL_AZURE_AD_CLIENT_SECRET` is required for OAuth to actually succeed but isn't part of the registration guard, so a misconfiguration with tenant + client_id but no secret will register the provider and fail at sign-in time. Staff-only deployments can leave all three unset.
 
 Sessions self-identify via `session.user.userType: 'staff' | 'applicant'`; middleware blocks cross-traffic in both directions (staff sessions can't reach `/apply/*`, applicant sessions can't reach non-`/apply/*` routes).
 

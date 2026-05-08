@@ -41,7 +41,7 @@ Only two credentials expire automatically. Everything else is stable until manua
 
 ### Optional — Applicant Intake Portal (dual-provider auth)
 
-The `/apply/*` intake portal authenticates against a separate Entra External ID tenant. The `entra-external` NextAuth provider only registers when **all three** vars are set; staff-only deployments can leave them unset.
+The `/apply/*` intake portal authenticates against a separate Entra External ID tenant. The `entra-external` NextAuth provider registers when **`EXTERNAL_AZURE_AD_TENANT_ID` and `EXTERNAL_AZURE_AD_CLIENT_ID`** are set (the well-known OpenID config URL is derived from the tenant ID). The secret is required for OAuth to succeed but isn't part of the registration guard — set all three together. Staff-only deployments can leave all three unset.
 
 | Variable | Purpose | Source |
 |----------|---------|--------|
@@ -88,6 +88,16 @@ Each provider key is independent; `VRP_ALLOWED_PROVIDERS` further gates which ar
 | `ORCID_CLIENT_ID` | Researcher contact lookup | [ORCID Developer Tools](https://orcid.org/developer-tools) | Free |
 | `ORCID_CLIENT_SECRET` | ORCID authentication | Created with client ID | Free |
 | `SERP_API_KEY` | Google Scholar + PubPeer search | [SerpAPI](https://serpapi.com/) | ~$0.01/search |
+
+### Optional — Per-App Model Overrides
+
+`getModelForApp()` in `shared/config/baseConfig.js` reads a runtime env var of the form `CLAUDE_MODEL_<APP>` for static per-app overrides (DB-stored overrides via `system_settings` take precedence). Examples:
+
+- `CLAUDE_MODEL_REVIEWER_FINDER=claude-sonnet-4-6`
+- `CLAUDE_MODEL_BATCH_PHASE_I_SUMMARIES=claude-haiku-4-5-20251001`
+- App key transformation: lowercase + hyphens → uppercase + underscores. The full app-key list is in `shared/config/appRegistry.js`.
+
+Prefer the admin dashboard (`/admin` → Models tab) for non-static overrides — env var values are baked into the deployment until next redeploy.
 
 ### Optional — Operational Flags
 

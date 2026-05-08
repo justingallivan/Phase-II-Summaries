@@ -105,11 +105,15 @@ const DRIFT_PATTERNS = [
   // The earlier regex was directionally wrong (matched the correct
   // statement). Replaced with a positive claim regex: any sentence
   // asserting "prompt-resolver reads/queries wmkf_ai_prompt" without
-  // mentioning the wmkf_ai_run scratch row contract.
+  // mentioning the wmkf_ai_run scratch row contract. The
+  // (?!.*\b(does not|doesn't|never|no longer)\b) lookahead before the
+  // verb prevents the regex from firing on negated statements like
+  // "prompt-resolver does not read wmkf_ai_prompt" — which would
+  // otherwise satisfy the pattern and mask a real stale-doc claim.
   {
     id: 'sot-prompt-resolver-reads-prompt-table',
     kind: 'source-of-truth drift',
-    needle: /prompt-resolver(?:\.js)?[^\n.]{0,40}\b(reads?|queries|fetches)\b[^\n.]{0,40}\bwmkf_ai_prompt\b(?![^\n.]{0,80}wmkf_ai_run)/gi,
+    needle: /prompt-resolver(?:\.js)?(?![^\n.]{0,40}\b(?:does not|doesn't|never|no longer)\b)[^\n.]{0,40}\b(reads?|queries|fetches)\b[^\n.]{0,40}\bwmkf_ai_prompt\b(?![^\n.]{0,80}wmkf_ai_run)/gi,
     reason:
       'Atlas notes prompt-resolver.js reads from a `wmkf_ai_run` scratch row, not from `wmkf_ai_prompt` directly. Docs claiming the latter without naming the scratch row are stale.',
   },
