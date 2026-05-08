@@ -1,6 +1,6 @@
 # API Route Security Matrix
 
-Last updated: 2026-05-04
+Last updated: 2026-05-08
 
 ## Purpose
 
@@ -9,7 +9,9 @@ This document is the living authorization inventory for `pages/api`. It is meant
 1. Capture the current access-control posture route by route.
 2. Provide a recurring control so new routes, changed routes, and data-scope assumptions are reviewed consistently.
 
-The matrix focuses on authorization and data ownership. It does not replace dependency scanning, secret scanning, CSP/header review, or AI data-minimization review.
+The matrix focuses on authorization, data ownership, and persistence (what each route writes). It does not replace dependency scanning, secret scanning, CSP/header review, or AI data-minimization review.
+
+**Column legend:** `(PG)` = Vercel Postgres, `(DV)` = Dataverse / Dynamics 365. SharePoint and Vercel Blob are named explicitly. The Persistence cell summarizes writes (and reads where notable); the canonical schema for Postgres tables is `lib/db/schema.sql`, for Dataverse entities `docs/atlas/dataverse-*.md`. "AI pass-through" means the route only invokes an LLM and returns the result without persisting business data; `api_usage_log` writes from the LLM client are still listed because they're the audit trail for spend monitoring.
 
 ## Access Classes
 
@@ -41,85 +43,85 @@ There are no open findings from the initial matrix pass as of this update. New f
 
 ## Route Matrix
 
-| Route | Methods | Intended Class | Current Guard | Data Scope | Risk | Notes |
-|---|---:|---|---|---|---|---|
-| `/api/admin/alerts` | GET, PATCH | Superuser | `requireSuperuser` | Global admin | Low | Shared helper. |
-| `/api/admin/health-history` | GET | Superuser | `requireSuperuser` | Global admin | Low | Shared helper. |
-| `/api/admin/maintenance` | GET | Superuser | `requireSuperuser` | Global admin | Low | Shared helper. |
-| `/api/admin/models` | GET, PUT | Superuser | `requireSuperuser` | Global admin | Low | Also calls Anthropic model list. |
-| `/api/admin/reconcile-identities` | POST | Superuser | `requireSuperuser` | Global admin | Low | Manual equivalent of cron reconciliation. |
-| `/api/admin/secrets` | GET, PUT | Superuser | `requireSuperuser` | Global admin | Low | Tracks metadata, not secret values. |
-| `/api/admin/stats` | GET | Superuser | `requireSuperuser` | Global admin | Low | Usage statistics across users. |
-| `/api/analyze-funding-gap` | POST | App | `requireAppAccess('funding-gap-analyzer')` | Request payload | Low | AI payload review still needed. |
-| `/api/analyze-literature` | POST | App | `requireAppAccess('literature-analyzer')` | Request payload | Low | External research APIs / AI payload review. |
-| `/api/api-capabilities` | GET | Authenticated | `requireAuth` | Shared metadata | Low | Authenticated capability metadata. |
-| `/api/app-access` | GET, POST, DELETE | Profile / Superuser | `requireAuthWithProfile` + `getUserRole` | Own grants; all grants for superuser | Low | Superuser branch uses shared role helper. |
-| `/api/auth/[...nextauth]` | Framework | NextAuth | NextAuth callbacks | Session/profile linking | Medium | Identity linking remains a strategic hardening area. |
-| `/api/auth/link-profile` | POST | NextAuth linking | `getServerSession` + `needsLinking` | Matching Azure email | Low | Server-derived identity, email match enforced. |
-| `/api/auth/status` | GET | Public metadata | None | None | Low | Intentionally public if needed pre-login. |
-| `/api/blob-proxy` | GET | Authenticated | `requireAuth` | Shared organizational blob assets only | Low | Host allowlist is the boundary; do not extend to user-owned blobs. |
-| `/api/cron/health-check` | GET, POST | Cron | `verifyCronSecret` | Global operational | Low | Stores health history and alerts. |
-| `/api/cron/log-analysis` | GET, POST | Cron | `verifyCronSecret` | Vercel logs | Low | Review redaction expectations. |
-| `/api/cron/maintenance` | GET, POST | Cron | `verifyCronSecret` | Global operational | Low | Retention/cleanup job. |
-| `/api/cron/reconcile-identities` | GET, POST | Cron | `verifyCronSecret` | Global identity | Low | Background identity sync. |
-| `/api/cron/secret-check` | GET, POST | Cron | `verifyCronSecret` | Secret metadata | Low | Expiration metadata only. |
-| `/api/cron/spend-check` | GET, POST | Cron | `verifyCronSecret` | Usage/spend logs | Low | Global monitoring. |
-| `/api/dynamics-explorer/chat` | POST | App | `requireAppAccess('dynamics-explorer')` | Org-wide CRM exploration shaped by Dynamics role and restrictions | Medium | Data boundary documented inline; AI minimization remains separate review area. |
-| `/api/dynamics-explorer/download-document` | GET | App | `requireAppAccess('dynamics-explorer')` | Dynamics/SharePoint restrictions | Medium | Boundary documented inline. |
-| `/api/dynamics-explorer/feedback` | GET, POST, PATCH | App / Superuser | POST uses app access; GET/PATCH require superuser | Feedback records | Low | Mixed route; current split is reasonable. |
-| `/api/dynamics-explorer/restrictions` | GET, POST, DELETE | App / Role | `requireAppAccess('dynamics-explorer')` + `getUserRole` | Restriction config | Low | Read/write role handling in route. |
-| `/api/dynamics-explorer/roles` | GET, POST, DELETE | App / Superuser | `requireAppAccess('dynamics-explorer')` + `getUserRole` | Own role or all roles | Low | Shared role helper. |
-| `/api/evaluate-multi-perspective` | POST | App | `requireAppAccess('multi-perspective-evaluator')` | Request payload | Low | AI payload review. |
-| `/api/expertise-finder/batch-match` | POST | App | `requireAppAccess('expertise-finder')` | Writes `user_profile_id` | Low | User-scoped usage/history writes. |
-| `/api/expertise-finder/history` | GET | App | `requireAppAccess('expertise-finder')` | `user_profile_id` scoped | Low | Good scoping pattern. |
-| `/api/expertise-finder/match` | POST | App | `requireAppAccess('expertise-finder')` | Writes `user_profile_id` | Low | User-scoped usage/history writes. |
-| `/api/expertise-finder/proposals` | GET | App | `requireAppAccess('expertise-finder')` | App-wide Dynamics proposal lookup | Medium | Staff-wide visibility policy checkpoint. |
-| `/api/expertise-finder/roster` | GET, POST, PATCH, DELETE | App | `requireAppAccess('expertise-finder')` | Shared roster | Medium | Shared mutable roster; confirm app-level access is sufficient. |
-| `/api/external/review/[token]/context` | GET | External token | `verifySuggestionToken` | Token-scoped suggestion/request | Low | Public route protected by magic link verification. |
-| `/api/external/review/[token]/proposal` | GET | External token | `verifySuggestionToken` | Token-scoped proposal files | Medium | High-sensitivity payload; keep token tests strong. |
-| `/api/external/review/[token]/upload` | POST | External token | `verifySuggestionToken` | Token-scoped upload | Low | Good candidate for replay/expiry regression tests. |
-| `/api/grant-reporting/extract` | POST | App | `requireAppAccess('grant-reporting')` | Request payload / Dynamics | Medium | AI and Dynamics data-boundary review. |
-| `/api/grant-reporting/lookup-grant` | POST | App | `requireAppAccess('grant-reporting', 'batch-phase-i-summaries')` | Staff app-wide Dynamics/SharePoint lookup by request number | Medium | Boundary documented inline. |
-| `/api/health` | GET | Authenticated | `requireAuth` | Service status | Low | Avoid exposing to unauthenticated users. |
-| `/api/integrity-screener/dismiss` | POST, GET disallowed | App | `requireAppAccess('integrity-screener')` | Service layer | Low | Method parsing looks safe; confirm service-level scope. |
-| `/api/integrity-screener/history` | GET, PATCH | App | `requireAppAccess('integrity-screener')` | `access.profileId` passed to service | Low | Good scoping pattern if service enforces it. |
-| `/api/integrity-screener/screen` | POST | App | `requireAppAccess('integrity-screener')` | `access.profileId` passed to service | Low | AI/search payload review. |
-| `/api/phase-i-dynamics/summarize` | POST | App | `requireAppAccess('batch-phase-i-summaries')` | App-wide request ID writeback | Medium | Writes AI summary by request GUID; policy checkpoint for who may target records. |
-| `/api/phase-i-dynamics/summarize-v2` | POST | App | `requireAppAccess('batch-phase-i-summaries')` | App-wide request ID writeback | Medium | Shared executor path; policy checkpoint for who may target records. |
-| `/api/process` | POST | App | `requireAppAccess('batch-proposal-summaries', 'phase-ii-writeup')` | Request payload | Low | AI payload review. |
-| `/api/process-expenses` | POST | App | `requireAppAccess('expense-reporter')` | Request payload | Low | File/data minimization review. |
-| `/api/process-legacy` | POST | App | `requireAppAccess('batch-proposal-summaries', 'phase-ii-writeup')` | Request payload | Low | Legacy route; consider retirement date. |
-| `/api/process-peer-reviews` | POST | App | `requireAppAccess('peer-review-summarizer')` | Request payload | Low | AI payload review. |
-| `/api/process-phase-i` | POST | App | `requireAppAccess('batch-phase-i-summaries')` | Request payload | Low | AI payload review. |
-| `/api/process-phase-i-writeup` | POST | App | `requireAppAccess('phase-i-writeup')` | Request payload | Low | AI payload review. |
-| `/api/qa` | POST | App | `requireAppAccess('phase-ii-writeup', 'batch-proposal-summaries')` | Request payload | Low | AI payload review. |
-| `/api/refine` | POST | App | `requireAppAccess('phase-ii-writeup', 'batch-proposal-summaries')` | Request payload | Low | AI payload review. |
-| `/api/review-manager/download-review` | GET | App | `requireAppAccess('review-manager')` | Staff-shared review-manager access | Low | Boundary documented inline; tighten to PD-only only if policy changes. |
-| `/api/review-manager/mark-received-no-file` | POST | App | `requireAppAccess('review-manager')` | Staff-shared review-manager access | Medium | Token/review lifecycle action. |
-| `/api/review-manager/regenerate-token` | POST | App | `requireAppAccess('review-manager')` | Staff-shared review-manager access | Medium | Token lifecycle action. |
-| `/api/review-manager/render-emails` | POST | App | `requireAppAccess('review-manager')` | Staff-shared review-manager access | Medium | Token generation and email content review. |
-| `/api/review-manager/reviewers` | GET, PATCH | App | `requireAppAccess('review-manager')` | Staff-shared review-manager access with PD listing convenience | Medium | Boundary documented inline. |
-| `/api/review-manager/revoke-token` | POST | App | `requireAppAccess('review-manager')` | Staff-shared review-manager access | Medium | Token lifecycle action. |
-| `/api/review-manager/send-emails` | POST | App | `requireAppAccess('review-manager')` | Staff-shared review-manager access | Medium | Boundary documented inline; sends email and mints/uses tokens. |
-| `/api/review-manager/upload-review` | POST | App | `requireAppAccess('review-manager')` | Staff-shared review-manager access | Medium | Staff upload path. |
-| `/api/reviewer-finder/analyze` | POST | App | `requireAppAccess('reviewer-finder')` | `access.profileId` passed | Low | Existing auth tests cover representative route. |
-| `/api/reviewer-finder/discover` | POST | App | `requireAppAccess('reviewer-finder')` | `access.profileId` passed | Low | External discovery APIs / AI review. |
-| `/api/reviewer-finder/enrich-contacts` | POST | App | `requireAppAccess('reviewer-finder')` | Request payload | Low | Rate-limited; server-side credentials only. |
-| `/api/reviewer-finder/contact-history` | GET | App | `requireAppAccess('reviewer-finder')` | Org-visible Dataverse data; reads junction + projectleader for `?contactId=<guid>` | Low | UNION read of `wmkf_apprequestperson` + `akoya_request._wmkf_projectleader_value`. No write side. |
-| `/api/reviewer-finder/extract-summary` | POST | App | `requireAppAccess('reviewer-finder')` | `proposal_id` scoped by `user_profile_id` | Low | Good scoping pattern. |
-| `/api/reviewer-finder/generate-emails` | POST | App | `requireAppAccess('reviewer-finder')` | `user_profile_id` scoped | Low | Existing cross-user tests cover representative behavior. |
-| `/api/reviewer-finder/grant-cycles` | GET, POST, PATCH, DELETE | App | `requireAppAccess('reviewer-finder')` | Shared grant cycles | Medium | Shared mutable records; confirm app-level access is enough. |
-| `/api/reviewer-finder/load-proposal` | POST | App | `requireAppAccess('reviewer-finder')` | App-wide proposal file load by request ID | Medium | Policy checkpoint for who may load proposal source files. |
-| `/api/reviewer-finder/my-candidates` | GET, PATCH, DELETE | App | `requireAppAccess('reviewer-finder')` | Org-visible Dataverse data; PD filter is UX default | Medium | Boundary documented inline. |
-| `/api/reviewer-finder/my-proposals` | GET | App | `requireAppAccess('reviewer-finder')` | Caller Azure email -> PD | Low | Good identity-derived scope pattern. |
-| `/api/reviewer-finder/researchers` | GET, POST, PATCH, DELETE | App | `requireAppAccess('reviewer-finder')`; some admin subpaths check superuser | Mixed shared/user | Medium | Needs endpoint-level sub-action review. |
-| `/api/reviewer-finder/save-candidates` | POST | App | `requireAppAccess('reviewer-finder')` | Trusted internal Dataverse writeback by request ID | Medium | Policy checkpoint for who may write candidate suggestions to a request. |
-| `/api/test-email` | POST | App | `requireAppAccess('dynamics-explorer')` | Caller email | Low | Consider moving under admin/test namespace or disabling in prod if not needed. |
-| `/api/upload-file` | POST | Authenticated | `requireAuth` | Uploaded file only | Medium | Any authenticated user can upload; consider app-specific upload routes. |
-| `/api/upload-handler` | POST | Authenticated | `requireAuth` | Blob upload token | Medium | Any authenticated user can request blob upload token. |
-| `/api/user-preferences` | GET, POST, PUT, DELETE | Profile | `requireAuthWithProfile` | `profileId` | Low | Intended user-owned settings. |
-| `/api/user-profiles` | GET, PATCH, DELETE | Profile / Superuser | `requireAuthWithProfile`; `?all=true` uses `getUserRole` | Own profile; all profiles for superuser | Low | `POST` intentionally unsupported; profile creation flows through `/api/auth/link-profile`. |
-| `/api/virtual-review-panel` | GET, POST | App | `requireAppAccess('virtual-review-panel')` | Request payload | Low | AI payload review. |
+| Route | Methods | Intended Class | Current Guard | Data Scope | Persistence | Risk | Notes |
+|---|---:|---|---|---|---|---|---|
+| `/api/admin/alerts` | GET, PATCH | Superuser | `requireSuperuser` | Global admin | Reads/updates `system_alerts` (PG) | Low | Shared helper. |
+| `/api/admin/health-history` | GET | Superuser | `requireSuperuser` | Global admin | Reads `health_check_history` (PG) | Low | Shared helper. |
+| `/api/admin/maintenance` | GET | Superuser | `requireSuperuser` | Global admin | Reads `maintenance_runs`, `system_settings` (PG) | Low | Shared helper. |
+| `/api/admin/models` | GET, PUT | Superuser | `requireSuperuser` | Global admin | Reads/writes `system_settings` (PG) | Low | Also calls Anthropic model list. |
+| `/api/admin/reconcile-identities` | POST | Superuser | `requireSuperuser` | Global admin | Updates `user_profiles` (PG); reads Dynamics `systemuser` | Low | Manual equivalent of cron reconciliation. |
+| `/api/admin/secrets` | GET, PUT | Superuser | `requireSuperuser` | Global admin | Reads/writes `system_settings` (PG) | Low | Tracks metadata, not secret values. |
+| `/api/admin/stats` | GET | Superuser | `requireSuperuser` | Global admin | Read-only (PG SELECTs across usage tables) | Low | Usage statistics across users. |
+| `/api/analyze-funding-gap` | POST | App | `requireAppAccess('funding-gap-analyzer')` | Request payload | Writes `api_usage_log` (PG) via llm-client | Low | AI payload review still needed. |
+| `/api/analyze-literature` | POST | App | `requireAppAccess('literature-analyzer')` | Request payload | Writes `api_usage_log` (PG); external lit-search APIs | Low | External research APIs / AI payload review. |
+| `/api/api-capabilities` | GET | Authenticated | `requireAuth` | Shared metadata | Read-only | Low | Authenticated capability metadata. |
+| `/api/app-access` | GET, POST, DELETE | Profile / Superuser | `requireAuthWithProfile` + `getUserRole` | Own grants; all grants for superuser | Reads/writes `user_app_access` (PG) | Low | Superuser branch uses shared role helper. |
+| `/api/auth/[...nextauth]` | Framework | NextAuth | NextAuth callbacks | Session/profile linking | Inserts/updates `user_profiles`, grants `user_app_access` (PG) | Medium | Identity linking remains a strategic hardening area. |
+| `/api/auth/link-profile` | POST | NextAuth linking | `getServerSession` + `needsLinking` | Matching Azure email | Updates/inserts `user_profiles` (PG) | Low | Server-derived identity, email match enforced. |
+| `/api/auth/status` | GET | Public metadata | None | None | Read-only | Low | Intentionally public if needed pre-login. |
+| `/api/blob-proxy` | GET | Authenticated | `requireAuth` | Shared organizational blob assets only | Reads Vercel Blob (proxy) | Low | Host allowlist is the boundary; do not extend to user-owned blobs. |
+| `/api/cron/health-check` | GET, POST | Cron | `verifyCronSecret` | Global operational | Writes `health_check_history`, `system_alerts` (PG); sends email | Low | Stores health history and alerts. |
+| `/api/cron/log-analysis` | GET, POST | Cron | `verifyCronSecret` | Vercel logs | Writes `api_usage_log` (PG) via llm-client; sends email | Low | Review redaction expectations. |
+| `/api/cron/maintenance` | GET, POST | Cron | `verifyCronSecret` | Global operational | Writes `maintenance_runs`; deletes from `api_usage_log`, `dynamics_query_log`, `health_check_history`, `system_alerts`, `dynamics_feedback`, Vercel Blob | Low | Retention/cleanup job. |
+| `/api/cron/reconcile-identities` | GET, POST | Cron | `verifyCronSecret` | Global identity | Updates `user_profiles` (PG); reads Dynamics | Low | Background identity sync. |
+| `/api/cron/secret-check` | GET, POST | Cron | `verifyCronSecret` | Secret metadata | Writes `system_alerts` (PG); sends email | Low | Expiration metadata only. |
+| `/api/cron/spend-check` | GET, POST | Cron | `verifyCronSecret` | Usage/spend logs | Reads `api_usage_log`; writes `system_alerts` (PG); sends email via Dynamics | Low | Global monitoring. |
+| `/api/dynamics-explorer/chat` | POST | App | `requireAppAccess('dynamics-explorer')` | Org-wide CRM exploration shaped by Dynamics role and restrictions | Writes `dynamics_query_log`, `api_usage_log` (PG); reads Dynamics + SharePoint; ExcelJS export to Blob | Medium | Data boundary documented inline; AI minimization remains separate review area. |
+| `/api/dynamics-explorer/download-document` | GET | App | `requireAppAccess('dynamics-explorer')` | Dynamics/SharePoint restrictions | Reads SharePoint (no write) | Medium | Boundary documented inline. |
+| `/api/dynamics-explorer/feedback` | GET, POST, PATCH | App / Superuser | POST uses app access; GET/PATCH require superuser | Feedback records | Reads/writes `dynamics_feedback` (PG) | Low | Mixed route; current split is reasonable. |
+| `/api/dynamics-explorer/restrictions` | GET, POST, DELETE | App / Role | `requireAppAccess('dynamics-explorer')` + `getUserRole` | Restriction config | Reads/writes `dynamics_restrictions` (PG) | Low | Read/write role handling in route. |
+| `/api/dynamics-explorer/roles` | GET, POST, DELETE | App / Superuser | `requireAppAccess('dynamics-explorer')` + `getUserRole` | Own role or all roles | Reads/writes `dynamics_user_roles` (PG) | Low | Shared role helper. |
+| `/api/evaluate-multi-perspective` | POST | App | `requireAppAccess('multi-perspective-evaluator')` | Request payload | Writes `api_usage_log` (PG) via llm-client | Low | AI payload review. |
+| `/api/expertise-finder/batch-match` | POST | App | `requireAppAccess('expertise-finder')` | Writes `user_profile_id` | Writes `expertise_matches`, `api_usage_log` (PG); reads Dynamics + SharePoint | Low | User-scoped usage/history writes. |
+| `/api/expertise-finder/history` | GET | App | `requireAppAccess('expertise-finder')` | `user_profile_id` scoped | Read-only (`expertise_matches` SELECTs) | Low | Good scoping pattern. |
+| `/api/expertise-finder/match` | POST | App | `requireAppAccess('expertise-finder')` | Writes `user_profile_id` | Writes `expertise_matches`, `api_usage_log` (PG) | Low | User-scoped usage/history writes. |
+| `/api/expertise-finder/proposals` | GET | App | `requireAppAccess('expertise-finder')` | App-wide Dynamics proposal lookup | Reads Dynamics `akoya_request` | Medium | Staff-wide visibility policy checkpoint. |
+| `/api/expertise-finder/roster` | GET, POST, PATCH, DELETE | App | `requireAppAccess('expertise-finder')` | Shared roster | Reads/writes `expertise_roster` (PG) | Medium | Shared mutable roster; confirm app-level access is sufficient. |
+| `/api/external/review/[token]/context` | GET | External token | `verifySuggestionToken` | Token-scoped suggestion/request | Updates `wmkf_appreviewersuggestion` (DV) for first-view timestamp; reads SharePoint | Low | GET has a side-effect write (first-view timestamp). Public route protected by magic link verification. |
+| `/api/external/review/[token]/proposal` | GET | External token | `verifySuggestionToken` | Token-scoped proposal files | Reads SharePoint | Medium | High-sensitivity payload; keep token tests strong. |
+| `/api/external/review/[token]/upload` | POST | External token | `verifySuggestionToken` | Token-scoped upload | Writes SharePoint `Reviewer_Uploads/`; updates `wmkf_appreviewersuggestion` (DV) via writeReviewFiles | Low | Good candidate for replay/expiry regression tests. |
+| `/api/grant-reporting/extract` | POST | App | `requireAppAccess('grant-reporting')` | Request payload / Dynamics | Writes `api_usage_log` (PG); writes `wmkf_ai_run` (DV) via logAiRun | Medium | AI and Dynamics data-boundary review. |
+| `/api/grant-reporting/lookup-grant` | POST | App | `requireAppAccess('grant-reporting', 'batch-phase-i-summaries')` | Staff app-wide Dynamics/SharePoint lookup by request number | Reads Dynamics + SharePoint (read-only) | Medium | Boundary documented inline. |
+| `/api/health` | GET | Authenticated | `requireAuth` | Service status | Read-only | Low | Avoid exposing to unauthenticated users. |
+| `/api/integrity-screener/dismiss` | POST, GET disallowed | App | `requireAppAccess('integrity-screener')` | Service layer | Writes `screening_dismissals`; updates `integrity_screenings` (PG) | Low | Method parsing looks safe; confirm service-level scope. |
+| `/api/integrity-screener/history` | GET, PATCH | App | `requireAppAccess('integrity-screener')` | `access.profileId` passed to service | Reads `integrity_screenings` (PG) | Low | Good scoping pattern if service enforces it. |
+| `/api/integrity-screener/screen` | POST | App | `requireAppAccess('integrity-screener')` | `access.profileId` passed to service | Writes `integrity_screenings`, `api_usage_log` (PG) | Low | AI/search payload review. |
+| `/api/phase-i-dynamics/summarize` | POST | App | `requireAppAccess('batch-phase-i-summaries')` | App-wide request ID writeback | Updates `akoya_request.wmkf_ai_summary`, writes `wmkf_ai_run` (DV); writes `api_usage_log` (PG) | Medium | Writes AI summary by request GUID; policy checkpoint for who may target records. |
+| `/api/phase-i-dynamics/summarize-v2` | POST | App | `requireAppAccess('batch-phase-i-summaries')` | App-wide request ID writeback | Updates target field on subject entity, writes `wmkf_ai_run` (DV) via execute-prompt; `api_usage_log` (PG) | Medium | Shared executor path; policy checkpoint for who may target records. |
+| `/api/process` | POST | App | `requireAppAccess('batch-proposal-summaries', 'phase-ii-writeup')` | Request payload | Writes `api_usage_log` (PG) via llm-client | Low | AI payload review. |
+| `/api/process-expenses` | POST | App | `requireAppAccess('expense-reporter')` | Request payload | Writes `api_usage_log` (PG) via llm-client | Low | File/data minimization review. |
+| `/api/process-legacy` | POST | App | `requireAppAccess('batch-proposal-summaries', 'phase-ii-writeup')` | Request payload | Writes `api_usage_log` (PG) via llm-client | Low | Legacy route; consider retirement date. |
+| `/api/process-peer-reviews` | POST | App | `requireAppAccess('peer-review-summarizer')` | Request payload | Writes `api_usage_log` (PG) via llm-client | Low | AI payload review. |
+| `/api/process-phase-i` | POST | App | `requireAppAccess('batch-phase-i-summaries')` | Request payload | Writes `api_usage_log` (PG) via llm-client | Low | AI payload review. |
+| `/api/process-phase-i-writeup` | POST | App | `requireAppAccess('phase-i-writeup')` | Request payload | Writes `api_usage_log` (PG) via llm-client | Low | AI payload review. |
+| `/api/qa` | POST | App | `requireAppAccess('phase-ii-writeup', 'batch-proposal-summaries')` | Request payload | Writes `api_usage_log` (PG) via llm-client | Low | AI payload review. |
+| `/api/refine` | POST | App | `requireAppAccess('phase-ii-writeup', 'batch-proposal-summaries')` | Request payload | Writes `api_usage_log` (PG) via llm-client | Low | AI payload review. |
+| `/api/review-manager/download-review` | GET | App | `requireAppAccess('review-manager')` | Staff-shared review-manager access | Reads Dataverse + SharePoint | Low | Boundary documented inline; tighten to PD-only only if policy changes. |
+| `/api/review-manager/mark-received-no-file` | POST | App | `requireAppAccess('review-manager')` | Staff-shared review-manager access | Updates `wmkf_appreviewersuggestion` (DV) | Medium | Token/review lifecycle action. |
+| `/api/review-manager/regenerate-token` | POST | App | `requireAppAccess('review-manager')` | Staff-shared review-manager access | Mints token; updates `wmkf_appreviewersuggestion` (DV) via mintAndStore | Medium | Token lifecycle action. |
+| `/api/review-manager/render-emails` | POST | App | `requireAppAccess('review-manager')` | Staff-shared review-manager access | Reads Dataverse; mints tokens (writes `wmkf_appreviewersuggestion` token hash); reads `grant_cycles` (PG) | Medium | Token generation and email content review. |
+| `/api/review-manager/reviewers` | GET, PATCH | App | `requireAppAccess('review-manager')` | Staff-shared review-manager access with PD listing convenience | Reads Dataverse; updates `wmkf_appreviewersuggestion` lifecycle (DV) on PATCH | Medium | Boundary documented inline. |
+| `/api/review-manager/revoke-token` | POST | App | `requireAppAccess('review-manager')` | Staff-shared review-manager access | Updates `wmkf_appreviewersuggestion` (DV) via revoke | Medium | Token lifecycle action. |
+| `/api/review-manager/send-emails` | POST | App | `requireAppAccess('review-manager')` | Staff-shared review-manager access | Sends email + creates email activity (DV `emails`); updates `wmkf_appreviewersuggestion`, `contact`, `wmkf_potentialreviewer` (DV); reads `grant_cycles` (PG) | Medium | Boundary documented inline; sends email and mints/uses tokens. |
+| `/api/review-manager/upload-review` | POST | App | `requireAppAccess('review-manager')` | Staff-shared review-manager access | Writes SharePoint `Reviewer_Uploads/`; updates `wmkf_appreviewersuggestion` (DV) via writeReviewFiles | Medium | Staff upload path. |
+| `/api/reviewer-finder/analyze` | POST | App | `requireAppAccess('reviewer-finder')` | `access.profileId` passed | Writes Vercel Blob (summary upload); writes `api_usage_log` (PG) | Low | Existing auth tests cover representative route. |
+| `/api/reviewer-finder/discover` | POST | App | `requireAppAccess('reviewer-finder')` | `access.profileId` passed | AI pass-through + external research APIs; `api_usage_log` (PG) only | Low | External discovery APIs / AI review. |
+| `/api/reviewer-finder/enrich-contacts` | POST | App | `requireAppAccess('reviewer-finder')` | Request payload | AI pass-through + external SERP/contact APIs; `api_usage_log` (PG) | Low | Rate-limited; server-side credentials only. |
+| `/api/reviewer-finder/contact-history` | GET | App | `requireAppAccess('reviewer-finder')` | Org-visible Dataverse data; reads junction + projectleader for `?contactId=<guid>` | Reads Dataverse `wmkf_apprequestperson` + `akoya_request` (read-only) | Low | UNION read of `wmkf_apprequestperson` + `akoya_request._wmkf_projectleader_value`. No write side. |
+| `/api/reviewer-finder/extract-summary` | POST | App | `requireAppAccess('reviewer-finder')` | `proposal_id` scoped by `user_profile_id` | Writes Vercel Blob; updates `proposal_searches.summary_blob_url` (PG); `api_usage_log` (PG) | Low | Good scoping pattern. |
+| `/api/reviewer-finder/generate-emails` | POST | App | `requireAppAccess('reviewer-finder')` | `user_profile_id` scoped | Writes/updates `reviewer_suggestions` (PG); `api_usage_log` (PG) | Low | Existing cross-user tests cover representative behavior. |
+| `/api/reviewer-finder/grant-cycles` | GET, POST, PATCH, DELETE | App | `requireAppAccess('reviewer-finder')` | Shared grant cycles | Reads/writes `grant_cycles`, `proposal_searches` (PG) | Medium | Shared mutable records; confirm app-level access is enough. |
+| `/api/reviewer-finder/load-proposal` | POST | App | `requireAppAccess('reviewer-finder')` | App-wide proposal file load by request ID | Writes Vercel Blob; reads Dynamics + SharePoint | Medium | Policy checkpoint for who may load proposal source files. |
+| `/api/reviewer-finder/my-candidates` | GET, PATCH, DELETE | App | `requireAppAccess('reviewer-finder')` | Org-visible Dataverse data; PD filter is UX default | Reads Dataverse; on PATCH updates `wmkf_appreviewersuggestion`, `wmkf_potentialreviewer`, `wmkf_appresearcher` (DV) | Medium | Boundary documented inline. |
+| `/api/reviewer-finder/my-proposals` | GET | App | `requireAppAccess('reviewer-finder')` | Caller Azure email -> PD | Reads Dataverse + `proposal_searches` (PG) read-only | Low | Good identity-derived scope pattern. |
+| `/api/reviewer-finder/researchers` | GET, POST, PATCH, DELETE | App | `requireAppAccess('reviewer-finder')`; some admin subpaths check superuser | Mixed shared/user | Reads/writes `researchers`, `publications`, `reviewer_suggestions`, `proposal_searches` (PG) | Medium | Needs endpoint-level sub-action review. |
+| `/api/reviewer-finder/save-candidates` | POST | App | `requireAppAccess('reviewer-finder')` | Trusted internal Dataverse writeback by request ID | Upserts `wmkf_potentialreviewer`, `wmkf_appresearcher`, `wmkf_appreviewersuggestion` (DV) | Medium | Dataverse-only writeback (Postgres writes retired); policy checkpoint for who may write candidate suggestions to a request. |
+| `/api/test-email` | POST | App | `requireAppAccess('dynamics-explorer')` | Caller email | Sends email + creates email activity (DV `emails`) | Low | Consider moving under admin/test namespace or disabling in prod if not needed. |
+| `/api/upload-file` | POST | Authenticated | `requireAuth` | Uploaded file only | Writes Vercel Blob | Medium | Any authenticated user can upload; consider app-specific upload routes. |
+| `/api/upload-handler` | POST | Authenticated | `requireAuth` | Blob upload token | Mints Vercel Blob upload token (client uploads directly to Blob) | Medium | Any authenticated user can request blob upload token. |
+| `/api/user-preferences` | GET, POST, PUT, DELETE | Profile | `requireAuthWithProfile` | `profileId` | Reads/writes `user_preferences` (PG) | Low | Intended user-owned settings. |
+| `/api/user-profiles` | GET, PATCH, DELETE | Profile / Superuser | `requireAuthWithProfile`; `?all=true` uses `getUserRole` | Own profile; all profiles for superuser | Reads/updates/archives `user_profiles` (PG) | Low | `POST` intentionally unsupported; profile creation flows through `/api/auth/link-profile`. |
+| `/api/virtual-review-panel` | GET, POST | App | `requireAppAccess('virtual-review-panel')` | Request payload | Writes `panel_reviews`, `panel_review_items`, `api_usage_log` (PG); calls multi-LLM providers | Low | AI payload review. |
 
 ## Regular Maintenance Process
 

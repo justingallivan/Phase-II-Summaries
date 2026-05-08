@@ -126,7 +126,7 @@ The high-leverage services for data-layer work — full source remains authorita
 
 ## Endpoint inventory
 
-For per-endpoint persistence info, see **`docs/API_ROUTE_SECURITY_MATRIX.md`** — the security matrix is CI-gated, so it's the canonical endpoint list. The Atlas defers to it rather than duplicate. **Atlas v1 gap:** the matrix doesn't yet annotate "writes Postgres `<table>` / Dataverse `<entity>`." Plan: extend the matrix in a follow-up so endpoint persistence is queryable from one place.
+For per-endpoint persistence info, see **`docs/API_ROUTE_SECURITY_MATRIX.md`** — the security matrix is CI-gated, so it's the canonical endpoint list. The Atlas defers to it rather than duplicate. ~~**Atlas v1 gap:** the matrix doesn't yet annotate "writes Postgres `<table>` / Dataverse `<entity>`."~~ **Closed S141 (2026-05-08)**: the matrix now has a Persistence column annotating writes for all 77 routes (PG = Postgres, DV = Dataverse).
 
 For the reviewer-finder + review-manager subset, the per-entity pages above already enumerate read/write endpoints.
 
@@ -159,7 +159,7 @@ Useful summary of how Postgres ↔ Dataverse currently join (or will join post-c
 
 ## Known gaps in this Atlas (v1)
 
-- **Endpoint persistence annotation** not yet merged into `API_ROUTE_SECURITY_MATRIX.md`.
+- ~~**Endpoint persistence annotation** not yet merged into `API_ROUTE_SECURITY_MATRIX.md`.~~ Closed S141 (2026-05-08).
 - **Vendor `contact` and `account` extension fields** not enumerated yet — needed for intake portal pilot work (AO/Liaison fields per `project_intake_portal_pilot_decisions_2026-05-06.md`).
 - **`wmkf_ai_prompt` and `wmkf_ai_run`**: per-entity page at [`atlas/dataverse-wmkf-ai-run-and-prompt.md`](atlas/dataverse-wmkf-ai-run-and-prompt.md). Both schemas now documented from live code (verified 2026-05-07 via `execute-prompt.js:193-200,535-553`).
 - **`wmkf_apprequestperson` junction** — DEPLOYED S139 (`c8cbfe1`); 5,561 rows backfilled (`8b9b287`). Atlas page: [`atlas/dataverse-wmkf-apprequestperson.md`](atlas/dataverse-wmkf-apprequestperson.md). Steady-state still pending Connor's PA dual-write flows.
