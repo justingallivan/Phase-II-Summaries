@@ -1,8 +1,19 @@
 # Grant Cycle Lifecycle
 
-**Status:** Target state — flows are planned/in progress, not yet running in production.
+**Status:** Mixed — some AI fields and post-approval flows are live; PA-orchestrated flows are still pending. See "What's live now (2026-05-08)" below.
 **Created:** Session 94, 2026-04-08
 **Stakeholders:** Justin (prompt development, Vercel app), Connor (PowerAutomate flows, Dynamics admin)
+
+> **Cycle redesign in flight.** The next grant cycle is being restructured: the standalone "Concept" stage is being eliminated and Phase I + Phase II are likely to merge into a single applicant-facing package (internal Phase I/II labels persist as a label change, not a separate document submission). The lifecycle below describes the **current cycle**; the redesigned cycle will need its own pass once Sarah/Connor lock the new shape. See memory entries `project_grant_phasing_evolution.md` and `project_app_roadmap_2026-04-25.md`.
+
+## What's live now (2026-05-08)
+
+- **AI fields on `akoya_request`** are deployed (Field Sets A + C + D + 6 workflow-chaining fields per `docs/atlas/dataverse-akoya-request.md`). Field Set B ("Grant Reporting") is also DEPLOYED as of S139.
+- **`wmkf_ai_run`** audit table is live; Vercel writes via `dynamics-service.logAiRun` and `lib/services/execute-prompt.js`.
+- **`/phase-i-dynamics/summarize-v2`** writes summaries via the Executor contract — single-request prompt-tuning surface (not in nav, direct URL).
+- **Reviewer-finding + Review-management + Integrity screening** all run from the Vercel app.
+- **PA-side `ExecutePrompt` flow** is the parity oracle (Connor builds; Vercel side is ready, see `scripts/test-echo-parity.js`).
+- **Connor's `akoya_request` create/update PA flows** (file-org, AI check-in, staff version) are still pending.
 
 ---
 
@@ -73,17 +84,20 @@ This document maps the full lifecycle of a grant application from submission thr
 
 ## Dynamics Fields for AI Output
 
-Connor to create these custom fields on `akoya_request`:
+**Status: DEPLOYED.** Connor created the canonical v3 field set; live names differ from the v2 spec referenced when this doc was first drafted. Field-level inventory and write contracts are in `docs/atlas/dataverse-akoya-request.md`. Highlights:
 
-| Field | Type | Purpose |
-|-------|------|---------|
-| `wmkf_ai_summary` | Multi-line text | AI-generated summary |
-| `wmkf_ai_structured_data` | Multi-line text (JSON) | Keywords, PI, methods, etc. |
-| `wmkf_ai_summary_generated_at` | DateTime | When AI processing ran |
-| `wmkf_ai_summary_model` | Single-line text | Claude model used |
-| `wmkf_ai_summary_version` | Integer | Prompt version used |
+| Live field | Type | Purpose |
+|---|---|---|
+| `wmkf_ai_summary` | Memo | AI-generated summary (Field Set A) |
+| `wmkf_ai_dataextract` | Memo (JSON) | Keywords, PI, methods, structured fields (Field Set A) |
+| `wmkf_ai_complianceissues` | Memo (JSON) | Compliance task output (Field Set C) |
+| `wmkf_ai_compliancesummary` | Memo | Compliance summary (Field Set C) |
+| `wmkf_ai_reportsummary` + 21 reporting fields | Memo / mixed | Field Set B (Grant Reporting), DEPLOYED S139 |
+| `wmkf_ai_run` (child entity) | Audit row | Run metadata: model, prompt version, status, raw output. `createdon` is the canonical timestamp (the older `wmkf_ai_rundatetime` is vestigial). |
 
-Additional fields may be needed for compliance check results and PD assignment output — to be defined as those prompts are developed.
+The vestigial v2-style fields (`wmkf_ai_summary_generated_at`, `wmkf_ai_summary_model`, `wmkf_ai_summary_version`) were *not* deployed; the design landed on a child-entity audit row instead. Use `wmkf_ai_run` for run metadata, not flat fields on the parent.
+
+PD assignment writes to existing `wmkf_programdirector` lookup (Field Set D — no new fields).
 
 ---
 
@@ -114,17 +128,17 @@ Development approach: batch evaluation against historical proposals in Dynamics,
 
 ---
 
-## Data Migration (Future)
+## Data Migration
 
-All operational data currently in Vercel Postgres will migrate to Dynamics:
-- Reviewer data (researchers, publications, reviewer_suggestions, proposal_searches)
-- Grant cycles
-- Integrity screenings + dismissals
-- Panel reviews
+**Wave 1 cut over 2026-04-24.** `system_settings`, `user_app_access`, `user_preferences` now have Dataverse adapters behind `WAVE1_BACKEND_*` flags; Postgres remains the default until the flags flip. See `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md`.
+
+**Wave 2 in progress** (reviewer data migration). Plan locked S136; see `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`. Wave 2 build set landed S139 (junction entity `wmkf_apprequestperson`, contact-history endpoint, save-candidates Dataverse cutover). Most Postgres reviewer tables drain rather than migrate (match-on-discovery + history badges replaces 1:1 row migration).
 
 System/infrastructure data stays in Vercel Postgres:
-- User profiles, preferences, app access
-- System settings, usage logs, monitoring
+- User profiles + linkage to Dynamics `systemuser`
+- Usage logs, monitoring (`api_usage_log`, `health_check_history`, `system_alerts`, `maintenance_runs`)
 - Retraction Watch reference data
-
-Migration strategy (dual-write vs. bulk migration) TBD.
+- Intake-portal drafts + audit (`intake_drafts`, `intake_audit`)
+- Dynamics Explorer per-user state (`dynamics_feedback`, `dynamics_query_log`, `dynamics_user_roles`, `dynamics_restrictions`)
+- Integrity Screener history (`integrity_screenings`, `screening_dismissals`)
+- Virtual Review Panel persistence (`panel_reviews`, `panel_review_items`)

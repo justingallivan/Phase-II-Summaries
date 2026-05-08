@@ -1,5 +1,24 @@
 # Reviewer Lifecycle Automation — Proposal for Staff Review
 
+## Status (as of 2026-05-08)
+
+Originally written as a forward-looking proposal; large parts have shipped. Quick reality check:
+
+| Phase | Status |
+|---|---|
+| **A. CRM email sending** | **SHIPPED** — `/api/review-manager/send-emails` sends through Dynamics; emails appear on the request as activities with audit trail |
+| **B. Dashboard + smart reminders** | Partial — Review Manager surfaces invitation status; bulk-reminder UX still pending |
+| **C. Reviewer portal** | **SHIPPED (external-reviewer surface)** — magic-link `/external/review/[token]/*` endpoints live; reviewer can view proposal, upload review/COI; auto-files to SharePoint `Reviewer_Uploads/`. Billing-info collection still pending. See `docs/EXTERNAL_REVIEWER_INTAKE_PLAN.md`. |
+| **D. SharePoint auto-filing** | **SHIPPED** — `lib/services/review-upload.js writeReviewFiles` is the canonical write path for both staff and reviewer-self uploads |
+| **E. Conversational interface** | Not started — Review Manager-specific chat UI deferred; Dynamics Explorer covers some of this for ad-hoc queries |
+
+Sections below describe the original vision; treat the *future-tense* phrasing as historical and refer to the table above for what's live. Detail on what Phase A/C/D actually look like in production lives in:
+
+- `docs/EXTERNAL_REVIEWER_INTAKE_PLAN.md` (token primitive, magic-link landing, SharePoint upload flow)
+- `docs/atlas/dataverse-akoya-request.md` and `docs/atlas/dataverse-wmkf-appreviewersuggestion.md` (data model)
+
+---
+
 ## What This Document Is
 
 We're planning to automate much of the reviewer management workflow that currently involves manual email sending, file management, and tracking. This document describes what we're proposing, how it would work, and what changes staff would see. We'd like your feedback before we start building.

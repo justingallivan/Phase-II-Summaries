@@ -1,6 +1,6 @@
 # Where We're Headed
 
-**Last updated: March 12, 2026** — living document, updated as things evolve.
+**Last updated: 2026-05-08** (previously 2026-03-12) — living document, updated as things evolve.
 
 ---
 
@@ -18,7 +18,7 @@ Six systems support WMKF's grant workflow:
 
 5. **SharePoint** — Cloud document storage. Two primary areas: the AkoyaGO site (where AkoyaGO stores documents, not meant for direct user access) and the WMKF site (shared staff documents with multiple sub-sites).
 
-6. **Vercel App Suite** (this project) — 14 purpose-built tools that summarize proposals, find reviewers, screen applicant integrity, explore CRM data, and more. Originally standalone, now with expanding connections to the other systems.
+6. **Vercel App Suite** (this project) — 17 purpose-built tools that summarize proposals, find reviewers, screen applicant integrity, explore CRM data, and more. Originally standalone, now with expanding connections to the other systems. The applicant intake portal (`/apply/*`) is in pilot scoping for mid-June 2026 (Phase II Research) — see `docs/INTAKE_PORTAL_DESIGN.md`.
 
 ---
 
@@ -79,27 +79,33 @@ Now we have read access to Dynamics and SharePoint, and leadership buy-in to use
 | What | How | Status |
 |------|-----|--------|
 | Read CRM data | `DynamicsService` — OData queries, Dataverse Search | Working |
-| Read SharePoint documents | `GraphService` — file listing, download, full-text search | Working |
-| Write to Dynamics/SharePoint | Not built yet | No write permission yet |
+| Read SharePoint documents | `GraphService` — file listing, download, full-text search; multi-library walk via `lib/utils/sharepoint-buckets.js` | Working |
+| **Write to SharePoint** | `Sites.Selected` + write role on akoyaGO site (granted 2026-04-15) | **Working** — verified end-to-end via `scripts/probe-sharepoint-write.js` 2026-05-01 |
+| **Write to Dynamics** | App registration `prvUpdate` on `akoya_request`, `prvCreate`/`prvUpdate` on `wmkf_ai_run` | **Working** — granted/verified 2026-04-14; impersonation via `MSCRMCallerID` available behind `DYNAMICS_IMPERSONATION_ENABLED` flag |
 | Send CRM-tracked email | `DynamicsService.createAndSendEmail()` | Working |
-| AI proposal processing | Claude integration across 14 apps | Working |
+| AI proposal processing | Claude integration across 17 apps | Working |
 | Reviewer discovery | Multi-database search + AI ranking | Working |
 | Email generation | `.eml` files + direct Dynamics sending | Working |
-| Review management | Review Manager app | Working |
+| Review management | Review Manager app + external-reviewer magic-link surface (`/external/review/[token]/*`) | Working |
 | CRM chat interface | Dynamics Explorer with agentic tool use | Working |
-| Auth + access control | Azure AD SSO + per-app grants | Working |
-| Dynamics request linking | `request_number` on reviewer/proposal tables | Done |
+| Auth + access control | Dual-provider NextAuth (`azure-ad` staff + `entra-external` applicants) + per-app grants + middleware gate | Working |
+| Dynamics request linking | `request_number` on reviewer/proposal tables; reviewer-finder cutover to Dataverse-native `wmkf_apprequestperson` junction (S139) | Done |
 | User feedback logging | Thumbs up/down + auto-detection on Dynamics Explorer | Working |
-| Operational monitoring | Health checks, log analysis, maintenance cron, alerts | Working |
+| Operational monitoring | Health checks, log analysis, maintenance cron, alerts, secret-expiration tracking, spend monitoring | Working |
+| AI audit trail | `wmkf_ai_run` child entity (DEPLOYED) — every AI write logged with model + prompt version + status + raw output | Working |
+| Backend prompt store | `wmkf_ai_prompt` Dataverse table — staff-readable prompts; `prompt-resolver` with bundled fallback | Working |
+| Executor contract | `lib/services/execute-prompt.js` — Vercel side ready; PA side build by Connor in progress | Vercel done |
 
 ## What We Need Next
 
 | What | Blocked on |
 |------|-----------|
-| **Proposal picker** — browse/search Dynamics proposals from within our apps | Nothing, can start now |
-| **SharePoint write access** — deposit outputs back to SharePoint | IT permission (`Sites.ReadWrite.Selected`) |
-| **Dynamics write access** — update Dataverse fields from our apps | IT permission + schema planning |
-| **Status-driven triggers** — auto-start processing when proposals reach certain stages | Backend architecture discussion + new grant cycle definition |
+| **Wave 1 prod retirement** — flip `WAVE1_BACKEND_*` flags to dataverse, retire Postgres `system_settings` / `user_app_access` / `user_preferences` | Earliest 2026-05-17 (stability clock from cutover) |
+| **Wave 2 reviewer migration completion** — finish reviewer Postgres-to-Dataverse drain (`docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`) | Cycle gating; partial Wave 2 build set landed S139 |
+| **Connor's PA flows** — `akoya_request` create/update flows (file org, AI check-in, staff version) + PA-side `ExecutePrompt` parity oracle | Connor's queue |
+| **Status-driven triggers** — auto-start processing when proposals reach certain stages | Connor's PA flows above; cycle redesign signal |
+| **Cycle-redesigned Reviewer Finder + Staged Pipeline** — adapt to single-package cycle, build fit-screen → intelligence → panel pipeline | Cycle redesign locking with Sarah/Connor |
+| **Intake portal pilot** — applicant submission via `/apply/*` for mid-June 2026 Phase II Research | Form schema + child entity creation + Calendly integration; auth foundation SHIPPED S129 |
 
 ---
 
@@ -136,8 +142,11 @@ AkoyaGO's vendor provides a license for Dynamics/Dataverse. While WMKF owns its 
 
 | What | Who | Status |
 |------|-----|--------|
-| `Sites.Selected` + site authorization | Azure AD Admin | Granted |
-| `Sites.ReadWrite.Selected` | Azure AD Admin | Not yet requested |
+| `Sites.Selected` read + write role on akoyaGO site | Azure AD Admin | **Granted** (write 2026-04-15; verified end-to-end 2026-05-01) |
 | Email Sender role in Dynamics | Dynamics Admin | Done |
-| Conditional access licensing | IT | Their side, in progress |
-| Dynamics write permissions | TBD | Not yet scoped |
+| Conditional access licensing | IT | Done |
+| Dynamics write permissions (`prvUpdate` on `akoya_request`, `prvCreate`/`prvUpdate` on `wmkf_ai_run`) | Dynamics Admin | **Granted** 2026-04-14 (no `prvDelete` — append-only by design) |
+| Dynamics Delegate role on app user (impersonation) | Dynamics Admin (Connor) | **Granted** 2026-05-06; impersonation re-smoke PASS |
+| `prvCreateNote` on `annotation` | Dynamics Admin | **Not granted** — don't design notes-on-records flows without going back to IT |
+| Entra External ID tenant for applicant intake | IT | **Provisioned** S129 (tenant `04a1406b...`) |
+| Pending: see `docs/PENDING_ADMIN_REQUESTS.md` for current outstanding asks | | |

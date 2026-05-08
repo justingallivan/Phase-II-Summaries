@@ -1,5 +1,16 @@
 # Dynamics Explorer — Schema Annotation Reference
 
+> **Scope (clarified 2026-05-08).** This doc records the field annotations baked into the **Dynamics Explorer** chat tool's `TABLE_ANNOTATIONS` — what the Explorer's LLM "knows" about each table. It is not a full schema dump.
+>
+> **Authoritative live schema** for any table or entity-set lives in `docs/APPLICATION_STATE_ATLAS.md` and the per-entity pages under `docs/atlas/dataverse-*.md`. The Atlas is CI-gated; this doc is not. If they conflict, trust the Atlas.
+>
+> **Intentionally excluded from this doc / TABLE_ANNOTATIONS:**
+> - `wmkf_ai_run` (operational AI audit log, not business data — should not surface in natural-language queries)
+> - `wmkf_ai_prompt` (staff-edited prompt store; surface via prompt-resolver, not chat search)
+> - The `wmkf_ai_*` flat fields on `akoya_request` (Field Sets A/C/D + Set B reporting + 6 workflow-chaining) — these are AI-output fields, documented in `docs/atlas/dataverse-akoya-request.md`. They are not annotated here because Explorer users typically want CRM fields, not AI summaries.
+>
+> If TABLE_ANNOTATIONS-driven Explorer behavior needs a refresh, regenerate via `scripts/dynamics-schema-diff.js` (NOT the older `dynamics-schema-map.js`, which samples 25 records and silently drops sparsely-populated fields — that's how `wmkf_ai_summary` was missed until 2026-05-05).
+
 ## Overview
 
 This document records the field-level understanding of the akoyaGO Dynamics 365 CRM schema. It was created as a planning doc (Session 54) and fully resolved through comprehensive database introspection (Session 84). All annotations are now implemented in `shared/config/prompts/dynamics-explorer.js` via `TABLE_ANNOTATIONS`.
@@ -309,4 +320,4 @@ All annotations are implemented in:
 - **`shared/config/prompts/dynamics-explorer.js`** → `TABLE_ANNOTATIONS` object and `buildSystemPrompt()` function
 - **15 tables** fully annotated with field descriptions, types, option set values, and query rules
 
-Last Updated: March 2026 (Session 84)
+Last updated: 2026-05-08 (status-clarification pass; underlying TABLE_ANNOTATIONS unchanged since Session 84)

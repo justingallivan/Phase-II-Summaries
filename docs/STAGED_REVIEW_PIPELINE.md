@@ -1,6 +1,8 @@
 # Staged LLM-Assisted Proposal Review Pipeline
 ## W. M. Keck Foundation — New Cycle Design
 
+> **Status (2026-05-08):** Not yet built. No `pipeline_proposals` table, no Fit Screener app, no Pipeline app. Build plan is in `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md`. The Virtual Review Panel (Stage 3 dependency) is shipped and running. Cycle redesign is still in flight (concepts being eliminated, Phase I + II likely merging into one applicant package); the per-stage prompts and routing below are valid design once the redesigned cycle locks, but the volume assumption ("3x volume") may need to be revisited when the cycle shape stabilizes.
+
 This document describes a three-stage automated triage and review pipeline for evaluating a higher volume of full proposals. Each stage has a defined purpose, a set of inputs and outputs, and a clear handoff to the next stage or to staff. The pipeline is designed to complement staff judgment, not replace it — LLM outputs at every stage are advisory, not decisional.
 
 ---

@@ -1,5 +1,7 @@
 # Staged Proposal Review Pipeline — App Implementation Plan
 
+> **Status (2026-05-08):** Not yet started. Plan is dormant pending cycle-redesign signal from Sarah/Connor. Don't start the V25 migration or build the Fit Screener until the redesigned cycle's shape (single-package vs. retained Phase I/II split, target volume) is locked — design assumptions below could shift.
+
 ## Context
 
 The grant cycle is being redesigned with higher proposal volume and potentially no concept/Phase I stages. The staged review pipeline (`docs/STAGED_REVIEW_PIPELINE.md`) defines a 3-stage automated triage: fit screening → intelligence brief → virtual panel review. 
