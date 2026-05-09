@@ -20,4 +20,5 @@ jobs:
       - run: npm run check:atlas
       - run: npm run check:atlas:self-test
       - run: npm run check:doc-currency
+      - run: npm run check:doc-currency:self-test
       - run: npm run test:ci
