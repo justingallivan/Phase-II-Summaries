@@ -41,7 +41,7 @@ Only two credentials expire automatically. Everything else is stable until manua
 
 ### Optional — Applicant Intake Portal (dual-provider auth)
 
-The `/apply/*` intake portal authenticates against a separate Entra External ID tenant. The `entra-external` NextAuth provider registers when **`EXTERNAL_AZURE_AD_TENANT_ID` and `EXTERNAL_AZURE_AD_CLIENT_ID`** are set (the well-known OpenID config URL is derived from the tenant ID). The secret is required for OAuth to succeed but isn't part of the registration guard — set all three together. Staff-only deployments can leave all three unset.
+The `/apply/*` intake portal authenticates against a separate Entra External ID tenant. The `entra-external` NextAuth provider registers only when **all three `EXTERNAL_AZURE_AD_*` vars** (tenant ID, client ID, client secret) are set; partial config skips registration cleanly. The well-known OpenID config URL is derived from the tenant ID. Staff-only deployments can leave all three unset.
 
 | Variable | Purpose | Source |
 |----------|---------|--------|

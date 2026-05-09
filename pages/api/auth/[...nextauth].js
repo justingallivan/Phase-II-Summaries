@@ -51,9 +51,13 @@ export const authOptions = {
         },
       },
     }),
-    // Applicant provider — only registered when External ID env vars are
-    // present, so a staff-only deployment doesn't need them set.
-    ...(EXTERNAL_WELL_KNOWN && process.env.EXTERNAL_AZURE_AD_CLIENT_ID
+    // Applicant provider — only registered when all three External ID env
+    // vars are present, so a staff-only deployment doesn't need them set.
+    // Partial config (e.g. tenant + client_id but no secret) would register
+    // the provider and fail at sign-in time; gate on the full triple instead.
+    ...(EXTERNAL_WELL_KNOWN
+      && process.env.EXTERNAL_AZURE_AD_CLIENT_ID
+      && process.env.EXTERNAL_AZURE_AD_CLIENT_SECRET
       ? [
           {
             id: 'entra-external',
