@@ -172,7 +172,7 @@ A Vercel app page + API endpoint that:
 
 ### Key files
 - `lib/services/dynamics-service.js` — stubbed write methods, existing auth token flow works
-- `docs/PENDING_ADMIN_REQUESTS.md` — update with permission request
+- (Permission requests are tracked inline in `docs/STRATEGY.md` IT-dependency table; the historical `PENDING_ADMIN_REQUESTS.md` is in `docs/archive/` after all four asks resolved.)
 
 **Dependencies:** Connor grants write permissions.
 
@@ -309,7 +309,7 @@ All within Connor's access — no external IT or vendor dependencies.
 3. **Dynamics entities** for data migration — schema for reviewer data, screenings, panel reviews, etc.
 4. **PowerAutomate flows** — build flows per Phase 4 specs using prompts developed in Phase 1
 5. **Premium connectors** — available, no licensing blocker
-6. **Pending from previous sessions:** "Email Sender" role assignment, `Sites.Selected` authorization (tracked in `docs/PENDING_ADMIN_REQUESTS.md`)
+6. **Pending from previous sessions:** None as of 2026-05-08 — all original asks resolved (Email Sender role granted; `Sites.Selected` read + write granted; Contact AppendTo granted; Mail.Send retired). See `docs/archive/PENDING_ADMIN_REQUESTS.md` for history.
 
 ---
 
@@ -335,5 +335,5 @@ All within Connor's access — no external IT or vendor dependencies.
 | `pages/api/reviewer-finder/save-candidates.js` | Add Dynamics write-back (Phase 2) |
 | `pages/api/review-manager/reviewers.js` | Add Dynamics write-back (Phase 2) |
 | `docs/GRANT_CYCLE_LIFECYCLE.md` | Full lifecycle reference |
-| `docs/PENDING_ADMIN_REQUESTS.md` | Permission requests |
+| `docs/archive/PENDING_ADMIN_REQUESTS.md` | Historical permission requests (all resolved as of 2026-05-08) |
 | `docs/archive/CRM_EMAIL_SEND_PLAN.md` | Phase A, independent but complementary (archived; shipped S77) |

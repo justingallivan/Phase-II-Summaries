@@ -1,68 +1,79 @@
 # Email Notifications — Unified Notification Service
 
-## Current Status
+## Current Status (as of 2026-05-08)
 
-A **unified notification service** (`lib/services/notification-service.js`) handles all system notifications. It works in two modes:
+System-alert emails are wired to the Dynamics email transport (`DynamicsService.createAndSendEmail`). When `NOTIFICATION_EMAIL_FROM` is set, the notification service automatically emails the active App Suite admin roster on:
 
-### What Works Now (Dashboard Alerts)
-- **New user sign-up**: When a new user authenticates via Azure AD, a `new_user` alert is created in the `system_alerts` table and appears on the admin dashboard.
-- **Health monitoring**: The health-check cron creates alerts when services degrade and auto-resolves when they recover.
-- **Maintenance results**: Daily cleanup results are recorded as info alerts.
-- **Secret expiration**: Approaching expiry dates trigger warning/error/critical alerts.
-- **Log analysis**: Server error spikes are analyzed by AI and stored as alerts.
+- New user sign-ups (forced — admins need proactive visibility for app-access grants).
+- `error` / `critical` severity alerts (cron failures, secret expiration, log analysis, health degradation).
 
-All alerts are visible in the **System Alerts** section of the admin dashboard (`/admin`), with acknowledge and resolve actions.
+Recipients are looked up dynamically as the set of active superusers (`dynamics_user_roles.role = 'superuser'` joined to `user_profiles`). No `NOTIFICATION_EMAIL_TO` env var is needed; the recipient list self-heals as superuser grants change in `/admin`.
 
-### What's Deferred (Email via Microsoft Graph)
+The previous Microsoft Graph `Mail.Send` path was retired in S142. That permission was never granted, and the Dynamics transport (already shipped, working since Session 77) covers every current use case using already-granted privileges.
 
-When Microsoft Graph `Mail.Send` permission is granted, the notification service will automatically send emails for `error` and `critical` severity alerts. No code changes required — just configure the environment variables.
+## What Works Now (Dashboard Alerts)
 
-## Prerequisites for Email
+All notifications are stored in `system_alerts` regardless of email configuration:
 
-1. **Azure AD Admin** must grant the `Mail.Send` application permission to the app registration
-2. The permission type must be **Application** (not Delegated)
-3. Admin consent must be granted in the Azure Portal
+- **New user sign-up** — `new_user` alert + email to admins.
+- **Health monitoring** — health-check cron creates alerts when services degrade and auto-resolves on recovery.
+- **Maintenance results** — daily cleanup recorded as info alerts.
+- **Secret expiration** — approaching expiry triggers warning/error/critical alerts.
+- **Log analysis** — server error spikes are AI-analyzed and stored as alerts.
 
-## Setup Instructions
+All alerts are visible in the **System Alerts** section of `/admin`, with acknowledge and resolve actions.
 
-### Step 1: Add API Permission
+## Configuration
 
-1. Go to Azure Portal > Azure Active Directory > App registrations
-2. Select the Document Processing Suite app
-3. Navigate to **API permissions**
-4. Click **Add a permission** > **Microsoft Graph** > **Application permissions**
-5. Search for and select `Mail.Send`
-6. Click **Add permissions**
-7. Click **Grant admin consent for [Org Name]**
-
-### Step 2: Add Environment Variables
+### Required for email send-out
 
 ```env
-# Email sender address (must be a valid mailbox in the tenant)
-NOTIFICATION_EMAIL_FROM=noreply@wmkeck.org
-NOTIFICATION_EMAIL_TO=jgallivan@wmkeck.org
+# Sender mailbox — must be a Dynamics systemuser with Server-Side Sync enabled.
+# When unset, alerts are dashboard-only (no email goes out).
+NOTIFICATION_EMAIL_FROM=<some-staff-or-role-mailbox@wmkeck.org>
 ```
 
-### Step 3: Verify
+That's it. `DYNAMICS_*` credentials are already required for the rest of the app.
 
-The notification service checks for these env vars plus valid Dynamics credentials (reuses the same app registration). When all are present, `NotificationService.isEmailEnabled()` returns true and emails are sent automatically for error/critical alerts.
+### Recipient management (no env vars)
 
-Test by checking the `/api/health` endpoint or triggering a test alert.
+Recipients = active superusers. To add or remove someone from the alert distribution, grant or revoke the `superuser` role via `/admin → User Access`. The change takes effect on the next alert send (no cache, no restart, no env-var update).
+
+## Sender mailbox guidance
+
+The sender must:
+1. Exist as a Dynamics `systemuser` (resolvable by `internalemailaddress`).
+2. Have **Server-Side Synchronization** enabled for outgoing email.
+
+Three reasonable choices:
+
+- **A specific staff mailbox** (e.g. an admin's address) — works today; no IT touchpoint. Fine for placeholder / small-org operation. Risk: if that person leaves, the env var must be updated.
+- **A role mailbox** (e.g. `appsuite-notifications@wmkeck.org` or an existing IT shared mailbox) — durable across personnel changes. May require an IT ask if a fresh mailbox is needed.
+- **A dedicated `noreply@wmkeck.org`** — standard pattern but requires the mailbox to be a real systemuser with SSS, not just an alias.
 
 ## Architecture
 
 ```
 NotificationService.notify()
-  ├── AlertService.createAlert()          ← Always (dashboard)
-  └── NotificationService.sendEmail()     ← Only if error/critical + email configured
-        ├── getGraphToken()               ← Reuses DYNAMICS_* credentials
-        └── POST /v1/users/{from}/sendMail
+  ├── AlertService.createAlert()                   ← always (dashboard)
+  └── if (emailAdmins || severity ≥ error) and isEmailEnabled:
+        NotificationService.sendAdminEmail()
+          ├── getAdminRecipients()                 ← SQL: active superusers
+          └── DynamicsService.createAndSendEmail() ← Dynamics SSS transport
 ```
 
-## Alternative Approaches
+## Why this design
 
-If Mail.Send permission is difficult to obtain:
+Two failure modes the old Graph-based design didn't handle:
 
-1. **Dashboard-only** (current) — All notifications visible in admin dashboard
-2. **Webhook to Slack/Teams** — Extend NotificationService with a webhook channel
-3. **Daily digest** — The existing cron infrastructure could support a digest cron
+1. **Mailbox vanishes** (personnel change with hard-coded `NOTIFICATION_EMAIL_TO`) — recipient list now derives from current admin roster, not a static env var.
+2. **Tribal knowledge vanishes** — a successor admin browsing Dynamics finds the App Suite admin roster via `user_profiles ↔ systemuser` bridge + `dynamics_user_roles`. The `/admin` dashboard surfaces the same data.
+
+Vercel envs are minimized: one durable variable (`NOTIFICATION_EMAIL_FROM`) instead of two coupled to a person.
+
+## Alternative channels (not implemented)
+
+If email becomes inadequate:
+
+1. **Webhook to Slack/Teams** — extend `NotificationService` with a webhook channel.
+2. **Daily digest** — wire the existing cron infrastructure to a digest cron.

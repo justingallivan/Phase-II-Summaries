@@ -213,7 +213,7 @@ Sample JSON for `wmkf_ai_reportgoalsassessment`:
 - `archive/DYNAMICS_AI_FIELDS_SPEC_v2.md` — Justin's v2 spec (superseded; historical only)
 - `BACKEND_AUTOMATION_PLAN.md` — 5-phase roadmap
 - `DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md` — identity bridge plan
-- `PENDING_ADMIN_REQUESTS.md` — full list of outstanding admin requests
+- `archive/PENDING_ADMIN_REQUESTS.md` — historical admin-request log (all four asks resolved by 2026-05-08; see `STRATEGY.md` for current dependency table)
 
 ---
 

@@ -2,7 +2,7 @@
 /**
  * Probe: does the akoyaGO app registration have SharePoint write access?
  *
- * Per docs/PENDING_ADMIN_REQUESTS.md §3, IT granted Sites.ReadWrite.Selected on
+ * Per docs/archive/PENDING_ADMIN_REQUESTS.md §3, IT granted Sites.ReadWrite.Selected on
  * the akoyaGO site on 2026-04-15. This script runs the verification that
  * section claimed but never actually shipped:
  *
@@ -65,7 +65,7 @@ async function main() {
     console.error(text);
     if (putResp.status === 403) {
       console.error('\n→ 403 typically means the per-site `write` role grant is missing.');
-      console.error('  See docs/PENDING_ADMIN_REQUESTS.md §3 — IT needs to POST');
+      console.error('  See docs/archive/PENDING_ADMIN_REQUESTS.md §3 — IT needs to POST');
       console.error('  to /sites/{site-id}/permissions with roles=["write"].');
     }
     process.exit(1);

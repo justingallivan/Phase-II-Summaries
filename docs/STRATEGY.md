@@ -149,4 +149,4 @@ AkoyaGO's vendor provides a license for Dynamics/Dataverse. While WMKF owns its 
 | Dynamics Delegate role on app user (impersonation) | Dynamics Admin (Connor) | **Granted** 2026-05-06; impersonation re-smoke PASS |
 | `prvCreateNote` on `annotation` | Dynamics Admin | **Not granted** — don't design notes-on-records flows without going back to IT |
 | Entra External ID tenant for applicant intake | IT | **Provisioned** S129 (tenant `04a1406b...`) |
-| Pending: see `docs/PENDING_ADMIN_REQUESTS.md` for current outstanding asks | | |
+| No outstanding admin asks as of 2026-05-08 (Mail.Send retired in S142 — system-alert emails now use the Dynamics transport) | | |

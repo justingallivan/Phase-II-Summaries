@@ -1305,8 +1305,7 @@ Four Vercel Cron jobs run automated maintenance, monitoring, and analysis:
 | `CRON_SECRET` | **High** | Yes (prod) | Vercel cron endpoint authentication | Rotate periodically |
 | `VERCEL_API_TOKEN` | **High** | Optional | Vercel REST API for log analysis cron | Per Vercel policy |
 | `VERCEL_PROJECT_ID` | Low | Optional | Target project for log analysis | N/A |
-| `NOTIFICATION_EMAIL_FROM` | Low | Optional | Graph API email sender (future) | N/A |
-| `NOTIFICATION_EMAIL_TO` | Low | Optional | Graph API email recipient (future) | N/A |
+| `NOTIFICATION_EMAIL_FROM` | Low | Optional | System-alert email sender (Dynamics transport). Recipients are the active superuser roster, queried at send time. | N/A |
 
 **Key generation commands:**
 ```bash

@@ -113,7 +113,7 @@ Prefer the admin dashboard (`/admin` â†’ Models tab) for non-static overrides â€
 
 | Variable | Purpose |
 |----------|---------|
-| `NOTIFICATION_EMAIL_FROM` / `NOTIFICATION_EMAIL_TO` | Generic notification routing |
+| `NOTIFICATION_EMAIL_FROM` | Sender mailbox for system-alert emails. Must be a Dynamics systemuser with Server-Side Sync enabled (resolvable via `internalemailaddress`). Recipients are queried at send time as the active superuser roster (`dynamics_user_roles` joined to `user_profiles`); no `NOTIFICATION_EMAIL_TO` is required. |
 | `SPEND_ALERT_EMAIL_FROM` / `SPEND_ALERT_EMAIL_TO` | Anthropic balance / daily-spend alert routing |
 | `LOW_BALANCE_ALERT_CENTS` / `DAILY_SPEND_ALERT_CENTS` | Threshold tuning for alerts |
 | `ANTHROPIC_BALANCE_ANCHOR_CENTS` / `ANTHROPIC_BALANCE_ANCHOR_DATE` | Manual baseline for the Anthropic balance estimator (last known balance + date) |
