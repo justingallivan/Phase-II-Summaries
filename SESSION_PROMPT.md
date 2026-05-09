@@ -1,88 +1,77 @@
-# Session 142 Prompt: Address S141 carryover (entra-external gate fix), plus open threads
+# Session 143 Prompt: pick from the design-doc punch list (no carryover)
 
 ## Heads up — read before doing anything
 
-S141 closed the entire S138/S140 doc-triage carryover stack in 7 commits. Next session opens with one concrete code task carried forward from the Codex review of S141, plus a few externally-gated threads waiting on signal.
+S142 closed the only mechanical carryover (the entra-external gate fix from the S141 Codex review) plus the deferred B-task (doc-currency self-test), then opportunistically retired the entire `PENDING_ADMIN_REQUESTS.md` ask stack by routing system-alert emails through the Dynamics transport instead of the never-granted Microsoft Graph `Mail.Send` permission. Notification email is now live in production with a self-healing recipient list.
 
-The mechanical carryover is **task #6**: a real (small) auth gate fix flagged by Codex during the S141 review. Details below.
+**No carryover.** S143 is free to pick from the design-doc punch list (below), or to use a low-key session if there's no fresh signal.
 
-## Session 141 summary
+## Session 142 summary
 
 ### What was completed
 
-S141 closed the doc-triage cleanup that started in S138 and was carried forward through S139/S140. Five sub-threads, each landed as a discrete commit:
+Three commits, escalating in scope:
 
-1. **"Other" archive batch** (commit `9751b17`)
-   - 6 superseded specs / shipped-feature plans archived to `docs/archive/` via `git mv`: `DYNAMICS_AI_FIELDS_SPEC_v2.md`, `DYNAMICS_AI_FIELDS_SPEC_cn-notes.md`, `DYNAMICS_EXPLORER_DOCUMENT_LISTING_PLAN.md`, `CRM_EMAIL_SEND_PLAN.md`, `ENTRA_ID_INTEGRATION_SUMMARY.md`, `SHAREPOINT_DOCUMENT_ACCESS.md`.
-   - Pre-flight grep-verify identified 3 live citers (`docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md`, `docs/BACKEND_AUTOMATION_PLAN.md`, `.claude-memory/project_dynamics_ai_writeback.md`); each rewritten to `docs/archive/` paths.
+1. **Entra-external provider registration gate** (commit `571b80c`)
+   - Tightened the gate at `pages/api/auth/[...nextauth].js:54-58` to require **all three** `EXTERNAL_AZURE_AD_*` vars (tenant_id, client_id, client_secret). Previously only the first two were checked, so a partial-config deployment would register the provider and fail at sign-in time.
+   - Reverted the S141 "two-var" doc wording in `AUTHENTICATION_SETUP.md` and `CREDENTIALS_RUNBOOK.md` back to "all three". `CLAUDE.md` already said "all three" (untouched). `STRATEGY.md` and `INTAKE_PORTAL_DESIGN.md` had no two-var phrasing to revert.
+   - Smoke: simulated env-shape probe confirmed all-three→register, partial→skip, unset→skip.
 
-2. **Bucket A refresh** (commit `d1169ea`)
-   - `AUTHENTICATION_SETUP.md` rewritten around the 3-layer defense-in-depth model, dual-provider NextAuth, `EMERGENCY_AUTH_BYPASS` production-fail-closed semantics, and current guard surface (`requireAppAccess`/`requireAuthWithProfile`/`requireSuperuser` etc.).
-   - `CREDENTIALS_RUNBOOK.md` env-var inventory cross-checked against `process.env.*` reads in `lib/`, `pages/`, `middleware.js`. Added Production-Required (`CRON_SECRET`, `EXTERNAL_LINK_SECRET`, `VRP_ALLOWED_PROVIDERS`), Entra External, multi-LLM keys, Wave 1 backend flags, operational flags, notification/spend alert vars, Per-App Model Overrides, and the `EMERGENCY_AUTH_BYPASS` row.
+2. **Doc-currency binding self-test** (commit `d72f4c1`)
+   - Closes the deferred Step 5 from the S141 doc-triage plan. New `scripts/check-doc-currency-self-test.js` exercises 12 fixtures (one positive per `DRIFT_PATTERNS` entry plus 4 negative fixtures pinning the SOT negation guard, the `_author` exception, and the canonical Reviewer_Uploads/Downloads suffixes).
+   - Wired into `package.json` (`check:doc-currency:self-test`) and `.github/workflows/test.yml` after `check:doc-currency`.
+   - Sabotage verified: removing the SOT negation guard fails the self-test as expected.
+   - `CLAUDE.md` "Coverage tools have a binding self-test" rule updated to reference both Atlas and doc-currency self-tests.
 
-3. **API_ROUTE_SECURITY_MATRIX Persistence column** (commit `30c94c2`)
-   - Closes the Atlas v1 known-gap. All 77 routes annotated with what they write (Postgres tables, Dataverse entities, SharePoint paths, Vercel Blob), or flagged as "Read-only" / "AI pass-through" where they don't persist business data.
-   - Per-route inventory delegated to a research subagent that read each handler + service-class call chain. Two notable findings folded in: `/api/external/review/[token]/context` writes a first-view timestamp on GET (so it's not actually read-only), `/api/cron/maintenance` is the broadest deleter (5 PG tables + Vercel Blob), and `/api/reviewer-finder/save-candidates` is now Dataverse-only after the cutover.
-
-4. **Bucket B refresh** (commit `8c6736f`)
-   - Status banners + targeted edits on `STRATEGY.md` (write access live, IT deps current, app count 14 → 17, Wave 1/2 framing), `GRANT_CYCLE_LIFECYCLE.md` (Field Sets A–D deployed, `wmkf_ai_run` audit live, cycle-redesign banner, Wave 1/2 migration current), `REVIEWER_LIFECYCLE_PROPOSAL.md` (Phase A/C/D shipped status table at top), `STAGED_REVIEW_PIPELINE.md` + `STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` (not-yet-built, dormant pending cycle redesign), `DYNAMICS_SCHEMA_ANNOTATION.md` (scope clarification — Atlas authoritative for live state, AI fields out of scope, schema-diff vs schema-map gotcha).
-
-5. **Bucket D per-app guides** (commit `e7f698f`)
-   - Spot-refreshed 6 user-facing guides. `GETTING_STARTED.md` (Concept Evaluator retirement, current category list), `ADMIN_GUIDE.md` (spend monitoring, alerts, secret expiration, full env-var pointer, Microsoft Graph health), `REVIEWER_FINDER.md` + `REVIEW_MANAGER.md` (status banners — Dataverse-direct save-candidates, magic-link reviewer portal, CRM-direct email), `DYNAMICS_EXPLORER.md` (multi-library SharePoint walk, Excel export). `INTEGRITY_SCREENER.md` left as-is (already current).
-
-6. **`check:doc-currency` promoted to CI gate** (commit `d3b7d53`)
-   - Closes Step 4 of the doc-triage plan. Three structural fixes were required first: (a) directory-skip bug — `'docs/archive'.startsWith('docs/archive/')` returns false, so archived docs were being scanned; replaced with explicit `isSkippedDir(path)` helper; (b) table-liveness false positives — `\bShort-lived\b` was matching `live`; tightened to word-boundary descriptors; (c) directionally-wrong `sot-prompt-resolver-reads-prompt-table` regex; replaced with positive-claim regex requiring `wmkf_ai_run` scratch-row mention nearby.
-   - Wired into `.github/workflows/test.yml` between `check:atlas:self-test` and `test:ci`. `npm run check:doc-currency` exits 0 cleanly today across 8 patterns; verified exit 1 via negative test with synthetic drift doc.
-   - Allowlist expanded for legitimate historical / teaching references (Atlas pages naming both bad and good forms; migration plans referencing snake-case schema *file* names).
-
-7. **Codex review response** (commit `a2b0887`)
-   - Codex review of the S141 commit range surfaced 6 findings; 5 confirmed and fixed, 1 declined per documented convention.
-   - **P1.1 (fixed in docs)**: Doc claim "entra-external provider registers when all three EXTERNAL_AZURE_AD_* vars are set" — actual code gates only on `EXTERNAL_WELL_KNOWN && EXTERNAL_AZURE_AD_CLIENT_ID`. Docs updated to describe the actual two-var gate. **The code itself is the next-session task** (see below).
-   - **P1.2 (fixed)**: `/api/integrity-screener/history` PATCH writes via `IntegrityService.updateScreeningStatus`; matrix said read-only. Persistence cell updated.
-   - **P1.3 (fixed)**: `STRATEGY.md` "Keep everything in Dynamics" Principle paragraph still said "We don't yet have write access to Dataverse" — contradicted the refreshed status table in the same doc. Rewrote around current state.
-   - **P2.1 (fixed)**: `CLAUDE_MODEL_<APP>` env-var family missing from runbook. Added a Per-App Model Overrides section.
-   - **P2.2 (declined)**: DEVELOPMENT_LOG.md cites pre-archive paths. Per S138 protocol, historical/snapshot files keep point-in-time references by convention.
-   - **P2.3 (fixed)**: Negation-guard hole in `sot-prompt-resolver-reads-prompt-table` regex would still match `"prompt-resolver does not read wmkf_ai_prompt"`. Added a `(?:does not|doesn't|never|no longer)` lookahead before the verb.
+3. **System-alert email routed through Dynamics with self-healing roster** (commit `ff0f9f0`)
+   - Investigation chain that started as "should we close the `PENDING_ADMIN_REQUESTS.md` doc?" and ended as a working feature.
+   - **Verified ground truth**: decoded the Graph token's `roles` claim — the only Microsoft Graph application permission ever granted on `d2e73696-...` is `Sites.Selected`. `Mail.Send` was never granted, so the existing `notification-service.sendEmail` Graph path was unreachable in production for ~6 months.
+   - **Two-failure-mode design problem worth understanding**: (1) hard-coded `NOTIFICATION_EMAIL_TO` env var couples recipient list to a person who can leave; (2) tribal-knowledge-only "where to look" for the admin roster.
+   - **Fix**: rewrote `lib/services/notification-service.js` to use `DynamicsService.createAndSendEmail` for transport (already-granted privilege) and to query the active-superuser roster at send time (`dynamics_user_roles` JOIN `user_profiles` WHERE role='superuser' AND is_active=true). When admins change in `/admin`, recipients self-heal — no env-var update.
+   - Added `emailAdmins: true` opt-in on `notify()` so `notifyNewUser` forces email at info severity (admins need proactive visibility for app-access grants beyond the dynamics-explorer default).
+   - One durable env var: `NOTIFICATION_EMAIL_FROM` (sender mailbox; must be a Dynamics systemuser with SSS enabled). `NOTIFICATION_EMAIL_TO` retired entirely.
+   - **Activated in production**: set `NOTIFICATION_EMAIL_FROM=jgallivan@wmkeck.org` for Production/Preview/Development on Vercel + appended to local `.env.local`. Today's recipient roster: `cnoda@wmkeck.org`, `jgallivan@wmkeck.org` (Connor was already a superuser — happy surprise).
+   - **Fixed adjacent prod gap**: `NEXTAUTH_URL` was missing on Production (only set on Preview). The `health-checker` was warning about this, and the consequences went beyond cosmetic — `lib/utils/auth.js:52` was silently skipping CSRF Origin validation on every state-changing request, and `lib/external/token-lifecycle.js:173` would have produced malformed magic-link URLs. Set `NEXTAUTH_URL=https://wmkfresearch.vercel.app` on Production.
+   - **Doc updates**: `PENDING_ADMIN_REQUESTS.md` archived (all four sections resolved or retired); `TODO_EMAIL_NOTIFICATIONS.md` rewritten around the Dynamics transport; `CREDENTIALS_RUNBOOK.md` and `SECURITY_ARCHITECTURE.md` describe the sender-mailbox requirements and drop `NOTIFICATION_EMAIL_TO`; `STRATEGY.md`, `BACKEND_AUTOMATION_PLAN.md`, `DYNAMICS_AI_FIELDS_SPEC_v3_cn.md`, and `scripts/probe-sharepoint-write.js` updated for the archive path move.
+   - **End-to-end smoke**: synthetic alert through the new path verified — email landed in Justin's inbox from `jgallivan@wmkeck.org` to both admins via Dynamics SSS transport.
 
 ### Commits
 
-- `9751b17` — Archive 6 'Other' batch docs from S138 doc-triage carryover
-- `d1169ea` — Refresh Bucket A: AUTHENTICATION_SETUP + CREDENTIALS_RUNBOOK
-- `30c94c2` — Annotate API_ROUTE_SECURITY_MATRIX with Persistence column (77 routes)
-- `8c6736f` — Refresh Bucket B: status pass on 6 living plans
-- `e7f698f` — Refresh Bucket D: 6 per-app user guides
-- `d3b7d53` — Promote check-doc-currency to CI gate
-- `a2b0887` — Address Codex review of S141 doc-triage commits
+- `571b80c` — Gate entra-external provider on full EXTERNAL_AZURE_AD_* triple
+- `d72f4c1` — Add binding self-test for check-doc-currency gate
+- `ff0f9f0` — Route system-alert emails through Dynamics with self-healing roster
 
 ### Memory updates
 
-None this session — all changes were durable in commits + CI.
+None this session — the operational state changes are durable in commits + docs (`TODO_EMAIL_NOTIFICATIONS.md`, `CREDENTIALS_RUNBOOK.md`). Future-me reading `notification-service.js` plus those two docs gets the full picture without needing memory.
 
 ## Production state
 
-- Four CI gates green: `check:atlas` (28 PG tables, 25 DV entities), `check:atlas:self-test` (11/11 patterns), `check:api-routes` (77 routes), and the new `check:doc-currency` (8 patterns).
-- No production code changes shipped this session — doc-only + one CI script + one workflow file.
-- Wave 1 stability clock: still ticking until 2026-05-17.
-- The S141 doc-triage carryover stack (S138 → S139 → S140 → S141) is now fully closed. `docs/DOC_TRIAGE_2026-05-07.md` "Open follow-ups" section is all struck through.
+- Five CI gates green: `check:atlas` (28 PG / 25 DV), `check:atlas:self-test` (11/11), `check:api-routes` (77 routes), `check:doc-currency` (8 patterns), `check:doc-currency:self-test` (12 fixtures).
+- All three S142 commits pushed and deployed; production deploy succeeded (`https://wmkfresearch.vercel.app`).
+- Wave 1 stability clock: still ticking until 2026-05-17 (9 days as of session end).
+- Notification email path live; recipient roster = active superusers (today: Justin + Connor).
+- `PENDING_ADMIN_REQUESTS.md` retired entirely. No outstanding IT asks as of 2026-05-08.
 
-## Where to pick up — Session 142
+## Where to pick up — Session 143
 
-### A. **Carryover from S141 Codex review (task #6) — concrete code fix**
+### A. Design-doc punch list (no carryover; pick by appetite)
 
-`pages/api/auth/[...nextauth].js:56` gates the `entra-external` NextAuth provider on `EXTERNAL_WELL_KNOWN && EXTERNAL_AZURE_AD_CLIENT_ID` only. The `EXTERNAL_AZURE_AD_CLIENT_SECRET` is consumed downstream but isn't part of the registration guard. Result: a partial-config deployment with tenant_id + client_id but no secret will register the provider and fail at sign-in time instead of cleanly skipping registration.
+Per the S142 design-doc survey (research-summary; verify before committing):
 
-**Fix scope:**
-1. Tighten the gate at `pages/api/auth/[...nextauth].js:56` to also require `process.env.EXTERNAL_AZURE_AD_CLIENT_SECRET`. Verify any other env var the OAuth flow actually needs to succeed and add it to the gate.
-2. Smoke: confirm a staff-only deployment shape (all three `EXTERNAL_AZURE_AD_*` unset) does not register the provider and `/apply/*` traffic fails cleanly.
-3. Once the code matches the original intent, **revert the doc wording** in `docs/AUTHENTICATION_SETUP.md` and `docs/CREDENTIALS_RUNBOOK.md` from "tenant_id + client_id" back to "all three EXTERNAL_AZURE_AD_* vars". The S141 docs intentionally describe the actual two-var gate as documented behavior; that phrasing should not survive the code fix.
+1. **Prompt caching in Expertise Finder + Virtual Review Panel** (`docs/PROMPT_CACHING_PLAN.md`). Tier 1 quick wins shipped on Dynamics Explorer; expertise-finder's `match.js` and multi-llm-service's `_callClaude` haven't been wired with `cache_control` markers. Highest token-cost ROI; pure Justin code, no IT or Connor dependency. **Size: S–M (~2-3 hrs).**
 
-CLAUDE.md (project), `STRATEGY.md`, and `INTAKE_PORTAL_DESIGN.md` may also reference the "all three" wording — sweep after the code fix.
+2. **Retrospective Analysis Gap 1 — historical-request picker** (`docs/RETROSPECTIVE_ANALYSIS_PLAN.md`). Plan exists, no code. Build the cycle/program/status filter UI that auto-resolves SharePoint folders; reusable across all batch apps and unblocks Gaps 2-4. **Size: M (~4-6 hrs).**
 
-### B. **Doc-triage Step 5 (optional follow-up)**
+3. **Reviewer Interaction Stage 2a landing page** (`docs/REVIEWER_INTERACTION_DESIGN.md`). Token primitive + magic-link auth already shipped. Build the proposal-summary card, inline contact edit, honorarium opt-out, policy ack, accept/decline UI. PA-side workflows for sending are post-May-1 Connor work, but the UI itself is unblocked. **Size: M (~6-8 hrs).**
 
-The doc-currency CI gate is in place but does NOT yet have a self-test fixture (parallel to `scripts/check-coverage-self-test.js`). The S141 commit deliberately deferred this — patterns are simple regexes that humans can reason about. Worth picking up when the gate starts catching real regressions and patterns get hairier.
+4. **Executor extensions — multi-output PATCH coalescing** (`docs/EXECUTOR_EXTENSIONS_PLAN.md`). Correctness fix, not feature. Blocks Grant Reporting + Integrity Screener PA flows but not urgent. **Size: M (~4-6 hrs).**
 
-### C. **Externally gated** (don't pursue without signal)
+5. **Proposal Context Extraction field-set extension** (`docs/PROPOSAL_CONTEXT_EXTRACTION_PLAN.md`). Design-only; extend `DYNAMICS_AI_FIELDS_SPEC_v3_cn.md` with the 21 proposed AI fields. Implementation path is cycle-gated. **Size: S (~1-2 hrs).**
+
+My read: **#1 is the highest leverage smallest task** — pure cost win on existing volume, no UX risk, owns end-to-end. **#3 is most strategically valuable** but a multi-session arc.
+
+### B. Externally gated (don't pursue without signal)
 
 - **Wave 1 retirement** — earliest 2026-05-17. Flip `WAVE1_BACKEND_*` flags to `dataverse`, retire Postgres `system_settings` / `user_app_access` / `user_preferences`. Plan: `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md`, `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md`. Do not start before stability clock expires.
 - **Connor's PA-side `ExecutePrompt` build** — when it lands, run the parity oracle from both sides and verify byte-identical `wmkf_ai_rawoutput`. Vercel side is ready (`scripts/test-echo-parity.js`).
@@ -90,7 +79,7 @@ The doc-currency CI gate is in place but does NOT yet have a self-test fixture (
 - **Cycle-redesign signal from Sarah/Connor** — unlocks `STAGED_REVIEW_PIPELINE.md` build (V25 migration + Fit Screener + Pipeline orchestration app). Don't start the V25 migration until the redesigned cycle's shape locks.
 - **Wave 2 reviewer migration completion** — partial Wave 2 build set landed S139; remaining work cycle-gated to Connor cadence.
 
-### D. **Reviewer Finder agent-loop support** (carryover from S140)
+### C. Reviewer Finder agent-loop support (long-running carryover)
 
 Per memory `project_app_roadmap_2026-04-25.md`: Reviewer Finder is the top post-cycle priority and may need agent-loop support outside the Executor contract. No deadline; pick up when reviewer-discovery quality becomes the binding constraint.
 
@@ -98,41 +87,55 @@ Per memory `project_app_roadmap_2026-04-25.md`: Reviewer Finder is the top post-
 
 | File | Status | Purpose |
 |---|---|---|
-| `docs/archive/*` | NEW (×6) | "Other" batch archived from `docs/` |
-| `docs/AUTHENTICATION_SETUP.md` | EDITED | 3-layer defense, dual-provider, EMERGENCY_AUTH_BYPASS, current guards (S141 + Codex P1.1 fix) |
-| `docs/CREDENTIALS_RUNBOOK.md` | EDITED | Full env-var inventory, External tenant gate phrasing, Per-App Model Overrides (S141 + Codex P2.1 fix) |
-| `docs/API_ROUTE_SECURITY_MATRIX.md` | EDITED | Persistence column on all 77 routes (closes Atlas v1 gap) |
-| `docs/STRATEGY.md` | EDITED | Status table updated, IT deps current, contradictory paragraph rewritten (S141 + Codex P1.3 fix) |
-| `docs/GRANT_CYCLE_LIFECYCLE.md` | EDITED | What's-live-now header, Field Sets A–D deployed, Wave 1/2 framing |
-| `docs/REVIEWER_LIFECYCLE_PROPOSAL.md` | EDITED | Phase A/C/D shipped status table |
-| `docs/STAGED_REVIEW_PIPELINE.md` | EDITED | Status banner: not yet built, dormant |
-| `docs/STAGED_PIPELINE_IMPLEMENTATION_PLAN.md` | EDITED | Status banner: dormant pending cycle redesign |
-| `docs/DYNAMICS_SCHEMA_ANNOTATION.md` | EDITED | Scope banner; Atlas as authoritative; schema-diff vs schema-map gotcha |
-| `docs/guides/*.md` | EDITED (×5) | Spot-refresh per current app behavior |
-| `docs/APPLICATION_STATE_ATLAS.md` | EDITED | v1 known-gap (endpoint persistence) marked closed |
-| `docs/DOC_TRIAGE_2026-05-07.md` | EDITED | All Open follow-ups closed |
-| `scripts/check-doc-currency.js` | EDITED | Promoted to gate (exit 1), bug fixes, allowlists, negation-guard fix |
-| `package.json` | EDITED | Added `check:doc-currency` script |
-| `.github/workflows/test.yml` | EDITED | Added `check:doc-currency` to CI |
+| `pages/api/auth/[...nextauth].js` | EDITED | entra-external gate now requires all three EXTERNAL_AZURE_AD_* vars |
+| `docs/AUTHENTICATION_SETUP.md` | EDITED | Two-var → "all three" wording reverted |
+| `docs/CREDENTIALS_RUNBOOK.md` | EDITED | "All three" wording reverted; NOTIFICATION_EMAIL_FROM rewritten as sole notification var |
+| `docs/SECURITY_ARCHITECTURE.md` | EDITED | NOTIFICATION_EMAIL_TO row dropped; NOTIFICATION_EMAIL_FROM description updated |
+| `scripts/check-doc-currency-self-test.js` | NEW | 12-fixture binding self-test for the doc-currency gate |
+| `package.json` | EDITED | Added `check:doc-currency:self-test` script |
+| `.github/workflows/test.yml` | EDITED | Added `check:doc-currency:self-test` to CI |
+| `CLAUDE.md` | EDITED | Coverage-tools rule updated to reference both self-tests |
+| `lib/services/notification-service.js` | REWRITTEN | Dynamics transport + active-superuser recipient query; emailAdmins opt-in |
+| `docs/TODO_EMAIL_NOTIFICATIONS.md` | REWRITTEN | Reflects Dynamics-transport reality and self-healing roster |
+| `docs/STRATEGY.md` | EDITED | "No outstanding admin asks" status row |
+| `docs/BACKEND_AUTOMATION_PLAN.md` | EDITED | Archive-path link updates; "all asks resolved" note |
+| `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md` | EDITED | Archive-path link update |
+| `docs/PENDING_ADMIN_REQUESTS.md` → `docs/archive/` | RENAMED | All four sections resolved or retired |
+| `scripts/probe-sharepoint-write.js` | EDITED | Archive-path link update |
 
 ## Testing
 
 ```bash
-# All four should be green at session start (and stay that way)
+# All five should be green at session start (and stay that way)
 npm run check:atlas
 npm run check:atlas:self-test
 npm run check:api-routes
 npm run check:doc-currency
+npm run check:doc-currency:self-test
 
-# For the S142 P1.1 fix on entra-external gate:
-# 1. Read pages/api/auth/[...nextauth].js around line 56 (the register guard)
-# 2. After the fix, smoke locally with EXTERNAL_AZURE_AD_CLIENT_SECRET unset:
-#    confirm /apply route does not 200; confirm provider not in /api/auth/providers list
+# Notification path smoke test (won't be needed unless something looks off):
+node -e "
+const fs=require('fs');
+const env=fs.readFileSync('.env.local','utf8');
+for (const line of env.split('\n')) {
+  const m=line.match(/^([A-Z_][A-Z0-9_]*)=(.*)\$/);
+  if (m) process.env[m[1]]=m[2].trim().replace(/^\"(.*)\"\$/,'\$1').replace(/^'(.*)'\$/,'\$1');
+}
+(async()=>{
+  const N=require('./lib/services/notification-service');
+  console.log('isEmailEnabled:', N.isEmailEnabled());
+  console.log('Recipients:', await N.getAdminRecipients());
+})().catch(e=>{console.error(e);process.exit(1)});
+"
 ```
 
-## How to know Session 142 went well
+## Carryover hygiene
 
-- Task #6 (entra-external gate) is closed: code change shipped, smoke passed, doc wording reverted to "all three" in AUTHENTICATION_SETUP + CREDENTIALS_RUNBOOK + any other refs.
-- All four CI gates stayed green throughout.
+No destructive carryover items in this session prompt. The `PENDING_ADMIN_REQUESTS.md` archive happened *this* session after grep-verifying every section's status against live state; no further action needed in S143.
+
+## How to know Session 143 went well
+
+- Picked one item from the punch list and shipped meaningful progress on it (or correctly chose a low-key session).
+- All five CI gates stayed green throughout.
 - No new entity / table / endpoint shipped without an Atlas update in the same commit (ground-truth rule).
-- If session goes long, externally-gated threads (Wave 1 retirement, Connor's PA work) remain untouched unless a signal landed.
+- Externally-gated threads remain untouched unless a signal landed.
