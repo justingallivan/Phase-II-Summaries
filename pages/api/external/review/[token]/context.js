@@ -75,17 +75,10 @@ export default async function handler(req, res) {
     // Per docs/INTAKE_PORTAL_SCHEMA_CHANGES.md, only the PI lookup keeps a
     // UNION with the projectleader field; the legacy `wmkf_copi1..5_value`
     // slots are obsolete read-only legacy. Junction is the sole source for
-    // co-PIs. Used by Stage 2a's proposal summary card so reviewers can spot
-    // conflicts of interest against co-PIs, not just the lead PI. Non-fatal:
-    // a failed fetch returns an empty list and the card omits the row.
+    // co-PIs. Only consumed by Stage2aView's proposal card, so gate the
+    // fetch to views that render that card (matches `needStage2aData`
+    // computed below). Non-fatal: a failed fetch returns an empty list.
     let coPIs = [];
-    try {
-      coPIs = await bypassDynamicsRestrictions('external-context-copis', () =>
-        fetchCoPIs(request.akoya_requestid),
-      );
-    } catch (e) {
-      console.error('[external context] co-PI fetch failed:', e.message);
-    }
 
     // For Stage 2b (materials view), continue listing files. For pre-materials
     // states, files are not surfaced — and we save the Graph round trip.
@@ -113,6 +106,14 @@ export default async function handler(req, res) {
       engagementState.view === 'stage2a'
       || (engagementState.view === 'declined' && engagementState.canFlipState);
     if (needStage2aData) {
+      try {
+        coPIs = await bypassDynamicsRestrictions('external-context-copis', () =>
+          fetchCoPIs(request.akoya_requestid),
+        );
+      } catch (e) {
+        console.error('[external context] co-PI fetch failed:', e.message);
+      }
+
       try {
         policies = await getActivePolicies(STAGE_2A_POLICY_SLOTS);
       } catch (e) {
@@ -270,6 +271,7 @@ async function fetchCoPIs(requestId) {
     expand: 'wmkf_Contact($select=fullname,firstname,lastname)',
     filter: `_wmkf_request_value eq ${requestId} and wmkf_role eq 100000001`,
     orderby: 'wmkf_authorposition asc,createdon asc',
+    top: 50, // defensive cap; expected cardinality is 0-5 per request
   });
 
   const byContactId = new Map();

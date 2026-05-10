@@ -93,9 +93,20 @@ const FLOOR = 2048;
   }
 
   // ── 4. expertise-finder ─────────────────────────────────────────────────
+  // Post-S144 the routes pass a cacheable system block built from
+  // buildCacheableSystemPrompt(roster). Measure the realistic shipped size
+  // with a representative roster — the real call path varies with active
+  // roster, but a typical foundation roster falls in this shape.
   {
-    const { SYSTEM_PROMPT } = await import('../shared/config/prompts/expertise-finder.js');
-    rows.push({ app: 'expertise-finder (as-shipped)', desc: 'SYSTEM_PROMPT string; no cache_control', tokens: await countTokens(SYSTEM_PROMPT), hasCacheControl: false });
+    const { buildCacheableSystemPrompt } = await import('../shared/config/prompts/expertise-finder.js');
+    const synthRoster = buildSyntheticRoster();
+    const sys = buildCacheableSystemPrompt(synthRoster);
+    rows.push({
+      app: `expertise-finder (roster of ${synthRoster.length})`,
+      desc: 'buildCacheableSystemPrompt with representative active roster',
+      tokens: await countTokens(sys),
+      hasCacheControl: true,
+    });
   }
 
   // ── 5. virtual-review-panel ─────────────────────────────────────────────
@@ -152,3 +163,29 @@ const FLOOR = 2048;
     for (const r of dead) console.log(`    - ${r.app} (${r.tokens} tok)`);
   }
 })().catch(e => { console.error('FATAL:', e.message); console.error(e.stack); process.exit(1); });
+
+/**
+ * Synthetic active-roster used to measure Expertise Finder's cached system
+ * size without depending on a live Postgres connection. Member field densities
+ * mirror the typical shape of expertise_roster rows.
+ */
+function buildSyntheticRoster() {
+  const filler = (n) => 'lorem ipsum keywords domain terms separated by commas '.padEnd(n, '. ').slice(0, n);
+  const mk = (i, role_type, role) => ({
+    name: `Member ${i}`,
+    role_type,
+    role,
+    affiliation: 'Institution Name University Department of Science',
+    primary_fields: filler(120),
+    keywords: filler(180),
+    subfields_specialties: filler(150),
+    methods_techniques: filler(150),
+    expertise: filler(220),
+    keck_affiliation: 'Keck Research Liaison',
+  });
+  const roster = [];
+  for (let i = 1; i <= 6; i++) roster.push(mk(i, 'Research Program Staff', 'Program Director'));
+  for (let i = 1; i <= 6; i++) roster.push(mk(i, 'Consultant', 'External Consultant'));
+  for (let i = 1; i <= 4; i++) roster.push(mk(i, 'Board', 'Board Member'));
+  return roster;
+}
