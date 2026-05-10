@@ -85,11 +85,18 @@ export default async function handler(req, res) {
       }
     }
 
-    // For Stage 2a (pre-materials), fetch active policies and contact-row
-    // fallback for prefill. We don't do this work for downstream views.
+    // Stage 2a data (policies + prefill) is needed whenever the reviewer
+    // could re-render Stage2aView. That includes the initial stage2a view
+    // AND the declined view when canFlipState is still true (re-accept path
+    // — dispatcher pushes a 'stage2a' override that renders Stage2aView with
+    // the cached /context payload). Without this, the re-accept page loses
+    // its prefilled contact fields.
     let policies = null;
     let contactPrefill = null;
-    if (engagementState.view === 'stage2a') {
+    const needStage2aData =
+      engagementState.view === 'stage2a'
+      || (engagementState.view === 'declined' && engagementState.canFlipState);
+    if (needStage2aData) {
       try {
         policies = await getActivePolicies(STAGE_2A_POLICY_SLOTS);
       } catch (e) {
@@ -155,7 +162,7 @@ export default async function handler(req, res) {
         impact: suggestion.wmkf_reviewerimpact ?? null,
         risk: suggestion.wmkf_reviewerrisk ?? null,
         overallRating: suggestion.wmkf_revieweroverallrating ?? null,
-        ...(engagementState.view === 'stage2a'
+        ...(needStage2aData
           ? buildStage2aPrefill(suggestion, reviewer, contactPrefill)
           : {}),
       },
