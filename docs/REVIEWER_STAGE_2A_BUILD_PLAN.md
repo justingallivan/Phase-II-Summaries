@@ -22,9 +22,9 @@ Rationale:
 
 **Not in this slice:**
 - Calendar invites (Stage 3 — separate build)
-- Decline page UI (this slice fires the decline event with reason/referral capture; the dedicated decline-page polish is Stage 3)
 - Stage 2b transition logic (materials-available state)
 - Reminder cadence (Stage 4)
+- Acknowledgment + referral-handoff emails on decline (PA-side trigger, deferred)
 
 ---
 
@@ -325,12 +325,14 @@ Stack on the page:
 1. Proposal summary card — title, applicant institution, PI, co-PIs, abstract. Read-only.
 2. "Confirm your contact info" card — six text fields (first name, last name, nickname, title, affiliation, email) + ORCID. Inline-editable.
 3. "Honorarium" card — single checkbox: "I'd prefer to decline the honorarium." Default unchecked.
-4. **Policy acknowledgment cards (two, stacked).** Each card renders the `title` + `body` of the active version of its slot, fetched from Dynamics on page load (`reviewer-coi` then `reviewer-ai-use`). Each has a single required checkbox: *"I have read and acknowledge this policy."* Disabled by default; checked state is local UI state until accept submission. Cards include the version label (`wmkf_version`) in small print so it's visible in screenshots / printouts.
-5. Accept / Decline buttons. **Accept is disabled until both policy checkboxes are checked.** Decline opens a small modal with reason + referral fields (none required) — does not require policy acks per design doc.
+4. **Policy acknowledgment cards (two, stacked, compact).** Each card shows the policy title + a `Read policy →` button that opens a modal containing the active version's full body. The modal's `I have read and acknowledge` button is initially disabled (label: `Scroll to acknowledge`); enabled when the reviewer scrolls the body container to within ~20px of the bottom, OR immediately if the body fits without overflow (short policy edge case). Closing the modal without acknowledging leaves the parent card unchanged. After ack, the card flips to `✓ Acknowledged · v<wmkf_versionlabel>` with a quieter `View again` link to re-open the modal read-only. Version label visible in card state so it's captured in any screenshot/print.
+5. Accept / Decline buttons. **Accept is disabled until both policy cards are in the acknowledged state.** Decline transitions the page dispatcher to a dedicated `decline-form` view (not a modal — referral capture is the highest-value field and benefits from a full-page layout with generous textarea + helper copy). Same URL, same token; back-navigation returns to Stage 2a.
 
 ### Behavior
 
-- **Decline UI surface — open question.** The plan currently models decline as a small modal triggered by the Decline button. The design doc specifies a dedicated decline *page* with referral-first / reason-second field order. Modal is a UX shortcut that may degrade the referral-capture quality. Resolve before slice 1 ships — see §8 question 6.
+- **Decline UI:** dedicated `decline-form` view in the dispatcher (locked S143). Page layout, not modal — generous referral textarea (6+ rows), reason picklist + optional reason text, primary `Submit` button + secondary `Submit without explanation` affordance. Referral-first / reason-second field order per design doc.
+- **Policy ack UI:** modal per policy (locked S143) with scroll-to-bottom-enables-ack (auto-enable for short policies that don't overflow). Reviewers expect the read-and-click compliance pattern; AI-use policy in particular is content reviewers will want to read substantively.
+- **Form-factor target:** desktop / laptop / iPad. Mobile renders gracefully via Tailwind defaults but is not a design target; address mobile-specific issues only on user complaint.
 - Decline does not require contact-form completion or policy acks.
 - Accept requires both policy acks (UI gate + server validation). Does **not** require contact-form completion — fields are pre-filled from suggestion / potentialreviewer / contact. If the reviewer hasn't edited anything, no engagement-row corrections are written; only the ack lookups, honorarium opt-out, and response stamps. (This is named explicitly because Codex finding #8 flagged it as an implicit decision.)
 - Honorarium opt-out is **editable on the page but only persists on accept submit.** No autosave. Same applies to contact corrections — slice 1 does not implement Google-Docs-style draft persistence (per design doc that's a Stage 4 working-window feature).
@@ -385,13 +387,15 @@ A repeat of the current action (e.g., already-accepted reviewer clicks accept ag
 
 ## 8. Open questions
 
-1. **Verify Dataverse entity audit is enabled on `wmkf_appreviewersuggestions`.** §2 audit model relies on it for field-level before/after on contact corrections. If not enabled, enable as a pre-build step (Connor's delegation memo permits).
-2. **Where does the PD email/name come from on the post-accept confirmation screen?** Per design doc this is "optional," but if shown it has to resolve from somewhere — probably `akoya_request.wmkf_programdirector` → `systemuser`. Confirm pattern.
-3. **`wmkf_DeclineReason` deployment status.** Locked-for-add per S136 plan but not yet verified deployed. Pre-build action: metadata probe; deploy via `apply-dataverse-schema.js` if not present.
-4. **`wmkf_responsetype` picklist extension.** Need to add `withdrawn_sufficient=100000003`. Verify next free option-set integer before deploying.
-5. **`parentcustomerid` discrepancy signal — backlog framing.** Per Codex finding #2: deferred from slice 1 but should not stay vague indefinitely. Decide before COI tooling builds whether this is a computed staff-visible flag, a discrepancy-detection cron, or a real-time check at COI judgment time.
-6. **Decline-as-modal vs. decline-as-page.** Design doc specifies a dedicated decline *page* with referral-first / reason-second field order. Plan currently models a small modal. Decide before build — modal is faster but may degrade referral-capture quality. (Codex finding #8.)
-7. **COI policy body content.** AI-use body lifts directly from the existing review form footer. COI body needs a fresh write — staff feedback on wording must land, then a `wmkf_policy_version` row gets seeded with that body before slice 1 ships to a real cycle. Pull the wording into the staff feedback meeting that the design doc anticipates.
+1. ✓ **Dataverse entity audit on `wmkf_appreviewersuggestion`** — enabled in Session A via `scripts/enable-suggestion-audit.mjs`.
+2. **Where does the PD email/name come from on the post-accept confirmation screen?** Per design doc this is "optional," but if shown it has to resolve from somewhere — probably `akoya_request.wmkf_programdirector` → `systemuser.internalemailaddress`. Already in the `verify-suggestion-token` REQUEST_SELECT (Session B); pattern needs locking when post-accept confirmation lands in Session C/D.
+3. ✓ **`wmkf_DeclineReason` deployment** — shipped in Session A wave 3.
+4. ✓ **`wmkf_responsetype` picklist extension** — `withdrawn_sufficient=100000003` added in Session A via `scripts/extend-responsetype-picklist.mjs`.
+5. **`parentcustomerid` discrepancy signal — backlog framing.** Deferred from slice 1 but should not stay vague indefinitely. Decide before COI tooling builds whether this is a computed staff-visible flag, a discrepancy-detection cron, or a real-time check at COI judgment time.
+6. ✓ **Decline UX = dedicated page in dispatcher; policy acks = scroll-to-ack modals (locked S143).** See §6 page composition.
+7. **COI policy body content.** AI-use body lifts directly from the existing review form footer. COI body uses an explicit `[PLACEHOLDER]` in the seeded `wmkf_policyversion` row; staff feedback must land, then create a new version row in Dynamics and flip the `reviewer-coi` parent's `wmkf_activeversion` lookup before slice 1 ships to a real cycle.
+8. ✓ **Form-factor target = desktop / laptop / iPad** (locked S143). Mobile renders gracefully via Tailwind defaults; not optimized; address only on user complaint.
+9. **Dataverse security role for `wmkf_policy*` delete privilege** — TODO before slice 1 ships to a real cycle. Restrict delete to admin role; ordinary policy-body editors should not be able to hard-delete used version rows. Per immutability rules in §4a.
 
 ---
 
@@ -404,15 +408,34 @@ A repeat of the current action (e.g., already-accepted reviewer clicks accept ag
 
 ---
 
-## 10. Self-check before build
+## 10. Sessions A–B status (shipped) and Session C self-check
 
-- [ ] `npm run check:atlas` green (after `wmkf_appreviewersuggestions` field additions and the new `wmkf_policy` / `wmkf_policy_version` entities, atlas pages must list them)
-- [ ] `npm run check:atlas:self-test` green
-- [ ] `npm run check:api-routes` green (after new `/api/external/*` routes added to matrix)
-- [ ] `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` appended with the field-add summary
-- [ ] `docs/atlas/dataverse-wmkf-appreviewersuggestion.md` updated with new engagement-scope correction fields, honorarium opt-out, decline-reason picklist + referral, withdrawal stamp, and ack lookups
-- [ ] New atlas page: `docs/atlas/dataverse-wmkf-policy-and-policy-version.md` for the policy entity pair
-- [ ] `wmkf_responsetype` picklist extended with `withdrawn_sufficient`
-- [ ] `wmkf_DeclineReason` field deployed (verify metadata probe before slice 1 commit)
-- [ ] Dataverse entity audit confirmed enabled on `wmkf_appreviewersuggestions`
-- [ ] Two `wmkf_policy` parent rows seeded (`reviewer-coi`, `reviewer-ai-use`) with one Active child each before slice 1 ships to a real cycle
+### Sessions A and B — shipped
+
+- [x] Wave 3 schema deployed (commit `d07e72a`): `wmkf_policy`, `wmkf_policyversion`, 13 new fields on `wmkf_appreviewersuggestion`, two policy lookups, alt-key on `wmkf_policy.wmkf_code`
+- [x] `wmkf_responsetype` picklist extended with `withdrawn_sufficient = 100000003`
+- [x] Dataverse entity audit enabled on `wmkf_appreviewersuggestion`
+- [x] Two `wmkf_policy` parents seeded with one Active child each (COI body is an explicit placeholder pending staff wording — open question 7)
+- [x] Atlas pages updated: `dataverse-wmkf-appreviewersuggestion.md` extended, new `dataverse-wmkf-policy-and-policy-version.md`
+- [x] `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` audit row appended
+- [x] Backend code (commit `18c69ec`): policy-fetcher, extended `/context`, new `/respond` endpoint, adapter additions including `applyStage2aResponse`, optimistic locking via `If-Match`, idempotency, active-child sanity, state-machine guard
+- [x] `docs/API_ROUTE_SECURITY_MATRIX.md` updated for new `/respond` route
+- [x] All five CI gates green throughout: `check:atlas`, `check:atlas:self-test`, `check:api-routes`, `check:doc-currency`, `check:doc-currency:self-test`
+- [x] `npm run build` succeeds end-to-end
+
+### Session C — self-check before commit
+
+- [ ] State-driven view dispatcher renders the right Stage 2a / accepted-pre-materials / declined / decline-form / stage2b / submitted / withdrawn-sufficient view based on `engagementState.view` from `/context`
+- [ ] Browser back-button works for Stage 2a ⇄ decline-form transitions (use `history.pushState` with discriminated state object, not just local React state)
+- [ ] Browser refresh on any view lands deterministically — view comes from server engagement state, not preserved client state
+- [ ] Screen-reader focus moves to the new view's heading on dispatch transitions
+- [ ] Modal scroll-to-bottom detection re-checks on viewport resize, font-size change, and after first markdown render (not just at initial mount)
+- [ ] Auto-enable for short policies (body fits without overflow at first measurement) works correctly
+- [ ] Accept button disabled until both local ack states are true; mirrors server's `policy_ack_required` validation
+- [ ] Decline form allows submit without contact-correction or policy-ack completion
+- [ ] 409 (state-machine guard) and 412 (optimistic-lock conflict) paths render clear, recoverable copy and re-fetch where appropriate
+- [ ] Idempotent repeat actions (double-submit, two-device click) don't mutate visible state unexpectedly
+- [ ] Existing Stage 2b review-form path remains functional for `view === 'stage2b'` users (regression check on the materials-view flow)
+- [ ] All five CI gates green
+- [ ] `npm run build` succeeds
+- [ ] Smoke verification against the production test suggestion: end-to-end accept and decline flows on a real engagement
