@@ -6,13 +6,24 @@
  * touch the Stage 2b flow.
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReviewFormFields from './ReviewFormFields';
 
 export default function MaterialsView({ data, token }) {
   const submitted = !!data.submission?.receivedAt;
+  const headingRef = useRef(null);
+  useEffect(() => {
+    if (headingRef.current) headingRef.current.focus();
+  }, []);
   return (
     <div className="space-y-6">
+      <h2
+        ref={headingRef}
+        tabIndex={-1}
+        className="text-xl font-semibold text-gray-900 outline-none sr-only"
+      >
+        {submitted ? 'Review submitted' : 'Submit your review'}
+      </h2>
       <ProposalCard data={data} />
       <FilesCard data={data} token={token} />
       {submitted && <SubmittedNotice data={data} />}

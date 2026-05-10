@@ -32,22 +32,14 @@ export default function DeclineFormView({ token, onCancel, onDeclined }) {
     if (headingRef.current) headingRef.current.focus();
   }, []);
 
-  async function submitDecline() {
+  async function submitDeclineWith(decline) {
     setError(null);
     setSubmitting(true);
     try {
-      const body = {
-        action: 'decline',
-        decline: {
-          referral: referral.trim() || undefined,
-          reasonPicklist: reasonPicklist || undefined,
-          reasonText: reasonText.trim() || undefined,
-        },
-      };
       const resp = await fetch(`/api/external/review/${encodeURIComponent(token)}/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ action: 'decline', decline }),
       });
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok || !json.ok) {
@@ -58,14 +50,32 @@ export default function DeclineFormView({ token, onCancel, onDeclined }) {
         } else {
           setError('Could not submit your response. Please try again.');
         }
+        setSubmitting(false);
         return;
       }
-      onDeclined();
+      // Success — parent will refetch and switch view; component unmounts.
+      await onDeclined();
     } catch (e) {
       setError('Network error. Please try again.');
-    } finally {
       setSubmitting(false);
     }
+  }
+
+  // Primary submit: send whatever the reviewer typed.
+  function submitDecline() {
+    submitDeclineWith({
+      referral: referral.trim() || undefined,
+      reasonPicklist: reasonPicklist || undefined,
+      reasonText: reasonText.trim() || undefined,
+    });
+  }
+
+  // Secondary affordance: explicitly send an empty decline payload, even if
+  // the reviewer typed something but then changed their mind. The label
+  // ("Submit without explanation") promises that nothing they typed will be
+  // submitted; this honors that promise.
+  function submitDeclineEmpty() {
+    submitDeclineWith({});
   }
 
   return (
@@ -147,14 +157,24 @@ export default function DeclineFormView({ token, onCancel, onDeclined }) {
         >
           ← Back to invitation
         </button>
-        <button
-          type="button"
-          onClick={submitDecline}
-          disabled={submitting}
-          className="px-5 py-2.5 text-sm font-semibold rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-400"
-        >
-          {submitting ? 'Submitting…' : 'Submit decline'}
-        </button>
+        <div className="flex flex-col items-end gap-2">
+          <button
+            type="button"
+            onClick={submitDecline}
+            disabled={submitting}
+            className="px-5 py-2.5 text-sm font-semibold rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-400"
+          >
+            {submitting ? 'Submitting…' : 'Submit decline'}
+          </button>
+          <button
+            type="button"
+            onClick={submitDeclineEmpty}
+            disabled={submitting}
+            className="text-xs text-gray-500 hover:text-gray-700 underline-offset-2 hover:underline disabled:text-gray-300"
+          >
+            Submit without explanation
+          </button>
+        </div>
       </div>
     </div>
   );

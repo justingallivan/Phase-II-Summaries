@@ -137,11 +137,11 @@ export default function PolicyAckModal({
           {policy.body}
         </div>
 
-        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-200">
-          <p className="text-xs text-gray-500">
+        <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-4 border-t border-gray-200">
+          <p className="text-xs text-gray-500 sm:flex-shrink-0">
             Version {policy.versionLabel}
           </p>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={onClose}

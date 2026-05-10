@@ -4,6 +4,7 @@
 - [Verify before destructive carryover](feedback_verify_before_destructive_carryover.md) — drop/remove/retire/archive items from carryover lists must be grep-verified first. Carryover lists go stale; one nearly broke Reviewer Finder on 2026-05-03.
 - [Check memory before asking the user](feedback_check_memory_before_asking_user.md) — pre-send "has X happened" items are lookup tasks, not user-confirm tasks. Scan MEMORY.md + recent commits first; rewrite stale doc framing without asking.
 - [Red CI gates are P0 blockers, not side-notes](feedback_red_gates_are_p0.md) — a red `check:*` gate on main means the ground-truth rubric is being violated *right now*. Fix before any data-layer commits, regardless of who broke it.
+- [Surface every finding from external reviewers, don't filter](feedback_surface_full_review_findings.md) — when Codex / code-reviewer / similar raises issues, list ALL findings using the reviewer's own labels. My recommendations come after the full set, not instead of it.
 - [Dataverse schema-deploy gotchas](project_dataverse_schema_deploy_gotchas.md) — 429 throttling between metadata writes (wrap in 30s-backoff retry), `@odata.bind` keys are PascalCase nav-properties, queryAllRecords caps at 5000.
 
 ## Collaboration Notes

@@ -56,43 +56,50 @@ export default function ExternalReviewPage() {
     fetchContext();
   }, [token, fetchContext]);
 
-  // History integration: pushing a state with `{ stage2aView: 'decline-form' }`
-  // makes browser back/forward navigate between Stage 2a and the decline form
-  // even though the URL doesn't change. popstate clears the override.
+  // History integration: pushing a state with `{ stage2aView: <override> }`
+  // makes browser back/forward navigate between server-derived views and
+  // client-only overrides even though the URL doesn't change. Two valid
+  // overrides today: 'decline-form' (from Stage 2a) and 'stage2a' (flip
+  // back from the declined-confirmation view to re-accept). popstate
+  // restores whichever recognized override is on the history entry.
   useEffect(() => {
+    const VALID = new Set(['decline-form', 'stage2a']);
     function onPopState(e) {
       const next = e.state?.stage2aView || null;
-      setViewOverride(next === 'decline-form' ? 'decline-form' : null);
+      setViewOverride(VALID.has(next) ? next : null);
     }
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  function pushDeclineFormView() {
-    setViewOverride('decline-form');
+  function pushOverrideView(name) {
+    setViewOverride(name);
     if (typeof window !== 'undefined') {
-      window.history.pushState({ stage2aView: 'decline-form' }, '');
+      window.history.pushState({ stage2aView: name }, '');
     }
   }
 
-  function popDeclineFormView() {
+  function popOverrideView() {
     setViewOverride(null);
-    if (typeof window !== 'undefined' && window.history.state?.stage2aView === 'decline-form') {
+    if (typeof window !== 'undefined' && window.history.state?.stage2aView) {
       window.history.back();
     }
   }
 
   // After accept/decline submit succeeds, refresh server context. The new
   // view will be driven by the updated engagementState (e.g.,
-  // accepted-pre-materials or declined).
-  function onResponseSubmitted() {
+  // accepted-pre-materials or declined). Returns the fetch promise so
+  // child views can await the parent state update before resetting their
+  // local submit state — fixes the "button re-enables while context is
+  // mid-fetch" race that Codex flagged.
+  const onResponseSubmitted = useCallback(async () => {
     setViewOverride(null);
-    if (typeof window !== 'undefined' && window.history.state?.stage2aView === 'decline-form') {
-      // Replace history state so back-button doesn't return to the form.
+    if (typeof window !== 'undefined' && window.history.state?.stage2aView) {
+      // Replace history state so back-button doesn't return to the override.
       window.history.replaceState({}, '');
     }
-    fetchContext();
-  }
+    await fetchContext();
+  }, [fetchContext]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -111,8 +118,9 @@ export default function ExternalReviewPage() {
             data={state.data}
             token={token}
             viewOverride={viewOverride}
-            onRequestDecline={pushDeclineFormView}
-            onCancelDecline={popDeclineFormView}
+            onRequestDecline={() => pushOverrideView('decline-form')}
+            onRequestFlipToAccept={() => pushOverrideView('stage2a')}
+            onCancelOverride={popOverrideView}
             onResponseSubmitted={onResponseSubmitted}
           />
         )}
@@ -121,7 +129,7 @@ export default function ExternalReviewPage() {
   );
 }
 
-function Dispatcher({ data, token, viewOverride, onRequestDecline, onCancelDecline, onResponseSubmitted }) {
+function Dispatcher({ data, token, viewOverride, onRequestDecline, onRequestFlipToAccept, onCancelOverride, onResponseSubmitted }) {
   // Client-only views take precedence; otherwise dispatch on server-derived view.
   const view = viewOverride || data.engagementState?.view || 'stage2a';
 
@@ -130,7 +138,7 @@ function Dispatcher({ data, token, viewOverride, onRequestDecline, onCancelDecli
       return (
         <DeclineFormView
           token={token}
-          onCancel={onCancelDecline}
+          onCancel={onCancelOverride}
           onDeclined={onResponseSubmitted}
         />
       );
@@ -157,7 +165,7 @@ function Dispatcher({ data, token, viewOverride, onRequestDecline, onCancelDecli
       return (
         <DeclinedConfirmationView
           data={data}
-          onRequestFlipToAccept={onResponseSubmitted /* no-op until full flip flow */}
+          onRequestFlipToAccept={onRequestFlipToAccept}
         />
       );
 

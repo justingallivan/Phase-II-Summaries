@@ -19,7 +19,7 @@
  * pins the versions).
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import PolicyAckModal from './PolicyAckModal';
 
 export default function Stage2aView({ data, token, onRequestDecline, onAccepted }) {
@@ -47,6 +47,16 @@ export default function Stage2aView({ data, token, onRequestDecline, onAccepted 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
+  // Refs for restoring focus to the policy-card "Read policy" button when the
+  // modal closes — standard a11y pattern. Keyed by slot code.
+  const policyTriggerRefs = useRef({});
+
+  // Heading focus on view entry so screen readers announce the new view.
+  const headingRef = useRef(null);
+  useEffect(() => {
+    if (headingRef.current) headingRef.current.focus();
+  }, []);
+
   const allAcked = policySlots.every((s) => acknowledged[s]);
 
   function updateField(name, value) {
@@ -62,10 +72,14 @@ export default function Stage2aView({ data, token, onRequestDecline, onAccepted 
     setSubmitting(true);
     try {
       // Send only fields that differ from the server prefill (prevents
-      // writing junk when the reviewer didn't touch anything).
+      // writing junk when the reviewer didn't touch anything). Trim each
+      // value before comparing — a whitespace-only edit (trailing space
+      // pasted from email, accidental spacebar in an empty field) shouldn't
+      // count as a real change. The trimmed value is what gets written.
       const contactEdits = {};
       for (const [k, v] of Object.entries(contact)) {
-        if (v !== (prefill[k] || '')) contactEdits[k] = v;
+        const trimmed = (v || '').trim();
+        if (trimmed !== (prefill[k] || '').trim()) contactEdits[k] = trimmed;
       }
       const resp = await fetch(`/api/external/review/${encodeURIComponent(token)}/respond`, {
         method: 'POST',
@@ -90,19 +104,30 @@ export default function Stage2aView({ data, token, onRequestDecline, onAccepted 
         } else {
           setError('Could not submit your response. Please try again.');
         }
+        setSubmitting(false);
         return;
       }
-      // Success — bubble up to dispatcher to refresh server state and switch view.
-      onAccepted();
+      // Success — await parent's context refetch + view transition before
+      // letting the finally re-enable submit. This closes the race where a
+      // user could double-click Accept while the parent was mid-fetch.
+      // The component will unmount when the new view renders, so submitting
+      // doesn't need to be reset on success.
+      await onAccepted();
     } catch (e) {
       setError('Network error. Please try again.');
-    } finally {
       setSubmitting(false);
     }
   }
 
   return (
     <div className="space-y-6">
+      <h2
+        ref={headingRef}
+        tabIndex={-1}
+        className="text-xl font-semibold text-gray-900 outline-none sr-only"
+      >
+        Invitation to review
+      </h2>
       <ProposalSummaryCard proposal={data.proposal} />
 
       <ContactConfirmCard
@@ -128,6 +153,7 @@ export default function Stage2aView({ data, token, onRequestDecline, onAccepted 
               key={slot}
               policy={policy}
               isAcknowledged={!!acknowledged[slot]}
+              triggerRef={(el) => { policyTriggerRefs.current[slot] = el; }}
               onOpen={() => setOpenModalSlot(slot)}
             />
           );
@@ -164,10 +190,18 @@ export default function Stage2aView({ data, token, onRequestDecline, onAccepted 
           policy={policies[openModalSlot]}
           isAcknowledged={!!acknowledged[openModalSlot]}
           onAcknowledge={() => {
-            setAcknowledged((a) => ({ ...a, [openModalSlot]: true }));
+            const slot = openModalSlot;
+            setAcknowledged((a) => ({ ...a, [slot]: true }));
             setOpenModalSlot(null);
+            // Restore focus to the trigger button after the modal unmounts.
+            // Defer to next tick so the parent re-render has happened.
+            requestAnimationFrame(() => policyTriggerRefs.current[slot]?.focus());
           }}
-          onClose={() => setOpenModalSlot(null)}
+          onClose={() => {
+            const slot = openModalSlot;
+            setOpenModalSlot(null);
+            requestAnimationFrame(() => policyTriggerRefs.current[slot]?.focus());
+          }}
         />
       )}
     </div>
@@ -273,7 +307,7 @@ function HonorariumCard({ value, onChange, disabled }) {
   );
 }
 
-function PolicyAckCard({ policy, isAcknowledged, onOpen }) {
+function PolicyAckCard({ policy, isAcknowledged, triggerRef, onOpen }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-200 p-5 flex items-center justify-between gap-3">
       <div>
@@ -283,6 +317,7 @@ function PolicyAckCard({ policy, isAcknowledged, onOpen }) {
             ✓ Acknowledged · v{policy.versionLabel}{' '}
             <button
               type="button"
+              ref={triggerRef}
               onClick={onOpen}
               className="ml-2 text-xs text-gray-500 underline hover:text-gray-700"
             >
@@ -296,6 +331,7 @@ function PolicyAckCard({ policy, isAcknowledged, onOpen }) {
       {!isAcknowledged && (
         <button
           type="button"
+          ref={triggerRef}
           onClick={onOpen}
           className="flex-shrink-0 px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800"
         >
