@@ -2,8 +2,9 @@
  * GET /api/external/review/[token]/context
  *
  * Public endpoint (allowlisted in middleware). Verifies the magic-link token
- * and returns everything the landing page needs to render: proposal title,
- * reviewer info, downloadable file list, current submission state.
+ * and returns everything the landing page needs to render. The page picks
+ * which view to show (Stage 2a invitation vs Stage 2b materials vs
+ * confirmation states) based on `engagementState`.
  *
  * Side effect: stamps `wmkf_proposalfirstaccessed` if not already set. The
  * stamp is best-effort — a failed PATCH does not fail the page load.
@@ -20,6 +21,20 @@ import { getRequestSharePointBuckets } from '../../../../../lib/utils/sharepoint
 import { bypassDynamicsRestrictions } from '../../../../../lib/services/dynamics-context';
 import { reviewFormSchema } from '../../../../../lib/external/review-form-schema';
 import { isReviewerMaterial } from '../../../../../lib/external/reviewer-materials';
+import { getActivePolicies } from '../../../../../lib/external/policy-fetcher';
+
+// Slots Stage 2a renders. Hardcoded per build plan §4a.
+const STAGE_2A_POLICY_SLOTS = ['reviewer-coi', 'reviewer-ai-use'];
+
+// wmkf_reviewstatus picklist values; reversibility lock kicks in at materials_sent.
+const REVIEW_STATUS_ACCEPTED = 100000000;
+const REVIEW_STATUS_MATERIALS_SENT = 100000001;
+
+// wmkf_responsetype picklist values.
+const RESPONSE_TYPE_ACCEPTED = 100000000;
+const RESPONSE_TYPE_DECLINED = 100000001;
+const RESPONSE_TYPE_NO_RESPONSE = 100000002;
+const RESPONSE_TYPE_WITHDRAWN_SUFFICIENT = 100000003;
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -38,22 +53,10 @@ export default async function handler(req, res) {
 
     const { suggestion, request, reviewer } = verified;
 
-    // Walk all SharePoint buckets for this request and surface
-    // proposal-related files (everything except the Reviews/ subtree, which
-    // would leak other reviewers' uploads). Wrapped in bypass so the
-    // sharepointdocumentlocations query doesn't trip the ambient
-    // restrictions guard — external endpoints have no Dynamics context.
-    let files = [];
-    try {
-      files = await bypassDynamicsRestrictions('external-list-files', () =>
-        listProposalFiles(request.akoya_requestid, request.akoya_requestnum),
-      );
-    } catch (e) {
-      console.error('[external context] file listing failed:', e.message);
-      // Non-fatal — page still renders, file list shows the error.
-    }
+    // Engagement state — drives which view the page renders.
+    const engagementState = computeEngagementState(suggestion);
 
-    // Best-effort first-access stamp.
+    // Best-effort first-access stamp. (Existing behavior preserved.)
     if (!suggestion.wmkf_proposalfirstaccessed) {
       try {
         await bypassDynamicsRestrictions('external-first-access', () =>
@@ -68,12 +71,67 @@ export default async function handler(req, res) {
       }
     }
 
+    // For Stage 2b (materials view), continue listing files. For pre-materials
+    // states, files are not surfaced — and we save the Graph round trip.
+    let files = [];
+    if (engagementState.view === 'stage2b' || engagementState.view === 'submitted') {
+      try {
+        files = await bypassDynamicsRestrictions('external-list-files', () =>
+          listProposalFiles(request.akoya_requestid, request.akoya_requestnum),
+        );
+      } catch (e) {
+        console.error('[external context] file listing failed:', e.message);
+        // Non-fatal — page still renders, file list shows the error.
+      }
+    }
+
+    // For Stage 2a (pre-materials), fetch active policies and contact-row
+    // fallback for prefill. We don't do this work for downstream views.
+    let policies = null;
+    let contactPrefill = null;
+    if (engagementState.view === 'stage2a') {
+      try {
+        policies = await getActivePolicies(STAGE_2A_POLICY_SLOTS);
+      } catch (e) {
+        console.error('[external context] policy fetch failed:', e.message);
+        return res.status(500).json({ ok: false, reason: 'policy_misconfigured' });
+      }
+
+      // Conditional contact lookup: only if the reviewer has been promoted
+      // to a contact (rare today). Used as the lowest-priority prefill source.
+      const contactId = reviewer?._wmkf_contact_value;
+      if (contactId) {
+        try {
+          contactPrefill = await bypassDynamicsRestrictions('external-context-contact', () =>
+            DynamicsService.getRecord('contacts', contactId, {
+              select: [
+                'firstname', 'lastname', 'nickname', 'jobtitle', 'emailaddress1',
+                'wmkf_orcid', 'adx_organizationname', '_parentcustomerid_value',
+              ].join(','),
+            }),
+          );
+        } catch (e) {
+          console.error('[external context] contact lookup failed:', e.message);
+          // Non-fatal; prefill falls through without contact data.
+        }
+      }
+    }
+
     return res.status(200).json({
       ok: true,
+      engagementState,
       proposal: {
         title: request.akoya_title || 'Untitled proposal',
         requestNumber: request.akoya_requestnum,
         meetingDate: request.wmkf_meetingdate || null,
+        abstract: request.wmkf_abstract || null,
+        applicantInstitution: request['_akoya_applicantid_value@OData.Community.Display.V1.FormattedValue']
+          || request._akoya_applicantid_value_formatted
+          || null,
+        projectLeader: request['_wmkf_projectleader_value@OData.Community.Display.V1.FormattedValue']
+          || request._wmkf_projectleader_value_formatted
+          || null,
+        coPIs: extractCoPIs(request),
       },
       reviewer: {
         name: reviewer?.wmkf_name || null,
@@ -87,13 +145,30 @@ export default async function handler(req, res) {
         receivedAt: suggestion.wmkf_reviewreceivedat || null,
         filename: suggestion.wmkf_reviewfilename || null,
       },
+      // Strictly additive: existing review-form fields (affiliation/impact/
+      // risk/overallRating) always present so the materials-view page code
+      // doesn't break. Stage-2a-specific fields (firstName, etc.) are added
+      // when the engagement is in pre-materials state.
       prefill: {
         affiliation:
           suggestion.wmkf_revieweraffiliation || reviewer?.wmkf_organizationname || '',
         impact: suggestion.wmkf_reviewerimpact ?? null,
         risk: suggestion.wmkf_reviewerrisk ?? null,
         overallRating: suggestion.wmkf_revieweroverallrating ?? null,
+        ...(engagementState.view === 'stage2a'
+          ? buildStage2aPrefill(suggestion, reviewer, contactPrefill)
+          : {}),
       },
+      // Stage 2a-only: active policy text payloads.
+      policies: policies ? Object.fromEntries(
+        Object.entries(policies).map(([k, p]) => [k, {
+          slotCode: p.slotCode,
+          activeVersionId: p.activeVersionId,
+          versionLabel: p.versionLabel,
+          title: p.title,
+          body: p.body,
+        }])
+      ) : null,
       files,
       formSchema: reviewFormSchema,
     });
@@ -101,6 +176,117 @@ export default async function handler(req, res) {
     console.error('[external context] unexpected error:', e);
     return res.status(500).json({ ok: false, reason: 'server_error' });
   }
+}
+
+/**
+ * Compute the high-level engagement state from suggestion fields. Drives
+ * page-level view dispatch and the reversibility lock.
+ *
+ * `view`:
+ *   stage2a   — pre-materials, reviewer can still accept/decline/flip
+ *   accepted-pre-materials — accepted but materials not yet sent (post-accept screen)
+ *   declined  — reviewer declined (post-decline screen)
+ *   stage2b   — materials sent; existing review-form view
+ *   submitted — review received; post-submission view
+ *   withdrawn-sufficient — terminal, "no longer needed" copy
+ *
+ * `canFlipState`: true if Stage 2a's accept/decline buttons should still
+ * permit transitions. Locks once review status reaches materials_sent.
+ */
+function computeEngagementState(s) {
+  const responseType = s.wmkf_responsetype ?? null;
+  const reviewStatus = s.wmkf_reviewstatus ?? null;
+  const submitted = !!s.wmkf_reviewreceivedat;
+  const accepted = s.wmkf_accepted === true;
+  const declined = s.wmkf_declined === true;
+
+  // The lock: once staff have released materials, reviewer self-service flip ends.
+  const canFlipState = (reviewStatus === null || reviewStatus < REVIEW_STATUS_MATERIALS_SENT)
+    && responseType !== RESPONSE_TYPE_WITHDRAWN_SUFFICIENT;
+
+  let view;
+  if (responseType === RESPONSE_TYPE_WITHDRAWN_SUFFICIENT) {
+    view = 'withdrawn-sufficient';
+  } else if (submitted) {
+    view = 'submitted';
+  } else if (reviewStatus !== null && reviewStatus >= REVIEW_STATUS_MATERIALS_SENT) {
+    view = 'stage2b';
+  } else if (accepted) {
+    view = 'accepted-pre-materials';
+  } else if (declined) {
+    view = 'declined';
+  } else {
+    view = 'stage2a';
+  }
+
+  return {
+    view,
+    canFlipState,
+    accepted,
+    declined,
+    responseType,
+    responseReceivedAt: s.wmkf_responsereceivedat || null,
+    reviewStatus,
+  };
+}
+
+/**
+ * Walk the existing wmkf_copi1..5 lookups on the request and return a list
+ * of formatted display names (whichever co-PIs are populated). The lookups
+ * use the OData formatted-value annotation, so we read the *_formatted suffix.
+ */
+function extractCoPIs(request) {
+  const out = [];
+  for (let i = 1; i <= 5; i++) {
+    const formatted =
+      request[`_wmkf_copi${i}_value@OData.Community.Display.V1.FormattedValue`]
+      || request[`_wmkf_copi${i}_value_formatted`];
+    if (formatted) out.push(formatted);
+  }
+  return out;
+}
+
+/**
+ * Stage 2a contact-form prefill. Priority per build plan §3:
+ *   1. Suggestion engagement-row value (most recent input)
+ *   2. PotentialReviewer snapshot (directory entry)
+ *   3. Contact authoritative field (when promoted)
+ *   4. For affiliation only: parent-customer account name as a fallback hint
+ *   5. Empty
+ *
+ * Returns the prefill values the form's text inputs render with. The
+ * `affiliationHint` field is set when we fall back to parentcustomerid so
+ * the UI can show "From your prior role as PI on a {hint} grant".
+ */
+function buildStage2aPrefill(suggestion, reviewer, contact) {
+  const firstNonEmpty = (...vals) => {
+    for (const v of vals) {
+      if (v !== null && v !== undefined && String(v).trim() !== '') return v;
+    }
+    return '';
+  };
+
+  let affiliation = firstNonEmpty(
+    suggestion.wmkf_revieweraffiliation,
+    reviewer?.wmkf_organizationname,
+    contact?.adx_organizationname,
+  );
+  let affiliationHint = null;
+  if (!affiliation && contact?.['_parentcustomerid_value@OData.Community.Display.V1.FormattedValue']) {
+    affiliationHint = contact['_parentcustomerid_value@OData.Community.Display.V1.FormattedValue'];
+  }
+
+  return {
+    firstName: firstNonEmpty(suggestion.wmkf_reviewerfirstname, reviewer?.wmkf_firstname, contact?.firstname),
+    lastName: firstNonEmpty(suggestion.wmkf_reviewerlastname, reviewer?.wmkf_lastname, contact?.lastname),
+    nickname: firstNonEmpty(suggestion.wmkf_reviewernickname, contact?.nickname),
+    title: firstNonEmpty(suggestion.wmkf_reviewertitle, reviewer?.wmkf_title, contact?.jobtitle),
+    affiliation,
+    affiliationHint,
+    email: firstNonEmpty(suggestion.wmkf_revieweremail, reviewer?.wmkf_emailaddress, contact?.emailaddress1),
+    orcid: firstNonEmpty(suggestion.wmkf_reviewerorcid, contact?.wmkf_orcid),
+    honorariumOptOut: suggestion.wmkf_honorariumoptout === true,
+  };
 }
 
 /**
