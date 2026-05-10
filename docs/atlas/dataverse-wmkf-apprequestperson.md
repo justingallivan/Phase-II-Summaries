@@ -31,8 +31,7 @@ Alternate key:
 ## Read paths
 
 - `pages/api/reviewer-finder/contact-history.js` — UNION-read endpoint for a single contact's PI/co-PI history. Pulls junction (any role) + projectleader-field rows in parallel via `queryAllRecords`, dedupes on `(requestId, role)`, returns per-row `sources: ['junction'|'projectleader'|both]` provenance. Both source queries paginate via `@odata.nextLink` (5000 cap) — see commit history for the original `top:100` truncation bug.
-
-(No other read paths yet. The junction is new in S139; downstream consumers will land in subsequent sessions.)
+- `pages/api/external/review/[token]/context.js` (S144) — co-PI display list for Stage 2a's proposal summary card. Junction-only read (role=Co-PI), expand on `wmkf_Contact($select=fullname,firstname,lastname)`, ordered by `wmkf_authorposition asc,createdon asc`, dedup by contact GUID. The legacy `_wmkf_copi1..5_value` slot fields are NOT consulted here — see "Migration disposition" below.
 
 ## Write paths
 

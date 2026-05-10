@@ -71,6 +71,22 @@ export default async function handler(req, res) {
       }
     }
 
+    // Co-PIs: read from the wmkf_apprequestperson junction (role=Co-PI).
+    // Per docs/INTAKE_PORTAL_SCHEMA_CHANGES.md, only the PI lookup keeps a
+    // UNION with the projectleader field; the legacy `wmkf_copi1..5_value`
+    // slots are obsolete read-only legacy. Junction is the sole source for
+    // co-PIs. Used by Stage 2a's proposal summary card so reviewers can spot
+    // conflicts of interest against co-PIs, not just the lead PI. Non-fatal:
+    // a failed fetch returns an empty list and the card omits the row.
+    let coPIs = [];
+    try {
+      coPIs = await bypassDynamicsRestrictions('external-context-copis', () =>
+        fetchCoPIs(request.akoya_requestid),
+      );
+    } catch (e) {
+      console.error('[external context] co-PI fetch failed:', e.message);
+    }
+
     // For Stage 2b (materials view), continue listing files. For pre-materials
     // states, files are not surfaced — and we save the Graph round trip.
     let files = [];
@@ -138,7 +154,7 @@ export default async function handler(req, res) {
         projectLeader: request['_wmkf_projectleader_value@OData.Community.Display.V1.FormattedValue']
           || request._wmkf_projectleader_value_formatted
           || null,
-        coPIs: extractCoPIs(request),
+        coPIs,
       },
       reviewer: {
         name: reviewer?.wmkf_name || null,
@@ -238,19 +254,35 @@ function computeEngagementState(s) {
 }
 
 /**
- * Walk the existing wmkf_copi1..5 lookups on the request and return a list
- * of formatted display names (whichever co-PIs are populated). The lookups
- * use the OData formatted-value annotation, so we read the *_formatted suffix.
+ * Build the co-PI display list from the wmkf_apprequestperson junction.
+ * Returns an array of display name strings ordered by `wmkf_authorposition`
+ * then by createdon.
+ *
+ * Source: junction only. Per docs/INTAKE_PORTAL_SCHEMA_CHANGES.md, the
+ * legacy `wmkf_copi1..5_value` slot fields are obsolete read-only legacy
+ * post-S139 backfill — new code reads junction exclusively. The UNION
+ * strategy in the schema doc applies only to the PI lookup, not co-PIs.
  */
-function extractCoPIs(request) {
-  const out = [];
-  for (let i = 1; i <= 5; i++) {
-    const formatted =
-      request[`_wmkf_copi${i}_value@OData.Community.Display.V1.FormattedValue`]
-      || request[`_wmkf_copi${i}_value_formatted`];
-    if (formatted) out.push(formatted);
+async function fetchCoPIs(requestId) {
+  if (!requestId) return [];
+  const { records } = await DynamicsService.queryRecords('wmkf_apprequestpersons', {
+    select: '_wmkf_contact_value,wmkf_authorposition',
+    expand: 'wmkf_Contact($select=fullname,firstname,lastname)',
+    filter: `_wmkf_request_value eq ${requestId} and wmkf_role eq 100000001`,
+    orderby: 'wmkf_authorposition asc,createdon asc',
+  });
+
+  const byContactId = new Map();
+  for (const row of records) {
+    const cid = row._wmkf_contact_value;
+    if (!cid || byContactId.has(cid)) continue;
+    const c = row.wmkf_Contact;
+    const name = c?.fullname
+      || [c?.firstname, c?.lastname].filter(Boolean).join(' ').trim();
+    if (!name) continue;
+    byContactId.set(cid, name);
   }
-  return out;
+  return Array.from(byContactId.values());
 }
 
 /**
