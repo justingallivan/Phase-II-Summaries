@@ -19,7 +19,7 @@ import { sql } from '@vercel/postgres';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { BASE_CONFIG, getModelForApp, getFallbackModelForApp } from '../../../shared/config/baseConfig';
 import { loadModelOverrides } from '../../../lib/services/model-override-loader';
-import { createMatchingPrompt, SYSTEM_PROMPT } from '../../../shared/config/prompts/expertise-finder';
+import { buildCacheableSystemPrompt, buildUserPrompt } from '../../../shared/config/prompts/expertise-finder';
 import { logUsage, estimateCostCents } from '../../../lib/utils/usage-logger';
 import { LLMClient } from '../../../lib/services/llm-client';
 import { createHash } from 'crypto';
@@ -130,17 +130,21 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'No active roster members found' });
     }
 
-    const prompt = createMatchingPrompt(proposalText, rosterResult.rows, additionalNotes);
+    // See match.js for the cache split rationale. Batch runs hit the cache
+    // hardest — every proposal after the first reuses the same system
+    // prefix (task + rules + roster + output spec).
+    const systemPrompt = buildCacheableSystemPrompt(rosterResult.rows);
+    const userPrompt = buildUserPrompt(proposalText, additionalNotes);
 
     let result;
     let modelUsed = primaryModel;
 
     try {
-      result = await callClaude(apiKey, primaryModel, prompt);
+      result = await callClaude(apiKey, primaryModel, systemPrompt, userPrompt);
     } catch (primaryError) {
       console.warn(`[ExpertiseFinder:Batch] Primary model (${primaryModel}) failed: ${primaryError.message}, trying fallback...`);
       modelUsed = fallbackModel;
-      result = await callClaude(apiKey, fallbackModel, prompt);
+      result = await callClaude(apiKey, fallbackModel, systemPrompt, userPrompt);
     }
 
     const latencyMs = Date.now() - startTime;
@@ -235,12 +239,12 @@ export default async function handler(req, res) {
   });
 }
 
-async function callClaude(apiKey, model, prompt) {
+async function callClaude(apiKey, model, systemPrompt, userPrompt) {
   // appName omitted — route does its own logging with modelUsed tracking.
   const claude = new LLMClient({ apiKey, model });
   const r = await claude.complete({
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: prompt }],
+    system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+    messages: [{ role: 'user', content: userPrompt }],
     maxTokens: 4096,
     temperature: 0.2,
   });

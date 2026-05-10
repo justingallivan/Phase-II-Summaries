@@ -18,7 +18,7 @@ import { sql } from '@vercel/postgres';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { BASE_CONFIG, getModelForApp, getFallbackModelForApp } from '../../../shared/config/baseConfig';
 import { loadModelOverrides } from '../../../lib/services/model-override-loader';
-import { createMatchingPrompt, SYSTEM_PROMPT } from '../../../shared/config/prompts/expertise-finder';
+import { buildCacheableSystemPrompt, buildUserPrompt } from '../../../shared/config/prompts/expertise-finder';
 import { logUsage, estimateCostCents } from '../../../lib/utils/usage-logger';
 import { LLMClient } from '../../../lib/services/llm-client';
 import { safeFetch } from '../../../lib/utils/safe-fetch';
@@ -76,19 +76,23 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'No active roster members found. Please add members to the roster first.' });
     }
 
-    // Build prompt
-    const prompt = createMatchingPrompt(proposalText, rosterResult.rows, additionalNotes);
+    // Split into a large cacheable system prompt (task + rules + roster +
+    // output spec) and a small variable user prompt (proposal + notes). The
+    // static portion is marked with `cache_control: ephemeral` so repeat
+    // matches within the 5-min TTL only pay for the variable suffix. Roster
+    // edits naturally invalidate the cache.
+    const systemPrompt = buildCacheableSystemPrompt(rosterResult.rows);
+    const userPrompt = buildUserPrompt(proposalText, additionalNotes);
 
-    // Call Claude
     let result;
     let modelUsed = primaryModel;
 
     try {
-      result = await callClaude(apiKey, primaryModel, prompt);
+      result = await callClaude(apiKey, primaryModel, systemPrompt, userPrompt);
     } catch (primaryError) {
       console.warn(`[ExpertiseFinder] Primary model (${primaryModel}) failed: ${primaryError.message}, trying fallback...`);
       modelUsed = fallbackModel;
-      result = await callClaude(apiKey, fallbackModel, prompt);
+      result = await callClaude(apiKey, fallbackModel, systemPrompt, userPrompt);
     }
 
     const latencyMs = Date.now() - startTime;
@@ -180,14 +184,14 @@ export default async function handler(req, res) {
   }
 }
 
-async function callClaude(apiKey, model, prompt) {
+async function callClaude(apiKey, model, systemPrompt, userPrompt) {
   // appName intentionally omitted — the route logs usage itself so it can
   // record `modelUsed` (which may be the fallback) instead of the requested
   // model and reflect the route-level retry semantics.
   const claude = new LLMClient({ apiKey, model });
   const r = await claude.complete({
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: prompt }],
+    system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+    messages: [{ role: 'user', content: userPrompt }],
     maxTokens: 4096,
     temperature: 0.2,
   });
