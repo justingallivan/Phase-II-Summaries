@@ -108,3 +108,51 @@ Deploy hit Dataverse 429 throttling between metadata customizations (concurrent 
 - `wmkf_ai_reportoverallrating` — `successful` / `mixed` / `unsuccessful` (Connor 2026-05-07: fine as a starting set; full rating mechanism not yet spec'd, expect iteration).
 
 **Provenance:** All runs writing these fields log to `wmkf_ai_run` with `wmkf_ai_tasktype = 682090001` (Report).
+
+---
+
+## 2026-05-09 — Reviewer Stage 2a slice 1 (S143)
+
+**Driver:** `docs/REVIEWER_STAGE_2A_BUILD_PLAN.md` slice 1 — Stage 2a invitation-landing page (pre-materials).
+
+**Wave:** 3 (`lib/dataverse/schema/wave3/`).
+
+### New entities
+
+- **`wmkf_policy`** (parent — policy slot) — primary name `wmkf_code`, alt-key on code, lookup `wmkf_activeversion` → `wmkf_policyversion`. General-purpose slot library; first uses are `reviewer-coi` and `reviewer-ai-use`.
+- **`wmkf_policyversion`** (child — versioned text) — primary name `wmkf_versionlabel`, lookup to parent `wmkf_policy`, `wmkf_policytitle` + `wmkf_policybody` (Memo) + `wmkf_effectivedate`. Each row immutable once referenced by an engagement row.
+
+Atlas: `docs/atlas/dataverse-wmkf-policy-and-policy-version.md`.
+
+### New fields on `wmkf_appreviewersuggestion`
+
+Engagement-scope contact corrections (write target for Stage 2a self-confirmations; never propagated to `wmkf_potentialreviewers` or `contact`):
+`wmkf_reviewerfirstname`, `wmkf_reviewerlastname`, `wmkf_reviewernickname`, `wmkf_reviewertitle`, `wmkf_revieweremail`, `wmkf_reviewerorcid`.
+
+Decline structured capture:
+`wmkf_declinereason` (Memo, was the locked-S136 field), `wmkf_declinereasonpicklist` (Picklist 5 options), `wmkf_declinereferral` (Memo).
+
+State stamps:
+`wmkf_honorariumoptout` (Boolean), `wmkf_withdrawnsufficientat` (DateTime), `wmkf_coiackedat` + `wmkf_aiuseackedat` (DateTime).
+
+Policy ack lookups (pin to exact `wmkf_policyversion` row):
+`wmkf_coipolicyversion` (Lookup), `wmkf_aiusepolicyversion` (Lookup).
+
+### Picklist extension
+
+`wmkf_appreviewersuggestion.wmkf_responsetype`: added `withdrawn_sufficient = 100000003` via `scripts/extend-responsetype-picklist.mjs`.
+
+### Native entity audit
+
+Enabled `IsAuditEnabled = true` on `wmkf_appreviewersuggestion` via `scripts/enable-suggestion-audit.mjs` (PUT against EntityDefinitions endpoint with full body). Replaces a parallel `wmkf_reviewer_audit` entity that the plan originally proposed — uses Dataverse's native field-level before/after capture instead.
+
+### Seed rows
+
+`scripts/seed-stage2a-policies.mjs` creates two parents (`reviewer-coi`, `reviewer-ai-use`) plus one Active child each (`wmkf_versionlabel = 2026-05-09`). AI-use body lifts from review form footer; COI body uses an explicit `[PLACEHOLDER]` until staff feedback on wording lands. Idempotent — safe to re-run.
+
+### Pending before slice 1 ships to a real cycle
+
+- Replace the COI placeholder body with finalized staff-approved text (create new `wmkf_policyversion` row, flip `wmkf_activeversion`).
+- Configure Dataverse security role to restrict delete privilege on `wmkf_policy` / `wmkf_policyversion` to admin role (per immutability rules §4a in build plan).
+- Remaining slice-1 work: extend `/api/external/review/[token]/context` payload, build `/respond` endpoint, page composition rewrite (state-driven view dispatch on existing route).
+

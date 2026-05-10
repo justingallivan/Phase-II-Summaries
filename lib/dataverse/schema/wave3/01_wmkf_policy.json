@@ -1,0 +1,40 @@
+{
+  "name": "wmkf_policy",
+  "kind": "new-entity",
+  "schemaName": "wmkf_Policy",
+  "displayName": "Policy",
+  "displayCollectionName": "Policies",
+  "description": "A policy slot (e.g., 'reviewer-coi', 'reviewer-ai-use'). Parent of wmkf_policyversion children. The slot is the stable conceptual identifier; versions are the actual texts that come and go over time. wmkf_ActiveVersion lookup (added in step 03) points at whichever child is currently in force for the slot. Staff edit policy bodies by creating a new version row and flipping wmkf_ActiveVersion (atomic activation). General-purpose: applicant T&C, staff handbook, and other future surfaces use the same pattern.",
+  "ownershipType": "OrganizationOwned",
+  "primaryNameAttribute": {
+    "schemaName": "wmkf_Code",
+    "displayName": "Slot Code",
+    "description": "Stable slot identifier referenced by application code (e.g., 'reviewer-coi', 'reviewer-ai-use'). Lower-case kebab-case convention. Page render code references slot codes directly; the wmkf_Policy row is looked up by code at render time.",
+    "maxLength": 100,
+    "requiredLevel": "ApplicationRequired"
+  },
+  "attributes": [
+    {
+      "type": "String",
+      "schemaName": "wmkf_DisplayName",
+      "displayName": "Display Name",
+      "description": "Human-readable slot name for staff browsing in Dynamics views.",
+      "maxLength": 200,
+      "requiredLevel": "ApplicationRequired"
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_Description",
+      "displayName": "Description",
+      "description": "Internal staff note: what this slot is for and where it surfaces in the application. Not rendered to reviewers/applicants.",
+      "maxLength": 4000
+    }
+  ],
+  "alternateKeys": [
+    {
+      "schemaName": "wmkf_policy_code_unique",
+      "displayName": "Slot Code (unique)",
+      "keyAttributes": ["wmkf_code"]
+    }
+  ]
+}

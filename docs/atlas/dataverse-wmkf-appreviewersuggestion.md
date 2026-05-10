@@ -1,10 +1,11 @@
 # Atlas: `wmkf_appreviewersuggestion` (Dataverse)
 
-**Last verified:** 2026-05-07 via `scripts/audit-dataverse-state.js` + EntityDefinitions metadata probe
+**Last verified:** 2026-05-09 (Stage 2a additions, see below) — prior verification 2026-05-07 via `scripts/audit-dataverse-state.js` + EntityDefinitions metadata probe
 **Live row count:** 336
 **Entity set:** `wmkf_appreviewersuggestions`
 **Adapter:** `lib/dataverse/adapters/reviewer-suggestion.js`
-**Extension manifest:** `lib/dataverse/schema/wave2-existing/wmkf_appreviewersuggestion-extensions.json`
+**Extension manifests:** `lib/dataverse/schema/wave2-existing/wmkf_appreviewersuggestion-extensions.json` (S128–S130 additions) + `lib/dataverse/schema/wave3/04_wmkf_appreviewersuggestion_stage2a.json` (S143 Stage 2a slice 1 additions)
+**Native entity audit:** ENABLED (S143). Field-level before/after on the engagement-scope correction fields below is captured by Dataverse's native audit log; no parallel audit entity built. See `scripts/enable-suggestion-audit.mjs`.
 
 ## Source of truth
 
@@ -51,6 +52,32 @@ Structured review fields (S130 schema additions):
 - `wmkf_reviewerimpact` (Picklist)
 - `wmkf_reviewerrisk` (Picklist)
 - `wmkf_revieweroverallrating` (Picklist)
+
+Stage 2a slice 1 additions (S143, deployed 2026-05-09):
+
+Engagement-scope contact corrections (written by reviewer at Stage 2a; never propagated to `wmkf_potentialreviewers` or `contact` — promotion is staff-controlled, deferred):
+- `wmkf_reviewerfirstname` (String, max 100)
+- `wmkf_reviewerlastname` (String, max 100)
+- `wmkf_reviewernickname` (String, max 100)
+- `wmkf_reviewertitle` (String, max 200)
+- `wmkf_revieweremail` (String, max 200) — engagement-scope correspondence email; replaces prior plan's "write to `contact.emailaddress2/3`" routing
+- `wmkf_reviewerorcid` (String, max 50)
+
+Decline structured capture:
+- `wmkf_declinereasonpicklist` (Picklist: `too-busy=100000000 | conflict-of-interest=100000001 | outside-expertise=100000002 | bad-timing=100000003 | other=100000004`)
+- `wmkf_declinereason` (String/Memo, max 2000) — free-text follow-up; was the locked-S136 field, deployed via this wave
+- `wmkf_declinereferral` (String/Memo, max 2000)
+
+Stage 2a state stamps:
+- `wmkf_honorariumoptout` (Boolean, default false) — captured at accept
+- `wmkf_withdrawnsufficientat` (DateTime) — set when staff cancels pending invitations because enough confirmed reviewers exist
+- `wmkf_coiackedat` / `wmkf_aiuseackedat` (DateTime) — policy-acknowledgment timestamps
+
+Policy-acknowledgment lookups (pin to the exact `wmkf_policyversion` row the reviewer saw — see `dataverse-wmkf-policy-and-policy-version.md`):
+- `wmkf_coipolicyversion` (Lookup → `wmkf_policyversion`)
+- `wmkf_aiusepolicyversion` (Lookup → `wmkf_policyversion`)
+
+Picklist extension on existing `wmkf_responsetype`: added `withdrawn_sufficient=100000003`.
 
 ## Adapter contract (`lib/dataverse/adapters/reviewer-suggestion.js`)
 

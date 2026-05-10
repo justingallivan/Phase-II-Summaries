@@ -1,0 +1,122 @@
+{
+  "name": "wmkf_appreviewersuggestion-stage2a",
+  "kind": "extensions-on-existing",
+  "entityLogicalName": "wmkf_appreviewersuggestion",
+  "_comment": "Stage 2a slice 1 additions to wmkf_appreviewersuggestion. Engagement-scope contact corrections, decline reason structured + free-text, honorarium opt-out, withdrawal stamp, and policy-version lookups. The two policy-version lookups depend on wmkf_policyversion existing, so this file lives in wave3 (which is processed after wave3 entities are created in 01/02/03).",
+  "attributes": [
+    {
+      "type": "String",
+      "schemaName": "wmkf_DeclineReason",
+      "displayName": "Decline Reason (free text)",
+      "description": "Reviewer's free-text follow-up to the structured decline-reason picklist. Captured at Stage 2a decline. Originally locked for addition in S136 reviewer migration plan; first use is Stage 2a slice 1.",
+      "maxLength": 2000
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ReviewerFirstName",
+      "displayName": "Reviewer First Name (engagement-scope)",
+      "description": "First name confirmed by the reviewer at Stage 2a invitation landing. Engagement-scoped — does not write to contact.firstname or potentialreviewer.wmkf_firstname. Promotion to directory/CRM is a separate staff-controlled step.",
+      "maxLength": 100
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ReviewerLastName",
+      "displayName": "Reviewer Last Name (engagement-scope)",
+      "description": "Last name confirmed by the reviewer at Stage 2a. Engagement-scoped per same rule as wmkf_ReviewerFirstName.",
+      "maxLength": 100
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ReviewerNickname",
+      "displayName": "Reviewer Nickname / Display Preference (engagement-scope)",
+      "description": "How the reviewer prefers to be addressed in correspondence about this engagement. Optional. Engagement-scoped.",
+      "maxLength": 100
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ReviewerTitle",
+      "displayName": "Reviewer Title (engagement-scope)",
+      "description": "Job title at engagement scope. Distinct from contact.jobtitle which is staff-curated.",
+      "maxLength": 200
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ReviewerEmail",
+      "displayName": "Reviewer Correspondence Email (engagement-scope)",
+      "description": "Email address the reviewer wants to receive correspondence at for this engagement. Engagement-scoped — never writes to contact.emailaddress1/2/3. Replaces the prior plan's emailaddress2/3 routing.",
+      "maxLength": 200
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ReviewerOrcid",
+      "displayName": "Reviewer ORCID (engagement-scope)",
+      "description": "ORCID identifier confirmed by the reviewer at Stage 2a. Engagement-scoped.",
+      "maxLength": 50
+    },
+    {
+      "type": "Picklist",
+      "schemaName": "wmkf_DeclineReasonPicklist",
+      "displayName": "Decline Reason (structured)",
+      "description": "Structured decline-reason category captured at Stage 2a decline. Companion to free-text wmkf_DeclineReason. Optional — staff-analytics aggregation surface.",
+      "options": [
+        { "value": 100000000, "label": "Too busy" },
+        { "value": 100000001, "label": "Conflict of interest" },
+        { "value": 100000002, "label": "Outside expertise" },
+        { "value": 100000003, "label": "Bad timing" },
+        { "value": 100000004, "label": "Other" }
+      ]
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_DeclineReferral",
+      "displayName": "Decline Referral",
+      "description": "Reviewer's freeform referral text at decline — names + affiliations of suggested alternative reviewers. Optional. Triggers a deep-link-to-PD email when populated (deferred to a follow-up build).",
+      "maxLength": 2000
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_WithdrawnSufficientAt",
+      "displayName": "Withdrawn-Sufficient At",
+      "description": "Set when staff cancels a pending invitation because enough confirmed reviewers have accepted. Distinct from declined (reviewer initiative) and no_response (timeout) for analytics purposes."
+    },
+    {
+      "type": "Boolean",
+      "schemaName": "wmkf_HonorariumOptOut",
+      "displayName": "Honorarium Opt-Out",
+      "description": "Reviewer chose to decline the honorarium at Stage 2a accept. Captured for staff planning purposes.",
+      "default": false
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_CoiAckedAt",
+      "displayName": "COI Policy Acknowledged At",
+      "description": "Timestamp when the reviewer acknowledged the COI policy at Stage 2a accept. Companion to wmkf_CoiPolicyVersion lookup which pins to the specific policy version row the reviewer saw."
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_AiUseAckedAt",
+      "displayName": "AI-Use Policy Acknowledged At",
+      "description": "Timestamp when the reviewer acknowledged the AI-use policy at Stage 2a accept. Companion to wmkf_AiUsePolicyVersion lookup."
+    }
+  ],
+  "relationships": [
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_appreviewersuggestion_coipolicyversion",
+      "referencedEntity": "wmkf_policyversion",
+      "lookupSchemaName": "wmkf_CoiPolicyVersion",
+      "lookupDisplayName": "COI Policy Version",
+      "lookupDescription": "The exact wmkf_policyversion row the reviewer acknowledged for COI at Stage 2a accept. Pinning to the specific child preserves what the reviewer actually saw, even if staff later activates a different version on the parent. Default Restrict cascade prevents hard-delete of referenced version rows.",
+      "required": "None"
+    },
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_appreviewersuggestion_aiusepolicyversion",
+      "referencedEntity": "wmkf_policyversion",
+      "lookupSchemaName": "wmkf_AiUsePolicyVersion",
+      "lookupDisplayName": "AI-Use Policy Version",
+      "lookupDescription": "Same shape as wmkf_CoiPolicyVersion, AI-use slot.",
+      "required": "None"
+    }
+  ]
+}

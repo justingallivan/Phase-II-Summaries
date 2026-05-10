@@ -1,0 +1,51 @@
+{
+  "name": "wmkf_policyversion",
+  "kind": "new-entity",
+  "schemaName": "wmkf_PolicyVersion",
+  "displayName": "Policy Version",
+  "displayCollectionName": "Policy Versions",
+  "description": "A versioned policy body. Child of wmkf_policy (parent slot) via wmkf_Policy lookup. Each row captures one specific version of a policy's title + body text. Multiple versions per parent over time; only one is active at any moment (the parent's wmkf_ActiveVersion lookup points at it). Used for reviewer-facing acknowledgment surfaces (COI, AI-use) and future surfaces (applicant T&C, etc.). IMMUTABILITY: once any wmkf_appreviewersuggestion row references a version via its policy-version lookup, that version's title and body must not be edited. Text changes create a new version row, never edit-in-place. Default Restrict cascade on the suggestion lookup prevents hard-delete of referenced rows; staff role configuration should restrict delete privilege to admins.",
+  "ownershipType": "OrganizationOwned",
+  "primaryNameAttribute": {
+    "schemaName": "wmkf_VersionLabel",
+    "displayName": "Version Label",
+    "description": "Free-form version identifier (e.g., '2026-05-09', 'v1.2'). Staff convention; appears in screenshots, printouts, audit trails. Operationally meaningful, not decorative.",
+    "maxLength": 50,
+    "requiredLevel": "ApplicationRequired"
+  },
+  "attributes": [
+    {
+      "type": "String",
+      "schemaName": "wmkf_PolicyTitle",
+      "displayName": "Policy Title",
+      "description": "Card heading rendered in the modal (e.g., 'Confidentiality and Conflict of Interest'). Reviewer-facing.",
+      "maxLength": 300,
+      "requiredLevel": "ApplicationRequired"
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_PolicyBody",
+      "displayName": "Policy Body",
+      "description": "Full policy text (markdown or plain). Rendered as the body of the policy-acknowledgment card. IMMUTABLE once any wmkf_appreviewersuggestion row references this version — text changes require creating a new version row.",
+      "maxLength": 100000,
+      "requiredLevel": "ApplicationRequired"
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_EffectiveDate",
+      "displayName": "Effective Date",
+      "description": "When staff intended this version to take effect. Informational/audit only — activation is staff-controlled via the parent's wmkf_ActiveVersion lookup, not date-driven."
+    }
+  ],
+  "relationships": [
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_policyversion_policy",
+      "referencedEntity": "wmkf_policy",
+      "lookupSchemaName": "wmkf_Policy",
+      "lookupDisplayName": "Policy (parent slot)",
+      "lookupDescription": "The parent wmkf_policy slot this version belongs to. Required — every version has a parent slot.",
+      "required": "ApplicationRequired"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "wmkf_policy-activeversion-relationship",
+  "kind": "extensions-on-existing",
+  "entityLogicalName": "wmkf_policy",
+  "_comment": "Adds the wmkf_ActiveVersion lookup from wmkf_policy → wmkf_policyversion AFTER both entities exist. Splitting it out resolves the chicken-and-egg dependency where wmkf_policy needs to lookup wmkf_policyversion (which doesn't exist yet) and wmkf_policyversion needs to lookup wmkf_policy (which is its parent).",
+  "relationships": [
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_policy_activeversion",
+      "referencedEntity": "wmkf_policyversion",
+      "lookupSchemaName": "wmkf_ActiveVersion",
+      "lookupDisplayName": "Active Version",
+      "lookupDescription": "The currently-active wmkf_policyversion child. Staff sets this to atomically activate a draft. Reading this lookup is the only authoritative way to find the in-force policy text for a slot — never read 'newest by effective date'.",
+      "required": "None"
+    }
+  ]
+}
