@@ -916,13 +916,16 @@ function ModelConfigSection() {
   const [localOverrides, setLocalOverrides] = useState({}); // { "appKey:modelType": tier|modelId|null }
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
 
-  const fetchConfig = () => {
-    setLoading(true);
+  const fetchConfig = (opts = {}) => {
+    const { refresh = false } = opts;
+    if (refresh) setRefreshing(true); else setLoading(true);
     setError(null);
-    fetch('/api/admin/models')
+    const url = refresh ? '/api/admin/models?refresh=1' : '/api/admin/models';
+    fetch(url)
       .then(r => {
         if (r.status === 403) throw new Error('Admin access required');
         if (!r.ok) throw new Error('Failed to fetch model config');
@@ -942,7 +945,7 @@ function ModelConfigSection() {
         setLocalOverrides(overrides);
       })
       .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setRefreshing(false); });
   };
 
   useEffect(() => { fetchConfig(); }, []);
@@ -1061,6 +1064,14 @@ function ModelConfigSection() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => fetchConfig({ refresh: true })}
+            disabled={refreshing || saving}
+            title="Re-fetch the Anthropic model list (bypasses the 24h cache)"
+            className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh model list'}
+          </button>
           {hasChanges && (
             <button
               onClick={discardChanges}

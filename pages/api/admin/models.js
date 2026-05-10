@@ -15,6 +15,7 @@ import { listSettings, setSetting, deleteSetting } from '../../../lib/services/s
 import {
   loadAvailableModels,
   getCachedAvailableModels,
+  clearAvailableModelsCache,
   getTierCatalog,
   isTier,
   resolveModel,
@@ -24,8 +25,9 @@ import {
 // Valid model types that can be overridden
 const VALID_MODEL_TYPES = ['model', 'visionModel', 'fallback'];
 
-async function fetchAvailableModels() {
-  await loadAvailableModels();
+async function fetchAvailableModels({ force = false } = {}) {
+  if (force) clearAvailableModelsCache();
+  await loadAvailableModels({ force });
   return getCachedAvailableModels()
     .slice()
     .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
@@ -54,10 +56,12 @@ export default async function handler(req, res) {
 
 async function handleGet(req, res) {
   try {
+    // ?refresh=1 forces a re-fetch of /v1/models, bypassing the 24h cache.
+    const force = req.query.refresh === '1' || req.query.refresh === 'true';
     // Fetch DB overrides, available models, and env overrides in parallel
     const [dbSettings, availableModels] = await Promise.all([
       listSettings('model_override:'),
-      fetchAvailableModels(),
+      fetchAvailableModels({ force }),
     ]);
 
     // Build a map of DB overrides: { "concept-evaluator:model": "claude-..." }
