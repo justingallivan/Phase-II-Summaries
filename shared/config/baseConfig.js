@@ -5,105 +5,41 @@
 
 export const BASE_CONFIG = {
   // Claude API Configuration
+  // Tier-keyed (opus/sonnet/haiku) — resolved to a concrete id at call time
+  // via lib/services/model-resolver.js. Concrete ids are still accepted as
+  // an escape hatch (env vars, system_settings overrides, prompt rows).
   CLAUDE: {
     API_URL: process.env.CLAUDE_API_URL || 'https://api.anthropic.com/v1/messages',
     ANTHROPIC_VERSION: '2023-06-01',
-    DEFAULT_MODEL: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
-    FALLBACK_MODEL: 'claude-haiku-4-5-20251001'
+    DEFAULT_MODEL: process.env.CLAUDE_MODEL || 'sonnet',
+    FALLBACK_MODEL: 'haiku'
   },
 
   // Per-App Model Configuration
-  // Each app can specify its preferred model based on task complexity
-  // Format: { model, visionModel (optional), fallback }
+  // Values are tier keys (opus / sonnet / haiku). Resolver picks the latest
+  // concrete id in that family at call time; admin overrides and env vars
+  // can also pin a specific concrete id.
   APP_MODELS: {
     // 'concept-evaluator' deprecated 2026-04-25 (archived to /_archived).
-    // Multi-perspective evaluator - Sonnet for cost-effective multi-call architecture
-    'multi-perspective-evaluator': {
-      model: 'claude-sonnet-4-20250514',
-      visionModel: 'claude-sonnet-4-20250514',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    // High complexity - Literature analysis with Vision
-    'literature-analyzer': {
-      model: 'claude-sonnet-4-20250514',
-      visionModel: 'claude-sonnet-4-20250514',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    // High complexity - Sonnet for detailed summaries
-    'batch-phase-i': {
-      model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    'batch-phase-ii': {
-      model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    'phase-i-writeup': {
-      model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    'phase-ii-writeup': {
-      model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    'reviewer-finder': {
-      model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    'review-manager': {
-      model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    'peer-review-summarizer': {
-      model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    'funding-analysis': {
-      model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    // Medium complexity - Q&A and refinement
-    'qa': {
-      model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    'refine': {
-      model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    // Low complexity - Haiku is sufficient
-    'expense-reporter': {
-      model: 'claude-haiku-4-5-20251001',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    'contact-enrichment': {
-      model: 'claude-haiku-4-5-20251001',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    'email-personalization': {
-      model: 'claude-haiku-4-5-20251001',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    // Dynamics Explorer - Haiku 4.5 for fast tool-use with higher rate limits than Sonnet
-    'dynamics-explorer': {
-      model: 'claude-haiku-4-5-20251001',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    // Expertise Finder - Sonnet for proposal-to-reviewer matching
-    'expertise-finder': {
-      model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    // Virtual Review Panel - Sonnet for synthesis step (individual LLM models managed by multi-llm-service)
-    'virtual-review-panel': {
-      model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-haiku-4-5-20251001'
-    },
-    // Grant Reporting - Sonnet for structured extraction + goals comparison
-    'grant-reporting': {
-      model: 'claude-sonnet-4-20250514',
-      fallback: 'claude-haiku-4-5-20251001'
-    }
+    'multi-perspective-evaluator': { model: 'sonnet', visionModel: 'sonnet', fallback: 'haiku' },
+    'literature-analyzer':         { model: 'sonnet', visionModel: 'sonnet', fallback: 'haiku' },
+    'batch-phase-i':               { model: 'sonnet', fallback: 'haiku' },
+    'batch-phase-ii':              { model: 'sonnet', fallback: 'haiku' },
+    'phase-i-writeup':             { model: 'sonnet', fallback: 'haiku' },
+    'phase-ii-writeup':            { model: 'sonnet', fallback: 'haiku' },
+    'reviewer-finder':             { model: 'sonnet', fallback: 'haiku' },
+    'review-manager':              { model: 'sonnet', fallback: 'haiku' },
+    'peer-review-summarizer':      { model: 'sonnet', fallback: 'haiku' },
+    'funding-analysis':            { model: 'sonnet', fallback: 'haiku' },
+    'qa':                          { model: 'sonnet', fallback: 'haiku' },
+    'refine':                      { model: 'sonnet', fallback: 'haiku' },
+    'expense-reporter':            { model: 'haiku',  fallback: 'haiku' },
+    'contact-enrichment':          { model: 'haiku',  fallback: 'haiku' },
+    'email-personalization':       { model: 'haiku',  fallback: 'haiku' },
+    'dynamics-explorer':           { model: 'haiku',  fallback: 'haiku' },
+    'expertise-finder':            { model: 'sonnet', fallback: 'haiku' },
+    'virtual-review-panel':        { model: 'sonnet', fallback: 'haiku' },
+    'grant-reporting':             { model: 'sonnet', fallback: 'haiku' }
   },
 
   // Model Parameters
@@ -298,13 +234,44 @@ export function clearModelOverridesCache() {
   _dbOverridesLoadedAt = 0;
 }
 
+// Tier resolution is injected by the server-only model-resolver loader so
+// that browser bundles (which import BASE_CONFIG) don't pull in fetch /
+// /v1/models machinery. Defaults to identity until injected — concrete ids
+// already pass through unchanged, so this only matters once tiers are
+// configured server-side.
+let _resolveModel = (v) => v;
+export function _setModelResolver(fn) {
+  if (typeof fn === 'function') _resolveModel = fn;
+}
+
 /**
- * Get the appropriate Claude model for a specific app
- * @param {string} appKey - The app identifier (e.g., 'concept-evaluator', 'expense-reporter')
+ * Get the appropriate Claude model for a specific app, resolved to a
+ * concrete Anthropic model id.
+ *
+ * Resolution order:
+ *   1. DB override (system_settings model_override:{appKey}:{type})
+ *   2. Env var CLAUDE_MODEL_{APP_KEY_UPPER}
+ *   3. APP_MODELS[appKey][type]
+ *   4. BASE_CONFIG.CLAUDE.DEFAULT_MODEL
+ *
+ * Each source may hold a tier key (opus/sonnet/haiku) or a concrete id;
+ * the resolver returns the latest concrete id for the tier, and passes
+ * concrete ids through unchanged (escape hatch).
+ *
+ * @param {string} appKey - The app identifier
  * @param {string} type - The model type: 'model', 'visionModel', or 'fallback'
- * @returns {string} - The model identifier
+ * @returns {string} - The concrete Anthropic model identifier
  */
 export function getModelForApp(appKey, type = 'model') {
+  const raw = _getModelForAppRaw(appKey, type);
+  return _resolveModel(raw) || raw;
+}
+
+/**
+ * Like getModelForApp but returns the unresolved stored value (tier or id).
+ * Used by the admin API to surface what's stored vs. what's resolved.
+ */
+export function _getModelForAppRaw(appKey, type = 'model') {
   // 1. Check DB override (loaded by loadModelOverrides)
   const dbOverride = _dbOverrides.get(`${appKey}:${type}`);
   if (dbOverride) {
@@ -312,7 +279,7 @@ export function getModelForApp(appKey, type = 'model') {
   }
 
   // 2. Allow environment variable override for specific apps
-  // e.g., CLAUDE_MODEL_CONCEPT_EVALUATOR=claude-sonnet-4-20250514
+  // e.g., CLAUDE_MODEL_EXPERTISE_FINDER=opus  (or a concrete id)
   const envKey = `CLAUDE_MODEL_${appKey.toUpperCase().replace(/-/g, '_')}`;
   const envOverride = process.env[envKey];
   if (envOverride) {

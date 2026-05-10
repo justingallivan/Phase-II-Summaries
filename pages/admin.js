@@ -879,7 +879,9 @@ const MODEL_TYPE_LABELS = {
   fallback: 'Fallback',
 };
 
-// Friendly names for APP_MODELS keys that don't match APP_REGISTRY
+// Friendly names for APP_MODELS keys. App-registry keys don't always match
+// APP_MODELS keys (e.g. APP_MODELS uses 'batch-phase-i' while the registry
+// uses 'batch-phase-i-summaries'), so this is maintained inline.
 const APP_MODEL_NAMES = {
   'multi-perspective-evaluator': 'Multi-Perspective Evaluator',
   'literature-analyzer': 'Literature Analyzer',
@@ -888,6 +890,7 @@ const APP_MODEL_NAMES = {
   'phase-i-writeup': 'Phase I Writeup',
   'phase-ii-writeup': 'Phase II Writeup',
   'reviewer-finder': 'Reviewer Finder',
+  'review-manager': 'Review Manager',
   'peer-review-summarizer': 'Peer Review Summarizer',
   'funding-analysis': 'Funding Analysis',
   'qa': 'Q&A',
@@ -896,11 +899,21 @@ const APP_MODEL_NAMES = {
   'contact-enrichment': 'Contact Enrichment',
   'email-personalization': 'Email Personalization',
   'dynamics-explorer': 'Dynamics Explorer',
+  'expertise-finder': 'Expertise Finder',
+  'virtual-review-panel': 'Virtual Review Panel',
+  'grant-reporting': 'Grant Reporting',
 };
 
+// Strip the 'claude-' prefix and a trailing YYYYMMDD date stamp so dropdown
+// labels stay readable. 'claude-sonnet-4-20250514' → 'sonnet-4'.
+function shortModelLabel(id) {
+  if (!id) return '—';
+  return String(id).replace(/^claude-/, '').replace(/-\d{8}$/, '');
+}
+
 function ModelConfigSection() {
-  const [serverState, setServerState] = useState(null); // { apps, availableModels, defaultModel }
-  const [localOverrides, setLocalOverrides] = useState({}); // { "appKey:modelType": modelId|null }
+  const [serverState, setServerState] = useState(null); // { apps, availableModels, tiers, defaultModel }
+  const [localOverrides, setLocalOverrides] = useState({}); // { "appKey:modelType": tier|modelId|null }
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
@@ -954,7 +967,7 @@ function ModelConfigSection() {
 
   if (!serverState) return null;
 
-  const { apps, availableModels, defaultModel } = serverState;
+  const { apps, availableModels, tiers = [], defaultModel } = serverState;
 
   // Build server-side DB override map for diff calculation
   const serverDbOverrides = {};
@@ -1036,18 +1049,16 @@ function ModelConfigSection() {
     setMessage(null);
   };
 
-  // Short model name for display (strip "claude-" prefix and date suffix)
-  const shortModelName = (id) => {
-    if (!id) return '—';
-    return id;
-  };
+  const shortModelName = shortModelLabel;
 
   return (
     <Card>
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Model Configuration</h2>
-          <p className="text-xs text-gray-500 mt-1">Changes take effect within 5 minutes for running instances.</p>
+          <p className="text-xs text-gray-500 mt-1">
+            Tier picks (Opus / Sonnet / Haiku) auto-track the latest model in that family. Pin a specific version only if you need to reproduce historical behavior. Changes take effect within 5 minutes.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           {hasChanges && (
@@ -1099,6 +1110,12 @@ function ModelConfigSection() {
                   const serverVal = serverDbOverrides[key] || '';
                   const changed = localVal !== serverVal;
                   const hasHardcoded = !!info.hardcoded;
+                  // Resolve what would actually be sent to Anthropic given
+                  // the current selection (tier → concrete via the tiers
+                  // catalog from the server).
+                  const tierMap = Object.fromEntries(tiers.map(t => [t.key, t.resolvedId]));
+                  const effectiveStored = localVal || info.hardcoded || '';
+                  const effectiveResolved = tierMap[effectiveStored] || effectiveStored;
 
                   return (
                     <td key={modelType} className="py-2 px-2">
@@ -1111,16 +1128,36 @@ function ModelConfigSection() {
                               changed ? 'border-amber-400 ring-2 ring-amber-200' : 'border-gray-300'
                             }`}
                           >
-                            <option value="">Default ({shortModelName(info.hardcoded)})</option>
-                            {availableModels.map(m => (
-                              <option key={m.id} value={m.id}>{m.display_name}</option>
-                            ))}
+                            <option value="">
+                              Default ({info.hardcoded})
+                            </option>
+                            {tiers.length > 0 && (
+                              <optgroup label="Tiers (auto-track latest)">
+                                {tiers.map(t => (
+                                  <option key={t.key} value={t.key}>
+                                    {t.anthropic} ({t.tier})
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            {availableModels.length > 0 && (
+                              <optgroup label="Pin specific version">
+                                {availableModels.map(m => (
+                                  <option key={m.id} value={m.id}>{m.display_name}</option>
+                                ))}
+                              </optgroup>
+                            )}
                           </select>
-                          {info.envOverride && (
-                            <span className="inline-block mt-1 text-[10px] text-gray-400" title={`Environment variable override: ${info.envOverride}`}>
-                              env: {shortModelName(info.envOverride)}
+                          <div className="mt-1 flex items-center gap-2 text-[10px] text-gray-500">
+                            <span title="Concrete model id that will be sent to Anthropic">
+                              → {shortModelName(effectiveResolved)}
                             </span>
-                          )}
+                            {info.envOverride && (
+                              <span className="text-gray-400" title={`Environment variable override: ${info.envOverride}`}>
+                                env: {shortModelName(info.envOverride)}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       ) : (
                         <span className="text-gray-400 text-xs">—</span>

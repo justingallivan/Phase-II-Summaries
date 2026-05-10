@@ -36,8 +36,19 @@ const MODEL_TIERS = {
  * @param {string} modelId - Technical model identifier
  * @returns {string} - Friendly display name
  */
+// Tier-key short names (matches lib/services/model-resolver.js TIERS).
+const TIER_DISPLAY_NAMES = {
+  opus: 'Opus (latest)',
+  sonnet: 'Sonnet (latest)',
+  haiku: 'Haiku (latest)',
+};
+
 export function getModelDisplayName(modelId) {
   if (!modelId) return 'Unknown';
+
+  // Tier key — auto-tracks the latest version in that family.
+  const lower = String(modelId).toLowerCase();
+  if (TIER_DISPLAY_NAMES[lower]) return TIER_DISPLAY_NAMES[lower];
 
   // Check exact match first
   if (MODEL_DISPLAY_NAMES[modelId]) {

@@ -12,55 +12,28 @@ import { requireSuperuser } from '../../../lib/utils/auth';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
 import { clearModelOverridesCache } from '../../../lib/services/model-override-loader';
 import { listSettings, setSetting, deleteSetting } from '../../../lib/services/settings-service';
+import {
+  loadAvailableModels,
+  getCachedAvailableModels,
+  getTierCatalog,
+  isTier,
+  resolveModel,
+  TIERS,
+} from '../../../lib/services/model-resolver';
 
 // Valid model types that can be overridden
 const VALID_MODEL_TYPES = ['model', 'visionModel', 'fallback'];
 
-// Cache available models from Anthropic API (1-hour TTL)
-let _availableModels = null;
-let _availableModelsLoadedAt = 0;
-const AVAILABLE_MODELS_TTL_MS = 60 * 60 * 1000; // 1 hour
-
 async function fetchAvailableModels() {
-  if (_availableModels && Date.now() - _availableModelsLoadedAt < AVAILABLE_MODELS_TTL_MS) {
-    return _availableModels;
-  }
-
-  const apiKey = process.env.CLAUDE_API_KEY;
-  if (!apiKey) {
-    return [];
-  }
-
-  try {
-    const resp = await fetch('https://api.anthropic.com/v1/models?limit=1000', {
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-    });
-
-    if (!resp.ok) {
-      console.error('Failed to fetch models from Anthropic:', resp.status, await resp.text());
-      return _availableModels || [];
-    }
-
-    const data = await resp.json();
-    const models = (data.data || [])
-      .filter(m => m.id.startsWith('claude-'))
-      .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
-      .map(m => ({
-        id: m.id,
-        display_name: m.display_name || m.id,
-        created_at: m.created_at,
-      }));
-
-    _availableModels = models;
-    _availableModelsLoadedAt = Date.now();
-    return models;
-  } catch (err) {
-    console.error('Error fetching Anthropic models:', err.message);
-    return _availableModels || [];
-  }
+  await loadAvailableModels();
+  return getCachedAvailableModels()
+    .slice()
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+    .map(m => ({
+      id: m.id,
+      display_name: m.display_name || m.id,
+      created_at: m.created_at,
+    }));
 }
 
 export default async function handler(req, res) {
@@ -104,24 +77,30 @@ async function handleGet(req, res) {
         const envOverride = modelType === 'model' ? (process.env[envKey] || null) : null;
         const dbOverride = dbOverrides[`${appKey}:${modelType}`] || null;
 
-        // Determine effective model and its source
-        let effective, source;
+        // Determine effective stored value and its source
+        let storedValue, source;
         if (dbOverride) {
-          effective = dbOverride;
+          storedValue = dbOverride;
           source = 'db';
         } else if (envOverride) {
-          effective = envOverride;
+          storedValue = envOverride;
           source = 'env';
         } else if (hardcoded) {
-          effective = hardcoded;
+          storedValue = hardcoded;
           source = 'hardcoded';
         } else {
-          effective = BASE_CONFIG.CLAUDE.DEFAULT_MODEL;
+          storedValue = BASE_CONFIG.CLAUDE.DEFAULT_MODEL;
           source = 'default';
         }
 
+        // storedValue may be a tier key or a concrete id; resolve to the
+        // concrete id that callers will actually send to Anthropic.
+        const resolvedId = resolveModel(storedValue) || storedValue;
+
         result.models[modelType] = {
-          effective,
+          effective: resolvedId,           // back-compat: the concrete id
+          stored: storedValue,             // tier OR concrete id
+          isTier: isTier(storedValue),
           source,
           dbOverride,
           envOverride,
@@ -135,7 +114,9 @@ async function handleGet(req, res) {
     return res.json({
       apps,
       availableModels,
+      tiers: getTierCatalog(),
       defaultModel: BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
+      defaultModelResolved: resolveModel(BASE_CONFIG.CLAUDE.DEFAULT_MODEL) || BASE_CONFIG.CLAUDE.DEFAULT_MODEL,
     });
   } catch (error) {
     console.error('Admin models GET error:', error);
@@ -166,8 +147,15 @@ async function handlePut(req, res, profileId) {
       // Delete the override — revert to env/hardcoded default
       await deleteSetting(settingKey);
     } else {
-      // Upsert the override
-      await setSetting(settingKey, modelId, updatedBy);
+      // Stored value may be a tier key (opus/sonnet/haiku) or a concrete
+      // Anthropic id. Reject anything else so typos don't get persisted.
+      const value = String(modelId).trim();
+      if (!isTier(value) && !value.startsWith('claude-')) {
+        return res.status(400).json({
+          error: `Invalid model value "${value}". Must be a tier (${Object.keys(TIERS).join('/')}) or a concrete Anthropic model id starting with "claude-".`,
+        });
+      }
+      await setSetting(settingKey, value, updatedBy);
     }
 
     // Clear the in-memory cache so the next API request picks up the change
