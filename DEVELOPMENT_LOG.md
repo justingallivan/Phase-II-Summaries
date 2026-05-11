@@ -10,6 +10,20 @@ The pre-Session 84 chronological per-session log (everything after the September
 
 ---
 
+## May 2026 — AI-config admin surface + policy editor (Session 145)
+
+**Milestone:** Established the AI-config admin pattern (small, narrow, task-specific forms) as distinct from the deferred data-admin surface (general Dataverse CRUD, eventual AkoyaGo replacement). Shipped two instances of the pattern. Tier-keyed Claude model picker swaps stale dated ids for `opus`/`sonnet`/`haiku` tiers resolved against the live `/v1/models` list — defense against silent retirement of pinned snapshots; concrete-id escape hatch preserved. Policy editor (`/api/admin/policies` + `PoliciesSection`) lets superusers publish new `wmkf_policy` versions through a four-round Codex-reviewed flow: pre-flight validation, pending-audit-first, parent-ETag concurrency, alt-key uniqueness on `(parent, versionLabel)`, idempotent dispatch (already_published / label_conflict / resume / fresh-publish), strict markdown pipeline (marked + DOMPurify allowlist), best-effort retire of prior version with `parent.wmkf_activeversion` as sole truth. Audit lives in dedicated Postgres `policy_publish_audit` rather than overloading `wmkf_ai_run`. Admin UX overhaul: collapsible sections, soft-archive user button, 1-day usage period, three crons now record runs in `maintenance_runs`.
+**Sessions:** 145 (2026-05-10)
+**Ship state:**
+- 4 commits on main: `bc8a389` (tier picker), `edcd6db` (24h TTL + Refresh button), `d0abcc6` (policy editor + admin UX), `61a46f9` (browser-smoke fixes).
+- Dataverse alt key `wmkf_policyversion_parent_label_unique` deployed to prod. Postgres `policy_publish_audit` table (V28) live. New admin route `/api/admin/users` (DELETE soft-archive). Markdown pipeline at `shared/utils/policy-markdown.js` with 17 unit cases. Stage 2a slice 1 COI body unblock: editor is live; staff wording still pending.
+**Why it matters:** The pattern decision keeps narrow AI-config (~10 entities, business-rule-heavy) separate from the open-ended data-admin space (hundreds of entities, AkoyaGo retirement scope) — preventing the policy editor from becoming an accidental wedge into a general Dataverse CRUD surface. Versioned-content abstraction deliberately deferred until `wmkf_ai_prompt` proves the second use case. Defense-against-silent-retirement on Claude models removes a recurring footgun.
+**Pointers:**
+- `docs/atlas/dataverse-wmkf-policy-and-policy-version.md` (write-paths + alt key + statecode invariant)
+- `pages/api/admin/policies.js`, `shared/components/admin/PoliciesSection.js`, `shared/utils/policy-markdown.js`
+- `lib/services/model-resolver.js`, `shared/config/baseConfig.js` (tier-keyed APP_MODELS)
+- Codex review history: agents `a5af57bda83ef2741` → `a09e80e93fd9dd4c2` → `a86ae677c0b8e3d0d` → `a458909e1c39e2516` → `aff1757bad694dd69`
+
 ## May 2026 — AI security hardening tranche + operating plan (Session 130)
 
 **Milestone:** Closed the P1 column of the AI security matrix end-to-end and stood up an ongoing operating cadence so future regressions are caught at PR time rather than in a quarterly audit. AI payload-boundary helper bounds every high-volume Anthropic call site at the route boundary; Prompt Executor enforces the same caps declaratively via `dataClass + maxChars` on prompt-row variable declarations. `wmkf_ai_promptoverride` redacts bounded values before audit-write so raw proposal text never lands in Dataverse. New `rawOutputRetention: 'full' | 'hash' | 'none'` modes cut audit duplication where the business output already lives elsewhere; `phase-i.summary` live row activated with `'hash'`. Dynamics Explorer model-context serializer redacts sensitive/loopback fields and caps long strings before CRM data re-enters the agent loop. API route security matrix + CI gate makes PR-time matrix updates enforceable.

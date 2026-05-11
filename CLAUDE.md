@@ -236,6 +236,7 @@ Vercel Postgres. Authoritative source: `lib/db/schema.sql` + `lib/db/migrations/
 | `panel_reviews`, `panel_review_items` | Virtual Review Panel persistence |
 | `intake_drafts`, `intake_audit` | Applicant intake portal — drafts (Postgres-only, cleared on submit) + sha256-hashed audit |
 | `system_alerts`, `health_check_history`, `maintenance_runs` | Monitoring + cron job audit trail |
+| `policy_publish_audit` | Append-only audit of `wmkf_policy` version publishes via `/api/admin/policies`. Pending row before mutation + final row after (paired by `request_id`). |
 
 User-scoping convention: shared tables for organization-wide reference data; per-user tables for "my X" surfaces. Wave 1 migration (in progress) moves `system_settings`, `user_app_access`, `user_preferences` to Dataverse — see `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md`.
 
