@@ -14,6 +14,7 @@ import { verifyCronSecret } from '../../../lib/utils/cron-auth';
 import { runHealthChecks } from '../../../lib/utils/health-checker';
 import AlertService from '../../../lib/services/alert-service';
 import NotificationService from '../../../lib/services/notification-service';
+import MaintenanceService from '../../../lib/services/maintenance-service';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -21,6 +22,8 @@ export default async function handler(req, res) {
   }
 
   if (!verifyCronSecret(req, res)) return;
+
+  const runId = await MaintenanceService.startRun('health-check');
 
   try {
     // Run health checks
@@ -99,6 +102,15 @@ export default async function handler(req, res) {
       });
     }
 
+    await MaintenanceService.completeRun(runId, {
+      status: 'completed',
+      details: {
+        overall: health.overall,
+        responseTimeMs: health.responseTimeMs,
+        previousStatus: prevStatus || 'none',
+      },
+    });
+
     return res.json({
       ok: true,
       overall: health.overall,
@@ -107,6 +119,10 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('Health check cron error:', error);
+    await MaintenanceService.completeRun(runId, {
+      status: 'failed',
+      errorMessage: error.message,
+    });
     return res.status(500).json({ error: 'Health check failed', message: error.message });
   }
 }

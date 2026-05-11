@@ -19,6 +19,7 @@ import { verifyCronSecret } from '../../../lib/utils/cron-auth';
 import NotificationService from '../../../lib/services/notification-service';
 import { redactLogText, redactErrorList } from '../../../lib/utils/log-redactor';
 import { LLMClient } from '../../../lib/services/llm-client';
+import MaintenanceService from '../../../lib/services/maintenance-service';
 
 const ERROR_THRESHOLD = 10; // minimum errors to trigger AI analysis
 const LOOKBACK_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -34,8 +35,15 @@ export default async function handler(req, res) {
   const projectId = process.env.VERCEL_PROJECT_ID;
 
   if (!token || !projectId) {
+    const runId = await MaintenanceService.startRun('log-analysis');
+    await MaintenanceService.completeRun(runId, {
+      status: 'completed',
+      details: { skipped: true, reason: 'VERCEL_API_TOKEN or VERCEL_PROJECT_ID not configured' },
+    });
     return res.json({ ok: true, skipped: true, reason: 'VERCEL_API_TOKEN or VERCEL_PROJECT_ID not configured' });
   }
+
+  const runId = await MaintenanceService.startRun('log-analysis');
 
   try {
     // Fetch recent error logs from Vercel
@@ -68,6 +76,15 @@ export default async function handler(req, res) {
     );
 
     if (errors.length < ERROR_THRESHOLD) {
+      await MaintenanceService.completeRun(runId, {
+        status: 'completed',
+        recordsProcessed: errors.length,
+        details: {
+          errorCount: errors.length,
+          threshold: ERROR_THRESHOLD,
+          analysisTriggered: false,
+        },
+      });
       return res.json({
         ok: true,
         errorCount: errors.length,
@@ -120,6 +137,15 @@ export default async function handler(req, res) {
       source: 'cron/log-analysis',
     });
 
+    await MaintenanceService.completeRun(runId, {
+      status: 'completed',
+      recordsProcessed: errors.length,
+      details: {
+        errorCount: errors.length,
+        analysisTriggered: true,
+      },
+    });
+
     return res.json({
       ok: true,
       errorCount: errors.length,
@@ -127,6 +153,10 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('Log analysis cron error:', error);
+    await MaintenanceService.completeRun(runId, {
+      status: 'failed',
+      errorMessage: error.message,
+    });
     return res.status(500).json({ error: 'Log analysis failed', message: error.message });
   }
 }

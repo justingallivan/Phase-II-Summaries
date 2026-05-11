@@ -5,7 +5,7 @@
  * Protected: superuser role required (or auth bypassed in dev mode).
  *
  * Query params:
- *   period  - '7d' | '30d' | '90d' (default '30d')
+ *   period  - '1d' | '7d' | '30d' | '90d' (default '30d')
  */
 
 import { requireSuperuser } from '../../../lib/utils/auth';
@@ -20,7 +20,11 @@ export default async function handler(req, res) {
   if (!gate) return;
 
   const period = req.query.period || '30d';
-  const days = period === '7d' ? 7 : period === '90d' ? 90 : 30;
+  const days =
+    period === '1d' ? 1 :
+    period === '7d' ? 7 :
+    period === '90d' ? 90 :
+    30;
 
   try {
     const [summary, byUser, byApp, byDay, today] = await Promise.all([

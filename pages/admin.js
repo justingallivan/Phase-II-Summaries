@@ -1,8 +1,10 @@
 import { useState, useEffect, Fragment } from 'react';
 import Layout, { PageHeader, Card } from '../shared/components/Layout';
+import PoliciesSection from '../shared/components/admin/PoliciesSection';
 import { APP_REGISTRY } from '../shared/config/appRegistry';
 
 const PERIOD_OPTIONS = [
+  { value: '1d', label: '1 day' },
   { value: '7d', label: '7 days' },
   { value: '30d', label: '30 days' },
   { value: '90d', label: '90 days' },
@@ -51,6 +53,7 @@ function HealthSection() {
   const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expandedService, setExpandedService] = useState(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   useEffect(() => {
     fetch('/api/health')
@@ -71,14 +74,30 @@ function HealthSection() {
 
   if (!health) return null;
 
+  const services = Object.entries(health.services || {});
+  const failingCount = services.filter(([, svc]) => svc.status && svc.status !== 'ok' && svc.status !== 'skipped').length;
+
   return (
     <Card>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-2">
         <h2 className="text-lg font-semibold text-gray-900">Service Health</h2>
         <StatusBadge status={health.overall} />
       </div>
+      <div className="flex items-center justify-between mb-3 text-sm text-gray-600">
+        <span>
+          {services.length} service{services.length === 1 ? '' : 's'} checked
+          {failingCount > 0 && <span className="ml-2 text-red-600">• {failingCount} not OK</span>}
+        </span>
+        <button
+          onClick={() => setDetailsOpen(o => !o)}
+          className="text-xs text-gray-600 hover:text-gray-900"
+        >
+          {detailsOpen ? '▼ Hide details' : '▶ Show details'}
+        </button>
+      </div>
+      {detailsOpen && (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {Object.entries(health.services || {}).map(([key, svc]) => {
+        {services.map(([key, svc]) => {
           const isExpanded = expandedService === key;
           const hasOverflow = svc.message || svc.detail;
           return (
@@ -106,6 +125,7 @@ function HealthSection() {
           );
         })}
       </div>
+      )}
       {health.timestamp && (
         <p className="text-xs text-gray-400 mt-3">Checked at {new Date(health.timestamp).toLocaleString()}</p>
       )}
@@ -126,6 +146,7 @@ function HealthHistorySection() {
   const [hours, setHours] = useState(24);
   const [loading, setLoading] = useState(true);
   const [expandedCheckId, setExpandedCheckId] = useState(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -196,6 +217,15 @@ function HealthHistorySection() {
       </div>
 
       {/* Recent checks table */}
+      <div className="flex justify-end mb-2">
+        <button
+          onClick={() => setDetailsOpen(o => !o)}
+          className="text-xs text-gray-600 hover:text-gray-900"
+        >
+          {detailsOpen ? '▼ Hide recent checks' : '▶ Show recent checks'}
+        </button>
+      </div>
+      {detailsOpen && (
       <div className="overflow-x-auto max-h-96 overflow-y-auto">
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-white">
@@ -266,6 +296,7 @@ function HealthHistorySection() {
           </tbody>
         </table>
       </div>
+      )}
     </Card>
   );
 }
@@ -654,6 +685,7 @@ function UsageSection() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -679,53 +711,7 @@ function UsageSection() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Today's Spend */}
-      {stats?.today && (
-        <Card>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-gray-900">Today's Spend</h2>
-            <div className="text-2xl font-bold text-gray-900">
-              {formatCost(stats.today.total_cost_cents)}
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <div>
-              <div className="font-medium text-gray-600 mb-1">Top apps</div>
-              {stats.today.topApps?.length > 0 ? (
-                <ul className="space-y-1">
-                  {stats.today.topApps.map((row, i) => (
-                    <li key={i} className="flex justify-between">
-                      <span className="text-gray-900">{row.app_name}</span>
-                      <span className="text-gray-700">{formatCost(row.total_cost_cents)}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : <div className="text-gray-400">No activity yet today</div>}
-            </div>
-            <div>
-              <div className="font-medium text-gray-600 mb-1">Top users</div>
-              {stats.today.topUsers?.length > 0 ? (
-                <ul className="space-y-1">
-                  {stats.today.topUsers.map((row, i) => (
-                    <li key={i} className="flex justify-between">
-                      <span className="text-gray-900">{row.user_name}</span>
-                      <span className="text-gray-700">{formatCost(row.total_cost_cents)}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : <div className="text-gray-400">No activity yet today</div>}
-            </div>
-          </div>
-          <div className="mt-3 text-xs text-gray-500">
-            {stats.today.request_count} request{stats.today.request_count === 1 ? '' : 's'} today
-            {stats.today.error_count > 0 && (
-              <span className="ml-2 text-red-600">• {stats.today.error_count} error{stats.today.error_count === 1 ? '' : 's'}</span>
-            )}
-          </div>
-        </Card>
-      )}
-
+    <div className="space-y-3">
       {/* Summary Cards */}
       <Card>
         <div className="flex items-center justify-between mb-4">
@@ -759,10 +745,19 @@ function UsageSection() {
         ) : (
           <div className="text-gray-500 text-sm">No usage data yet.</div>
         )}
+
+        <div className="mt-3 flex justify-end">
+          <button
+            onClick={() => setDetailsOpen(o => !o)}
+            className="text-xs text-gray-600 hover:text-gray-900"
+          >
+            {detailsOpen ? '▼ Hide breakdowns' : '▶ Show breakdowns (by user / by app / daily trend)'}
+          </button>
+        </div>
       </Card>
 
       {/* Usage by User */}
-      {stats?.byUser?.length > 0 && (
+      {detailsOpen && stats?.byUser?.length > 0 && (
         <Card>
           <h3 className="text-md font-semibold text-gray-900 mb-3">Usage by User</h3>
           <div className="overflow-x-auto">
@@ -797,7 +792,7 @@ function UsageSection() {
       )}
 
       {/* Usage by App */}
-      {stats?.byApp?.length > 0 && (
+      {detailsOpen && stats?.byApp?.length > 0 && (
         <Card>
           <h3 className="text-md font-semibold text-gray-900 mb-3">Usage by App</h3>
           <div className="overflow-x-auto">
@@ -832,7 +827,7 @@ function UsageSection() {
       )}
 
       {/* Daily Trend */}
-      {stats?.byDay?.length > 0 && (
+      {detailsOpen && stats?.byDay?.length > 0 && (
         <Card>
           <h3 className="text-md font-semibold text-gray-900 mb-3">Daily Trend</h3>
           <div className="overflow-x-auto">
@@ -951,21 +946,11 @@ function ModelConfigSection() {
   useEffect(() => { fetchConfig(); }, []);
 
   if (loading) {
-    return (
-      <Card>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Model Configuration</h2>
-        <div className="text-gray-500 text-sm">Loading model configuration...</div>
-      </Card>
-    );
+    return <div className="text-gray-500 text-sm">Loading model configuration...</div>;
   }
 
   if (error) {
-    return (
-      <Card>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Model Configuration</h2>
-        <div className="text-red-600 text-sm">{error}</div>
-      </Card>
-    );
+    return <div className="text-red-600 text-sm">{error}</div>;
   }
 
   if (!serverState) return null;
@@ -1055,15 +1040,12 @@ function ModelConfigSection() {
   const shortModelName = shortModelLabel;
 
   return (
-    <Card>
+    <>
       <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Model Configuration</h2>
-          <p className="text-xs text-gray-500 mt-1">
-            Tier picks (Opus / Sonnet / Haiku) auto-track the latest model in that family. Pin a specific version only if you need to reproduce historical behavior. Changes take effect within 5 minutes.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+        <p className="text-xs text-gray-500">
+          Tier picks (Opus / Sonnet / Haiku) auto-track the latest model in that family. Pin a specific version only if you need to reproduce historical behavior. Changes take effect within 5 minutes.
+        </p>
+        <div className="flex items-center gap-2 ml-3 shrink-0">
           <button
             onClick={() => fetchConfig({ refresh: true })}
             disabled={refreshing || saving}
@@ -1187,7 +1169,7 @@ function ModelConfigSection() {
           {diff.length} unsaved change(s). Changed dropdowns are highlighted.
         </p>
       )}
-    </Card>
+    </>
   );
 }
 
@@ -1235,12 +1217,7 @@ function RoleManagementSection() {
   }, []);
 
   if (loading) {
-    return (
-      <Card>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Role Management</h2>
-        <div className="text-gray-500 text-sm">Loading...</div>
-      </Card>
-    );
+    return <div className="text-gray-500 text-sm">Loading...</div>;
   }
 
   if (callerRole !== 'superuser') return null;
@@ -1294,9 +1271,7 @@ function RoleManagementSection() {
   const availableUsers = users.filter(u => !assignedIds.has(u.id) && u.isActive);
 
   return (
-    <Card>
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">Role Management</h2>
-
+    <>
       {message && (
         <div className={`mb-4 px-3 py-2 rounded-lg text-sm ${
           message.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'
@@ -1393,7 +1368,7 @@ function RoleManagementSection() {
           {saving ? 'Assigning...' : 'Assign'}
         </button>
       </div>
-    </Card>
+    </>
   );
 }
 
@@ -1439,12 +1414,7 @@ function AppAccessSection() {
   useEffect(() => { fetchGrants(); }, []);
 
   if (loading) {
-    return (
-      <Card>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">App Access Management</h2>
-        <div className="text-gray-500 text-sm">Loading...</div>
-      </Card>
-    );
+    return <div className="text-gray-500 text-sm">Loading...</div>;
   }
 
   if (!isSuperuser) return null;
@@ -1537,6 +1507,22 @@ function AppAccessSection() {
     setMessage(null);
   };
 
+  // Soft-archive a user (sets is_active=false). The row stays for audit
+  // integrity but auth/app-access lookups exclude inactive profiles.
+  const removeUser = async (userId, userName) => {
+    if (!confirm(`Remove ${userName || `user ${userId}`}? They will lose login and app access. The profile row is preserved for audit history.`)) return;
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/admin/users?id=${userId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Remove failed');
+      setMessage({ type: 'success', text: `Removed ${data.name || userName || userId}` });
+      fetchGrants();
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    }
+  };
+
   // Short labels for column headers
   const appShortNames = {};
   APP_REGISTRY.forEach(app => {
@@ -1545,9 +1531,8 @@ function AppAccessSection() {
   });
 
   return (
-    <Card>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-900">App Access Management</h2>
+    <>
+      <div className="flex items-center justify-end mb-4">
         <div className="flex items-center gap-2">
           {hasChanges && (
             <button
@@ -1589,6 +1574,7 @@ function AppAccessSection() {
                   </th>
                 ))}
                 <th className="py-2 px-2 text-center font-medium text-gray-500 text-xs min-w-[50px]">All</th>
+                <th className="py-2 px-2 text-center font-medium text-gray-500 text-xs min-w-[60px]"></th>
               </tr>
             </thead>
             <tbody>
@@ -1628,6 +1614,15 @@ function AppAccessSection() {
                         title={allChecked ? 'Deselect all' : 'Select all'}
                       />
                     </td>
+                    <td className="py-2 px-2 text-center">
+                      <button
+                        onClick={() => removeUser(uid, grant.user_name)}
+                        title="Soft-archive this user (sets is_active=false). The row is preserved for audit history."
+                        className="text-xs text-red-600 hover:text-red-800"
+                      >
+                        Remove
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -1643,7 +1638,7 @@ function AppAccessSection() {
           Unsaved changes for {diff.length} user(s). Changed checkboxes are highlighted.
         </p>
       )}
-    </Card>
+    </>
   );
 }
 
@@ -1888,12 +1883,7 @@ function DynamicsIdentitySection() {
   };
 
   if (loading) {
-    return (
-      <Card>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Dynamics Identity Linkage</h2>
-        <div className="text-gray-500 text-sm">Loading...</div>
-      </Card>
-    );
+    return <div className="text-gray-500 text-sm">Loading...</div>;
   }
 
   if (users.length === 0) return null; // not superuser (filtered list returned empty)
@@ -1902,12 +1892,9 @@ function DynamicsIdentitySection() {
   const formatDate = (d) => d ? new Date(d).toLocaleDateString() : 'never';
 
   return (
-    <Card>
+    <>
       <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Dynamics Identity Linkage</h2>
-          <p className="text-xs text-gray-500 mt-0.5">{linked} of {users.length} active users linked to a Dynamics systemuser.</p>
-        </div>
+        <p className="text-xs text-gray-500">{linked} of {users.length} active users linked to a Dynamics systemuser.</p>
         <div className="flex gap-2">
           <button
             onClick={() => reconcile(false)}
@@ -1962,7 +1949,7 @@ function DynamicsIdentitySection() {
           </tbody>
         </table>
       </div>
-    </Card>
+    </>
   );
 }
 
@@ -1995,6 +1982,38 @@ function QuickLinksSection() {
   );
 }
 
+// Collapsible Card wrapper. Renders a Card with an always-visible header
+// + chevron toggle; children lazy-mount on first open and stay mounted
+// after. Used for heavyweight admin sections whose data fetches are
+// expensive or rarely consulted. Pass `bare`-styled children (i.e.
+// children that DON'T render their own outer Card).
+function CollapsibleCard({ title, subtitle, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const [everOpened, setEverOpened] = useState(defaultOpen);
+  const toggle = () => {
+    setOpen(o => {
+      const next = !o;
+      if (next) setEverOpened(true);
+      return next;
+    });
+  };
+  return (
+    <Card>
+      <button
+        onClick={toggle}
+        className="w-full flex items-center justify-between text-left"
+      >
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+          {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
+        </div>
+        <span className="text-xs text-gray-500 ml-3">{open ? '▼' : '▶'}</span>
+      </button>
+      {everOpened && <div className={`mt-4 ${open ? '' : 'hidden'}`}>{children}</div>}
+    </Card>
+  );
+}
+
 // --- Main Page ---
 export default function AdminDashboard() {
   return (
@@ -2011,10 +2030,21 @@ export default function AdminDashboard() {
         <MaintenanceSection />
         <SecretExpirationSection />
         <UsageSection />
-        <ModelConfigSection />
-        <RoleManagementSection />
-        <AppAccessSection />
-        <DynamicsIdentitySection />
+        <CollapsibleCard title="Model Configuration">
+          <ModelConfigSection />
+        </CollapsibleCard>
+        <CollapsibleCard title="Policies">
+          <PoliciesSection />
+        </CollapsibleCard>
+        <CollapsibleCard title="Role Management">
+          <RoleManagementSection />
+        </CollapsibleCard>
+        <CollapsibleCard title="App Access Management">
+          <AppAccessSection />
+        </CollapsibleCard>
+        <CollapsibleCard title="Dynamics Identity Linkage">
+          <DynamicsIdentitySection />
+        </CollapsibleCard>
         <DynamicsFeedbackSection />
         <QuickLinksSection />
       </div>

@@ -1,0 +1,13 @@
+{
+  "name": "wmkf_policyversion alt key (parent + version label)",
+  "kind": "extensions-on-existing",
+  "entityLogicalName": "wmkf_policyversion",
+  "description": "Adds a Dataverse alternate key enforcing uniqueness of (parent slot, version label) on policy version rows. Application code uses this to prevent two concurrent publish requests from creating duplicate immutable version rows under the same slot+label — DB-level race protection that app-level 'look first then create' cannot guarantee. Catch duplicate-key creates in /api/admin/policies and re-read into the idempotency branch dispatch (already_published / label_conflict / resume).",
+  "alternateKeys": [
+    {
+      "schemaName": "wmkf_policyversion_parent_label_unique",
+      "displayName": "Policy + Version Label (unique)",
+      "keyAttributes": ["wmkf_policy", "wmkf_versionlabel"]
+    }
+  ]
+}

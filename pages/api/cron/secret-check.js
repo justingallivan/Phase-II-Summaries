@@ -20,6 +20,7 @@ import { verifyCronSecret } from '../../../lib/utils/cron-auth';
 import NotificationService from '../../../lib/services/notification-service';
 import { listSettings } from '../../../lib/services/settings-service';
 import AlertService from '../../../lib/services/alert-service';
+import MaintenanceService from '../../../lib/services/maintenance-service';
 
 // Secrets we track — display name + settings key suffix
 const TRACKED_SECRETS = [
@@ -36,6 +37,8 @@ export default async function handler(req, res) {
   }
 
   if (!verifyCronSecret(req, res)) return;
+
+  const runId = await MaintenanceService.startRun('secret-check');
 
   try {
     // Load all secret_expiration:* and secret_rotation:* settings
@@ -105,9 +108,20 @@ export default async function handler(req, res) {
       });
     }
 
+    const flagged = results.filter(r => r.status !== 'ok').length;
+    await MaintenanceService.completeRun(runId, {
+      status: 'completed',
+      recordsProcessed: results.length,
+      details: { secretsChecked: results.length, flagged },
+    });
+
     return res.json({ ok: true, secrets: results });
   } catch (error) {
     console.error('Secret check cron error:', error);
+    await MaintenanceService.completeRun(runId, {
+      status: 'failed',
+      errorMessage: error.message,
+    });
     return res.status(500).json({ error: 'Secret check failed', message: error.message });
   }
 }

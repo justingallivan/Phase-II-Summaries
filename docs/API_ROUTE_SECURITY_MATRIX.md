@@ -49,8 +49,10 @@ There are no open findings from the initial matrix pass as of this update. New f
 | `/api/admin/health-history` | GET | Superuser | `requireSuperuser` | Global admin | Reads `health_check_history` (PG) | Low | Shared helper. |
 | `/api/admin/maintenance` | GET | Superuser | `requireSuperuser` | Global admin | Reads `maintenance_runs`, `system_settings` (PG) | Low | Shared helper. |
 | `/api/admin/models` | GET, PUT | Superuser | `requireSuperuser` | Global admin | Reads/writes `system_settings` (PG) | Low | Also calls Anthropic model list. |
+| `/api/admin/policies` | GET, POST | Superuser | `requireSuperuser` | Global admin | Reads/writes Dataverse `wmkf_policy` + `wmkf_policyversion`; writes `policy_publish_audit` (PG); writes `system_alerts` on audit-finalize failure | Medium | Three-step publish flow (create child, flip parent lookup, retire prior) with ETag concurrency + alt-key enforced uniqueness. See atlas page for state machine. |
 | `/api/admin/reconcile-identities` | POST | Superuser | `requireSuperuser` | Global admin | Updates `user_profiles` (PG); reads Dynamics `systemuser` | Low | Manual equivalent of cron reconciliation. |
 | `/api/admin/secrets` | GET, PUT | Superuser | `requireSuperuser` | Global admin | Reads/writes `system_settings` (PG) | Low | Tracks metadata, not secret values. |
+| `/api/admin/users` | DELETE | Superuser | `requireSuperuser` | Global admin | Updates `user_profiles.is_active` (PG); clears app-access cache | Medium | Soft-archive; refuses self-archive. Profile row preserved for audit FK integrity. |
 | `/api/admin/stats` | GET | Superuser | `requireSuperuser` | Global admin | Read-only (PG SELECTs across usage tables) | Low | Usage statistics across users. |
 | `/api/analyze-funding-gap` | POST | App | `requireAppAccess('funding-gap-analyzer')` | Request payload | Writes `api_usage_log` (PG) via llm-client | Low | AI payload review still needed. |
 | `/api/analyze-literature` | POST | App | `requireAppAccess('literature-analyzer')` | Request payload | Writes `api_usage_log` (PG); external lit-search APIs | Low | External research APIs / AI payload review. |

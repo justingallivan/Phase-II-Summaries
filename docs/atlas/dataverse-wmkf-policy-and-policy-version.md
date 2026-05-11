@@ -60,11 +60,32 @@ GET wmkf_appreviewersuggestions(<id>)?$select=wmkf_coiackedat,wmkf_aiuseackedat
 
 The lookup chain (engagement → version → parent slot) preserves the exact policy text the reviewer saw at acknowledgment time, regardless of subsequent staff edits or activation flips.
 
-## Write paths (staff-controlled, no application writes)
+## Write paths
 
-- **Add a new policy version:** create a `wmkf_policyversion` child under an existing parent in `Draft`; flip parent's `wmkf_activeversion` lookup when ready. Existing acks against the prior active row remain valid (lookup pins to the specific child GUID).
-- **Activate a draft:** flip parent's `wmkf_activeversion`; old child becomes `Retired` by convention (manual statuscode update, not automatic).
+- **`POST /api/admin/policies` — Publish new version** (S145). Single application write path; staff-driven via `/admin` Policies section. Implementation in `pages/api/admin/policies.js`. Server-side allowlist restricts visible/writable slot codes (currently just `reviewer-coi`). Flow:
+  1. Validate inputs (allowlist, lengths, date format, markdown via `shared/utils/policy-markdown.js`).
+  2. Write a `pending` row to `policy_publish_audit` (Postgres, see migration `006_policy_publish_audit.sql`). Hard-abort on audit-write failure — audit availability is a precondition.
+  3. Resolve parent slot by code; fail loud on 0 or >1 rows (`slot_not_provisioned` / `duplicate_slot_rows`).
+  4. Idempotency lookup by `(parentId, versionLabel)` against the alternate key `wmkf_policyversion_parent_label_unique`. Dispatch into `already_published` / `label_conflict` / resume-from-flip / fresh-publish branches.
+  5. Create child `wmkf_policyversion` → PATCH parent `wmkf_activeversion` lookup with `If-Match: parentEtag` (412 → `concurrency_conflict`, child surfaced as orphan) → PATCH prior version statecode (best-effort).
+  6. Write `final` audit row to `policy_publish_audit` with structured outcome JSON + warnings array. On finalize failure, raise `system_alerts` (alert_type=`policy_audit_finalize_failed`) and return `audit_finalize_failed` warning.
+- **Direct Dataverse writes by staff** (e.g., via Dynamics admin UI) remain available but bypass the application audit trail. Don't.
 - **Edit body in-place:** **DO NOT** edit `wmkf_policybody`/`wmkf_policytitle`/`wmkf_versionlabel` on a child once any engagement row references it. Create a new version row instead. See immutability rules in `docs/REVIEWER_STAGE_2A_BUILD_PLAN.md` §4a.
+
+### Verified statecode/statuscode values (`wmkf_policyversion`)
+
+Probed 2026-05-10 via `scripts/probe-policyversion-statecodes.mjs`. Hardcoded into `POLICY_VERSION_STATUS` in `pages/api/admin/policies.js`. Re-run the probe if Dataverse shows the values have shifted (e.g., custom state additions).
+
+| state | statecode | statuscode |
+|---|---|---|
+| Active | 0 | 1 |
+| Retired (Inactive) | 1 | 2 |
+
+**Source-of-truth convention:** the *only* authoritative signal for "which version is in force" is `parent.wmkf_activeversion`. Version row `statecode` is decorative — the publish route best-efforts the prior version into `Retired` after the parent flip, but failure there does **not** invalidate the publish. `isResidue` in the API response surfaces orphan child versions (created but never activated) so admins can repair them manually if frequent.
+
+### Alternate key (S145)
+
+`wmkf_policyversion_parent_label_unique` on `(_wmkf_policy_value, wmkf_versionlabel)`. Enforces DB-level uniqueness so concurrent publish requests for the same `(slot, label)` pair cannot both create children. The publish route catches the duplicate-key error and re-dispatches into the idempotency branch logic.
 
 ## Immutability and delete enforcement
 

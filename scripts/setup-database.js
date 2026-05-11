@@ -589,6 +589,30 @@ const v23bStatements = [
   `CREATE INDEX IF NOT EXISTS idx_dynamics_feedback_session ON dynamics_feedback(session_id)`,
 ];
 
+// V28: Policy publish audit (append-only). See migration 006_policy_publish_audit.sql
+// for full rationale. Dedicated Postgres table rather than overloading wmkf_ai_run.
+const v28Statements = [
+  `CREATE TABLE IF NOT EXISTS policy_publish_audit (
+    id                SERIAL PRIMARY KEY,
+    request_id        TEXT NOT NULL,
+    slot_code         TEXT NOT NULL,
+    parent_id         TEXT,
+    version_label     TEXT NOT NULL,
+    version_id        TEXT,
+    prior_version_id  TEXT,
+    title             TEXT NOT NULL,
+    profile_id        INTEGER REFERENCES user_profiles(id),
+    phase             TEXT NOT NULL CHECK (phase IN ('pending', 'final')),
+    status            TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'partial', 'already_published', 'concurrency_conflict', 'label_conflict', 'invalid_body', 'slot_not_provisioned', 'duplicate_slot_rows', 'audit_unavailable', 'failed')),
+    outcome_json      JSONB,
+    warnings_json     JSONB,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_policy_publish_audit_slot ON policy_publish_audit (slot_code, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_policy_publish_audit_request ON policy_publish_audit (request_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_policy_publish_audit_created ON policy_publish_audit (created_at DESC)`,
+];
+
 // V26: Intake Portal — draft staging + audit
 const v26Statements = [
   `CREATE TABLE IF NOT EXISTS intake_drafts (
@@ -1335,6 +1359,25 @@ async function runMigration() {
           console.log(`[v27-${i + 1}/${v27Alterations.length}] ○ Already exists: ${preview}...`);
         } else {
           console.error(`[v27-${i + 1}/${v27Alterations.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
+      }
+    }
+
+    // Run V28 table creation (Policy publish audit)
+    console.log(`\nApplying v28 schema updates - Policy publish audit (${v28Statements.length} statements)...`);
+    for (let i = 0; i < v28Statements.length; i++) {
+      const statement = v28Statements[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v28-${i + 1}/${v28Statements.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v28-${i + 1}/${v28Statements.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v28-${i + 1}/${v28Statements.length}] ✗ Error: ${error.message}`);
           throw error;
         }
       }
