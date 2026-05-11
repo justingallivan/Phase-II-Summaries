@@ -62,11 +62,14 @@ export default function PoliciesSection() {
 
   useEffect(() => { fetchState(); }, []);
 
-  if (loading) {
+  // Only blank the section on the FIRST load. Subsequent refetches keep
+  // the prior state on screen so per-slot transient state (outcome banner,
+  // form expansion) survives a reload-after-publish.
+  if (loading && !state) {
     return <div className="text-gray-500 text-sm">Loading…</div>;
   }
 
-  if (error) {
+  if (error && !state) {
     return <div className="text-red-600 text-sm">{error}</div>;
   }
 
@@ -165,6 +168,14 @@ function PublishForm({ slot, onSuccess, onOutcome }) {
   const [submitting, setSubmitting] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  const prefillFromActive = () => {
+    if (!slot.activeVersion) return;
+    setVersionLabel(slot.activeVersion.versionLabel || '');
+    setTitle(slot.activeVersion.title || '');
+    setBody(slot.activeVersion.body || '');
+    setEffectiveDate(slot.activeVersion.effectiveDate || todayISO());
+  };
+
   const submit = async () => {
     setSubmitting(true);
     try {
@@ -260,7 +271,16 @@ function PublishForm({ slot, onSuccess, onOutcome }) {
         </div>
       )}
 
-      <div className="flex justify-end gap-2">
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={prefillFromActive}
+          disabled={!slot.activeVersion}
+          className="text-xs text-gray-600 hover:text-gray-900 disabled:opacity-40"
+          title="Copy the currently active version's fields into this form. Useful for testing already_published or for tweaking a single field."
+        >
+          Prefill from active version
+        </button>
         <button
           onClick={submit}
           disabled={submitting || !title.trim() || bodyTooShort || !versionLabel.trim()}
@@ -291,7 +311,11 @@ function OutcomeBanner({ outcome, onDismiss }) {
             </div>
           )}
           {outcome.details?.existing && outcome.details?.submitted && (
-            <DiffBlock existing={outcome.details.existing} submitted={outcome.details.submitted} />
+            <DiffBlock
+              existing={outcome.details.existing}
+              submitted={outcome.details.submitted}
+              fieldsMatch={outcome.details.fieldsMatch}
+            />
           )}
           {outcome.orphan && (
             <div className="mt-1 text-xs">
@@ -305,14 +329,16 @@ function OutcomeBanner({ outcome, onDismiss }) {
   );
 }
 
-function DiffBlock({ existing, submitted }) {
+function DiffBlock({ existing, submitted, fieldsMatch }) {
+  const mark = (matches) => (matches === undefined ? '' : matches ? ' ✓' : ' ✗ differs');
   return (
     <div className="mt-2 grid grid-cols-2 gap-3 text-xs">
       <div>
         <div className="font-semibold mb-1">Existing</div>
         <div>Label: {existing.versionLabel}</div>
-        <div>Title: {existing.title}</div>
-        <div>Effective: {existing.effectiveDate}</div>
+        <div>Title{mark(fieldsMatch?.title)}: {existing.title}</div>
+        <div>Effective{mark(fieldsMatch?.effectiveDate)}: {existing.effectiveDate}</div>
+        <div>Body{mark(fieldsMatch?.body)} ({existing.bodyLength ?? '?'} chars):</div>
         <div className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[10px]">
           {existing.bodyExcerpt}
         </div>
@@ -320,8 +346,9 @@ function DiffBlock({ existing, submitted }) {
       <div>
         <div className="font-semibold mb-1">Submitted</div>
         <div>Label: {submitted.versionLabel}</div>
-        <div>Title: {submitted.title}</div>
-        <div>Effective: {submitted.effectiveDate}</div>
+        <div>Title{mark(fieldsMatch?.title)}: {submitted.title}</div>
+        <div>Effective{mark(fieldsMatch?.effectiveDate)}: {submitted.effectiveDate}</div>
+        <div>Body{mark(fieldsMatch?.body)} ({submitted.bodyLength ?? '?'} chars):</div>
         <div className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[10px]">
           {submitted.bodyExcerpt}
         </div>

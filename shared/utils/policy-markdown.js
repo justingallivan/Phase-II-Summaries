@@ -105,6 +105,19 @@ function validatePolicyMarkdown(body) {
   if (typeof body !== 'string') return { ok: false, reason: 'not_a_string' };
   if (body.length === 0) return { ok: false, reason: 'empty' };
 
+  // Pre-scan for raw HTML tags in the input. Marked sometimes drops tags
+  // silently during parsing (specifically when they appear before any
+  // markdown content), so by the time DOMPurify sees the rendered output
+  // the dangerous bits are already gone. That leaves the validator with
+  // nothing to complain about — wrong for our "fail loud" contract. Reject
+  // any input that contains <tag-like markup at all; the markdown body is
+  // expected to be markdown text, not HTML.
+  const rawTagMatches = body.match(/<\s*\/?\s*([a-zA-Z][\w-]*)\b[^>]*>/g);
+  if (rawTagMatches && rawTagMatches.length > 0) {
+    const uniq = Array.from(new Set(rawTagMatches.map(t => t.trim()))).slice(0, 20);
+    return { ok: false, reason: 'disallowed_content', dropped: uniq };
+  }
+
   const rawHtml = marked.parse(body, markedOptions);
 
   const dropped = [];

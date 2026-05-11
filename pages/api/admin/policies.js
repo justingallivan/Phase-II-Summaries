@@ -324,7 +324,11 @@ async function runPublish({ slotCode, versionLabel, title, body, effectiveDate, 
       });
     }
 
-    // Branch D — label conflict
+    // Branch D — label conflict. Surface per-field flags so the UI / operator
+    // can tell which of (title | body | effectiveDate) drifted.
+    const titleMatches = existingRow.wmkf_policytitle === title;
+    const bodyMatches = existingRow.wmkf_policybody === body;
+    const dateMatches = normalizeDateOnly(existingRow.wmkf_effectivedate) === effectiveDate;
     return {
       status: 'label_conflict',
       child: { id: existingRow.wmkf_policyversionid, created: false, reused: false },
@@ -335,13 +339,21 @@ async function runPublish({ slotCode, versionLabel, title, body, effectiveDate, 
       orphan: null,
       warnings: [],
       details: {
+        fieldsMatch: { title: titleMatches, body: bodyMatches, effectiveDate: dateMatches },
         existing: {
           versionLabel: existingRow.wmkf_versionlabel,
           title: existingRow.wmkf_policytitle,
+          bodyLength: (existingRow.wmkf_policybody || '').length,
           bodyExcerpt: excerpt(existingRow.wmkf_policybody, 200),
           effectiveDate: normalizeDateOnly(existingRow.wmkf_effectivedate),
         },
-        submitted: { versionLabel, title, bodyExcerpt: excerpt(body, 200), effectiveDate },
+        submitted: {
+          versionLabel,
+          title,
+          bodyLength: body.length,
+          bodyExcerpt: excerpt(body, 200),
+          effectiveDate,
+        },
       },
     };
   }
