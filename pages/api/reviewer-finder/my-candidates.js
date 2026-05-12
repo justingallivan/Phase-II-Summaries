@@ -132,11 +132,20 @@ async function handleGet(req, res, access) {
           proposalInstitution: null, // not directly on akoya_request; intentionally unmapped here
           requestNumber: request.requestNumber,
           programArea: request.programArea,
-          grantCycleCode: request.cycleCode,
+          // grantCycleCode: prefer suggestion-level wmkf_grantcyclecode
+          // when populated (the picker writes this via bulkUpdateByRequest);
+          // fall back to the request's meeting-date-derived cycleCode.
+          // Closes Codex S147 step-5 review Q6 (picker edits now visible
+          // on refresh instead of reverting to meeting-date value).
+          grantCycleCode: s.wmkf_grantcyclecode || request.cycleCode,
           grantCycleLabel: request.cycleLabel,
           meetingDate: request.meetingDate,
           candidates: [],
         };
+      } else if (!byRequest[reqId].grantCycleCode && s.wmkf_grantcyclecode) {
+        // First suggestion was null; pick up later non-null suggestion-level
+        // override (defensive — bulkUpdate writes all at once but be safe).
+        byRequest[reqId].grantCycleCode = s.wmkf_grantcyclecode;
       }
       const person = personById[s._wmkf_potentialreviewer_value] || {};
       const researcher = researcherByPerson[s._wmkf_potentialreviewer_value] || null;
