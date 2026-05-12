@@ -24,7 +24,7 @@ Refreshed 2026-05-12. Several artifacts have shipped since the plan was locked; 
 | `scripts/backfill-reviewer-suggestions-to-dataverse.js` | spec'd | Idempotent commit-mode backfill of the 8-row Postgres-only delta. **Triage these 8 rows first** (per Codex 3b 2026-05-12): determine whether each is a genuine missed sync or a legitimate Postgres-only row (e.g., proposal not yet in Dataverse) before committing. |
 | `pages/api/reviewer-finder/add-candidate-manual.js` | spec'd | Net-new "add candidate by hand" endpoint, replaces retired Database tab. Writes to all three Dataverse entities (`wmkf_potentialreviewer`, `wmkf_appresearcher`, `wmkf_appreviewersuggestion`) via existing adapters. |
 | `lib/services/contact-history-service.js` | spec'd | Match-on-discovery aggregation helper. **Distinct from the existing endpoint** — the endpoint serves a batched Dataverse lookup; this service would consume it from `discovery-service.js` during candidate enrichment. |
-| Match-on-discovery wiring in `lib/services/discovery-service.js` + history-badge UI in `pages/reviewer-finder.js` | spec'd | First-class new scope. Badge sources: 🔁 reviewed (from junction + suggestions); 🚫 declined (from `wmkf_appreviewersuggestion.wmkf_responsetype`); 💰 funded PI (depends on Dataverse award/grant data — separate query, not from `reviewer_suggestions`; verify the data path before promising the badge). |
+| Match-on-discovery wiring in `lib/services/discovery-service.js` + history-badge UI in `pages/reviewer-finder.js` | spec'd | First-class new scope. Badge sources: 🔁 reviewed (from `wmkf_appreviewersuggestion` rows linked to the contact via slot's `wmkf_contact`); 🚫 declined (from `wmkf_appreviewersuggestion.wmkf_responsetype`); 💰 funded PI (from `wmkf_apprequestperson` junction + `_wmkf_projectleader_value` on `akoya_request` — the same UNION the contact-history endpoint already returns). |
 | `wmkf_appgrantcycle` entity | **PARTIALLY DEPLOYED** (10 custom attrs live, 0 rows) | The entity exists in prod Dataverse but with an incomplete schema — 3 fields are missing (`wmkf_ShortCode`, `wmkf_ProgramName`, `wmkf_CustomFields`). See `docs/atlas/dataverse-wmkf-apppublication-and-appgrantcycle.md`. Remaining work is a **schema patch** (not a fresh deploy) plus data backfill from Postgres `grant_cycles`. |
 | `grant_cycles` endpoint cutover | spec'd | Three application files write/read `grant_cycles` today (see "Drain-target endpoint inventory" below). Cutover blocks Review Manager email path. |
 | Cleanup cron (`/api/cron/reviewer-cleanup` or similar) | spec'd | Drops unengaged `wmkf_appreviewersuggestion` rows post meeting + 14 days; weekly schedule. **Predicate locked S136 2026-05-06** (8 signals). |
@@ -211,11 +211,11 @@ The 14-day grace lets staff dip back into the unselected pool if late acceptance
 
 **Pre-delete backup**: before any delete, the cron exports the doomed rows (suggestion only) to a JSON blob in Vercel Blob storage with 30-day retention. Provides a manual-restore path if a predicate-bug deletes wrongly. Restore script (`scripts/restore-from-cleanup-backup.js`) reads the blob and re-CREATEs the suggestion via `reviewerSuggestionAdapter.upsert`. Idempotent via alt key.
 
-### Engaged slots = de facto reviewer-history child entity
+### Engaged suggestion rows = de facto reviewer-history child entity
 
-We don't need a new role-tracking entity. The set of `wmkf_potentialreviewer` rows that survive cleanup IS the per-contact reviewer history. Each row already carries timestamps, request linkage, and outcome. The cleanup cron is what turns the table from "current cycle scratch" into "permanent history of engaged reviewers."
+We don't need a new role-tracking entity. The set of `wmkf_appreviewersuggestion` rows that survive cleanup IS the per-contact reviewer history. Each row carries the lifecycle fields (`wmkf_emailsentat`, `wmkf_responsetype`, `wmkf_reviewreceivedat`, decline reason, response-received-at, review form fields). The cleanup cron is what turns the table from "current cycle scratch" into "permanent history of engaged reviewers."
 
-This means the contact's history surface is just `wmkf_potentialreviewer` filtered by `wmkf_contact eq <id>`. No new entity to build, just a filter and a UI.
+The reviewer-history surface for a contact is `wmkf_appreviewersuggestion` rows whose slot (`wmkf_potentialreviewer`) is linked to that contact via `wmkf_contact`. The slot is the join point; the lifecycle data lives on the suggestion. See §"Reviewer-portal data lives on `wmkf_appreviewersuggestion`" below for the field-by-field rationale.
 
 ### Reviewer-portal data lives on `wmkf_appreviewersuggestion` (NOT `wmkf_potentialreviewer`)
 
@@ -289,8 +289,8 @@ For each candidate with email or ORCID:
 
 **History lookup** — for matched candidates, two queries:
 
-- **Reviewer history**: `wmkf_potentialreviewer` rows where `wmkf_contact eq <id>` AND engagement predicate holds (any of `wmkf_emailsentat`, `wmkf_responsetype`, `wmkf_reviewreceivedat` populated). Returns: request number, meeting date (→ cycle code via `cycle-code.js`), response type, dates.
-- **PI/co-PI history**: `akoya_request` rows where contact is `_wmkf_projectleader_value` OR any of `_wmkf_copi1_value..5`. Returns: request number, meeting date, decision/funding status.
+- **Reviewer history**: `wmkf_appreviewersuggestion` rows whose slot (`wmkf_potentialreviewer`) has `wmkf_contact eq <id>` AND the suggestion has an engagement signal (any of `wmkf_emailsentat`, `wmkf_responsetype`, `wmkf_reviewreceivedat`, or `wmkf_externaltokenissued` populated). Returns: request number, meeting date (→ cycle code via `cycle-code.js`), response type, dates, decline reason, review form fields.
+- **PI/co-PI history**: UNION of (a) `akoya_request` rows where `_wmkf_projectleader_value eq <id>` and (b) `wmkf_apprequestperson` rows where `wmkf_contact eq <id>`. Steady-state per §"Junction read strategy" — projectleader stays authoritative for lead PI, junction is additive for co-PIs.
 
 **Batching** — 25 candidates × 2 queries = 50 round trips per discovery run. Use `$batch` or pre-fetch in two queries (`wmkf_contact in (...)` and `_wmkf_projectleader_value in (...)`). Latency matters; PDs are at the screen waiting.
 
@@ -716,7 +716,7 @@ Every item below must have a check + date + owner before the relevant cutover st
 
 **Shipped:**
 - Junction entity (`wmkf_apprequestperson`) deployed to prod
-- `/api/reviewer-finder/contact-history` endpoint (UNION-with-fallback)
+- `/api/reviewer-finder/contact-history` endpoint (steady-state UNION of junction + projectleader for PI history)
 - `scripts/backfill-request-person-junction.js` (built, not yet executed in commit mode)
 - All four Wave 2 adapters live
 - `save-candidates`, `my-candidates`, `load-proposal` fully on Dataverse
