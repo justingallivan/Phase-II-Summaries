@@ -6,8 +6,9 @@
  * Sends per-recipient emails via Dynamics email activities. Recipient data
  * comes from `wmkf_appreviewersuggestion` joined to `wmkf_potentialreviewers`
  * (suggestionId is now a Dataverse GUID). Cycle-level config (review template
- * blob, additional attachments) still lives in Postgres `grant_cycles` and is
- * looked up by cycleCode.
+ * blob, additional attachments) moved to Dataverse `wmkf_appgrantcycle` at W3
+ * cutover (2026-05-12); the snake_case return shape of `loadCycleConfigs` is
+ * preserved for backwards-compat with the sender below.
  *
  * After a successful send, the recipient `wmkf_potentialreviewers` row is
  * promoted to a CRM `contact` (find-or-create by email), and its
@@ -38,8 +39,8 @@
  * owned workflow, not user-private.
  */
 
-import { sql } from '@vercel/postgres';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
+import { findByShortCode as findCycleByShortCode } from '../../../lib/services/grant-cycles-dataverse';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { safeFetch, isAllowedUrl } from '../../../lib/utils/safe-fetch';
@@ -372,18 +373,27 @@ export default async function handler(req, res) {
   });
 }
 
+// Dataverse-backed at W3 cutover. Returns the same snake_case shape the
+// sender consumes (short_code, review_template_blob_url,
+// additional_attachments). Duplicate-shortcode resolution is now enforced
+// by the wmkf_shortcode alt-key — there can only be one match per code.
 async function loadCycleConfigs(cycleCodes) {
   const out = {};
   if (!cycleCodes.length) return out;
-  const result = await sql`
-    SELECT short_code, review_template_blob_url, additional_attachments
-    FROM grant_cycles
-    WHERE short_code = ANY(${cycleCodes})
-  `;
-  for (const row of result.rows) {
-    // Take the first hit per short_code; duplicate cycles in Postgres get the
-    // first row deterministically.
-    if (!out[row.short_code]) out[row.short_code] = row;
+  const results = await Promise.all(
+    cycleCodes.map(code => findCycleByShortCode(code).catch(err => {
+      console.warn(`loadCycleConfigs: ${code} lookup failed`, err.message);
+      return null;
+    })),
+  );
+  for (const cycle of results) {
+    if (!cycle || !cycle.shortCode) continue;
+    if (out[cycle.shortCode]) continue;
+    out[cycle.shortCode] = {
+      short_code: cycle.shortCode,
+      review_template_blob_url: cycle.reviewTemplateBlobUrl,
+      additional_attachments: cycle.additionalAttachments,
+    };
   }
   return out;
 }

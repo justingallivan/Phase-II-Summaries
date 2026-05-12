@@ -6,7 +6,9 @@
  * Renders per-recipient email drafts by applying the template + settings to
  * each reviewer's data. Recipient + proposal data come from Dataverse so the
  * preview matches what `send-emails` will use. Cycle-level template config
- * (deadline, programName, customFields) still lives in Postgres `grant_cycles`.
+ * (deadline, programName, customFields) moved to Dataverse `wmkf_appgrantcycle`
+ * at W3 cutover (2026-05-12); the snake_case return shape of
+ * `loadCycleConfigs` is preserved for backwards-compat with the renderer.
  *
  * suggestionIds are Dataverse GUIDs (strings).
  *
@@ -21,8 +23,8 @@
  *                     subject, body, skipped?: 'no_email' }>
  */
 
-import { sql } from '@vercel/postgres';
 import { BASE_CONFIG } from '../../../shared/config/baseConfig';
+import { findByShortCode as findCycleByShortCode } from '../../../lib/services/grant-cycles-dataverse';
 import {
   replacePlaceholders,
   buildTemplateData,
@@ -205,16 +207,28 @@ export default async function handler(req, res) {
   });
 }
 
+// Dataverse-backed at W3 cutover. Returns the same snake_case shape the
+// renderer below consumes (short_code, name, program_name, review_deadline,
+// custom_fields) so downstream code is unchanged.
 async function loadCycleConfigs(cycleCodes) {
   const out = {};
   if (!cycleCodes.length) return out;
-  const result = await sql`
-    SELECT short_code, name, program_name, review_deadline, custom_fields
-    FROM grant_cycles
-    WHERE short_code = ANY(${cycleCodes})
-  `;
-  for (const row of result.rows) {
-    if (!out[row.short_code]) out[row.short_code] = row;
+  const results = await Promise.all(
+    cycleCodes.map(code => findCycleByShortCode(code).catch(err => {
+      console.warn(`loadCycleConfigs: ${code} lookup failed`, err.message);
+      return null;
+    })),
+  );
+  for (const cycle of results) {
+    if (!cycle || !cycle.shortCode) continue;
+    if (out[cycle.shortCode]) continue;
+    out[cycle.shortCode] = {
+      short_code: cycle.shortCode,
+      name: cycle.name,
+      program_name: cycle.programName,
+      review_deadline: cycle.reviewDeadline,
+      custom_fields: cycle.customFields,
+    };
   }
   return out;
 }

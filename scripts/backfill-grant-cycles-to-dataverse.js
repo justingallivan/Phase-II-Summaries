@@ -120,6 +120,13 @@ function mapToDataverse(pgRow) {
   const shortcode = normalizeShortCode(pgRow.short_code);
   return {
     wmkf_shortcode: shortcode,
+    // wmkf_fiscalyearcode mirrors `name` (both are "June 2026"-format and
+    // both join to akoya_request.akoya_fiscalyear). Populating it here
+    // makes the alt-key usable; without it all rows have null and the
+    // key is effectively unenforced. The W3 step 5 endpoint reads it as
+    // the canonical request-count join key, falling back to name only
+    // for sandbox/legacy rows where it's not populated.
+    wmkf_fiscalyearcode: pgRow.name || null,
     wmkf_displayname: pgRow.name || null,
     wmkf_programname: pgRow.program_name || null,
     wmkf_summarypages: pgRow.summary_pages || null,
