@@ -34,7 +34,7 @@
       "type": "String",
       "schemaName": "wmkf_ProgramName",
       "displayName": "Program Name",
-      "description": "Friendly program label per cycle (e.g. 'W. M. Keck Foundation'). Used in outgoing reviewer emails. Patched 2026-05-12.",
+      "description": "Friendly program label per cycle (e.g. 'W. M. Keck Foundation'). Used in outgoing reviewer emails. Patched 2026-05-12. Note: Postgres source is VARCHAR(255); Dataverse maxLength=100 is a deliberate accept — all 13 prod rows are 21 chars ('W. M. Keck Foundation') and the foundation name isn't going to grow past 100. Widen if a multi-foundation future arrives.",
       "maxLength": 100,
       "requiredLevel": "None"
     },

@@ -1,8 +1,15 @@
 #!/usr/bin/env node
 /**
  * W3 verification probe — confirm the wmkf_appgrantcycle schema patch
- * landed: 13 attributes + 2 alternate keys (wmkf_fiscalyearcode,
- * wmkf_shortcode), with the shortcode alt-key in Active state.
+ * landed: 11 spec'd attributes (plus DisplayName + the virtual
+ * `wmkf_isactiveName`, which Dataverse adds automatically for Boolean
+ * columns; total custom-attribute count is 13) + 2 alternate keys
+ * (wmkf_fiscalyearcode, wmkf_shortcode), with both alt-keys in Active
+ * state.
+ *
+ * Does NOT verify attribute MaxLength or RequiredLevel — acceptable for
+ * one-shot W3 preflight per Codex S147 step-3 review Q4; tighten if this
+ * is ever promoted to a CI gate.
  */
 
 const fs = require('fs');
