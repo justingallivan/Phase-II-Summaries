@@ -2,7 +2,7 @@
 
 **Created:** 2026-05-06 (Session 136)
 **Last revision:** 2026-05-12 — status banner + spec-vs-built table refreshed after the S139 build set + Wave 1 closeout.
-**Status:** **Active build, partial ship.** Schema deployed, `save-candidates` / `my-candidates` / `load-proposal` / `contact-history` / `wmkf_apprequestperson` junction all live in prod Dataverse. Drain mechanics (cleanup cron, `wmkf_appgrantcycle` deployment, `reviewer_suggestions` commit-mode backfill, match-on-discovery wiring + UI, render-emails / send-emails `grant_cycles` cutover, add-candidate-manual) remain to build. See "Spec'd vs. built" table below for the line-by-line state.
+**Status:** **Active build, partial ship.** Schema mostly deployed (`wmkf_potentialreviewer` extended, `wmkf_appresearcher`, `wmkf_appreviewersuggestion`, `wmkf_apprequestperson`, plus `wmkf_appgrantcycle` partially — 10/13 attrs live). `save-candidates` / `my-candidates` / `load-proposal` / `contact-history` all live in prod. Remaining: `wmkf_appgrantcycle` schema patch + data backfill; endpoint cutovers for `grant_cycles` (3 files) and `reviewer_suggestions` (4 files); `researchers.js` retirement; `database-service.js` rewrite; cleanup cron; match-on-discovery wiring + UI; `add-candidate-manual`. See "Spec'd vs. built" table below for the line-by-line state.
 **Priority:** Top — gates the intake portal pilot (mid-June 2026 Phase II Research)
 **Target environment:** Prod (Dataverse Wave 2 schema is live)
 
@@ -19,8 +19,8 @@ Refreshed 2026-05-12. Several artifacts have shipped since the plan was locked; 
 | `scripts/backfill-reviewer-suggestions-parity.js` | **BUILT** (S136) | Dry-run classification of all 337 Postgres rows |
 | `scripts/audit-postgres-state.js`, `scripts/audit-dataverse-state.js` | **BUILT** (S136/S137) | Live-state probes; re-run before any migration work |
 | `wmkf_apprequestperson` junction entity | **BUILT + DEPLOYED to prod** (S139, commit `c8cbfe1`) | Schema-as-code at `lib/dataverse/schema/wave2/wmkf_app_request_person.json`; alt key on `(wmkf_request, wmkf_contact, wmkf_role)` enforced |
-| `scripts/backfill-request-person-junction.js` | **BUILT** | ~14 KB, dedup-guarded against existing junction rows. Has NOT been executed in commit mode yet — must run once to backfill ~3,000 historical rows so the `contact-history` endpoint's projectleader OR-fallback can eventually retire. |
-| `pages/api/reviewer-finder/contact-history.js` | **BUILT** (S139, commit `b23586c`) | UNION read strategy across junction + `_wmkf_projectleader_value`; smoke at `scripts/smoke-contact-history.js`. **Note:** the projectleader OR-fallback stays live until the junction backfill completes — and until then any reviewer-side data-loss risk (per "Drain safety" below) is partially mitigated by the fallback. |
+| `scripts/backfill-request-person-junction.js` | **BUILT** | ~14 KB, dedup-guarded against existing junction rows. Has NOT been executed in commit mode yet — must run once to backfill ~3,000 historical rows so PI/co-PI history coverage is complete. |
+| `pages/api/reviewer-finder/contact-history.js` | **BUILT** (S139, commit `b23586c`) | UNION read strategy across junction + `_wmkf_projectleader_value`. **Both paths are steady-state per S136 (§"Junction read strategy") — `_wmkf_projectleader_value` stays authoritative for the lead PI; the junction is the additive source for co-PIs.** Smoke at `scripts/smoke-contact-history.js`. |
 | `scripts/backfill-reviewer-suggestions-to-dataverse.js` | spec'd | Idempotent commit-mode backfill of the 8-row Postgres-only delta. **Triage these 8 rows first** (per Codex 3b 2026-05-12): determine whether each is a genuine missed sync or a legitimate Postgres-only row (e.g., proposal not yet in Dataverse) before committing. |
 | `pages/api/reviewer-finder/add-candidate-manual.js` | spec'd | Net-new "add candidate by hand" endpoint, replaces retired Database tab. Writes to all three Dataverse entities (`wmkf_potentialreviewer`, `wmkf_appresearcher`, `wmkf_appreviewersuggestion`) via existing adapters. |
 | `lib/services/contact-history-service.js` | spec'd | Match-on-discovery aggregation helper. **Distinct from the existing endpoint** — the endpoint serves a batched Dataverse lookup; this service would consume it from `discovery-service.js` during candidate enrichment. |
@@ -461,7 +461,7 @@ When a Dataverse row already exists for `(request, slot)`:
 4. **Failure mid-batch**: rerun resumes from `lastProcessedPostgresId + 1`. Idempotent because of step 3's alt-key UPSERT — re-attempting a created row patches rather than duplicates.
 5. **Catastrophic failure (Dataverse outage mid-commit)**: pause the cron / flag flips, fix Dataverse, rerun. Checkpoint protects forward progress.
 
-**No dual-write window.** The backfill is a one-shot data move, not a sustained dual-write pattern. Once done, the per-table `WAVE2_BACKEND_*` flag flip swaps source-of-truth atomically. See "No dual-write" subsection under Rollback Strategy below.
+**No dual-write window.** The backfill is a one-shot data move, not a sustained dual-write pattern. Once done, cutover swaps source-of-truth atomically — by `WAVE2_BACKEND_*` flag flip (Option A) or by `git revert` + redeploy (Option B). See "No dual-write" subsection under Rollback Strategy below.
 
 ### Per-user scoping change
 
@@ -563,9 +563,9 @@ Hard constraints (each blocks the step after it):
 - `add-candidate-manual.js` endpoint + UI (decision needed: do PDs accept discovery-only candidate entry for pilot? If yes, defers post-pilot; if no, must ship in step 10 window).
 - Contact form "Reviewer history" subgrid (Connor's separate build; not in pilot critical path).
 
-**Zero-downtime stance**: this migration is zero-downtime by design. Per-table `WAVE2_BACKEND_*` flags allow flip-back; Postgres tables stay readable until step 12. No maintenance window planned. If a step requires one, it's a sign the step should be split.
+**Zero-downtime stance**: this migration is zero-downtime by design. Postgres tables stay readable until step 12, giving us inspection-after-cutover regardless of which Option (A or B) is chosen. Under Option A, per-table `WAVE2_BACKEND_*` flags also allow rapid flip-back. No maintenance window planned. If a step requires one, it's a sign the step should be split.
 
-**In-flight SSE during flag flips**: `discover.js` and `generate-emails.js` stream via SSE for tens of seconds. A flag flip mid-stream could send a request through the new code path while later writes go through the old. Mitigation: each SSE handler reads the flag value **once at request start** and uses that for the full request lifetime. Document in service-layer doc; verify in code review of every flag-aware handler.
+**In-flight SSE — only relevant under Option A**: `discover.js` and `generate-emails.js` stream via SSE for tens of seconds. If `WAVE2_BACKEND_*` flags are built (Option A), a flag flip mid-stream could send a request through the new code path while later writes go through the old. Mitigation: each SSE handler reads the flag value **once at request start** and uses that for the full request lifetime. Document in service-layer doc; verify in code review of every flag-aware handler. Under Option B (hard cutover), there is no mid-stream-flip scenario — the deploy boundary is the cutover point.
 
 ## Open questions for Connor
 
@@ -652,7 +652,7 @@ Each gate runs **immediately before** the destructive command, not at planning t
 
 ### Rollback triggers (when to flip back)
 
-Each flag flip publishes a watch dashboard. Auto-rollback is not built; **manual rollback within 15 minutes** if any of these breach:
+Each cutover (flag flip under Option A, or deploy under Option B) publishes a watch dashboard. Auto-rollback is not built; **manual rollback within 15 minutes** if any of these breach. Rollback mechanics differ by option: Option A is a Vercel env flip (~1 min effective); Option B is a `git revert` + redeploy (~10 min effective):
 
 | Signal | Threshold | Action |
 |---|---|---|
@@ -700,11 +700,11 @@ Every item below must have a check + date + owner before the relevant cutover st
 | OData filter performance: `wmkf_potentialreviewer` filtered by `wmkf_contact` | Justin | W4 | Same. |
 | OData filter performance: `wmkf_apprequestperson` filtered by `wmkf_contact` | Justin | W4 | Benchmark against the contact-history endpoint's real query shape. |
 | `$batch` reviewer-suggestion writes succeed at 50-row batches | Justin | W4 | Prod batch test against backfill candidates. |
-| Junction backfill executed in commit mode | Justin | W3 | ~3,000 rows in `wmkf_apprequestperson`; `contact-history` returns junction-sourced results in addition to projectleader. |
+| Junction backfill executed in commit mode | Justin | W4 | ~3,000 rows in `wmkf_apprequestperson`; `contact-history` returns junction-sourced results in addition to projectleader. (Schedule-aligned with W4 "data alignment" theme.) |
 | Reviewer-suggestions 8-row anomaly triage documented | Justin | W4 | Per-row decision captured in commit message of the backfill commit-mode run. |
 | Smoke test: contact history endpoint batched lookup | Justin | W4 | 25-contact batch returns < 1s P95 (already smoke-tested via `scripts/smoke-contact-history.js`; rerun against full junction backfill). |
 | Smoke test: `generate-emails` against migrated suggestion data | Justin | W5 | End-to-end email-generation flow against Dataverse data after `generate-emails.js` cutover. |
-| Contact form "Reviewer history" subgrid added | Connor | W6 (post-pilot OK) | Sandbox contact form renders the subgrid. Slip-eligible. |
+| Contact form "Reviewer history" subgrid added | Connor | Post-pilot (no pilot dependency) | Sandbox contact form renders the subgrid. In the Post-pilot row of the schedule. |
 
 **Failure of any item postpones cutover.** No partial passes; if a smoke test reveals a regression, fix before flipping flags.
 
@@ -723,7 +723,7 @@ Every item below must have a check + date + owner before the relevant cutover st
 - Decline-reason fields + response-received-at on `wmkf_appreviewersuggestion`
 
 **Still pending from W1:**
-- `wmkf_appgrantcycle` schema deploy to sandbox (designed but not deployed)
+- `wmkf_appgrantcycle` schema **patch** (entity already exists in prod with 10 attrs live; 3 fields need adding: `wmkf_ShortCode`, `wmkf_ProgramName`, `wmkf_CustomFields`)
 - Anomaly-triage decisions on the 8 parity outliers
 
 ### Updated forward schedule
