@@ -17,7 +17,6 @@
  * allowing each email to have the correct proposal title, PI, and summary attachment.
  */
 
-import { sql } from '@vercel/postgres';
 import {
   generateEmlContent,
   generateEmlContentWithAttachments,
@@ -32,52 +31,85 @@ import { nextRateLimiter } from '../../../shared/api/middleware/rateLimiter';
 import { LLMClient } from '../../../lib/services/llm-client';
 import { BASE_CONFIG, getModelForApp } from '../../../shared/config/baseConfig';
 import { safeFetch, isAllowedUrl } from '../../../lib/utils/safe-fetch';
+import { DynamicsService } from '../../../lib/services/dynamics-service';
+import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
+import * as suggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
 
 /**
- * Look up proposal info for candidates from the database
- * Returns a map of suggestionId -> proposalInfo
+ * Look up proposal info for candidates from Dataverse.
+ *
+ * Returns a map of suggestionId (Dataverse GUID, string) → proposalInfo.
+ *
+ * Post-W5 cutover (commit pending): reads suggestion + linked
+ * `akoya_request` rather than Postgres `reviewer_suggestions`. The
+ * `userProfileId` parameter is preserved for signature compatibility but
+ * no longer scopes the lookup (suggestion access is now staff-shared per
+ * the post-W1 model; `requireAppAccess` gates entry at the route level).
+ *
+ * `summaryBlobUrl` comes from the suggestion's `wmkf_summarybloburl`
+ * (migrated 2026-05-12 via `scripts/backfill-summary-blob-url-to-
+ * dataverse.js`). `coInvestigators` / `coInvestigatorCount` are
+ * deliberately null — matching `render-emails.js` precedent at W3
+ * cutover. If co-PI personalization is reintroduced, derive from
+ * `wmkf_apprequestperson` junction filtered by request + role=copi.
  */
-async function lookupProposalInfoForCandidates(suggestionIds, userProfileId) {
+async function lookupProposalInfoForCandidates(suggestionIds, _userProfileId) {
   if (!suggestionIds || suggestionIds.length === 0) {
     return new Map();
   }
 
-  try {
-    // Query proposal info for all suggestionIds in one batch
-    const result = await sql`
-      SELECT
-        id as suggestion_id,
-        proposal_title,
-        proposal_abstract,
-        proposal_authors,
-        proposal_institution,
-        summary_blob_url,
-        co_investigators,
-        co_investigator_count
-      FROM reviewer_suggestions
-      WHERE id = ANY(${suggestionIds})
-        AND user_profile_id = ${userProfileId}
-    `;
+  const proposalInfoMap = new Map();
 
-    const proposalInfoMap = new Map();
-    for (const row of result.rows) {
-      // Use string key to match frontend's JSON-serialized suggestionId
-      proposalInfoMap.set(String(row.suggestion_id), {
-        title: row.proposal_title || '',
-        abstract: row.proposal_abstract || '',
-        authors: row.proposal_authors || '',
-        institution: row.proposal_institution || '',
-        summaryBlobUrl: row.summary_blob_url || '',
-        coInvestigators: row.co_investigators || '',
-        coInvestigatorCount: row.co_investigator_count || 0
+  return bypassDynamicsRestrictions('generate-emails-lookup', async () => {
+    // Fetch each suggestion in parallel; each carries _wmkf_request_value
+    // plus the summary blob URL.
+    const sugs = await Promise.all(
+      suggestionIds.map(id => suggestionAdapter.findById(id).catch(err => {
+        console.error(`Suggestion lookup failed for ${id}:`, err.message);
+        return null;
+      })),
+    );
+
+    // Distinct request GUIDs across all suggestions; fetch each once.
+    const distinctRequestIds = [...new Set(
+      sugs.filter(Boolean).map(s => s._wmkf_request_value).filter(Boolean),
+    )];
+    const requestById = new Map();
+    await Promise.all(distinctRequestIds.map(async (rid) => {
+      try {
+        const req = await DynamicsService.getRecord('akoya_requests', rid, {
+          select: 'akoya_requestid,akoya_title,wmkf_abstract,wmkf_organizationname,_akoya_applicantid_value,_wmkf_projectleader_value',
+        });
+        requestById.set(rid, req);
+      } catch (err) {
+        console.error(`akoya_request lookup failed for ${rid}:`, err.message);
+      }
+    }));
+
+    // Build the response map. Frontend serializes suggestionId as a string;
+    // Dataverse GUIDs are already strings, so direct assignment is fine.
+    for (let i = 0; i < suggestionIds.length; i++) {
+      const id = suggestionIds[i];
+      const sug = sugs[i];
+      if (!sug) continue;
+
+      const req = sug._wmkf_request_value ? requestById.get(sug._wmkf_request_value) : null;
+
+      proposalInfoMap.set(String(id), {
+        title: req?.akoya_title || '',
+        abstract: req?.wmkf_abstract || '',
+        authors: req?._wmkf_projectleader_value_formatted
+          || req?._akoya_applicantid_value_formatted
+          || '',
+        institution: req?.wmkf_organizationname || '',
+        summaryBlobUrl: sug.wmkf_summarybloburl || '',
+        coInvestigators: '',       // Not migrated; see render-emails W3 precedent.
+        coInvestigatorCount: 0,    // Same.
       });
     }
 
     return proposalInfoMap;
-  } catch (error) {
-    console.error('Error looking up proposal info:', error.message);
-    return new Map();
-  }
+  });
 }
 
 /**
@@ -420,19 +452,24 @@ export default async function handler(req, res) {
         });
 
         const now = new Date().toISOString();
-        for (const suggestionId of suggestionIdsToUpdate) {
-          try {
-            await sql`
-              UPDATE reviewer_suggestions
-              SET email_sent_at = ${now}, invited = true
-              WHERE id = ${suggestionId}
-                AND user_profile_id = ${userProfileId}
-            `;
-            markedAsSentCount++;
-          } catch (dbError) {
-            console.error(`Failed to update email_sent_at for suggestion ${suggestionId}:`, dbError.message);
+        // Post-W5 cutover: write to Dataverse via the suggestion adapter.
+        // `userProfileId` is no longer a scoping filter (staff-shared per
+        // post-W1 model; requireAppAccess gates the route). Wrap in a
+        // bypass context for the AsyncLocalStorage requirement.
+        await bypassDynamicsRestrictions('generate-emails-mark-sent', async () => {
+          for (const suggestionId of suggestionIdsToUpdate) {
+            try {
+              await DynamicsService.updateRecord(
+                'wmkf_appreviewersuggestions',
+                suggestionId,
+                { wmkf_emailsentat: now, wmkf_invited: true },
+              );
+              markedAsSentCount++;
+            } catch (dvError) {
+              console.error(`Failed to update email_sent_at for suggestion ${suggestionId}:`, dvError.message);
+            }
           }
-        }
+        });
       }
     }
 
