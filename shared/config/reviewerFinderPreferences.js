@@ -51,6 +51,7 @@ export function resolveStoredCycle(storedValue, allCycles) {
   }
 
   const raw = String(storedValue).trim();
+  if (!raw) return { cycle: null, needsWriteback: false };
   const asInt = parseInt(raw, 10);
   const isPureInteger = !Number.isNaN(asInt) && String(asInt) === raw;
 

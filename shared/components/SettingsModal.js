@@ -217,8 +217,15 @@ export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
       // Migrate current cycle ID. Normalize legacy integer-shape values to
       // shortcode BEFORE writing to Dataverse (Codex S147 re-review #3): the
       // localStorage→Dataverse migration must not propagate the legacy shape.
-      // If cycles haven't loaded yet we skip — the post-load useEffect will
-      // pick this up on the next interaction.
+      //
+      // If cycles haven't loaded yet we skip — the post-load useEffect picks
+      // this up on the next interaction. This is only safe because
+      // `loadSettings()` also reads `STORAGE_KEYS.CURRENT_CYCLE` raw into
+      // `currentCycleId` state, which the post-load resolver useEffect then
+      // normalizes + writes back. **If that load-time localStorage fallback
+      // is ever removed, the `cycles.length === 0` skip below must be
+      // revisited** (Codex S147 review #3 MODERATE finding on migration-
+      // timing coupling).
       const storedCycleId = localStorage.getItem(CURRENT_CYCLE_KEY);
       if (storedCycleId && cycles.length > 0) {
         const { cycle } = resolveStoredCycle(storedCycleId, cycles);
