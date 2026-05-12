@@ -14,7 +14,12 @@ import { useState, useEffect, useRef } from 'react';
 import EmailTemplateEditor from './EmailTemplateEditor';
 import { STORAGE_KEYS } from './EmailSettingsPanel';
 import { useProfile } from '../context/ProfileContext';
-import { PREFERENCE_KEYS, STORAGE_KEYS as RF_STORAGE_KEYS } from '../config/reviewerFinderPreferences';
+import {
+  PREFERENCE_KEYS,
+  STORAGE_KEYS as RF_STORAGE_KEYS,
+  resolveStoredCycle,
+  formatCycleForStorage,
+} from '../config/reviewerFinderPreferences';
 
 // Default grant cycle settings
 const DEFAULT_GRANT_CYCLE = {
@@ -71,6 +76,41 @@ export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
     }
   }, [isOpen, currentProfile?.id]);
 
+  // Normalize the stored cycle preference once cycles are loaded.
+  // Tolerant-reader pattern (Codex S147): legacy integer-shape values are
+  // resolved to a cycle row, then `currentCycleId` is rewritten to the
+  // shortcode shape AND opportunistically written back to whichever backend
+  // (Dataverse pref OR localStorage) originally supplied the value.
+  useEffect(() => {
+    if (!currentCycleId || cycles.length === 0) return;
+
+    const { cycle, needsWriteback } = resolveStoredCycle(currentCycleId, cycles);
+
+    if (!cycle) {
+      // Neither shape resolved — clear stale value from both backends.
+      setCurrentCycleId(null);
+      if (currentProfile) {
+        setPreference(PREFERENCE_KEYS.CURRENT_CYCLE_ID, '').catch(() => {});
+      } else {
+        localStorage.removeItem(CURRENT_CYCLE_KEY);
+      }
+      return;
+    }
+
+    const shortcode = formatCycleForStorage(cycle);
+    if (currentCycleId === shortcode) return; // already normalized
+
+    setCurrentCycleId(shortcode);
+    if (needsWriteback) {
+      // Legacy integer was the stored shape — rewrite as shortcode.
+      if (currentProfile) {
+        setPreference(PREFERENCE_KEYS.CURRENT_CYCLE_ID, shortcode).catch(() => {});
+      } else {
+        localStorage.setItem(CURRENT_CYCLE_KEY, shortcode);
+      }
+    }
+  }, [cycles, currentCycleId, currentProfile, setPreference]);
+
   const loadSettings = () => {
     try {
       let loadedGrantCycle = DEFAULT_GRANT_CYCLE;
@@ -99,7 +139,10 @@ export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
         }
 
         if (preferences[PREFERENCE_KEYS.CURRENT_CYCLE_ID]) {
-          loadedCycleId = parseInt(preferences[PREFERENCE_KEYS.CURRENT_CYCLE_ID], 10);
+          // Hold the raw stored value; the post-load useEffect resolves it
+          // against the cycle list via `resolveStoredCycle()` once cycles
+          // arrive (handles both legacy integer-shape and new shortcode-shape).
+          loadedCycleId = String(preferences[PREFERENCE_KEYS.CURRENT_CYCLE_ID]);
         }
 
         // Attempt migration from localStorage if profile has no settings yet
@@ -129,7 +172,8 @@ export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
       if (loadedCycleId === null) {
         const storedCycleId = localStorage.getItem(CURRENT_CYCLE_KEY);
         if (storedCycleId) {
-          loadedCycleId = parseInt(storedCycleId, 10);
+          // Same raw-value handling as the Dataverse pref above.
+          loadedCycleId = String(storedCycleId);
         }
       }
 
@@ -170,11 +214,19 @@ export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
         console.log('Migrated sender info to profile');
       }
 
-      // Migrate current cycle ID
+      // Migrate current cycle ID. Normalize legacy integer-shape values to
+      // shortcode BEFORE writing to Dataverse (Codex S147 re-review #3): the
+      // localStorage→Dataverse migration must not propagate the legacy shape.
+      // If cycles haven't loaded yet we skip — the post-load useEffect will
+      // pick this up on the next interaction.
       const storedCycleId = localStorage.getItem(CURRENT_CYCLE_KEY);
-      if (storedCycleId) {
-        await setPreference(PREFERENCE_KEYS.CURRENT_CYCLE_ID, storedCycleId);
-        console.log('Migrated current cycle ID to profile');
+      if (storedCycleId && cycles.length > 0) {
+        const { cycle } = resolveStoredCycle(storedCycleId, cycles);
+        const normalized = cycle ? formatCycleForStorage(cycle) : '';
+        if (normalized) {
+          await setPreference(PREFERENCE_KEYS.CURRENT_CYCLE_ID, normalized);
+          console.log(`Migrated current cycle ID to profile (normalized: ${storedCycleId} → ${normalized})`);
+        }
       }
     } catch (error) {
       console.error('Failed to migrate settings from localStorage:', error);
@@ -217,8 +269,8 @@ export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
         setCycleFormData({});
 
         // If this was a new cycle and there's no current cycle set, make it current
-        if (isNew && !currentCycleId) {
-          handleSetCurrentCycle(data.cycle.id);
+        if (isNew && !currentCycleId && data.cycle?.shortCode) {
+          handleSetCurrentCycle(data.cycle.shortCode);
         }
       } else {
         const error = await response.json();
@@ -246,9 +298,12 @@ export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
       });
 
       if (response.ok) {
+        // The cycle being archived may have been the current one; resolve by id
+        // against the still-loaded `cycles` list before clearing, since
+        // `currentCycleId` is now a shortcode and the caller passed an id.
+        const archivedCycle = cycles.find(c => c.id === cycleId);
         await loadCycles();
-        // If the archived cycle was the current one, clear it
-        if (currentCycleId === cycleId) {
+        if (archivedCycle && currentCycleId === archivedCycle.shortCode) {
           handleSetCurrentCycle(null);
         }
       }
@@ -257,20 +312,20 @@ export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
     }
   };
 
-  // Set current cycle
-  const handleSetCurrentCycle = async (cycleId) => {
-    setCurrentCycleId(cycleId);
+  // Set current cycle. The `cycleShortCode` argument is now a shortcode string
+  // (e.g. "J26") — never a Postgres integer ID. See plan §"Rollout-safety
+  // policy for the preference-shape migration" for the broader contract.
+  const handleSetCurrentCycle = async (cycleShortCode) => {
+    const value = cycleShortCode || null;
+    setCurrentCycleId(value);
 
-    // Save to profile if available, otherwise localStorage
+    // Save to profile if available, otherwise localStorage.
+    // Always write shortcode (never integer ID) — Codex S147 writer policy.
     if (currentProfile) {
-      if (cycleId) {
-        await setPreference(PREFERENCE_KEYS.CURRENT_CYCLE_ID, cycleId.toString());
-      } else {
-        await setPreference(PREFERENCE_KEYS.CURRENT_CYCLE_ID, '');
-      }
+      await setPreference(PREFERENCE_KEYS.CURRENT_CYCLE_ID, value || '');
     } else {
-      if (cycleId) {
-        localStorage.setItem(CURRENT_CYCLE_KEY, cycleId.toString());
+      if (value) {
+        localStorage.setItem(CURRENT_CYCLE_KEY, value);
       } else {
         localStorage.removeItem(CURRENT_CYCLE_KEY);
       }
@@ -278,7 +333,7 @@ export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
 
     // Notify parent component
     if (onCycleChange) {
-      onCycleChange(cycleId);
+      onCycleChange(value);
     }
   };
 
@@ -553,13 +608,13 @@ export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
                     </label>
                     <select
                       value={currentCycleId || ''}
-                      onChange={(e) => handleSetCurrentCycle(e.target.value ? parseInt(e.target.value, 10) : null)}
+                      onChange={(e) => handleSetCurrentCycle(e.target.value || null)}
                       className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">-- No cycle selected --</option>
-                      {cycles.filter(c => c.isActive).map(cycle => (
-                        <option key={cycle.id} value={cycle.id}>
-                          {cycle.shortCode ? `${cycle.shortCode} - ` : ''}{cycle.name}
+                      {cycles.filter(c => c.isActive && c.shortCode).map(cycle => (
+                        <option key={cycle.id} value={cycle.shortCode}>
+                          {cycle.shortCode} - {cycle.name}
                         </option>
                       ))}
                     </select>
@@ -679,7 +734,7 @@ export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
                             className={`
                               flex items-center justify-between p-3 rounded-lg border
                               ${cycle.isActive ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-100 opacity-60'}
-                              ${currentCycleId === cycle.id ? 'ring-2 ring-blue-300' : ''}
+                              ${currentCycleId === cycle.shortCode ? 'ring-2 ring-blue-300' : ''}
                             `}
                           >
                             <div className="flex items-center gap-3">
@@ -691,7 +746,7 @@ export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
                               <div>
                                 <div className="text-sm font-medium text-gray-800">
                                   {cycle.name}
-                                  {currentCycleId === cycle.id && (
+                                  {currentCycleId === cycle.shortCode && (
                                     <span className="ml-2 text-xs text-blue-600">(current)</span>
                                   )}
                                   {!cycle.isActive && (
@@ -704,9 +759,9 @@ export default function SettingsModal({ isOpen, onClose, onCycleChange }) {
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
-                              {cycle.isActive && currentCycleId !== cycle.id && (
+                              {cycle.isActive && cycle.shortCode && currentCycleId !== cycle.shortCode && (
                                 <button
-                                  onClick={() => handleSetCurrentCycle(cycle.id)}
+                                  onClick={() => handleSetCurrentCycle(cycle.shortCode)}
                                   className="text-xs text-blue-600 hover:text-blue-800"
                                 >
                                   Set Current

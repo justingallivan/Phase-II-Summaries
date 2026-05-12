@@ -20,6 +20,7 @@ import EmailGeneratorModal from '../shared/components/EmailGeneratorModal';
 import SettingsModal from '../shared/components/SettingsModal';
 import { getModelDisplayName } from '../shared/utils/modelNames';
 import { BASE_CONFIG } from '../shared/config/baseConfig';
+import { resolveStoredCycle, formatCycleForStorage } from '../shared/config/reviewerFinderPreferences';
 import { useProfile } from '../shared/context/ProfileContext';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
 
@@ -745,19 +746,26 @@ function NewSearchTab({ apiCapabilities, onCandidatesSaved, searchState, setSear
           });
           setAllCyclesList(allActiveCycles);
 
-          // Set current cycle from localStorage or default to first option
+          // Set current cycle from localStorage or default to first option.
+          // Tolerant-reader pattern (Codex S147): the stored value may be a
+          // legacy Postgres integer ID OR a shortcode like "J26". Resolve via
+          // helper; on legacy hit, opportunistically rewrite localStorage to
+          // the shortcode shape so future reads skip the parseInt branch.
           const storedCycleId = localStorage.getItem(CURRENT_CYCLE_KEY);
           if (storedCycleId) {
-            const storedCycle = allCycles.find(c => c.id === parseInt(storedCycleId, 10));
+            const { cycle: storedCycle, needsWriteback } = resolveStoredCycle(storedCycleId, allCycles);
             if (storedCycle) {
               setCurrentCycleInfo(storedCycle);
+              if (needsWriteback) {
+                localStorage.setItem(CURRENT_CYCLE_KEY, formatCycleForStorage(storedCycle));
+              }
             } else if (relevantCycles.length > 0) {
               setCurrentCycleInfo(relevantCycles[0]);
-              localStorage.setItem(CURRENT_CYCLE_KEY, relevantCycles[0].id.toString());
+              localStorage.setItem(CURRENT_CYCLE_KEY, formatCycleForStorage(relevantCycles[0]));
             }
           } else if (relevantCycles.length > 0) {
             setCurrentCycleInfo(relevantCycles[0]);
-            localStorage.setItem(CURRENT_CYCLE_KEY, relevantCycles[0].id.toString());
+            localStorage.setItem(CURRENT_CYCLE_KEY, formatCycleForStorage(relevantCycles[0]));
           }
         }
       } catch (err) {
@@ -767,12 +775,13 @@ function NewSearchTab({ apiCapabilities, onCandidatesSaved, searchState, setSear
     loadAndEnsureCycles();
   }, []);
 
-  // Handle cycle selection change
-  const handleCycleChange = (cycleId) => {
-    const cycle = availableCycles.find(c => c.id === parseInt(cycleId, 10));
+  // Handle cycle selection change. After Codex S147 preference-shape
+  // migration, the dropdown emits a shortcode string (not an integer ID).
+  const handleCycleChange = (cycleShortCode) => {
+    const cycle = availableCycles.find(c => c.shortCode === cycleShortCode);
     if (cycle) {
       setCurrentCycleInfo(cycle);
-      localStorage.setItem(CURRENT_CYCLE_KEY, cycle.id.toString());
+      localStorage.setItem(CURRENT_CYCLE_KEY, formatCycleForStorage(cycle));
     }
   };
 
@@ -1317,7 +1326,7 @@ function NewSearchTab({ apiCapabilities, onCandidatesSaved, searchState, setSear
           <div className="flex items-center gap-2 text-sm">
             <span className="text-gray-500">Grant Cycle:</span>
             <select
-              value={currentCycleInfo?.id || ''}
+              value={currentCycleInfo?.shortCode || ''}
               onChange={(e) => {
                 const val = e.target.value;
                 if (val === '__show_all__') {
@@ -1336,8 +1345,8 @@ function NewSearchTab({ apiCapabilities, onCandidatesSaved, searchState, setSear
                 backgroundSize: '1rem'
               }}
             >
-              {(showAllCycles ? allCyclesList : availableCycles).map(cycle => (
-                <option key={cycle.id} value={cycle.id}>
+              {(showAllCycles ? allCyclesList : availableCycles).filter(c => c.shortCode).map(cycle => (
+                <option key={cycle.id} value={cycle.shortCode}>
                   {cycle.shortCode} - {cycle.name}
                 </option>
               ))}
