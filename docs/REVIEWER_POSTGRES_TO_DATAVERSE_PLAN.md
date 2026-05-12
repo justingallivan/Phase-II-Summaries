@@ -418,15 +418,14 @@ SELECT akoya_requestid FROM akoya_request WHERE akoya_requestnum = $1
 
 `reviewer_suggestions.request_number` is 99% populated. For the 1% missing, use `grant_cycle_id → grant_cycles.short_code` to identify the cycle, then **fail with manual-reconciliation flag** rather than guess. Do not auto-resolve ambiguous rows.
 
-**2. Postgres email → Dataverse `wmkf_potentialreviewer` slot**
+**2. Postgres email → Dataverse `wmkf_potentialreviewer` (global per-person)**
 
 ```
 SELECT wmkf_potentialreviewerid FROM wmkf_potentialreviewer
 WHERE wmkf_email = $1
-  AND <slot is on the request from step 1, via _akoya_request_value or its slot relationship>
 ```
 
-Email source: `researchers.email` joined via `reviewer_suggestions.researcher_id` (99% populated). If no matching slot exists on the request (Group B/C2 cases), create one via `potentialReviewerAdapter.upsertByEmail` — same code path `save-candidates.js` uses.
+`wmkf_potentialreviewer` is global-per-person (one row across N proposals; see §"Data model: 1:1 sidecar"). The per-(person, request) ledger lives on `wmkf_appreviewersuggestion`, not on the potentialreviewer row. Email source: `researchers.email` joined via `reviewer_suggestions.researcher_id` (99% populated). If no matching row exists (Group B/C2 cases), create one via `potentialReviewerAdapter.upsertByEmail` — same code path `save-candidates.js` uses.
 
 **3. Idempotency on Dataverse write**
 
