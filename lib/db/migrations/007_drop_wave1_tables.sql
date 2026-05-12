@@ -1,7 +1,7 @@
 -- Migration 007: Drop Wave 1 Postgres tables (system_settings, user_app_access, user_preferences)
 --
 -- Closes out the Wave 1 Postgres → Dataverse migration. Data has been migrated
--- to wmkf_appsystemsetting, wmkf_appuserappacces, and wmkf_appuserpreference
+-- to wmkf_appsystemsettings, wmkf_appuserappaccesses, and wmkf_appuserpreferences
 -- in Dataverse. Production dispatch has routed reads and writes to Dataverse
 -- since 2026-05-03 (flag flip date); behavioral verification on 2026-05-11
 -- confirmed zero production writes against any of these tables in the

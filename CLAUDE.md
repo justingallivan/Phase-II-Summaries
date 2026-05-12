@@ -112,11 +112,11 @@ Required for production-only paths:
 Notable optional flags:
 - `DYNAMICS_IMPERSONATION_ENABLED=true` — sends `MSCRMCallerID` on user-driven Dynamics writes; off by default for safe rollout (see `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md`)
 - `PROMPT_RESOLVER_STRICT=true` — disables bundled-prompt fallback for prompt-dev loops
-- `WAVE1_BACKEND_SETTINGS` / `WAVE1_BACKEND_APP_ACCESS` / `WAVE1_BACKEND_PREFS` — Wave 1 backend dispatch flags
+- `WAVE1_BACKEND_SETTINGS` / `WAVE1_BACKEND_APP_ACCESS` / `WAVE1_BACKEND_PREFS` — Wave 1 backend dispatch flags. **Default is now Dataverse**; the legacy Postgres tables (`system_settings`, `user_app_access`, `user_preferences`) were dropped 2026-05-12. Setting any of these to `postgres` will fail loudly — kept only as an explicit opt-out signal.
 
 ## Per-App Model Configuration
 
-Defaults live in `shared/config/baseConfig.js` (`getModelForApp()`); admin can override per-app at runtime via `/admin` (persisted in `system_settings`). Per-app `CLAUDE_MODEL_<APP>` env vars also work as a static override.
+Defaults live in `shared/config/baseConfig.js` (`getModelForApp()`); admin can override per-app at runtime via `/admin` (persisted in Dataverse `wmkf_appsystemsettings`). Per-app `CLAUDE_MODEL_<APP>` env vars also work as a static override.
 
 ## Development
 
@@ -194,9 +194,9 @@ Located in `lib/services/`. Source files are authoritative; entries below descri
 - `execute-prompt.js` — Implementation of the Executor contract (`docs/EXECUTOR_CONTRACT.md`); mirrors the PA `ExecutePrompt` child flow
 - `multi-llm-service.js`, `panel-review-service.js` — Virtual Review Panel (Claude / GPT / Gemini / Perplexity)
 - `literature-search-service.js` — Multi-database literature search shared by Lit Analyzer + panel claim verification
-- `settings-service.js` / `dataverse-settings-service.js` — Wave 1 `system_settings` (env: `WAVE1_BACKEND_SETTINGS`)
-- `app-access-service.js` / `dataverse-app-access-service.js` — Wave 1 `user_app_access` (env: `WAVE1_BACKEND_APP_ACCESS`)
-- `dataverse-prefs-service.js` — Wave 1 `user_preferences` adapter (env: `WAVE1_BACKEND_PREFS`)
+- `settings-service.js` / `dataverse-settings-service.js` — Dataverse `wmkf_appsystemsettings`. Wave 1 dispatch retained as dead-code Postgres branch (table dropped 2026-05-12); default Dataverse.
+- `app-access-service.js` / `dataverse-app-access-service.js` — Dataverse `wmkf_appuserappaccesses`. Wave 1 dispatch retained; default Dataverse.
+- `dataverse-prefs-service.js` — Dataverse `wmkf_appuserpreferences` adapter. Postgres `user_preferences` dropped 2026-05-12; default Dataverse.
 - `dataverse-identity-map.js`, `dynamics-identity-service.js` — `user_profiles` ↔ Dynamics `systemuser` bridge; reconciliation CLI at `scripts/reconcile-dynamics-identities.js`
 - `model-override-loader.js` — Per-app model overrides for `baseConfig.js`
 
@@ -225,9 +225,6 @@ Vercel Postgres. Authoritative source: `lib/db/schema.sql` + `lib/db/migrations/
 | Table | Purpose |
 |-------|---------|
 | `user_profiles` | Identity (azure_id, azure_email, is_active, dynamics_systemuser_id) |
-| `user_preferences` | Per-user settings; values encrypted (AES-256-GCM) when `is_encrypted` |
-| `user_app_access` | Per-user app grants `(user_profile_id, app_key)`; app_key matches `appRegistry.js` |
-| `system_settings` | Generic key-value (model overrides, etc.) |
 | `researchers`, `publications`, `grant_cycles` | Reviewer Finder shared pool |
 | `proposal_searches`, `reviewer_suggestions` | Reviewer Finder per-user state |
 | `retractions`, `integrity_screenings`, `screening_dismissals` | Integrity Screener (Retraction Watch + per-user history) |
@@ -238,7 +235,7 @@ Vercel Postgres. Authoritative source: `lib/db/schema.sql` + `lib/db/migrations/
 | `system_alerts`, `health_check_history`, `maintenance_runs` | Monitoring + cron job audit trail |
 | `policy_publish_audit` | Append-only audit of `wmkf_policy` version publishes via `/api/admin/policies`. Pending row before mutation + final row after (paired by `request_id`). |
 
-User-scoping convention: shared tables for organization-wide reference data; per-user tables for "my X" surfaces. Wave 1 migration (in progress) moves `system_settings`, `user_app_access`, `user_preferences` to Dataverse — see `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md`.
+User-scoping convention: shared tables for organization-wide reference data; per-user tables for "my X" surfaces. Wave 1 (`system_settings`, `user_app_access`, `user_preferences`) was fully migrated to Dataverse and dropped from Postgres on 2026-05-12 — see `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md` for the migration history.
 
 ---
 

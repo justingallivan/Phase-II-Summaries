@@ -520,7 +520,7 @@ const v21Alterations = [
 
 // V22 (rename proposal-summarizer → phase-ii-writeup on user_app_access)
 // no longer applies — user_app_access dropped from Postgres in Wave 1.
-// Equivalent rename was performed in Dataverse wmkf_appuserappacces directly.
+// Equivalent rename was performed in Dataverse wmkf_appuserappaccesses directly.
 
 // V23a: Add request_number to proposal_searches and reviewer_suggestions
 const v23aAlterations = [
