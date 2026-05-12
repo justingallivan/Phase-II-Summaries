@@ -227,7 +227,7 @@ The reviewer-history surface for a contact is `wmkf_appreviewersuggestion` rows 
 - Review form responses: `wmkf_ReviewerAffiliation`, `wmkf_ReviewerImpact`, `wmkf_ReviewerRisk`, `wmkf_ReviewerOverallRating` (with sentinel `99 = unable to answer` on each picklist)
 
 **Implications:**
-- The "engagement predicate" for the cleanup cron must read engagement signals from `wmkf_appreviewersuggestion` (token issuance, first-accessed, review uploaded). Specifically: keep the `wmkf_appreviewersuggestion` row (and by extension its slot) if it has `wmkf_ExternalTokenIssued`, `wmkf_ProposalFirstAccessed`, or any review-form picklist populated. Cleanup acts on suggestion rows; the slot is preserved as long as any of its suggestions are kept.
+- The "engagement predicate" for the cleanup cron reads signals from both sides: (a) suggestion-side signals on `wmkf_appreviewersuggestion` (`wmkf_ExternalTokenIssued`, `wmkf_ProposalFirstAccessed`, any review-form picklist, `wmkf_emailsentat`, `wmkf_responsetype`); and (b) slot-side signals on `wmkf_potentialreviewer` (`wmkf_contact` populated indicates the person was promoted to a contact at some point — a cross-proposal "this person is engaged with us" signal). The keep decision is the union of both — see §"Engaged predicate" below for the full enumerated signal list. Cleanup acts on suggestion rows; the slot itself is never deleted by the cron.
 - Match-on-discovery's "reviewer history" lookup walks `wmkf_appreviewersuggestion` rows linked through the slot's contact, not just `wmkf_potentialreviewer` rows. The richer suggestion fields (overall rating, response time derived from issued vs. first-accessed) are what surface in the history modal.
 - **Net-new columns to add to extensions** (locked S136 2026-05-06):
   - `wmkf_DeclineReason` — multi-line text, optional. Captured at decline-time (magic-link landing page; or staff-entered if reviewer told us by email).
@@ -400,7 +400,7 @@ The 8 anomalies trace cleanly to known data-quality gaps in the audit:
 
 `pages/api/reviewer-finder/save-candidates.js` writes Dataverse-only today, but at some prior point it wrote both Postgres and Dataverse — the 97.6% Group A overlap is consistent with sustained dual-write history rather than recent Dataverse adoption. The Postgres-only window must have been brief.
 
-**Operational implication**: the W2 "reviewer-suggestions backfill" critical-path item is removed. W3 no longer waits on backfill commit. Endpoint rewrites become the W3 critical path.
+**Operational implication**: the original "reviewer-suggestions backfill is a large blocker" framing is wrong. 329/337 rows already match Dataverse; only 8 anomalies need triage. The backfill commit-mode run is scheduled in W4 per the refreshed schedule below; endpoint rewrites for `reviewer_suggestions` readers (`generate-emails.js`, `my-proposals.js`, `extract-summary.js`, `maintenance-service.js`, `database-service.js`) are in W5.
 
 ### Patch precedence (residual, only matters if anomaly triage finds anything migrate-worthy)
 
@@ -613,7 +613,7 @@ The previous framing of this section conflated two separate read paths. Correcte
 
 1. Schema creation: delete table from solution; no prod impact.
 2. Match-on-discovery + history: read-only; turn off via feature flag (`REVIEWER_FINDER_HISTORY_BADGES=false`) — no data implications.
-3. Cleanup cron: dry-run mode logs what it would delete without acting. Run dry-run for one full cycle before turning on for real. Once acting, pre-delete export to blob with 30-day retention provides manual restore path. **Restore script** (`scripts/restore-from-cleanup-backup.js`): reads the JSON blob, re-CREATEs slot + sidecar + suggestion via existing adapters (`potentialReviewerAdapter`, `researcherAdapter`, `reviewerSuggestionAdapter`). Idempotent via alt keys. Half-day to write; **must exist before cron's first real-mode run**, no longer "TBD."
+3. Cleanup cron: dry-run mode logs what it would delete without acting. Run dry-run for one full cycle before turning on for real. Once acting, pre-delete export to blob with 30-day retention provides manual restore path. **Restore script** (`scripts/restore-from-cleanup-backup.js`): reads the JSON blob, re-CREATEs the `wmkf_appreviewersuggestion` rows via `reviewerSuggestionAdapter.upsert`. Idempotent via alt key. (Slots and sidecars are never deleted by the cron — only suggestion rows — so the restore path is suggestion-only too.) Half-day to write; **must exist before cron's first real-mode run.**
 4. Endpoint rewrites: see Option A vs B above; rollback path differs depending on which.
 5. Cutover: Postgres tables set read-only but not dropped. If cutover regresses, re-enable Postgres path, investigate.
 6. Decommission: only after 14 days clean. Final blob backup.
