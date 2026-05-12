@@ -25,7 +25,8 @@ Refreshed 2026-05-12. Several artifacts have shipped since the plan was locked; 
 | `pages/api/reviewer-finder/add-candidate-manual.js` | spec'd | Net-new "add candidate by hand" endpoint, replaces retired Database tab. Writes to all three Dataverse entities (`wmkf_potentialreviewer`, `wmkf_appresearcher`, `wmkf_appreviewersuggestion`) via existing adapters. |
 | `lib/services/contact-history-service.js` | spec'd | Match-on-discovery aggregation helper. **Distinct from the existing endpoint** — the endpoint serves a batched Dataverse lookup; this service would consume it from `discovery-service.js` during candidate enrichment. |
 | Match-on-discovery wiring in `lib/services/discovery-service.js` + history-badge UI in `pages/reviewer-finder.js` | spec'd | First-class new scope. Badge sources: 🔁 reviewed (from junction + suggestions); 🚫 declined (from `wmkf_appreviewersuggestion.wmkf_responsetype`); 💰 funded PI (depends on Dataverse award/grant data — separate query, not from `reviewer_suggestions`; verify the data path before promising the badge). |
-| `wmkf_appgrantcycle` deployment + `grant_cycles` cutover | spec'd | Schema-as-code at `lib/dataverse/schema/wave2/wmkf_app_grant_cycle.json` (designed, not deployed). Cutover scope: see "Drain-target endpoint inventory" below — at least 4 application files write/read `grant_cycles` today. |
+| `wmkf_appgrantcycle` entity | **PARTIALLY DEPLOYED** (10 custom attrs live, 0 rows) | The entity exists in prod Dataverse but with an incomplete schema — 3 fields are missing (`wmkf_ShortCode`, `wmkf_ProgramName`, `wmkf_CustomFields`). See `docs/atlas/dataverse-wmkf-apppublication-and-appgrantcycle.md`. Remaining work is a **schema patch** (not a fresh deploy) plus data backfill from Postgres `grant_cycles`. |
+| `grant_cycles` endpoint cutover | spec'd | Three application files write/read `grant_cycles` today (see "Drain-target endpoint inventory" below). Cutover blocks Review Manager email path. |
 | Cleanup cron (`/api/cron/reviewer-cleanup` or similar) | spec'd | Drops unengaged `wmkf_appreviewersuggestion` rows post meeting + 14 days; weekly schedule. **Predicate locked S136 2026-05-06** (8 signals). |
 | `scripts/restore-from-cleanup-backup.js` | spec'd | Reverse the cleanup-cron pre-delete backup blob. **Must exist before cleanup cron runs in real mode** (per `Rollback strategy §3`); not "post-cutover hygiene." |
 | `scripts/repair-divergence-postflip.js` | spec'd | Replay Dataverse-window writes back into Postgres if a flag-flip rolls back. Only relevant if `WAVE2_BACKEND_*` flags are built. |
@@ -506,15 +507,19 @@ Audit: are there other 100-char (or other) caps elsewhere in the adapter set? Ru
 | `pages/api/reviewer-finder/discover.js` | Cache lookup via `DatabaseService.findResearcher` (Postgres `researchers`) | Replace cache lookup with match-on-discovery against `contact`. Drop Postgres dependency. |
 | `pages/api/reviewer-finder/researchers.js` | Admin pool CRUD over `researchers` / `researcher_keywords` / `publications` | **Retire** (locked S136 2026-05-06). Database tab loses meaning under 1:1 model. Replaced by net-new "Add candidate by hand" feature (see below). |
 | `pages/api/reviewer-finder/generate-emails.js` | Reads `reviewer_suggestions`, writes `email_sent_at` | Read from `wmkf_appreviewersuggestion`; write `wmkf_emailsentat` on the slot. |
-| `pages/api/reviewer-finder/extract-summary.js` | Writes `proposal_searches.summary_blob_url`, updates `reviewer_suggestions` | If `proposal_searches` is dead, just keep the suggestion update path on Dataverse. |
-| `pages/api/reviewer-finder/grant-cycles.js` | Direct `sql\`\`` against `grant_cycles` (5+ sites) | Rewrite all sites against `wmkf_appgrantcycle` (alt-key by short_code). |
+| `pages/api/reviewer-finder/extract-summary.js` | Reads `proposal_searches` as IDOR guard (broken — table empty); writes `reviewer_suggestions` | **Retire entirely** (locked S136). Remove caller in `pages/reviewer-finder.js:3538`. |
+| `pages/api/reviewer-finder/grant-cycles.js` | Direct `sql\`\`` against `grant_cycles` (5+ sites) **plus** `proposal_searches` and `reviewer_suggestions` reads (verified 2026-05-12 grep) | Rewrite all sites against `wmkf_appgrantcycle` (alt-key by short_code). The `proposal_searches`/`reviewer_suggestions` reads in this file go away when those tables retire — re-implement against Dataverse equivalents during this rewrite. |
 | **`pages/api/review-manager/render-emails.js`** (scope addition, surfaced by grep gate 2026-05-06) | `loadCycleConfigs()` reads `grant_cycles.{short_code, name, program_name, review_deadline, custom_fields}` | Rewrite to read `wmkf_appgrantcycle`. Was missed in earlier scoping which described Review Manager as fully Dataverse-only. |
 | **`pages/api/review-manager/send-emails.js`** (scope addition) | `loadCycleConfigs()` reads `grant_cycles.{short_code, review_template_blob_url, additional_attachments}` | Same rewrite. |
 | `pages/api/reviewer-finder/my-proposals.js` | Mixed Postgres + Dataverse | Pick Dataverse; remove Postgres path. |
 
-**New endpoints:**
+**Endpoints already built (S139):**
 
-- `pages/api/reviewer-finder/contact-history.js` — batched lookup. POST body: `{ contactIds: [...] }`. Returns: `{ <contactId>: { reviewerHistory: [...], piHistory: [...] } }`. Used by the picker UI to populate badges.
+- `pages/api/reviewer-finder/contact-history.js` — batched lookup. POST body: `{ contactIds: [...] }`. Returns: `{ <contactId>: { reviewerHistory: [...], piHistory: [...] } }`. UNION-with-projectleader read strategy. Used by the picker UI to populate badges (consumer wiring is still to build).
+
+**Net-new endpoints still to build:**
+
+- `pages/api/reviewer-finder/add-candidate-manual.js` — net-new "add candidate by hand" feature, replaces retired Database tab. Writes to all three Dataverse entities via existing adapters.
 
 **Service-layer rewrites:**
 
@@ -538,19 +543,25 @@ Audit: are there other 100-char (or other) caps elsewhere in the adapter set? Ru
 
 Hard constraints (each blocks the step after it):
 
-1. **`researchers.js` rewrite-vs-retire decision.** Up front (W1, not W4). The decision drives whether `publications` and `researcher_keywords` reads need rewriting (rewrite path) or just removing (retire path). Retire is a UX decision, not just an API decision — needs Justin's call before any other endpoint work starts.
-2. **`extract-summary.js` reckoning.** Up front (W1). The IDOR guard on `proposal_searches` is broken today (always fails because table is empty). Either retire the endpoint or rewrite the guard against Dataverse before any other work depends on it.
-3. **Schema in sandbox.** Create `wmkf_appgrantcycle` with the full field mapping (above). Confirm `wmkf_appreviewersuggestion` extensions are deployed (already designed; check sandbox state). Identify any missing reviewer-portal fields.
-4. **`grant-cycles.js` rewrite + `wmkf_appgrantcycle` migration.** Must complete **before email flows are migrated** — `generate-emails.js` reads cycle attachment settings (`grant-cycles.js:144`), so a flag flip on email without grant-cycle being Dataverse-resident would break.
-5. **Reviewer-suggestions backfill.** Run dry, review parity report, then commit. Required before `generate-emails.js` and `my-proposals.js` flag flips.
-6. **`my-proposals.js` lifecycle counts.** Currently labeled in code as "Postgres remains source of truth for lifecycle state until the wave-2 ledger backfill happens" (`pages/api/reviewer-finder/my-proposals.js:153`). Cannot flip until the suggestion backfill (step 5) is verified.
-7. **`maintenance-service.js` blob orphan scanner.** Reads Postgres `proposal_searches`, `grant_cycles`, `reviewer_suggestions` to find live blob URLs (`lib/services/maintenance-service.js:84`). **Live-data note**: `proposal_searches` is empty, `grant_cycles.review_template_blob_url` is 0% populated; only `reviewer_suggestions.summary_blob_url` (55%) and `review_blob_url` (1%) carry real data. So the scanner runs against essentially one populated source today. Still must rewrite to read Dataverse before cutover, but the urgency is lower than originally framed — risk is bounded by the small number of populated source rows.
-8. **Cleanup cron (engaged predicate).** Build with backup-on-delete logic. Run dry-only for at least one full cycle before any real delete.
-9. **Match-on-discovery + history endpoints + service.** Read-only; can ship anytime after step 3. Independent of cutover.
-10. **History badges in UI.** Stacks on (9). Descope to post-pilot if W3–W4 compresses.
-11. **Cutover.** Service layer flips per-table via `WAVE2_BACKEND_*` flags. Postgres marked read-only.
-12. **Cleanup cron turns on for real.** Earliest 14 days post-cutover.
-13. **Decommission.** Drop Postgres tables after 14+ days clean.
+1. **Decisions locked** (no longer dependency-order items): `researchers.js` retires; `extract-summary.js` retires entirely; cleanup-cron predicate; 14-day grace; junction approach.
+2. **Schema patch.** Patch `lib/dataverse/schema/wave2/wmkf_app_grant_cycle.json` to add the 3 missing fields (`wmkf_ShortCode`, `wmkf_ProgramName`, `wmkf_CustomFields`). Re-run `apply-dataverse-schema.js`. Entity already exists in prod; this is additive.
+3. **`grant_cycles` migration + cutover.** Three-file scope (verified 2026-05-12 grep): `pages/api/reviewer-finder/grant-cycles.js`, `pages/api/review-manager/render-emails.js`, `pages/api/review-manager/send-emails.js`. Must complete **before email flows are migrated** — `generate-emails.js` reads cycle attachment settings indirectly through `grant-cycles.js`, so cycle data must be Dataverse-resident first. Postgres `grant_cycles` is the only Wave 2 table that actually migrates (the rest drain).
+4. **Reviewer-suggestions parity triage** (8-row delta). Per Codex 3b: before commit-mode backfill, decide each row's true status — genuine missed sync vs. legitimate Postgres-only artifact. Then commit-mode the genuine misses. Required before `generate-emails.js` and `my-proposals.js` cutover (lifecycle counts depend on full Dataverse state).
+5. **Junction backfill commit-mode run.** Execute `scripts/backfill-request-person-junction.js` against prod (~3,000 rows). Once verified, the OR-fallback in `contact-history.js` becomes truly auxiliary rather than load-bearing. **Note:** the projectleader read path stays live as steady-state (per §"Junction read strategy"); it is not removed post-pilot.
+6. **`my-proposals.js` lifecycle counts** (`pages/api/reviewer-finder/my-proposals.js:153`). Cutover after step 4 verifies.
+7. **`maintenance-service.js` blob orphan scanner.** Reads Postgres `proposal_searches`, `grant_cycles`, `reviewer_suggestions` for blob URLs. **Live-data note**: only `reviewer_suggestions.summary_blob_url` (55%) and `review_blob_url` (1%) carry real data. Rewrite to read Dataverse before cutover; bounded urgency.
+8. **`lib/services/database-service.js` researcher/publication/keyword methods.** Either gut (if no remaining callers) or rewrite to delegate to Dataverse adapters. Codex 5 — heavy consumer. Reachable from `discovery-service.js`, `deduplication-service.js`, `contact-enrichment-service.js`.
+9. **Cleanup cron (engaged predicate).** Build with backup-on-delete logic; dry-run mode only until 14+ days post-cutover.
+10. **Match-on-discovery service + discovery-service.js wiring.** Read-only; ships anytime after step 5.
+11. **`WAVE2_BACKEND_*` decision (Option A vs B).** Per "Rollback strategy" — defer the call until step 3 build starts; revisit per-table if needed.
+12. **Cutover.** Service layer flips per-table. Method depends on step 11 decision.
+13. **Cleanup cron real-mode.** Earliest 14 days post-cutover. **`scripts/restore-from-cleanup-backup.js` must exist before this step.**
+14. **Decommission.** Drop Postgres tables after 14+ days clean.
+
+**Post-pilot enhancements (descoped from critical path):**
+- History badges UI in Reviewer Finder (additive UX; ships after the data layer is clean).
+- `add-candidate-manual.js` endpoint + UI (decision needed: do PDs accept discovery-only candidate entry for pilot? If yes, defers post-pilot; if no, must ship in step 10 window).
+- Contact form "Reviewer history" subgrid (Connor's separate build; not in pilot critical path).
 
 **Zero-downtime stance**: this migration is zero-downtime by design. Per-table `WAVE2_BACKEND_*` flags allow flip-back; Postgres tables stay readable until step 12. No maintenance window planned. If a step requires one, it's a sign the step should be split.
 
@@ -584,14 +595,19 @@ The original plan implicitly assumed Option A. Build-priority discussion 2026-05
 
 There is no period where both backends are simultaneously authoritative. This avoids the divergence-detection-via-reconciliation trap, but means **a Dataverse write failure in the post-flip window surfaces as a user-visible error**, not silent dual-write success. Rollback = flag flip (Option A) or `git revert` (Option B), not transactional rewind.
 
-### Data-loss risk worth naming explicitly (Codex 7b, 2026-05-12)
+### Data-loss risk worth naming explicitly (Codex 7b, corrected 2026-05-12)
 
-A `reviewer_suggestion` row that never syncs to Dataverse becomes silently invisible once the projectleader OR-fallback in `pages/api/reviewer-finder/contact-history.js` is removed. While the fallback is live, partial sync state is masked — a missing-but-projectleader-matched contact still shows reviewer history; a missing-and-not-projectleader contact does not.
+The previous framing of this section conflated two separate read paths. Corrected:
 
-**Mitigations the plan requires**:
-1. **Triage the 8-row Postgres-only delta** (parity script output) before committing the backfill — confirm each row's true status (genuine missed sync vs. legitimate Postgres-only artifact).
-2. **Keep the OR-fallback live** through the junction backfill execution + a verification window after.
-3. **Reconciliation report** (`scripts/reconcile-reviewer-migration.js`) must run cleanly with zero unexplained deltas before removing the fallback.
+- **PI history** comes from `_wmkf_projectleader_value` on `akoya_request` (lead PI) **UNION** the `wmkf_apprequestperson` junction (PI + co-PIs). Both stay live as steady-state per §"Junction read strategy"; nothing retires post-pilot.
+- **Reviewer history** comes from `wmkf_appreviewersuggestion` rows linked to a contact. The projectleader fallback **does not rescue** missing reviewer-suggestion rows — these are distinct data paths.
+
+**The actual data-loss risk:** if any Postgres `reviewer_suggestions` row fails to backfill to Dataverse before the Postgres table is dropped, that row's reviewer-history content (decline reason, response timestamp, ack state, etc.) is **permanently lost**. The projectleader path won't recover it because that path serves PI history, not reviewer history.
+
+**Mitigations the plan requires:**
+1. **Triage the 8-row Postgres-only delta** (parity script output) before running `scripts/backfill-reviewer-suggestions-to-dataverse.js` in commit mode. For each anomaly, decide: genuine missed sync (must backfill) vs. legitimate Postgres-only artifact (e.g., proposal not yet in Dataverse; safe to discard).
+2. **Run `scripts/reconcile-reviewer-migration.js`** after backfill commits and again immediately before any Postgres table drop. Cutover blocks until parity is 0-row drift on active-cycle data.
+3. **Postgres tables stay read-only, not dropped, for 14+ days post-cutover.** If divergence surfaces in that window, the original rows are still available for inspection.
 
 ### Per step, mostly reversible until cutover
 
@@ -602,11 +618,13 @@ A `reviewer_suggestion` row that never syncs to Dataverse becomes silently invis
 5. Cutover: Postgres tables set read-only but not dropped. If cutover regresses, re-enable Postgres path, investigate.
 6. Decommission: only after 14 days clean. Final blob backup.
 
-### Partial-write recovery (post-flip rollback handling)
+### Partial-write recovery (only applies under Option A — flag flips)
+
+This subsection describes recovery from a flag flip-back, which is only possible if Option A (`WAVE2_BACKEND_*` flags) is chosen. **Under Option B (hard cutover), rollback is `git revert` + redeploy — there are no flag-window divergences to repair.** Skip this section if Option B is chosen.
 
 If a flag flip happens, Dataverse takes a few writes, then we discover a problem and flip back to Postgres — those Dataverse-written rows are now divergent from the next Postgres-write attempts.
 
-**Recovery procedure** (`scripts/repair-divergence-postflip.js`):
+**Recovery procedure** (`scripts/repair-divergence-postflip.js`, spec'd):
 
 1. **Note the flip-back timestamp.** All Dataverse rows on the affected entity with `createdon > flipForwardTimestamp AND createdon < flipBackTimestamp` are candidates for reconciliation.
 2. **Dump the candidates** as JSON via the relevant adapter (`reviewerSuggestionAdapter.findRecent({ since })`).
@@ -669,24 +687,24 @@ Pre-cutover and post-cutover, run a reconciliation script (`scripts/reconcile-re
 
 ## Dataverse readiness checklist
 
-Before W3 application-code rewrites depend on Dataverse schema, every item below must have a check + date + owner. Captured in this doc; a checked-and-dated copy lives in the W2 PR description.
+Every item below must have a check + date + owner before the relevant cutover step depends on it. Dates aligned to the refreshed W3–W7 schedule below.
 
 | Item | Owner | Due | Verification |
 |---|---|---|---|
-| `wmkf_appgrantcycle` entity created in sandbox | Justin | W1 | Solution browser shows the entity under `ResearchReviewAppSuite`. |
-| Alt key `wmkf_shortcode` on `wmkf_appgrantcycle` confirmed unique-enforced | Justin | W1 | Manual duplicate-create attempt returns Dataverse alt-key violation. |
-| Contact form "Reviewer history" subgrid added | Connor | W2 | Sandbox contact form renders the subgrid; data appears for known reviewer contacts. |
-| `wmkf_appreviewersuggestion` extensions deployed (`wmkf_DeclineReason`, `wmkf_ResponseReceivedAt`) | Justin | W1 | Adapter `select` includes them; sandbox row shows them when set. |
+| ~~`wmkf_appgrantcycle` entity created~~ | DONE (entity exists in prod, partial schema) | — | EntityDefinitions probe confirmed 10 attrs. |
+| `wmkf_appgrantcycle` schema patch (3 missing attrs) | Justin | W3 | `apply-dataverse-schema.js` succeeds; EntityDefinitions shows all 13 attrs. |
+| Alt key `wmkf_shortcode` on `wmkf_appgrantcycle` confirmed unique-enforced | Justin | W3 | Manual duplicate-create attempt returns Dataverse alt-key violation. |
+| ~~`wmkf_appreviewersuggestion` extensions deployed (`wmkf_DeclineReason`, `wmkf_ResponseReceivedAt`)~~ | DONE 2026-05-09 (S143) | — | Live in prod; adapter `select` includes them. |
 | ~~`wmkf_apprequestperson` junction created~~ | DONE 2026-05-07 (commit `c8cbfe1`) | — | Schema present in prod; alt key `(wmkf_request, wmkf_contact, wmkf_role)` enforced live. |
-| OData filter performance: `wmkf_appreviewersuggestion` filtered by `wmkf_grantcyclecode` | Justin | W2 | Sandbox query of 100 rows returns < 500ms P95. |
-| OData filter performance: `wmkf_potentialreviewer` filtered by `wmkf_contact` | Justin | W2 | Same. |
-| OData filter performance: `wmkf_apprequestperson` filtered by `wmkf_contact` | Justin | W2 | Junction now live; benchmark this against the contact-history endpoint's real query shape. |
-| `$batch` reviewer-suggestion writes succeed at 50-row batches | Justin | W2 | Sandbox batch test against synthetic data. |
-| Managed-solution export from sandbox produces clean ZIP | Justin | W4 | Maker portal export; download + inspect XML; no missing-dependency errors. |
-| Sandbox→prod managed-solution import dry-run | Justin | W4 | Import to a separate scratch environment if available, else paper-only review with Connor. |
-| Smoke test: `save-candidates` against new schema in sandbox | Justin | W4 | One end-to-end discovery + save flow against the new entities. |
-| Smoke test: `generate-emails` against migrated suggestion data in sandbox | Justin | W4 | One end-to-end email-generation flow with backfilled suggestions. |
-| Smoke test: contact history endpoint batched lookup | Justin | W4 | 25-contact batch returns < 1s P95. |
+| OData filter performance: `wmkf_appreviewersuggestion` filtered by `wmkf_grantcyclecode` | Justin | W4 | Prod query of 100 rows returns < 500ms P95. |
+| OData filter performance: `wmkf_potentialreviewer` filtered by `wmkf_contact` | Justin | W4 | Same. |
+| OData filter performance: `wmkf_apprequestperson` filtered by `wmkf_contact` | Justin | W4 | Benchmark against the contact-history endpoint's real query shape. |
+| `$batch` reviewer-suggestion writes succeed at 50-row batches | Justin | W4 | Prod batch test against backfill candidates. |
+| Junction backfill executed in commit mode | Justin | W3 | ~3,000 rows in `wmkf_apprequestperson`; `contact-history` returns junction-sourced results in addition to projectleader. |
+| Reviewer-suggestions 8-row anomaly triage documented | Justin | W4 | Per-row decision captured in commit message of the backfill commit-mode run. |
+| Smoke test: contact history endpoint batched lookup | Justin | W4 | 25-contact batch returns < 1s P95 (already smoke-tested via `scripts/smoke-contact-history.js`; rerun against full junction backfill). |
+| Smoke test: `generate-emails` against migrated suggestion data | Justin | W5 | End-to-end email-generation flow against Dataverse data after `generate-emails.js` cutover. |
+| Contact form "Reviewer history" subgrid added | Connor | W6 (post-pilot OK) | Sandbox contact form renders the subgrid. Slip-eligible. |
 
 **Failure of any item postpones cutover.** No partial passes; if a smoke test reveals a regression, fix before flipping flags.
 
@@ -710,30 +728,35 @@ Before W3 application-code rewrites depend on Dataverse schema, every item below
 
 ### Updated forward schedule
 
-| Window | Target | Critical-path notes |
+Slip-eligible items (history badges UI, add-candidate-manual, match-on-discovery wiring, contact form subgrid) are explicitly moved to a "Post-pilot enhancements" block below the table so they don't crowd critical-path weeks. Cleanup-cron real-mode is post-pilot regardless. Each week below carries one major theme plus its safety prerequisites.
+
+| Window | Theme | Concrete deliverables |
 |---|---|---|
-| W3 (2026-05-12 → 2026-05-19) | **`wmkf_appgrantcycle` schema deploy + 3-file cutover** of all `grant_cycles` readers/writers: `pages/api/reviewer-finder/grant-cycles.js`, `pages/api/review-manager/render-emails.js`, `pages/api/review-manager/send-emails.js`. **Anomaly triage** of the 8 parity-report outliers (decide per row: recover or accept-loss). **`WAVE2_BACKEND_*` flag decision** (Option A vs Option B per Rollback strategy). Execute junction backfill in commit mode (~3,000 rows). | Codex 3a (2026-05-12): grant_cycles cutover is a 3-file scope, not the 2-file scope originally listed. |
-| W4 (2026-05-19 → 2026-05-26) | Endpoint rewrites for `reviewer_suggestions` readers: `generate-emails.js`, `my-proposals.js`, `extract-summary.js` (retire entirely; remove `pages/reviewer-finder.js:3538` caller). `maintenance-service.js` blob scanner rewrite. `reviewer_suggestions` commit-mode backfill of the (triaged) 8-row delta. `scripts/restore-from-cleanup-backup.js` written. Match-on-discovery service (`lib/services/contact-history-service.js`) + `discovery-service.js` wiring. | Restore script must exist before cleanup cron's first real-mode run; written here to keep the safety-script work close to the endpoint-cutover work, not deferred. |
-| W5 (2026-05-26 → 2026-06-02) | `researchers.js` retirement — API removal + Database-tab UI removal + test/doc cleanup, with grep gates. "Add candidate by hand" endpoint + UI. History badges in UI (descopable if slipping). Cleanup cron written, dry-run only. Reconciliation script (`scripts/reconcile-reviewer-migration.js`). Cross-user-isolation test rewrite. **Dataverse readiness checklist** completed. | researchers.js is the heaviest Postgres consumer (Codex 5); cutover work is non-trivial. |
-| W6 (2026-06-02 → 2026-06-09) | Production cutover (per-table, watching dashboards). Postgres tables marked read-only. Pilot launch readiness review. Repair script tested in sandbox (if `WAVE2_BACKEND_*` flags were chosen). Contact form subgrid (Connor — separate ask). | Watch dashboards live before any flag flip. |
-| W7 (2026-06-09 → 2026-06-16) | Pilot launch (mid-June Phase II Research cycle). Cleanup cron stays in dry-run. | Cron real-mode flip is post-pilot regardless. |
+| W3 (2026-05-12 → 2026-05-19) | **Grant cycle migration.** Theme: get `grant_cycles` off Postgres so Review Manager email path is unblocked. | Patch `wmkf_appgrantcycle` schema (3 missing fields) + apply. Decide `WAVE2_BACKEND_*` Option A vs B. Rewrite `pages/api/reviewer-finder/grant-cycles.js` (full scope: `grant_cycles` + the file's `proposal_searches` + `reviewer_suggestions` reads). Rewrite `pages/api/review-manager/render-emails.js` + `send-emails.js` `loadCycleConfigs()` paths. Backfill `grant_cycles` data into `wmkf_appgrantcycle`. |
+| W4 (2026-05-19 → 2026-05-26) | **Reviewer-suggestion data alignment.** Theme: Dataverse holds the complete suggestion ledger before any reader cutover. | Triage 8 parity outliers (decide each: recover vs accept-loss). Run `scripts/backfill-reviewer-suggestions-to-dataverse.js` in commit mode. Execute `scripts/backfill-request-person-junction.js` in commit mode (~3,000 rows). Smoke contact-history against full junction set. Write `scripts/reconcile-reviewer-migration.js`. |
+| W5 (2026-05-26 → 2026-06-02) | **Reviewer-suggestion reader cutover + service-layer cleanup.** Theme: every Postgres `reviewer_suggestions` read goes to Dataverse. | Rewrite `pages/api/reviewer-finder/generate-emails.js`, `my-proposals.js`. Retire `extract-summary.js` entirely (remove caller in `pages/reviewer-finder.js:3538`). Rewrite `lib/services/maintenance-service.js` blob orphan scanner. Gut/rewrite `lib/services/database-service.js` researcher + publication + suggestion methods (Codex 5 — heavy consumer). |
+| W6 (2026-06-02 → 2026-06-09) | **`researchers.js` retirement + cleanup cron.** Theme: heaviest Postgres consumer goes away; deletion machinery written but dormant. | Retire `pages/api/reviewer-finder/researchers.js` — API removal + Database-tab UI removal + test/doc cleanup, grep gates per §"Pre-drop grep gates." Write cleanup cron (`/api/cron/reviewer-cleanup` or similar) in dry-run-only mode. Write `scripts/restore-from-cleanup-backup.js` (must exist before any real-mode cron run). Production cutover begins per-table, watching dashboards. Postgres tables set read-only. |
+| W7 (2026-06-09 → 2026-06-16) | **Pilot launch.** Theme: ship. | Pilot launch (mid-June Phase II Research cycle). Cleanup cron stays in dry-run. Dataverse readiness checklist 100% complete before launch. |
+| Post-pilot (2026-06-16 onward) | **Enhancements + decommission.** Theme: visible polish + safe drops. | History badges UI in Reviewer Finder. `add-candidate-manual.js` endpoint + UI. Match-on-discovery service (`lib/services/contact-history-service.js`) + `discovery-service.js` wiring. Contact form "Reviewer history" subgrid (Connor). Cleanup cron real-mode (earliest 14 days post-cutover). Postgres table drops (14+ days post-cutover clean). |
 
-**Slip budget** (descopable from pilot, ship post-launch if needed):
-- History badges + match-on-discovery (W3–W4): pure additive UX
-- Cleanup cron real-mode: post-pilot regardless
-- `wmkf_apprequestperson` junction: if Connor pushback, fall back to OR-clause queries on `akoya_request._wmkf_projectleader_value` + `_wmkf_copi1..5_value`. History badges still work; just less performant. No incremental risk. (Connor approved 2026-05-07 — no rollback needed.)
-- "Add candidate by hand" feature: nice-to-have replacement for retired Database tab; pilot can launch without it (PDs save via discovery flow only)
-- Contact form subgrid: defers to post-pilot if Connor schedule doesn't accommodate W2
+**Slip-eligible** (already moved to "Post-pilot enhancements" row above — these will not gate the mid-June pilot):
+- History badges + match-on-discovery wiring (additive UX)
+- `add-candidate-manual` endpoint + UI (PDs save via discovery flow only during pilot)
+- Contact form "Reviewer history" subgrid (Connor's separate build)
+- Cleanup cron real-mode (post-pilot regardless)
 
-**What's NOT in the slip budget** (gate cutover, no descope):
+**What's NOT slip-eligible** (gate cutover; must complete by W6):
 - 8 parity-anomaly triage decisions documented (recover or accept loss, per row)
-- `wmkf_appgrantcycle` migration
-- Review Manager cycle-read refactor (`render-emails.js`, `send-emails.js`)
+- `wmkf_appgrantcycle` schema patch + data backfill
+- `grant_cycles` 3-file cutover (`grant-cycles.js`, `render-emails.js`, `send-emails.js`)
+- `reviewer_suggestions` reader cutover (`generate-emails.js`, `my-proposals.js`)
+- `extract-summary.js` retirement
+- `researchers.js` retirement + grep-gated table drop preparation
 - `maintenance-service.js` blob-scanner rewrite
-- Per-user scoping documentation + test rewrite
-- Email-generation smoke + lifecycle-count parity
-- Pre-delete restore script written + tested
-- Dataverse readiness checklist 100% complete
+- `database-service.js` researcher/publication/suggestion methods gutted-or-rewritten
+- `WAVE2_BACKEND_*` Option A vs B decision (made by end of W3)
+- Restore script written + tested before any cleanup-cron real-mode run
+- Dataverse readiness checklist 100% complete before pilot launch
 
 ## Related
 
