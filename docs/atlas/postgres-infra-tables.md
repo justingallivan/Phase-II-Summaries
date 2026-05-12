@@ -14,26 +14,21 @@ Compact summary for the Postgres tables outside the reviewer-finder domain. Prom
 **Cross-system:** `dynamics_systemuser_id` joins to Dataverse `systemusers.systemuserid`. See `lib/services/dataverse-identity-map.js`.
 **Migration:** Wave 1 dispatch flag `WAVE1_BACKEND_*` exists but identity stays Postgres for now.
 
-### `user_app_access` (Postgres 80 rows / Dataverse 84 rows, 2026-05-07)
-**Source of truth (refreshed 2026-05-07):** **Dataverse `wmkf_appuserappaccesses`** (84 rows, live; flag flipped 2026-05-03). Postgres copy held read-only as a fallback until 2026-05-17 retirement window. The 4-row delta is post-flip activity in Dataverse; Postgres is frozen.
-**Live Dataverse adapter:** `lib/services/dataverse-app-access-service.js` — uses `client.post('/wmkf_appuserappaccesses', ...)` (note the entity-set name has no underscore between `app` and `userappaccesses`, even though the schema-as-code file is `wmkf_app_user_app_access.json`).
+### `user_app_access` — RETIRED 2026-05-12 (was Postgres / now Dataverse-only)
+**Source of truth:** **Dataverse `wmkf_appuserappaccesses`**. Postgres table dropped via migration `007_drop_wave1_tables.sql` on 2026-05-12 after 9 days of empirically zero prod writes since the 2026-05-03 flag flip.
+**Live adapter:** `lib/services/dataverse-app-access-service.js`. The dispatcher `lib/services/app-access-service.js` retains a Postgres branch as dead code (will be removed in a follow-up cleanup).
 **Schema:** `(user_profile_id, app_key)` unique grant rows.
-**Read/write:** 3/3 files. `lib/services/app-access-service.js` is the legacy reader; the dataverse-* sibling is the new path.
-**Migration:** Wave 1 retirement earliest 2026-05-17 (14-day stability clock from 2026-05-03).
+**Recovery:** Neon PITR window 7 days; restore prod branch to ~2026-05-12T01:25Z if needed.
 
-### `user_preferences` (Postgres 25 rows / Dataverse 20 rows, 2026-05-07)
-**Source of truth (refreshed 2026-05-07):** **Dataverse `wmkf_appuserpreferences`** (20 rows, live; flag flipped 2026-05-03). Postgres has more rows because preferences allow DELETE — some have been deleted on the Dataverse side post-flip while Postgres holds the older snapshot.
-**Live Dataverse adapter:** `lib/services/dataverse-prefs-service.js`.
+### `user_preferences` — RETIRED 2026-05-12 (was Postgres / now Dataverse-only)
+**Source of truth:** **Dataverse `wmkf_appuserpreferences`**. Postgres table dropped via migration `007_drop_wave1_tables.sql` on 2026-05-12.
+**Live adapter:** `lib/services/dataverse-prefs-service.js`. The dispatcher `lib/services/database-service.js` retains a Postgres branch as dead code.
 **Encryption:** values AES-256-GCM when `is_encrypted = true`.
-**Read/write:** 5/2 files. **3 DELETE callers** (per write-grep) — verify before drop.
-**Migration:** Same as `user_app_access`.
 
-### `system_settings` (Postgres 45 rows / Dataverse 45 rows, 2026-05-07)
-**Source of truth (refreshed 2026-05-07):** **Dataverse `wmkf_appsystemsettings`** (45 rows, live; flag flipped 2026-05-03). Counts match exactly — settings are append-mostly so no drift.
-**Live Dataverse adapter:** `lib/services/dataverse-settings-service.js`.
+### `system_settings` — RETIRED 2026-05-12 (was Postgres / now Dataverse-only)
+**Source of truth:** **Dataverse `wmkf_appsystemsettings`**. Postgres table dropped via migration `007_drop_wave1_tables.sql` on 2026-05-12. Final reconciliation on 2026-05-11 synced 10 tier-keyed `model_override:*` rows from S145 dev writes (PG→DV); counts matched (45/45) before the drop.
+**Live adapter:** `lib/services/dataverse-settings-service.js`. The dispatcher `lib/services/settings-service.js` retains a Postgres branch as dead code.
 **Schema:** generic key-value (model overrides, feature flags, etc.).
-**Read/write:** 3/1 raw SQL files — but reads are **fanned out via `lib/services/settings-service.js`** to ≥5 distinct call sites (admin-models page, secrets management, maintenance flows, model overrides loader, cron secret-check). Treat the service as the canonical reader; the SQL grep undercounts because callers go through it.
-**Migration:** Wave 1.
 
 ## Dynamics Explorer state
 

@@ -71,7 +71,7 @@ Promote any of these to a per-entity page if app code starts writing to it.
 
 | Group | Tables | Page |
 |---|---|---|
-| Identity / app access (Wave 1) | `user_profiles`, `user_app_access`, `user_preferences`, `system_settings` | [postgres-infra-tables.md](atlas/postgres-infra-tables.md) |
+| Identity (Postgres) + Wave 1 retired entries | `user_profiles` (live); `user_app_access`, `user_preferences`, `system_settings` (RETIRED 2026-05-12, now Dataverse-only) | [postgres-infra-tables.md](atlas/postgres-infra-tables.md) |
 | Dynamics Explorer state | `dynamics_query_log`, `dynamics_feedback`, `dynamics_user_roles`, `dynamics_restrictions` | same |
 | Expertise Finder | `expertise_roster`, `expertise_matches` | same |
 | Integrity Screener | `integrity_screenings`, `screening_dismissals`, `retractions` | same |
@@ -96,7 +96,7 @@ The high-leverage services for data-layer work — full source remains authorita
 
 | Service | Postgres tables touched | Dataverse access | Notes |
 |---|---|---|---|
-| `database-service.js` | most reviewer-side + `user_profiles`, `api_usage_log`, `system_settings`, etc. | none | central Postgres gateway; Wave 1 dispatch dispatches some methods to Dataverse equivalents |
+| `database-service.js` | most reviewer-side + `user_profiles`, `api_usage_log`, etc. | none | central Postgres gateway; Wave 1 user_preferences branch is dead code (table dropped 2026-05-12) |
 | `discovery-service.js` | `researchers` (read), `publications` (read, dead), `researcher_keywords` (read) | none | calls `DatabaseService.findResearcher` (1 of 3 callers) |
 | `deduplication-service.js` | `researchers` (read) | none | calls `DatabaseService.findResearcher` (2 of 3) |
 | `contact-enrichment-service.js` | `researchers` (write via `createOrUpdateResearcher`) | none | Codex round-3 #3: this is an active writer (3rd `findResearcher` caller too) |
@@ -105,9 +105,9 @@ The high-leverage services for data-layer work — full source remains authorita
 | `dynamics-identity-service.js` | `user_profiles` (read) | `systemusers` (read) | impersonation contract (`MSCRMCallerID`) |
 | `dataverse-identity-map.js` | `user_profiles` | `systemusers` | bridge resolver |
 | `program-director-resolver.js` | none | `systemusers` (read) | email → `systemuserid` |
-| `app-access-service.js` / `dataverse-app-access-service.js` | `user_app_access` | (Wave 1 dispatch) | `WAVE1_BACKEND_APP_ACCESS` |
-| `settings-service.js` / `dataverse-settings-service.js` | `system_settings` | (Wave 1 dispatch) | `WAVE1_BACKEND_SETTINGS` |
-| `dataverse-prefs-service.js` | `user_preferences` | (Wave 1 dispatch) | `WAVE1_BACKEND_PREFS` |
+| `app-access-service.js` / `dataverse-app-access-service.js` | (Wave 1 retired) | `wmkf_appuserappaccesses` | Postgres table dropped 2026-05-12; dispatcher's PG branch is dead code |
+| `settings-service.js` / `dataverse-settings-service.js` | (Wave 1 retired) | `wmkf_appsystemsettings` | Postgres table dropped 2026-05-12; dispatcher's PG branch is dead code |
+| `dataverse-prefs-service.js` | — | `wmkf_appuserpreferences` | Postgres `user_preferences` dropped 2026-05-12 |
 | `prompt-resolver.js` | none | **`wmkf_ai_run` scratch row** (read, 5-min cache) — NOT `wmkf_ai_prompt` (Session 103 holdover; will swap when v3 path matures) | falls back to bundled `.js` modules unless `PROMPT_RESOLVER_STRICT=true` |
 | `execute-prompt.js` | none — calls Claude API directly via `fetch()`, does NOT route through `llm-client.js` | `wmkf_ai_prompts` (read), `akoya_requests` (read for overwrite check ≈line 504, **write target field at ≈line 511** based on prompt's declared `target.field`), `wmkf_ai_runs` (write audit with FKs to prompt + request) | Executor contract; **dynamically writes to `akoya_request` flat fields** (e.g. `wmkf_ai_summary`) — the Executor is the canonical writer for prompts that declare a target |
 | `llm-client.js` | `api_usage_log` (write via DatabaseService) | none | canonical Anthropic wrapper |

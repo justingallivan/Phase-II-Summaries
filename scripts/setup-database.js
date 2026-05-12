@@ -245,7 +245,9 @@ const v9Alterations = [
   `ALTER TABLE reviewer_suggestions ADD COLUMN IF NOT EXISTS program_area VARCHAR(100)`,
 ];
 
-// V10: User profiles and preferences
+// V10: User profiles
+// (user_preferences originally lived here too — migrated to Dataverse
+// wmkf_appuserpreference in Wave 1; Postgres table dropped 2026-05-12.)
 const v10Statements = [
   // Table: user_profiles
   `CREATE TABLE IF NOT EXISTS user_profiles (
@@ -259,23 +261,9 @@ const v10Statements = [
     last_used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   )`,
 
-  // Table: user_preferences
-  `CREATE TABLE IF NOT EXISTS user_preferences (
-    id SERIAL PRIMARY KEY,
-    user_profile_id INTEGER NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
-    preference_key VARCHAR(100) NOT NULL,
-    preference_value TEXT,
-    is_encrypted BOOLEAN DEFAULT false,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_profile_id, preference_key)
-  )`,
-
-  // Indexes for user tables
+  // Indexes
   `CREATE INDEX IF NOT EXISTS idx_user_profiles_active ON user_profiles(is_active)`,
   `CREATE INDEX IF NOT EXISTS idx_user_profiles_default ON user_profiles(is_default)`,
-  `CREATE INDEX IF NOT EXISTS idx_user_preferences_profile ON user_preferences(user_profile_id)`,
-  `CREATE INDEX IF NOT EXISTS idx_user_preferences_key ON user_preferences(preference_key)`,
 ];
 
 const v10Alterations = [
@@ -432,31 +420,8 @@ const v15Statements = [
   `CREATE INDEX IF NOT EXISTS idx_api_usage_created ON api_usage_log(created_at DESC)`,
 ];
 
-// V16: App-level access control
-const v16Statements = [
-  `CREATE TABLE IF NOT EXISTS user_app_access (
-    id SERIAL PRIMARY KEY,
-    user_profile_id INTEGER NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
-    app_key VARCHAR(100) NOT NULL,
-    granted_by INTEGER REFERENCES user_profiles(id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_profile_id, app_key)
-  )`,
-  `CREATE INDEX IF NOT EXISTS idx_user_app_access_user ON user_app_access(user_profile_id)`,
-];
-
-// V17: System settings key-value store (model overrides, etc.)
-const v17Statements = [
-  `CREATE TABLE IF NOT EXISTS system_settings (
-    id SERIAL PRIMARY KEY,
-    setting_key VARCHAR(255) NOT NULL UNIQUE,
-    setting_value TEXT NOT NULL,
-    updated_by INTEGER REFERENCES user_profiles(id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  )`,
-  `CREATE INDEX IF NOT EXISTS idx_system_settings_key ON system_settings(setting_key)`,
-];
+// V16 (user_app_access) and V17 (system_settings) migrated to Dataverse
+// in Wave 1; Postgres tables dropped 2026-05-12. See migration 007.
 
 // V18: Review Manager columns on reviewer_suggestions
 const v18Alterations = [
@@ -553,10 +518,9 @@ const v21Alterations = [
   `ALTER TABLE api_usage_log ADD COLUMN IF NOT EXISTS cache_read_tokens INTEGER DEFAULT 0`,
 ];
 
-// V22: Rename proposal-summarizer app key to phase-ii-writeup
-const v22Updates = [
-  `UPDATE user_app_access SET app_key = 'phase-ii-writeup' WHERE app_key = 'proposal-summarizer'`,
-];
+// V22 (rename proposal-summarizer → phase-ii-writeup on user_app_access)
+// no longer applies — user_app_access dropped from Postgres in Wave 1.
+// Equivalent rename was performed in Dataverse wmkf_appuserappacces directly.
 
 // V23a: Add request_number to proposal_searches and reviewer_suggestions
 const v23aAlterations = [
@@ -1125,43 +1089,9 @@ async function runMigration() {
       }
     }
 
-    // Run V16 table creation (App-level access control)
-    console.log(`\nApplying v16 schema updates - App access control (${v16Statements.length} statements)...`);
-    for (let i = 0; i < v16Statements.length; i++) {
-      const statement = v16Statements[i];
-      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
-
-      try {
-        await sql.query(statement);
-        console.log(`[v16-${i + 1}/${v16Statements.length}] ✓ ${preview}...`);
-      } catch (error) {
-        if (error.message.includes('already exists')) {
-          console.log(`[v16-${i + 1}/${v16Statements.length}] ○ Already exists: ${preview}...`);
-        } else {
-          console.error(`[v16-${i + 1}/${v16Statements.length}] ✗ Error: ${error.message}`);
-          throw error;
-        }
-      }
-    }
-
-    // Run V17 table creation (System settings)
-    console.log(`\nApplying v17 schema updates - System settings (${v17Statements.length} statements)...`);
-    for (let i = 0; i < v17Statements.length; i++) {
-      const statement = v17Statements[i];
-      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
-
-      try {
-        await sql.query(statement);
-        console.log(`[v17-${i + 1}/${v17Statements.length}] ✓ ${preview}...`);
-      } catch (error) {
-        if (error.message.includes('already exists')) {
-          console.log(`[v17-${i + 1}/${v17Statements.length}] ○ Already exists: ${preview}...`);
-        } else {
-          console.error(`[v17-${i + 1}/${v17Statements.length}] ✗ Error: ${error.message}`);
-          throw error;
-        }
-      }
-    }
+    // V16 (user_app_access) and V17 (system_settings) were migrated to
+    // Dataverse in Wave 1; both Postgres tables dropped 2026-05-12.
+    // See migration 007_drop_wave1_tables.sql.
 
     // Run V18 alterations (Review Manager columns)
     console.log(`\nApplying v18 schema updates - Review Manager (${v18Alterations.length} statements)...`);
@@ -1237,19 +1167,8 @@ async function runMigration() {
       }
     }
 
-    // Run V22 updates (Rename proposal-summarizer to phase-ii-writeup)
-    console.log(`\nApplying v22 data updates - Rename app key (${v22Updates.length} statements)...`);
-    for (let i = 0; i < v22Updates.length; i++) {
-      const statement = v22Updates[i];
-      const preview = statement.substring(0, 80).replace(/\s+/g, ' ');
-
-      try {
-        const result = await sql.query(statement);
-        console.log(`[v22-${i + 1}/${v22Updates.length}] ✓ ${preview}... (${result.rowCount} rows updated)`);
-      } catch (error) {
-        console.error(`[v22-${i + 1}/${v22Updates.length}] ✗ Error: ${error.message}`);
-      }
-    }
+    // V22 (rename on user_app_access) no longer applies — table dropped from
+    // Postgres in Wave 1. Equivalent rename was applied in Dataverse directly.
 
     // Run V23a alterations (request_number columns)
     console.log(`\nApplying v23a schema updates - Request number columns (${v23aAlterations.length} statements)...`);
@@ -1426,11 +1345,9 @@ async function runMigration() {
     console.log('\nV7 column additions (grant cycle FK):');
     console.log('  • proposal_searches.grant_cycle_id');
     console.log('  • reviewer_suggestions.grant_cycle_id');
-    console.log('\nV10 new tables: user_profiles, user_preferences');
+    console.log('\nV10 new table: user_profiles');
     console.log('  • user_profiles (id, name, display_name, avatar_color, is_default,');
     console.log('    is_active, created_at, last_used_at)');
-    console.log('  • user_preferences (id, user_profile_id, preference_key,');
-    console.log('    preference_value, is_encrypted, created_at, updated_at)');
     console.log('\nV10 column additions (user profile FK):');
     console.log('  • proposal_searches.user_profile_id');
     console.log('  • reviewer_suggestions.user_profile_id');
@@ -1450,10 +1367,6 @@ async function runMigration() {
     console.log('\nV15 new table (API usage logging):');
     console.log('  • api_usage_log (user_profile_id, app_name, model, input_tokens,');
     console.log('    output_tokens, estimated_cost_cents, latency_ms, request_status)');
-    console.log('\nV16 new table (App access control):');
-    console.log('  • user_app_access (user_profile_id, app_key, granted_by)');
-    console.log('\nV17 new table (System settings):');
-    console.log('  • system_settings (setting_key, setting_value, updated_by)');
     console.log('\nV18 column additions (Review Manager):');
     console.log('  • reviewer_suggestions.proposal_url');
     console.log('  • reviewer_suggestions.materials_sent_at');
@@ -1476,8 +1389,6 @@ async function runMigration() {
     console.log('\nV21 column additions (Prompt cache tracking):');
     console.log('  • api_usage_log.cache_creation_tokens');
     console.log('  • api_usage_log.cache_read_tokens');
-    console.log('\nV22 data updates (App key rename):');
-    console.log('  • user_app_access: proposal-summarizer → phase-ii-writeup');
     console.log('\nV24 new tables (Virtual Review Panel):');
     console.log('  • panel_reviews (multi-LLM review sessions)');
     console.log('  • panel_review_items (individual LLM reviews per stage)');
