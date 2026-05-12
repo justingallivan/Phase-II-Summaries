@@ -33,18 +33,22 @@ Indexes: `researcher_id`, `publication_date DESC`, `doi`.
 
 ## Live state notes
 
-- 0 rows. Writer (`DatabaseService.createPublication` / similar) was either never wired or was disabled.
-- `DatabaseService.getRecentPublications` reader untraced as of S136 (Codex round-3 #7).
+- 0 rows. Writer was either never wired or was disabled.
+- **W5 update (commit `0c58da4`):** the `DatabaseService.addPublication` / `getRecentPublications` / `getResearchersByKeywords` methods that referenced this table were gutted from `database-service.js`. No live readers or writers remain in the service layer.
 
 ## Read paths
 
-- `lib/services/database-service.js`
-- `scripts/clear-all-database.js`, `scripts/db-row-counts.js`
+- `scripts/clear-all-database.js`, `scripts/db-row-counts.js` — admin scripts only
+
+Pre-W5 (now removed):
+- `lib/services/database-service.js` — `addPublication`, `getRecentPublications`, `getResearchersByKeywords` (all gutted in `0c58da4` after zero-caller grep)
 
 ## Write paths
 
-- `lib/services/database-service.js` — INSERT / DELETE
-- `scripts/clear-all-database.js`
+- `scripts/clear-all-database.js` — admin script only
+
+Pre-W5 (now removed):
+- `lib/services/database-service.js` — `addPublication` INSERT (gutted in `0c58da4`)
 
 ## Cross-system
 

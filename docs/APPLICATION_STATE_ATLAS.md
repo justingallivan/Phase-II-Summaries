@@ -96,10 +96,10 @@ The high-leverage services for data-layer work — full source remains authorita
 
 | Service | Postgres tables touched | Dataverse access | Notes |
 |---|---|---|---|
-| `database-service.js` | most reviewer-side + `user_profiles`, `api_usage_log`, etc. | none | central Postgres gateway; Wave 1 user_preferences branch is dead code (table dropped 2026-05-12) |
-| `discovery-service.js` | `researchers` (read), `publications` (read, dead), `researcher_keywords` (read) | none | calls `DatabaseService.findResearcher` (1 of 3 callers) |
-| `deduplication-service.js` | `researchers` (read) | none | calls `DatabaseService.findResearcher` (2 of 3) |
-| `contact-enrichment-service.js` | `researchers` (write via `createOrUpdateResearcher`) | none | Codex round-3 #3: this is an active writer (3rd `findResearcher` caller too) |
+| `database-service.js` | `search_cache`, `user_profiles`, `api_usage_log`, etc. — researcher/publication/suggestion methods gutted W5 (commit `0c58da4`) | none | central Postgres gateway for the surviving tables; Wave 1 user_preferences branch is dead code (table dropped 2026-05-12) |
+| `discovery-service.js` | — (Postgres-researchers cache check removed in W5 commit `c0c5b5b`) | `wmkf_potentialreviewer` (indirect via picker flow) | previously called `DatabaseService.findResearcher` for the verification cache; PubMed verification is now unconditional |
+| `deduplication-service.js` | — (Postgres-researchers lookup removed in W5 commit `c0c5b5b`) | none | previously called `DatabaseService.findResearcher` to attach `existing?.id`; merged candidates are now transient with no PG id |
+| `contact-enrichment-service.js` | — (Postgres-researchers writer removed in W5 commit `c0c5b5b`) | `wmkf_potentialreviewer` (read+upsert) + `wmkf_appresearcher` (upsert) via adapter chain | enrichment writeback now targets Dataverse — fill-only `potentialReviewerAdapter.upsertByEmail` + `researcherAdapter.upsertByPotentialReviewer`, gated on potentialreviewer-row existence |
 | `dynamics-service.js` | none | all entities | canonical Dataverse client (OAuth, OData, search, email, `updateIfEmpty`, `logAiRun`, impersonation) |
 | `dynamics-context.js` | none | all | AsyncLocalStorage scoping for restrictions |
 | `dynamics-identity-service.js` | `user_profiles` (read) | `systemusers` (read) | impersonation contract (`MSCRMCallerID`) |

@@ -48,20 +48,24 @@ Indexes: `normalized_name`, `email`, `last_updated`, `(email IS NOT NULL)`, `con
 
 ## Read paths
 
-- `lib/services/database-service.js` — `findResearcher`, `findResearchers`, list queries
-- `pages/api/reviewer-finder/researchers.js` — UI's researcher browse/edit view
-- `scripts/audit-postgres-state.js`, `scripts/clear-all-database.js`, `scripts/cleanup-database.js`
+**W5 update (commit `c0c5b5b` + `0c58da4`):** all three `DatabaseService.findResearcher` callers migrated to Dataverse adapters; the method itself was gutted from `database-service.js`. Remaining Postgres readers are the legacy admin/script paths only.
 
-`DatabaseService.findResearcher` callers (3, per Codex round-3 finding):
-- `lib/services/discovery-service.js`
-- `lib/services/deduplication-service.js`
-- `lib/services/contact-enrichment-service.js`
+- `pages/api/reviewer-finder/researchers.js` — UI's researcher browse/edit view (W6 retirement target)
+- `scripts/audit-postgres-state.js`, `scripts/clear-all-database.js`, `scripts/cleanup-database.js` — admin scripts
+
+Pre-W5 callers (now removed, kept for archaeology):
+- `lib/services/discovery-service.js` — replaced with unconditional PubMed verification
+- `lib/services/deduplication-service.js` — replaced with transient merged candidates (no PG id thread)
+- `lib/services/contact-enrichment-service.js` — replaced with Dataverse adapter chain
 
 ## Write paths
 
-- `lib/services/database-service.js` — `createOrUpdateResearcher`, `updateResearcher`
-- `pages/api/reviewer-finder/researchers.js` — UI edit + delete
-- `lib/services/contact-enrichment-service.js` — calls `DatabaseService.createOrUpdateResearcher`; this is an active write site (Codex round-3 correction).
+**W5 update:** writer was `DatabaseService.createOrUpdateResearcher`, gutted in commit `0c58da4`. Live writers reduced to admin paths only.
+
+- `pages/api/reviewer-finder/researchers.js` — UI edit + delete (W6 retirement target)
+
+Pre-W5 writer (now removed):
+- `lib/services/contact-enrichment-service.js` — enrichment writeback now targets `wmkf_potentialreviewer` + `wmkf_appresearcher` via the adapter chain.
 
 DELETE writers: `clear-all-database.js`, `cleanup-database.js`, `pages/api/reviewer-finder/researchers.js`, `scripts/cleanup-database.js`.
 
