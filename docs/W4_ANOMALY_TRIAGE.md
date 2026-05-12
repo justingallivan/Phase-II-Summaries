@@ -18,13 +18,16 @@ Live total: 337 PG rows. All 8 anomalies are J26 + `selected=true`. Two of these
 
 ## Why all 8 are accept-loss
 
-The parity script can't classify these because:
-- **Missing email (4 rows):** `potentialreviewer` lookup needs email as canonical key. Without email, the row can't be reliably matched to (nor written into) a Dataverse `wmkf_potentialreviewer` row.
-- **Missing request_number (4 rows):** request lookup needs `akoya_requestnum`. Without it, there's no way to determine which `akoya_request` the suggestion attaches to.
+The parity script can't AUTOMATICALLY classify these because (Codex S147 W4-Day-1 review Q1 — sharper phrasing):
 
-Both classes pre-date the current `save-candidates.js` writer contract, which enforces both fields on insert. The rows represent abandoned discovery-flow saves; none have engagement signals beyond the `selected` checkbox flip.
+- **Missing email (4 rows):** the documented canonical key for `wmkf_potentialreviewer` upsert is email. Recovering these would require fuzzy name + affiliation matching against Dataverse contacts — possible in principle but risks false-positive matches against unrelated researchers.
+- **Missing request_number (4 rows):** request lookup needs `akoya_requestnum`. Recovering these would require triangulating from cycle + email + proposal title slug to a specific `akoya_request` — possible in principle but title-slug matching against `akoya_title` is fuzzy and error-prone.
 
-Recovering these to Dataverse would require manual per-row data entry (look up email by name, or guess at the request from proposal title). Justin's call: **not worth the manual work for 8 historical rows; accept loss, document each, do not block W4 on a recovery pass.**
+Both classes pre-date the current `save-candidates.js` writer contract, which enforces both fields on insert.
+
+**Engagement check (verifying "no engagement beyond selected"):** the SELECT used to surface the table below pulled `selected, invited, accepted, declined, email_sent_at, response_type`. For all 8 rows, ONLY `selected=true` was set; every other engagement column was null. The rows are abandoned discovery-flow saves — researcher was clicked but never invited.
+
+Justin's call: **manual recovery is technically possible but not worth the risk/effort for 8 historical, never-invited rows.** Accept loss, document each, do not block W4 on a recovery pass. If a future audit decides any of these warrants recovery, the Postgres data stays read-only for 14+ days post-cutover per the plan's safety window.
 
 ## Per-row dispositions
 
@@ -41,9 +44,9 @@ Recovering these to Dataverse would require manual per-row data entry (look up e
 
 ## Operational implication for W4
 
-- `scripts/backfill-reviewer-suggestions-to-dataverse.js` (Day 2 build) ships as a **no-op-by-default** for this dataset — the dry-run output reports 0 candidates for recovery. The script's value is the safety contract (idempotent, dry-run-first, alt-key idempotency) for any future row that fails the writer enforcement; today there are no rows to write.
-- `scripts/reconcile-reviewer-migration.js` (Day 2 build) must report 8 "unmatchable" PG rows when run against active-cycle data. Drift of 2 selected-J26 rows is expected and explained by this accept-loss set; the reconcile contract treats unmatchable rows as a separate bucket from active-cycle drift, so the cutover gate (`0 active-cycle drift` after exclusion) stays clean.
-- W4 acceptance does **not** block on closing these 8. They're historical PG-only rows that lose their context when the Postgres table is decommissioned — the loss is documented, time-bound to the 14-day post-cutover read-only window, and recoverable from the Postgres backup if anyone cares to later.
+- `scripts/backfill-reviewer-suggestions-to-dataverse.js` (Day 2 build): **the 8 accept-loss rows are NOT backfill candidates and the script will NOT attempt to write them.** Its dry-run output for this dataset reports 0 write candidates. The script is built for the safety contract (idempotent, dry-run-first, alt-key idempotency) so that any FUTURE row that somehow fails writer enforcement has a recovery path. Today there is nothing to write.
+- `scripts/reconcile-reviewer-migration.js` (Day 2 build) must report these 8 PG rows in its "unmatchable" bucket when run against active-cycle data. The drift of 2 selected-J26 rows (W3 acceptance gate 6/7/8) is the matchable-side accounting view of the same accept-loss set. The reconcile contract treats unmatchable rows as a separate bucket from active-cycle drift, so the cutover gate (`0 active-cycle drift` on matchable rows) stays clean. **New unmatchables beyond this documented 8 fail the gate** (Codex W4-Day-1 Q2): the contract enumerates dynamically; this doc's "8" is a baseline observation, not a fixed expected constant.
+- W4 acceptance does **not** block on closing these 8. They're historical PG-only rows that lose their context when the Postgres table is decommissioned — the loss is documented, time-bound to the 14-day post-cutover read-only window, and recoverable from the Postgres backup if anyone later cares.
 
 ## Cross-reference
 

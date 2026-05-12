@@ -35,6 +35,11 @@ GROUP BY rs.request_number;
 ```
 GET /wmkf_appreviewersuggestions?$filter=wmkf_grantcyclecode eq '<CODE>' and wmkf_selected eq true&$expand=wmkf_Request($select=akoya_requestnum)&$select=_wmkf_request_value
 ```
+
+**Navigation property note (Codex W4-Day-1 Q3):** the single-valued nav property `wmkf_Request` (PascalCase) is the same one used by `lib/services/review-upload.js:114` for the request join. Verified in working code; no metadata-discovery dance needed.
+
+**Pagination:** Dataverse pages OData queries at the `Prefer: odata.maxpagesize` header value. Follow `@odata.nextLink` until exhausted before aggregating, or per-page client-side aggregation will undercount. The W3 helper's `fetchCounts` did NOT need to paginate because it used `$apply/groupby` (server-side aggregation); reconcile uses per-row reads and MUST paginate.
+
 Aggregate client-side by the expanded `akoya_requestnum`.
 
 **Join key normalization:** both sides emit `request_number` as a string. PG returns `VARCHAR`; DV returns string from `akoya_requestnum`. No case-folding needed (both are numeric strings like `"1002365"`).
@@ -43,15 +48,22 @@ Aggregate client-side by the expanded `akoya_requestnum`.
 
 1. Load active grant cycles from PG (`SELECT short_code FROM grant_cycles WHERE is_active = true`). Currently 10 cycles after W3 collapse: D23, D24, D25, D26, D27, J23, J24, J25, J26, J27.
 2. Load active grant cycles from DV (`listCycles({ includeArchived: false })` via the W3 helper). Must equal the PG set; mismatch is a hard error (would mean W3 cutover desynced).
-3. For each active cycle:
-   - PG count by `request_number` (per query above)
-   - DV count by `akoya_requestnum` (per query above)
+3. **Dynamic anomaly enumeration (per Codex W4-Day-1 Q2 + Q7).** Re-run the parity classification logic LIVE rather than trusting the baseline count of 8 from `W4_ANOMALY_TRIAGE.md`. For each active cycle, partition PG rows into:
+   - **Matchable** (has email AND has request_number AND request_number resolves to an `akoya_request`)
+   - **Unmatchable: missing_email** (count tracked separately)
+   - **Unmatchable: missing_request** (count tracked separately)
+   - **Unmatchable: orphan_request** (has request_number but no matching `akoya_request` — new class, would indicate a NEW anomaly post-W4)
+4. For each active cycle:
+   - PG matchable count by `request_number`
+   - DV count by `akoya_requestnum` (per OData query above, paginated via `@odata.nextLink` until exhausted)
    - Per-`request_number` delta
-4. Surface the unmatchable bucket: count PG rows the parity script's classification marks as anomaly (currently 8). These do NOT contribute to "active-cycle drift" — they're already documented in `W4_ANOMALY_TRIAGE.md` as accept-loss.
-5. Summary block:
-   - Total active-cycle drift = sum of |delta| across all per-request deltas
-   - Unmatchable count (informational)
-   - Gate verdict: PASS if active-cycle drift == 0; FAIL otherwise
+5. Surface the unmatchable bucket **broken out by class AND cycle**. The DOCUMENTED expected unmatchables (8 J26 rows per `W4_ANOMALY_TRIAGE.md`) and any NEWLY-OBSERVED unmatchables are reported separately. A new unmatchable that didn't exist at the Day-1 baseline is a NEW signal that the gate must surface — not silently absorb.
+6. Summary block:
+   - Total active-cycle drift = sum of |delta| across matchable rows
+   - Unmatchable count: documented baseline N=8 (as of 2026-05-12) vs. observed today
+   - Verdict: PASS if active-cycle drift == 0 AND observed unmatchable count ≤ documented baseline; FAIL if drift > 0 OR new unmatchables appeared
+
+**"8" is a 2026-05-12 baseline value, not a fixed expected constant.** A future run that observes 7 unmatchables is fine (one got fixed somehow); a run that observes 9 unmatchables is a NEW anomaly requiring triage and a doc update.
 
 ## Inputs (CLI flags)
 
@@ -84,9 +96,11 @@ PASS — cutover gate clean.
 ```
 
 Exit code:
-- `0` if active-cycle drift == 0
-- `1` if drift > 0 (or > threshold if specified)
+- `0` if active-cycle drift == 0 AND observed unmatchable count ≤ documented baseline
+- `1` if drift > 0 (or > threshold if specified), OR new unmatchables appeared (above documented baseline)
 - `2` if a transport/integration error prevented the run
+
+**Partial-failure semantics (Codex W4-Day-1 Q4).** If any per-cycle read fails (timeout, transient 5xx after retry-budget exhausted, auth failure mid-run), **abort with exit `2`** — do NOT continue with partial DV data and emit a `1`. Partial data conflates "real drift" with "unknown parity"; the gate must distinguish these. Any partial DV cycle table is marked non-authoritative in the output.
 
 ## What it does NOT do
 
