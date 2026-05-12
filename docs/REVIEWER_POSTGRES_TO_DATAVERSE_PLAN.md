@@ -19,7 +19,7 @@ Refreshed 2026-05-12. Several artifacts have shipped since the plan was locked; 
 | `scripts/backfill-reviewer-suggestions-parity.js` | **BUILT** (S136) | Dry-run classification of all 337 Postgres rows |
 | `scripts/audit-postgres-state.js`, `scripts/audit-dataverse-state.js` | **BUILT** (S136/S137) | Live-state probes; re-run before any migration work |
 | `wmkf_apprequestperson` junction entity | **BUILT + DEPLOYED to prod** (S139, commit `c8cbfe1`) | Schema-as-code at `lib/dataverse/schema/wave2/wmkf_app_request_person.json`; alt key on `(wmkf_request, wmkf_contact, wmkf_role)` enforced |
-| `scripts/backfill-request-person-junction.js` | **BUILT** | ~14 KB, dedup-guarded against existing junction rows. Has NOT been executed in commit mode yet — must run once to backfill ~3,000 historical rows so PI/co-PI history coverage is complete. |
+| `scripts/backfill-request-person-junction.js` | **BUILT + EXECUTED** | ~14 KB, dedup-guarded against existing junction rows. Executed in commit mode 2026-05-07 (commit 8b9b287) writing 5,561 rows from akoya_request slot fields. Earlier drafts of this plan claimed "not yet executed" — that was stale. Re-running in dry-run confirms 0 to insert as of 2026-05-12 (W4 Day 4 re-verification). |
 | `pages/api/reviewer-finder/contact-history.js` | **BUILT** (S139, commit `b23586c`) | UNION read strategy across junction + `_wmkf_projectleader_value`. **Both paths are steady-state per S136 (§"Junction read strategy") — `_wmkf_projectleader_value` stays authoritative for the lead PI; the junction is the additive source for co-PIs.** Smoke at `scripts/smoke-contact-history.js`. |
 | `scripts/backfill-reviewer-suggestions-to-dataverse.js` | spec'd | Idempotent commit-mode backfill of the 8-row Postgres-only delta. **Triage these 8 rows first** (per Codex 3b 2026-05-12): determine whether each is a genuine missed sync or a legitimate Postgres-only row (e.g., proposal not yet in Dataverse) before committing. |
 | `pages/api/reviewer-finder/add-candidate-manual.js` | spec'd | Net-new "add candidate by hand" endpoint, replaces retired Database tab. Writes to all three Dataverse entities (`wmkf_potentialreviewer`, `wmkf_appresearcher`, `wmkf_appreviewersuggestion`) via existing adapters. |
@@ -776,7 +776,7 @@ Every item below must have a check + date + owner before the relevant cutover st
 **Shipped:**
 - Junction entity (`wmkf_apprequestperson`) deployed to prod
 - `/api/reviewer-finder/contact-history` endpoint (steady-state UNION of junction + projectleader for PI history)
-- `scripts/backfill-request-person-junction.js` (built, not yet executed in commit mode)
+- `scripts/backfill-request-person-junction.js` (built AND executed in commit mode 2026-05-07; 5,561 rows live)
 - All four Wave 2 adapters live
 - `save-candidates`, `my-candidates`, `load-proposal` fully on Dataverse
 - Decline-reason fields + response-received-at on `wmkf_appreviewersuggestion`
