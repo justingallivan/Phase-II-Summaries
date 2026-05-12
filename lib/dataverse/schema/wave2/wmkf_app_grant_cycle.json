@@ -23,6 +23,30 @@
       "requiredLevel": "ApplicationRequired"
     },
     {
+      "type": "String",
+      "schemaName": "wmkf_ShortCode",
+      "displayName": "Short Code",
+      "description": "Compact cycle code (e.g. 'J26', 'D27') generated from meeting date via cycle-code.js. Alternate key — joins to wmkf_appreviewersuggestion.wmkf_grantcyclecode and is the stable identifier surfaced in URLs and preferences. Patched into the deployed entity 2026-05-12 (W3 preflight).",
+      "maxLength": 10,
+      "requiredLevel": "None"
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_ProgramName",
+      "displayName": "Program Name",
+      "description": "Friendly program label per cycle (e.g. 'W. M. Keck Foundation'). Used in outgoing reviewer emails. Patched 2026-05-12.",
+      "maxLength": 100,
+      "requiredLevel": "None"
+    },
+    {
+      "type": "Memo",
+      "schemaName": "wmkf_CustomFields",
+      "displayName": "Custom Fields",
+      "description": "JSON-as-text bag of per-cycle template variables (proposalDueDate, honorarium, proposalSendDate, commitDate, etc.) consumed by render-emails.js. Maps from Postgres grant_cycles.custom_fields JSONB. Patched 2026-05-12.",
+      "maxLength": 50000,
+      "requiredLevel": "None"
+    },
+    {
       "type": "DateTime",
       "schemaName": "wmkf_MeetingDate",
       "displayName": "Meeting Date",
@@ -79,6 +103,11 @@
       "schemaName": "wmkf_fiscalyearcode",
       "displayName": "Fiscal Year Code",
       "keyAttributes": ["wmkf_fiscalyearcode"]
+    },
+    {
+      "schemaName": "wmkf_shortcode",
+      "displayName": "Short Code",
+      "keyAttributes": ["wmkf_shortcode"]
     }
   ]
 }
