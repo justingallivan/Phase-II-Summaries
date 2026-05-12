@@ -49,7 +49,7 @@ Common reasons to change models:
 - Upgrade to a more capable model for complex analysis tasks
 - Test new model versions before rolling out broadly
 
-Overrides are stored in the `system_settings` table and persist across server restarts.
+Overrides are stored in Dataverse (`wmkf_appsystemsettings`) and persist across server restarts.
 
 ## Health Monitoring
 

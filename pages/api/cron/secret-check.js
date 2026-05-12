@@ -2,11 +2,11 @@
  * Cron: /api/cron/secret-check
  *
  * Daily check (8:00 AM UTC) for approaching secret expirations.
- * Reads expiration dates from system_settings and creates alerts
- * at tiered thresholds: warning at 14 days, error at 7 days,
- * critical if expired.
+ * Reads expiration dates from Dataverse `wmkf_appsystemsettings` (via the
+ * settings-service dispatcher) and creates alerts at tiered thresholds:
+ * warning at 14 days, error at 7 days, critical if expired.
  *
- * Secret expiration dates are stored in system_settings with keys like:
+ * Secret expiration dates are stored with keys like:
  *   secret_expiration:azure_ad_client_secret = "2026-06-15"
  *
  * Last-rotation dates are stored as:

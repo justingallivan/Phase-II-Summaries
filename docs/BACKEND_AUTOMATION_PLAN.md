@@ -199,13 +199,14 @@ A Vercel app page + API endpoint that:
 
 ### What stays in Vercel Postgres
 System/infrastructure data that has no Dynamics equivalent:
-- `user_profiles`, `user_preferences`, `user_app_access` — auth & access control
+- `user_profiles` — Vercel-side identity (linked to Dynamics `systemuser` via `dynamics_systemuser_id`)
 - `dynamics_user_roles`, `dynamics_restrictions` — Dynamics Explorer permissions
-- `system_settings` — model overrides, config
 - `api_usage_log`, `dynamics_query_log` — usage tracking
 - `system_alerts`, `health_check_history`, `maintenance_runs` — monitoring
 - `dynamics_feedback` — Dynamics Explorer feedback
 - `retractions` — Retraction Watch reference data (~63K rows)
+
+(Wave 1 retired 2026-05-12: `user_preferences`, `user_app_access`, `system_settings` moved to Dataverse `wmkf_appuserpreferences`, `wmkf_appuserappaccesses`, `wmkf_appsystemsettings`.)
 
 ### Prerequisites (Connor)
 - Create corresponding entities/fields in Dynamics for each table above

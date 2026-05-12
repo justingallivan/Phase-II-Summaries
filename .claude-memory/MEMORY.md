@@ -12,9 +12,9 @@
 - [Cycle gating vs. Executor scope](feedback_cycle_vs_executor_scope.md) — "cycle" only gates Connor-collaboration work; Executor is for backend-automation prompts; user-facing apps (Reviewer Finder) are independent of both
 - [Codex as recurring code review surface](project_codex_recurring_review.md) — Justin runs Codex periodically; treat findings as input not to-do list, mirror the 2026-04-30 response doc shape
 
-## Wave 1 Prod Migration
-- [Wave 1 pending follow-ups](project_wave1_pending.md) — prod cutover done 2026-04-24; two TODO: flip Vercel flags per `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md`; remove temp role elevations per `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md`
-- [Automated onboarding design](project_wave1_onboarding.md) — zero-touch first-login provisioning via NextAuth callback; build after flags flip, not before
+## Wave 1 Prod Migration (CLOSED 2026-05-12)
+- [Wave 1 closeout](project_wave1_pending.md) — Postgres tables dropped 2026-05-12; dispatcher defaults flipped to Dataverse. Only tail item: elevation revert on prod app user (deferred until pilot iteration settles).
+- [Automated onboarding design](project_wave1_onboarding.md) — zero-touch first-login provisioning via NextAuth callback; design still relevant for future build
 
 ## Planned Capabilities
 - [IRS tax-exempt verification](project_irs_exempt_verification.md) — bulk CSVs in Postgres, PA→Vercel lookup endpoint, verified result written back to Dynamics `account`. Reframes Postgres as reference-data layer, not Dynamics on-ramp.
@@ -85,7 +85,7 @@
 - Concrete confirmation: request 993879 (Carter/UNC-CH) — Project Narrative lives in `RequestArchive3`, NOT `akoya_request`.
 
 ## Dynamics AI Writeback
-- [AI fields — v3 canonical, write access verified](project_dynamics_ai_writeback.md) — Field Sets A/C/D ready, Set B on hold (reporting scope); canonical field names in v3 spec, NOT v2; `prvCreateNote` not in grant
+- [AI fields — v3 canonical, all sets deployed](project_dynamics_ai_writeback.md) — Field Sets A/C/D + B all deployed 2026-05-07 (28 wmkf_ai_* fields on akoya_request, see `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md`); canonical field names in v3 spec, NOT v2
 
 ## Dynamics Email Activities
 - **Email sending is WORKING** (as of Session 77)
@@ -105,12 +105,12 @@
 ## Virtual Review Panel
 - [Virtual Review Panel](project_virtual_review_panel.md) — Multi-LLM review panel (Claude, GPT, Gemini, Perplexity) with claim verification + structured review + synthesis
 - [Tone calibration](feedback_review_panel_tone.md) — CSO feedback: don't mimic conservative study sections; balance critique with upside
-- New env vars needed: `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `PERPLEXITY_API_KEY`
+- Env vars: `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `PERPLEXITY_API_KEY` (set; gated by `VRP_ALLOWED_PROVIDERS`)
 - App key: `virtual-review-panel` — NOT in DEFAULT_APP_GRANTS, access via admin dashboard
-- DB tables: `panel_reviews`, `panel_review_items` (V24 migration)
+- Postgres tables: `panel_reviews`, `panel_review_items` (V24 migration) — stays Postgres permanently per Wave 2 disposition
 
 ## App-Level Access Control
-- **`user_app_access`** table (V16 migration) — per-user app grants with `(user_profile_id, app_key)` unique constraint
+- **Dataverse `wmkf_appuserappaccesses`** — per-user app grants, Postgres `user_app_access` retired 2026-05-12 (Wave 1)
 - **`shared/config/appRegistry.js`** — single source of truth for all 15 app definitions (keys, names, icons, categories, descriptions). Used by Layout nav, home page, admin dashboard, and access control
 - **`shared/context/AppAccessContext.js`** — React context fetches `/api/app-access` on mount, exposes `hasAccess(appKey)`, `isSuperuser`
 - New users get only `dynamics-explorer` by default (configured in `DEFAULT_APP_GRANTS` in appRegistry.js)
@@ -131,8 +131,8 @@
 ## New AI Capabilities
 - [Compliance + Staff Matching](project_new_ai_capabilities.md) — batch eval on historical data → auto-deploy via PowerAutomate
 
-## Prompt Storage + Executor Contract (Phase 0 in flight for May 1 2026)
-- [Phased plan + decisions](project_prompt_storage_strategy.md) — Path B (declarative wrappers, generic executors in PA+Vercel). Authoritative shared spec: **`docs/EXECUTOR_CONTRACT.md`**. Table is `wmkf_ai_prompt` (NOT `wmkf_prompt_template`); field names renamed accordingly. Separate **function** (prompt row) from **process** (Flow). Chains composed by caller, Executor runs one prompt per invocation. Two chain shapes: sequential (`prior_output`) + parallel-consumer (`context_block`). Naming: `<domain>.<purpose>`.
+## Prompt Storage + Executor Contract
+- [Phased plan + decisions](project_prompt_storage_strategy.md) — Path B (declarative wrappers, generic executors in PA+Vercel). Authoritative shared spec: **`docs/EXECUTOR_CONTRACT.md`**. Vercel `executePrompt()` implementation live in `lib/services/execute-prompt.js`. Table is `wmkf_ai_prompt`; field names per v3 spec. Separate **function** (prompt row) from **process** (Flow). Chains composed by caller, Executor runs one prompt per invocation. Two chain shapes: sequential (`prior_output`) + parallel-consumer (`context_block`). Naming: `<domain>.<purpose>`. **PA-side ExecutePrompt parity oracle** pending Connor's flow build.
 
 ## PDF Processing
 - [PDF Processing Tiers](project_pdf_processing_tiers.md) — text-only for auto/bulk, full PDF vision for selective/detailed
@@ -147,6 +147,4 @@
 - Dev server: `npm run dev` on port 3000
 - Auth disabled in dev (`AUTH_REQUIRED=false` in .env.local)
 - `.env.local` values are quoted (e.g., `DYNAMICS_URL="https://..."`) — scripts that parse it must strip quotes
-
-# currentDate
-Today's date is 2026-03-17.
+- `.env.local` now has `WAVE1_BACKEND_SETTINGS=dataverse`, `WAVE1_BACKEND_APP_ACCESS=dataverse`, `WAVE1_BACKEND_PREFS=dataverse` (mirroring prod since 2026-05-11). Without these set, dev would silently route to the now-dropped Postgres tables. Dispatcher defaults to Dataverse as of 2026-05-12 so missing flags fail loudly instead.

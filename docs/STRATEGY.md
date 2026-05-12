@@ -100,7 +100,7 @@ Now we have read access to Dynamics and SharePoint, and leadership buy-in to use
 
 | What | Blocked on |
 |------|-----------|
-| **Wave 1 prod retirement** — flip `WAVE1_BACKEND_*` flags to dataverse, retire Postgres `system_settings` / `user_app_access` / `user_preferences` | Earliest 2026-05-17 (stability clock from cutover) |
+| ~~**Wave 1 prod retirement**~~ | **DONE 2026-05-12.** Tables dropped via migration 007; dispatcher defaults flipped to Dataverse. Remaining tail: elevation revert on prod app user (deferred until pilot iteration settles). |
 | **Wave 2 reviewer migration completion** — finish reviewer Postgres-to-Dataverse drain (`docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`) | Cycle gating; partial Wave 2 build set landed S139 |
 | **Connor's PA flows** — `akoya_request` create/update flows (file org, AI check-in, staff version) + PA-side `ExecutePrompt` parity oracle | Connor's queue |
 | **Status-driven triggers** — auto-start processing when proposals reach certain stages | Connor's PA flows above; cycle redesign signal |

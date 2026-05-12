@@ -1,8 +1,8 @@
 # Reviewer Interaction Stage 2a — Build Plan
 
-**Status:** Draft, pre-build. Scopes the first shippable slice of the Stage 2a landing page from `docs/REVIEWER_INTERACTION_DESIGN.md`.
+**Status:** **Slice 1 SHIPPED 2026-05-09** (commits b23586c, 18c69ec, 43c3741, c016e32; plus S144 Codex review fixes in 11e7e25). Schema, policy library, /respond endpoint, and state-driven view dispatch all live. **Outstanding before real-cycle exercise:** finalize COI policy body wording (placeholder still in active row), restrict delete privilege on `wmkf_policy*` to admin role, and first production engagement against a real reviewer cycle (gated externally). This doc remains the build-plan reference; treat the slice-1 sections as historical.
 
-**Date:** 2026-05-09
+**Date:** 2026-05-09 (build); 2026-05-12 (status banner refresh)
 
 **Predecessor:** `docs/REVIEWER_INTERACTION_DESIGN.md` (full journey design)
 

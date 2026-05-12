@@ -1,19 +1,33 @@
 ---
-name: Wave 1 pending follow-ups
-description: Status of post-2026-04-24 cutover follow-ups — flag rollout corrected 2026-05-03 after a 6-day silent fallback; elevations revert STILL PENDING (memory previously claimed done but live check disproved it).
-type: project
-originSessionId: 97cd3044-49bb-4f67-b000-5d32980d6faa
+name: wave-1-closeout
+description: "Wave 1 Postgres → Dataverse migration CLOSED 2026-05-12. Tables dropped, dispatcher defaults flipped, docs updated. One deferred tail item: elevation revert on prod app user."
+metadata: 
+  node_type: memory
+  type: project
+  originSessionId: e2f71cb4-b29c-4510-b8fe-1da4a49ec6ee
 ---
-Wave 1 was cut over to prod on 2026-04-24. Schema, role, 149 rows of data, and read-path verification all done.
 
-**Status of follow-ups (corrected 2026-05-03):**
+Wave 1 closed out cleanly on **2026-05-12**.
 
-1. **Flip Vercel env flags** — DONE 2026-05-03 with caveat. The flags were originally added on ~2026-04-27 with values `"dataverse\n"` (trailing newline, likely from `echo "dataverse" | vercel env add`). All three dispatch sites do strict `=== 'dataverse'` equality, so the comparison silently failed and prod ran on Postgres for 6 days while looking rolled over. Corrected by deleting the broken vars and re-adding via dashboard as plain (non-Sensitive) variables with value `dataverse` — verified clean via `vercel env pull`. Resync confirmed zero divergence (0 inserts across all 3 tables; 145 rows already aligned). **14-day stability clock starts 2026-05-03; earliest retirement 2026-05-17.** See `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md` for the trailing-newline gotcha now documented inline.
+**Sequence that actually happened:**
 
-2. **Remove temp elevations from prod app user** — DELIBERATELY HELD until after intake portal schema work lands. The app user `# WMK: Research Review App Suite` (systemuserid `53e97fb3-a006-f111-8406-000d3a352682`) currently has both `WMKF AI Elevated TEMP` and `System Customizer` still attached. **Why held:** intake portal needs new schema (`wmkf_portal_membership` entity, `wmkf_portal_oid` on contact, `wmkf_phaseiisubmittedat`/`wmkf_phaseiisubmittedby` on akoya_request, plus possibly child entities depending on Connor's structured-tables persistence decision). Schema script runs as the app user, so create-time privileges (`prvCreateEntity`, `prvCreateAttribute`) need to be present — i.e., the temp roles must stay on. Reverting now would just force Connor to re-add the role weeks later. **Correct sequence:** Entra unblock → Connor design sync → schema script lands new entities/fields → THEN ask Connor for the revert. Also worth asking Connor about: the role list shows `akoyaGO Team User (no accounting)` where the doc expected `akoyaGO Read Only access` — possible role rename or replacement; ask in the same revert message. (Memory previously claimed done 2026-04-28; live check 2026-05-03 disproved that.)
+1. **Cutover 2026-04-24** — Schema deployed, role provisioned, 149 rows synced, read-path verified.
+2. **Flag flip 2026-05-03** — Three `WAVE1_BACKEND_*` flags set to `dataverse` in prod Vercel env. Earlier 2026-04-27 attempt had a trailing-newline bug (silent fallback to Postgres for 6 days); corrected by deleting and re-adding via dashboard.
+3. **Behavioral verification 2026-05-11** — Probed Postgres for any writes to the three tables since 2026-05-03: zero from prod. 10 dev writes from S145 (admin model picker on localhost) discovered and reconciled to Dataverse the same day. Dev `.env.local` updated to set the flags so future dev writes route to Dataverse.
+4. **PITR bump 2026-05-11** — Neon project history retention raised from 6h → 7 days (Launch plan), making rollback viable.
+5. **Drop migration 2026-05-12T01:30:41Z** — `lib/db/migrations/007_drop_wave1_tables.sql` executed against prod Postgres. All three tables dropped under transactional safety guards. Recovery window via Neon PITR until 2026-05-19T01:30Z.
+6. **Codex review + follow-ups 2026-05-12** — Dispatcher defaults flipped from postgres to dataverse (the major footgun Codex flagged: missing/typo'd flag would route to a dead branch and silently degrade in `database-service.js`). Typo fixes. Atlas + CLAUDE.md updates.
 
-**Why these matter:** they tie off the migration cleanly. The flag flip is what makes the Postgres → Dataverse migration provably in effect (not just provisioned). The elevation revert is the security hygiene piece — minimal permanent surface for the app user.
+**Single deferred item: revert temp role elevations on prod app user.**
 
-**How to apply:** when checking Wave 1 status, **always run the live Dynamics role check first** (the small node command in `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md` § Verification) — memory has been wrong about this once already. Same for flag values: don't trust dashboard "set" indicators; pull and grep to confirm the actual stored bytes.
+- App user `# WMK: Research Review App Suite` (`systemuserid 53e97fb3-a006-f111-8406-000d3a352682`) still has `WMKF AI Elevated TEMP` + `System Customizer` attached.
+- **Why deferred** (Justin's policy call 2026-05-11): keep elevations on through the intake-portal pilot iteration. We're actively creating new entities/fields under Connor's delegated authority (`project_dataverse_creator_privileges`, summary-after model). Reverting now and re-adding for every batch is more friction than the marginal security gain.
+- **When to revert:** once the pilot's `wmkf_portal_*` schema settles (probably after the first real submission cycle, mid-to-late June 2026). At that point follow `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md` and ask Connor about the `akoyaGO Team User (no accounting)` vs. `akoyaGO Read Only access` role-name discrepancy.
 
-**Side effect of the eventual elevation revert:** any future schema-apply script run (e.g. Wave 2) will fail with `prvCreateEntity` denied. Connor needs to re-add `WMKF AI Elevated TEMP` temporarily, run the apply, then strip it again. See `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md` for the recovery procedure.
+**How to apply:**
+- Wave 1 is **done** — don't re-litigate the flag flip, the drop, or the table list in future sessions.
+- Dispatcher Postgres branches in `lib/services/{settings,app-access,database}-service.js` are dead code; they remain only because removing them is a larger refactor. Setting any `WAVE1_BACKEND_*=postgres` fails loudly (intended).
+- If a future Wave-2 or pilot-portal schema-apply script runs, it uses the *still-present* elevations on the app user. No action needed unless someone has reverted them in the meantime — verify with the role-check command in `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md` § Verification.
+- Recovery story: Neon PITR window is 7 days, so until ~2026-05-19, a snapshot restore is feasible if Dataverse fails catastrophically. After that, no recovery — but the prod system has been on Dataverse for 9+ days at that point.
+
+**Related memories:** [[project_wave1_onboarding]] (next phase; not yet built).

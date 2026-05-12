@@ -1,6 +1,6 @@
 # WMKF Grant Intake Portal — Design Document
 
-**Status:** Design v2 (2026-05-02). Pilot scope locked. Largest external blocker is Entra External ID tenant provisioning (IT request sent 2026-05-04 — see `docs/archive/IT_ENTRA_EXTERNAL_TENANT_REQUEST_2026-05-04.md`). Internal pre-launch blockers also remain: virus scanning approach, `wmkf_portal_membership` shape sign-off (Connor), Phase II Research field inventory (Sarah + Connor), reviewer-consumable artifact decision, and PA trigger confirmation. See "Open questions / open work."
+**Status:** Design v2 (2026-05-02), status banner refreshed 2026-05-12. **Entra External ID foundation SHIPPED S129** (tenant provisioned, `entra-external` NextAuth provider, `/apply` route round-trip verified) — no longer the external blocker. Sarah is back from conference travel. Remaining work is iterative pilot build: form field inventory with Sarah, structured-tables persistence pattern (defer or implement), `wmkf_portal_membership` entity creation under delegated authority (`project_dataverse_creator_privileges`, summary-after model), virus scanning wiring, PA trigger confirmation. See "Open questions / open work" for full list.
 
 **Related:**
 - `docs/EXTERNAL_REVIEWER_INTAKE_PLAN.md` — reference implementation pattern for token-authenticated public surface

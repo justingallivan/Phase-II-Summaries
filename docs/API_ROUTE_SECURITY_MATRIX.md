@@ -47,18 +47,18 @@ There are no open findings from the initial matrix pass as of this update. New f
 |---|---:|---|---|---|---|---|---|
 | `/api/admin/alerts` | GET, PATCH | Superuser | `requireSuperuser` | Global admin | Reads/updates `system_alerts` (PG) | Low | Shared helper. |
 | `/api/admin/health-history` | GET | Superuser | `requireSuperuser` | Global admin | Reads `health_check_history` (PG) | Low | Shared helper. |
-| `/api/admin/maintenance` | GET | Superuser | `requireSuperuser` | Global admin | Reads `maintenance_runs`, `system_settings` (PG) | Low | Shared helper. |
-| `/api/admin/models` | GET, PUT | Superuser | `requireSuperuser` | Global admin | Reads/writes `system_settings` (PG) | Low | Also calls Anthropic model list. |
+| `/api/admin/maintenance` | GET | Superuser | `requireSuperuser` | Global admin | Reads `maintenance_runs` (PG); reads `wmkf_appsystemsettings` (DV) for retention config | Low | Shared helper. |
+| `/api/admin/models` | GET, PUT | Superuser | `requireSuperuser` | Global admin | Reads/writes `wmkf_appsystemsettings` (DV) via dispatcher | Low | Also calls Anthropic model list. |
 | `/api/admin/policies` | GET, POST | Superuser | `requireSuperuser` | Global admin | Reads/writes Dataverse `wmkf_policy` + `wmkf_policyversion`; writes `policy_publish_audit` (PG); writes `system_alerts` on audit-finalize failure | Medium | Three-step publish flow (create child, flip parent lookup, retire prior) with ETag concurrency + alt-key enforced uniqueness. See atlas page for state machine. |
 | `/api/admin/reconcile-identities` | POST | Superuser | `requireSuperuser` | Global admin | Updates `user_profiles` (PG); reads Dynamics `systemuser` | Low | Manual equivalent of cron reconciliation. |
-| `/api/admin/secrets` | GET, PUT | Superuser | `requireSuperuser` | Global admin | Reads/writes `system_settings` (PG) | Low | Tracks metadata, not secret values. |
+| `/api/admin/secrets` | GET, PUT | Superuser | `requireSuperuser` | Global admin | Reads/writes `wmkf_appsystemsettings` (DV) via dispatcher | Low | Tracks metadata, not secret values. |
 | `/api/admin/users` | DELETE | Superuser | `requireSuperuser` | Global admin | Updates `user_profiles.is_active` (PG); clears app-access cache | Medium | Soft-archive; refuses self-archive. Profile row preserved for audit FK integrity. |
 | `/api/admin/stats` | GET | Superuser | `requireSuperuser` | Global admin | Read-only (PG SELECTs across usage tables) | Low | Usage statistics across users. |
 | `/api/analyze-funding-gap` | POST | App | `requireAppAccess('funding-gap-analyzer')` | Request payload | Writes `api_usage_log` (PG) via llm-client | Low | AI payload review still needed. |
 | `/api/analyze-literature` | POST | App | `requireAppAccess('literature-analyzer')` | Request payload | Writes `api_usage_log` (PG); external lit-search APIs | Low | External research APIs / AI payload review. |
 | `/api/api-capabilities` | GET | Authenticated | `requireAuth` | Shared metadata | Read-only | Low | Authenticated capability metadata. |
-| `/api/app-access` | GET, POST, DELETE | Profile / Superuser | `requireAuthWithProfile` + `getUserRole` | Own grants; all grants for superuser | Reads/writes `user_app_access` (PG) | Low | Superuser branch uses shared role helper. |
-| `/api/auth/[...nextauth]` | Framework | NextAuth | NextAuth callbacks | Session/profile linking | Inserts/updates `user_profiles`, grants `user_app_access` (PG) | Medium | Identity linking remains a strategic hardening area. |
+| `/api/app-access` | GET, POST, DELETE | Profile / Superuser | `requireAuthWithProfile` + `getUserRole` | Own grants; all grants for superuser | Reads/writes `wmkf_appuserappaccesses` (DV) via dispatcher | Low | Superuser branch uses shared role helper. |
+| `/api/auth/[...nextauth]` | Framework | NextAuth | NextAuth callbacks | Session/profile linking | Inserts/updates `user_profiles` (PG); grants `wmkf_appuserappaccesses` (DV) | Medium | Identity linking remains a strategic hardening area. |
 | `/api/auth/link-profile` | POST | NextAuth linking | `getServerSession` + `needsLinking` | Matching Azure email | Updates/inserts `user_profiles` (PG) | Low | Server-derived identity, email match enforced. |
 | `/api/auth/status` | GET | Public metadata | None | None | Read-only | Low | Intentionally public if needed pre-login. |
 | `/api/blob-proxy` | GET | Authenticated | `requireAuth` | Shared organizational blob assets only | Reads Vercel Blob (proxy) | Low | Host allowlist is the boundary; do not extend to user-owned blobs. |
@@ -122,7 +122,7 @@ There are no open findings from the initial matrix pass as of this update. New f
 | `/api/test-email` | POST | App | `requireAppAccess('dynamics-explorer')` | Caller email | Sends email + creates email activity (DV `emails`) | Low | Consider moving under admin/test namespace or disabling in prod if not needed. |
 | `/api/upload-file` | POST | Authenticated | `requireAuth` | Uploaded file only | Writes Vercel Blob | Medium | Any authenticated user can upload; consider app-specific upload routes. |
 | `/api/upload-handler` | POST | Authenticated | `requireAuth` | Blob upload token | Mints Vercel Blob upload token (client uploads directly to Blob) | Medium | Any authenticated user can request blob upload token. |
-| `/api/user-preferences` | GET, POST, PUT, DELETE | Profile | `requireAuthWithProfile` | `profileId` | Reads/writes `user_preferences` (PG) | Low | Intended user-owned settings. |
+| `/api/user-preferences` | GET, POST, PUT, DELETE | Profile | `requireAuthWithProfile` | `profileId` | Reads/writes `wmkf_appuserpreferences` (DV) via dispatcher | Low | Intended user-owned settings. |
 | `/api/user-profiles` | GET, PATCH, DELETE | Profile / Superuser | `requireAuthWithProfile`; `?all=true` uses `getUserRole` | Own profile; all profiles for superuser | Reads/updates/archives `user_profiles` (PG) | Low | `POST` intentionally unsupported; profile creation flows through `/api/auth/link-profile`. |
 | `/api/virtual-review-panel` | GET, POST | App | `requireAppAccess('virtual-review-panel')` | Request payload | Writes `panel_reviews`, `panel_review_items`, `api_usage_log` (PG); calls multi-LLM providers | Low | AI payload review. |
 

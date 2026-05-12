@@ -1,8 +1,8 @@
 # Dynamics Identity Reconciliation Plan
 
-**Status:** TODO — scoped, not yet scheduled
-**Owner:** Justin (app side), Connor (Dynamics side, minor)
-**Last updated:** 2026-04-13
+**Status:** **SHIPPED S127–S129.** DB bridge live, `MSCRMCallerID` impersonation contract implemented with privilege intersection, adapter chain in place, token lifecycle wired. Preview flag flipped + smoked 2026-05-05. Connor granted Delegate role to app user 2026-05-06; impersonation re-smoke PASS for Justin and cnoda (`scripts/probe-impersonation-resmoke.js`, `scripts/probe-impersonation-as-user.js`). Remaining: full `/phase-i-dynamics overwrite=true` run on req 1002379, then flip prod env flag `DYNAMICS_IMPERSONATION_ENABLED=true`. This doc remains as the architectural reference; treat the implementation sections below as historical.
+**Owner:** Justin (app side), Connor (Dynamics side — Delegate role granted)
+**Last updated:** 2026-05-12 (status banner refresh; original plan dated 2026-04-13)
 
 ## Problem
 

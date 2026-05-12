@@ -126,7 +126,7 @@ Reviewer Finder settings are stored per-user in the database when a profile is s
 | Current Cycle ID | `reviewer_finder_current_cycle_id` | Active grant cycle selection |
 
 **Behavior:**
-- When a user profile is active, settings are saved to the `user_preferences` table
+- When a user profile is active, settings are saved to Dataverse `wmkf_appuserpreferences` (via the `database-service.js` dispatcher; Wave 1 retired the Postgres `user_preferences` table 2026-05-12)
 - When no profile is active, settings fall back to localStorage (base64 encoded)
 - On first profile selection, localStorage data auto-migrates to profile preferences
 - Profile switching loads that profile's saved settings

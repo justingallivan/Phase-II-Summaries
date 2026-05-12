@@ -1,6 +1,6 @@
 ---
 name: External reviewer file access architecture (proposals out, reviews in)
-description: Direction set Session 121 — build foundation-owned external-intake primitive (HMAC magic-links) that mediates proposal download + review upload through our backend. Reviewer-first, applicant-extension later. SharePoint write access already verified.
+description: SHIPPED 2026-05-03 — foundation-owned external-intake primitive (HMAC magic-links) mediates proposal download + review upload through our backend. Reusable for the intake portal. SharePoint write access verified end-to-end.
 type: project
 originSessionId: 9ea67012-f70f-47e6-ba56-ded9f73601c4
 ---

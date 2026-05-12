@@ -104,9 +104,9 @@ Prefer the admin dashboard (`/admin` → Models tab) for non-static overrides �
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `PROMPT_RESOLVER_STRICT` | Disable bundled-prompt fallback in `lib/services/prompt-resolver.js` | unset (fallback enabled) |
-| `WAVE1_BACKEND_SETTINGS` | `postgres` (default) or `dataverse` — `system_settings` source | `postgres` |
-| `WAVE1_BACKEND_APP_ACCESS` | `postgres` (default) or `dataverse` — `user_app_access` source | `postgres` |
-| `WAVE1_BACKEND_PREFS` | `postgres` (default) or `dataverse` — `user_preferences` source | `postgres` |
+| `WAVE1_BACKEND_SETTINGS` | Dispatch flag for settings backend. Default Dataverse since Wave 1 closeout 2026-05-12; setting to `postgres` fails loudly (table dropped). | `dataverse` (implicit) |
+| `WAVE1_BACKEND_APP_ACCESS` | Dispatch flag for app-access backend. Default Dataverse since 2026-05-12. | `dataverse` (implicit) |
+| `WAVE1_BACKEND_PREFS` | Dispatch flag for user-preferences backend. Default Dataverse since 2026-05-12. | `dataverse` (implicit) |
 | `DEBUG_REVIEWER_FINDER` | Verbose logging for Reviewer Finder pipeline | unset |
 
 ### Optional — Notifications & Spend Alerts
@@ -193,7 +193,7 @@ The system includes automated secret expiration monitoring via a daily cron job 
 
 ### How It Works
 
-1. Expiration dates are stored in the `system_settings` table with keys like `secret_expiration:azure_ad_client_secret`
+1. Expiration dates are stored in Dataverse `wmkf_appsystemsettings` with keys like `secret_expiration:azure_ad_client_secret`. (Pre-2026-05-12 this lived in the Postgres `system_settings` table; that table has been dropped.)
 2. The cron checks all tracked secrets daily and creates alerts at tiered thresholds:
    - **Warning** at 14 days before expiry
    - **Error** at 7 days before expiry
@@ -202,18 +202,14 @@ The system includes automated secret expiration monitoring via a daily cron job 
 
 ### Setting Expiration Dates
 
-Use the **Secret Expiration Tracking** section on the admin dashboard (`/admin`) to set or update dates inline. Or insert directly into `system_settings`:
+Use the **Secret Expiration Tracking** section on the admin dashboard (`/admin`) to set or update dates inline. The admin UI writes through `lib/services/settings-service.js`, which routes to the Dataverse `wmkf_appsystemsettings` entity set. Direct SQL is no longer available — there is no Postgres equivalent of these rows.
 
-```sql
--- Set Azure AD client secret expiration
-INSERT INTO system_settings (setting_key, setting_value)
-VALUES ('secret_expiration:azure_ad_client_secret', '2026-06-15')
-ON CONFLICT (setting_key) DO UPDATE SET setting_value = '2026-06-15', updated_at = CURRENT_TIMESTAMP;
+Programmatic writes from a script should use the service module:
 
--- Record when it was last rotated
-INSERT INTO system_settings (setting_key, setting_value)
-VALUES ('secret_rotation:azure_ad_client_secret', '2026-03-15')
-ON CONFLICT (setting_key) DO UPDATE SET setting_value = '2026-03-15', updated_at = CURRENT_TIMESTAMP;
+```js
+const { setSetting } = require('./lib/services/settings-service');
+await setSetting('secret_expiration:azure_ad_client_secret', '2026-06-15');
+await setSetting('secret_rotation:azure_ad_client_secret', '2026-03-15');
 ```
 
 ### Tracked Secrets
@@ -223,7 +219,7 @@ ON CONFLICT (setting_key) DO UPDATE SET setting_value = '2026-03-15', updated_at
 | `azure_ad_client_secret` | Azure AD Client Secret | 90 days |
 | `dynamics_client_secret` | Dynamics CRM Client Secret | 90 days |
 | `nextauth_secret` | NextAuth Secret | No expiry (rotate if compromised) |
-| `user_prefs_encryption_key` | Encryption Key | No expiry (rotate with migration) |
+| `user_prefs_encryption_key` | Encryption Key | No expiry. **Rotation tooling pending Dataverse rewrite** — the legacy `scripts/rotate-encryption-key.js` was archived 2026-05-12 when the underlying `user_preferences` Postgres table was dropped. Until rewritten, key rotation requires reading all `wmkf_appuserpreferences` rows where `wmkf_isencrypted=true`, decrypting with the old key, re-encrypting with the new key, and PATCHing back via the dispatcher. |
 | `cron_secret` | Cron Secret | No expiry (rotate periodically) |
 
 ---

@@ -15,7 +15,7 @@ originSessionId: 09e7e972-ba80-4cd8-88a7-6fa9bffc5036
 - **App registration `d2e73696-537a-483b-bb63-4a4de6aa5d45`** has `prvUpdate` on `akoya_request` and `prvCreate`/`prvUpdate` on `wmkf_ai_run` (**no `prvDelete` — append-only by design**). Scoped — `systemuser` writes still 403.
 - **Email sending works** — Activity privileges (`prvCreateActivity`/`prvWriteActivity`/`prvReadActivity` + `prvSendAsUser`) cover SendEmail. No separate `prvSendEmail` needed.
 - **`prvCreateNote` on `annotation` is NOT granted.** Don't design anything that drops notes on records without first going back to IT.
-- **SharePoint `Sites.Selected` write** still pending IT. Blocks outputs-back-to-SharePoint work.
+- **SharePoint `Sites.Selected` write** granted 2026-04-15; verified end-to-end via `scripts/probe-sharepoint-write.js` on 2026-05-01 (PUT + DELETE round-trip on `akoya_request` library both succeed). No longer blocking.
 
 ## Canonical names (Field Sets A, C; table `wmkf_ai_run`)
 
@@ -37,11 +37,12 @@ Note: "compliance" task label was renamed to **Check-in** in v3.
 
 ## Implementation status
 
-- Field Set A (Proposal Summary): **ready** — can wire up writeback today.
-- Field Set B (Grant Report): **on hold** — reporting scope still needs staff input. No timeline. Grant Reporting app continues running without CRM writeback in the meantime.
-- Field Set C (Compliance): **ready**.
-- Field Set D (PD Assignment): **ready** — no new fields, writes to existing `wmkf_programdirector` lookup.
-- `wmkf_ai_run` child table: **ready** — can start logging runs for any app immediately, even before flat-field writebacks land.
+- Field Set A (Proposal Summary): **DEPLOYED**.
+- Field Set B (Grant Report): **DEPLOYED 2026-05-07** — 22 fields on `akoya_request` (8 counts, 7 multi-line text, 6 publication fields, 1 choice). See `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` for the field list and `wmkf_ai_tasktype = 682090001` (Report) for runs writing these.
+- Field Set C (Compliance): **DEPLOYED**.
+- Field Set D (PD Assignment): **DEPLOYED** — writes to existing `wmkf_programdirector` lookup.
+- `wmkf_ai_run` child table: **DEPLOYED + live in production**.
+- Workflow-chaining fields (`wmkf_ai_keywords`, `wmkf_ai_methodologies`, `wmkf_ai_riskflags`, `wmkf_ai_teaminfo`, `wmkf_ai_budgetsummary`, `wmkf_ai_timeline`): **DEPLOYED 2026-05-07** alongside Set B.
 
 ## Test scripts
 

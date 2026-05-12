@@ -1,6 +1,8 @@
 /**
- * Preference keys for Reviewer Finder settings stored in user_preferences table.
- * These settings are per-user and stored in the database when a profile is selected.
+ * Preference keys for Reviewer Finder settings stored in Dataverse
+ * `wmkf_appuserpreferences` (via the database-service dispatcher; the
+ * Postgres `user_preferences` table was retired 2026-05-12). These settings
+ * are per-user and persisted when a profile is selected.
  */
 export const PREFERENCE_KEYS = {
   SENDER_INFO: 'reviewer_finder_sender_info',

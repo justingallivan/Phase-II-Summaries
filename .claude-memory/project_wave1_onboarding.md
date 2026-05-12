@@ -17,4 +17,4 @@ Pre-provisioning (creating a user record before their first login) is a nice-to-
 
 **Why:** onboarding happens rarely (low-frequency event), and the /admin dashboard already handles the grant-more-apps flow via the flag-dispatched app-access-service. This closes the remaining gap.
 
-**How to apply:** only build this after Wave 1 flags are flipped in prod. Until then, the `apply-security-role.js --assign=<email>` script covers any onboarding that comes up. Wire-up is ~30 lines; defer to when it's actually needed.
+**How to apply:** Wave 1 prerequisite is satisfied (flags flipped 2026-05-03, Postgres tables dropped 2026-05-12). Build whenever a new staff onboarding triggers the gap; until then, `apply-security-role.js --assign=<email>` covers it. Wire-up is ~30 lines.

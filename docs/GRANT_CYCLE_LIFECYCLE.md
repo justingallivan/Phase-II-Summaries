@@ -130,7 +130,7 @@ Development approach: batch evaluation against historical proposals in Dynamics,
 
 ## Data Migration
 
-**Wave 1 cut over 2026-04-24.** `system_settings`, `user_app_access`, `user_preferences` now have Dataverse adapters behind `WAVE1_BACKEND_*` flags; Postgres remains the default until the flags flip. See `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md`.
+**Wave 1 COMPLETE 2026-05-12.** `system_settings`, `user_app_access`, `user_preferences` migrated to Dataverse (`wmkf_appsystemsettings`, `wmkf_appuserappaccesses`, `wmkf_appuserpreferences`); Postgres tables dropped. Dispatcher services default to Dataverse. See `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md` for migration history.
 
 **Wave 2 in progress** (reviewer data migration). Plan locked S136; see `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`. Wave 2 build set landed S139 (junction entity `wmkf_apprequestperson`, contact-history endpoint, save-candidates Dataverse cutover). Most Postgres reviewer tables drain rather than migrate (match-on-discovery + history badges replaces 1:1 row migration).
 

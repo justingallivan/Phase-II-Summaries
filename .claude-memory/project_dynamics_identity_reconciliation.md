@@ -1,6 +1,6 @@
 ---
 name: Dynamics Identity Reconciliation
-description: SHIPPED — user_profiles ↔ systemuser bridge + MSCRMCallerID write attribution end-to-end (S127–S129). Rollout BLOCKED on Connor granting Delegate role to app user (S132 smoke 2026-05-05).
+description: SHIPPED + UNBLOCKED — user_profiles ↔ systemuser bridge + MSCRMCallerID write attribution end-to-end (S127–S129). Connor granted Delegate role to app user 2026-05-06; impersonation re-smoke PASS for Justin and cnoda. Remaining: full /phase-i-dynamics overwrite=true run + flip prod env flag DYNAMICS_IMPERSONATION_ENABLED=true.
 type: project
 originSessionId: 62437821-a516-465d-9fe9-ccd2fa785705
 ---

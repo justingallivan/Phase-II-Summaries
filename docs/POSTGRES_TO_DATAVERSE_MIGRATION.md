@@ -1,8 +1,8 @@
 # Postgres → Dataverse Migration Map
 
 **Created:** 2026-04-22 (Session 106)
-**Status:** Planning — schema design; no creation code yet
-**Target environment:** WM Keck Sandbox (`https://orgd9e66399.crm.dynamics.com`) first, then prod after managed-solution export
+**Status:** **Wave 1 COMPLETE 2026-05-12** (Postgres tables dropped). Wave 2 in progress (per `REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`). This document remains as historical schema-design context; live state lives in the Atlas.
+**Target environment:** Prod (`akoyago.crm.dynamics.com`). Sandbox path was used during Wave 1 staging; Wave 1 cutover to prod 2026-04-24, drop 2026-05-12.
 
 ## Read this first: ground truth lives in the Atlas
 
@@ -12,7 +12,7 @@ Specific divergences between this doc and the as-built system (verified 2026-05-
 
 - **Naming convention.** This doc proposes `wmkf_app_<name>` (with underscore between `app` and `<name>`). Live deployments use `wmkf_app<name>` (no underscore). Wave 1 entities are deployed as `wmkf_appuserappaccesses`, `wmkf_appuserpreferences`, `wmkf_appsystemsettings`. Wave 2 entities: `wmkf_appresearcher`, `wmkf_appreviewersuggestion`, `wmkf_apppublication`, `wmkf_appgrantcycle`. Treat all `wmkf_app_<name>` references in this doc as the underscored-schema-as-code names; production is the no-underscore variant.
 - **Person model (Wave 2 preview).** This doc's "Person model" section described a free-standing researcher pool (`wmkf_app_researcher` accumulated across cycles, optional `wmkf_contact` lookup at promotion). What got built is a **1:1 sidecar** (`wmkf_appresearcher` ↔ `wmkf_potentialreviewer`, scoped to per-proposal slots). See `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` (Session 136) for the corrected design.
-- **Wave 1 status.** "Three feature flags ... default to `postgres` until flipped" is stale. **Flags flipped 2026-05-03**; preview + prod both running on Dataverse since then. 14-day stability clock started 2026-05-03 (earliest retirement 2026-05-17). See `project_wave1_pending.md`.
+- **Wave 1 status.** COMPLETE. Flags flipped 2026-05-03; behavioral verification 2026-05-11 confirmed zero prod writes; Postgres tables (`system_settings`, `user_app_access`, `user_preferences`) dropped 2026-05-12 via migration `007_drop_wave1_tables.sql`. Dispatcher services now default to Dataverse (explicit `WAVE1_BACKEND_*=postgres` fails loudly). Recovery via Neon PITR available until 2026-05-19. See `project_wave1_pending.md` for the closeout-tail items still open (elevation revert deferred until pilot iteration settles).
 - **Wave 2 entity list.** This doc mentions `wmkf_app_proposal_search` and `wmkf_app_publication_author` as Wave 2 deliverables. Per Atlas: `wmkf_appproposalsearch` is **NOT deployed** (404 on entity set); `wmkf_app_z_publication_author` is **NOT deployed**. Both are on hold pending demand.
 
 ## Purpose

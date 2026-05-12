@@ -7,7 +7,8 @@ export const BASE_CONFIG = {
   // Claude API Configuration
   // Tier-keyed (opus/sonnet/haiku) — resolved to a concrete id at call time
   // via lib/services/model-resolver.js. Concrete ids are still accepted as
-  // an escape hatch (env vars, system_settings overrides, prompt rows).
+  // an escape hatch (env vars, Dataverse wmkf_appsystemsettings overrides,
+  // prompt rows).
   CLAUDE: {
     API_URL: process.env.CLAUDE_API_URL || 'https://api.anthropic.com/v1/messages',
     ANTHROPIC_VERSION: '2023-06-01',
@@ -204,7 +205,7 @@ let _dbOverridesLoadedAt = 0;
 const DB_OVERRIDES_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
- * Pre-load model overrides from system_settings into memory.
+ * Pre-load model overrides from Dataverse `wmkf_appsystemsettings` into memory.
  * Call once near the top of each API handler (after auth, before getModelForApp).
  * No-ops if cache is still fresh.
  */
@@ -227,7 +228,7 @@ export function _setOverridesCache(map) {
 
 /**
  * Clear the in-memory model overrides cache.
- * Call after admin writes to system_settings so the next request re-fetches.
+ * Call after admin writes to `wmkf_appsystemsettings` so the next request re-fetches.
  */
 export function clearModelOverridesCache() {
   _dbOverrides = new Map();
@@ -249,7 +250,7 @@ export function _setModelResolver(fn) {
  * concrete Anthropic model id.
  *
  * Resolution order:
- *   1. DB override (system_settings model_override:{appKey}:{type})
+ *   1. DB override (Dataverse `wmkf_appsystemsettings` key `model_override:{appKey}:{type}`)
  *   2. Env var CLAUDE_MODEL_{APP_KEY_UPPER}
  *   3. APP_MODELS[appKey][type]
  *   4. BASE_CONFIG.CLAUDE.DEFAULT_MODEL

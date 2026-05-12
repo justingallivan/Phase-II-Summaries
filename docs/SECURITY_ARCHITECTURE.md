@@ -2,8 +2,20 @@
 
 **Prepared for:** IT Security Review
 **Application:** Document Processing Multi-App System
-**Date:** March 2026
+**Date:** March 2026 (last significant update); status banner refreshed 2026-05-12.
 **Version:** 3.5
+
+---
+
+> **2026-05-12 Wave 1 update note.** This document was authored when `user_app_access`, `user_preferences`, and `system_settings` were Postgres tables. Those three tables have been **migrated to Dataverse and dropped from Postgres on 2026-05-12.** Throughout this document:
+>
+> - `user_app_access` references now describe Dataverse `wmkf_appuserappaccesses` (entity-set name).
+> - `user_preferences` references now describe Dataverse `wmkf_appuserpreferences`.
+> - `system_settings` references now describe Dataverse `wmkf_appsystemsettings`.
+>
+> The dispatcher services (`lib/services/{settings,app-access,database}-service.js`) route all reads and writes to Dataverse by default. Application-level encryption of API keys (Section 5.4) is unchanged — values are still encrypted with AES-256-GCM at the application layer before persistence. Underlying-storage encryption is now Dataverse / SQL Server at-rest rather than Postgres at-rest; both meet the same compliance bar. CASCADE-DELETE semantics described in Section 7's tables are now enforced via Dataverse cascade-configured relationships rather than Postgres FKs. Schema-level scope (per-user vs global) is preserved.
+>
+> Specific sections that were keyed to the Postgres tables and still describe the at-rest encryption / FK / table-name mechanics (Sections 5.4, 7's data-classification tables, Section 8's encryption-key-rotation finding) should be read with the above substitution.
 
 ---
 

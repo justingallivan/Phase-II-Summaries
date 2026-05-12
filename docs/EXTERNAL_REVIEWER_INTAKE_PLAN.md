@@ -1,6 +1,6 @@
 # External Reviewer Intake — Implementation Plan
 
-**Status:** Design complete (Session 121, 2026-05-01). Ready to implement.
+**Status:** **SHIPPED 2026-05-03** (per memory `project_external_reviewer_file_access`). Token primitive, `/external/*` endpoints, SharePoint upload, event-driven token expiry all live. Reused as the architectural pattern for the intake portal. This doc remains as design reference; treat as historical for the shipped scope.
 
 **Related docs:**
 - `docs/DATAVERSE_SHAREPOINT_FILE_MODEL.md` — file storage model (Connor-shareable)

@@ -49,7 +49,8 @@ To prevent scope creep — destructive carryover items that name "drop Postgres 
 | `intake_drafts`, `intake_audit` | Applicant intake portal (separate workstream) | Pilot scope, not migration |
 | `system_alerts`, `health_check_history`, `maintenance_runs` | Time-series monitoring; correctly stays in Postgres per Wave 1 doc | Stays Postgres permanently |
 | `api_usage_log`, `dynamics_query_log` | High-volume audit logs; correctly stays in Postgres per Wave 1 doc | Stays Postgres permanently |
-| `user_profiles`, `user_preferences`, `user_app_access`, `system_settings` | Wave 1 — already migrated | Done |
+| `user_profiles` | Stays Postgres permanently (identity bridge to Dynamics `systemuser`) | Stays Postgres |
+| `user_preferences`, `user_app_access`, `system_settings` | Wave 1 — fully migrated + Postgres tables DROPPED 2026-05-12 | Done |
 
 **Rule**: any decommission script in this migration explicitly enumerates the Postgres tables it drops; never wildcards. See "Pre-drop grep gates" under Rollback Strategy.
 
@@ -250,7 +251,7 @@ The full field mapping below names every Postgres column. Postgres columns marke
 
 **Counts (derived, not stored)**: `grant-cycles.js` today JOINs `proposal_searches` and `reviewer_suggestions` for per-cycle proposal/candidate counts. Equivalent in Dataverse: query `akoya_request` filtered by `akoya_fiscalyear = <code>` for proposal count; query `wmkf_appreviewersuggestion` filtered by `wmkf_grantcyclecode = <shortcode>` for candidate count. Wrap in a helper; expose as a single endpoint `/api/reviewer-finder/grant-cycles?withCounts=true`.
 
-**Per-user current-cycle preference** (today held in `user_preferences`): unchanged — already in Dataverse via Wave 1's `wmkf_app_user_preference`. New code reads cycle GUID OR shortcode from prefs and resolves via alt-key.
+**Per-user current-cycle preference** (today held in Dataverse `wmkf_appuserpreferences` via the `database-service.js` dispatcher; Postgres `user_preferences` dropped 2026-05-12). New code reads cycle GUID OR shortcode from prefs and resolves via alt-key.
 
 Naming follows live convention `wmkf_app<name>` (no underscore — matches existing live entities, **not** the Wave 1 doc's proposed `wmkf_app_<name>`).
 
