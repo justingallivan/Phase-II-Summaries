@@ -19,6 +19,15 @@
  *   - Re-runnable: a clean run after a partial-failure run produces the
  *     same final state (two-run idempotency property required by plan
  *     §"Acceptance tests").
+ *
+ * Deliberate omissions (Codex S147 step-4 review):
+ *   - `wmkf_fiscalyearcode` and `wmkf_meetingdate` are NOT populated from
+ *     Postgres — those derive from `akoya_request.akoya_fiscalyear` and
+ *     `akoya_request.wmkf_meetingdate` respectively, joined per cycle.
+ *     Step 5 (endpoint rewrite) owns the fiscal-year-code population pass.
+ *     Until then the `wmkf_fiscalyearcode` alt-key is effectively unused
+ *     (all rows have it null; Dataverse permits multi-null on a nullable
+ *     alt-key).
  */
 
 const fs = require('fs');
@@ -95,6 +104,14 @@ function normalizeShortCode(value) {
   return s || null;
 }
 
+// OData v4 escapes apostrophes in string literals by doubling them, NOT by
+// percent-encoding. `encodeURIComponent` alone is insufficient for values
+// that may contain `'`. All current cycle codes are alphanumeric, but the
+// future-safe form is double-then-encode (Codex S147 step-4 Q3).
+function escapeODataString(s) {
+  return encodeURIComponent(String(s).replace(/'/g, "''"));
+}
+
 function isEmpty(v) {
   return v === null || v === undefined || v === '';
 }
@@ -114,7 +131,9 @@ function mapToDataverse(pgRow) {
     wmkf_additionalattachments:
       pgRow.additional_attachments != null ? JSON.stringify(pgRow.additional_attachments) : null,
     wmkf_customfields: pgRow.custom_fields != null ? JSON.stringify(pgRow.custom_fields) : null,
-    wmkf_isactive: pgRow.is_active === true,
+    // Preserve null when Postgres null (column is BOOLEAN DEFAULT true, not
+    // NOT NULL). Don't actively write `false` for null source values.
+    wmkf_isactive: pgRow.is_active === null || pgRow.is_active === undefined ? null : pgRow.is_active === true,
   };
 }
 
@@ -122,7 +141,7 @@ async function findByShortCode(token, shortcode) {
   // Use the alt-key syntax: /wmkf_appgrantcycles(wmkf_shortcode='J26')
   const r = await odataGet(
     token,
-    `/wmkf_appgrantcycles(wmkf_shortcode='${encodeURIComponent(shortcode)}')`,
+    `/wmkf_appgrantcycles(wmkf_shortcode='${escapeODataString(shortcode)}')`,
   );
   if (r.status === 200) return r.body;
   if (r.status === 404) return null;
@@ -163,7 +182,7 @@ function diffFields(targetDv, existingDv) {
 
   const token = await getToken();
 
-  let nCreate = 0, nUpdate = 0, nSkipArchived = 0, nAlready = 0, nOverwriteRequired = 0, nErrors = 0;
+  let nCreate = 0, nUpdate = 0, nSkipArchived = 0, nAlready = 0, nOverwriteRequired = 0, nErrors = 0, nSkipNoShortcode = 0;
 
   for (const pg of rows) {
     const tag = `id=${pg.id} short_code=${pg.short_code}`;
@@ -177,6 +196,7 @@ function diffFields(targetDv, existingDv) {
     const target = mapToDataverse(pg);
     if (!target.wmkf_shortcode) {
       console.log(`SKIP-NO-SHORTCODE  ${tag}  (refuses to write null alt-key)`);
+      nSkipNoShortcode++;
       continue;
     }
 
@@ -259,6 +279,7 @@ function diffFields(targetDv, existingDv) {
   console.log(`- already-correct:     ${nAlready}`);
   console.log(`- overwrite-required:  ${nOverwriteRequired}`);
   console.log(`- skip-archived:       ${nSkipArchived}`);
+  console.log(`- skip-no-shortcode:   ${nSkipNoShortcode}`);
   console.log(`- errors:              ${nErrors}`);
 
   if (nErrors > 0) process.exitCode = 1;
