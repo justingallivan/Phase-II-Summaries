@@ -1,10 +1,10 @@
 # Reviewer Postgres → Dataverse Migration Plan (Wave 2)
 
 **Created:** 2026-05-06 (Session 136)
-**Last revision:** 2026-05-07 (S137) — corrections from R3 Codex review applied; cross-references to `docs/APPLICATION_STATE_ATLAS.md` added
-**Status:** Draft — pre-Connor sign-off on contact form / cleanup cron / history feature scope
+**Last revision:** 2026-05-12 — status banner + spec-vs-built table refreshed after the S139 build set + Wave 1 closeout.
+**Status:** **Active build, partial ship.** Schema deployed, `save-candidates` / `my-candidates` / `load-proposal` / `contact-history` / `wmkf_apprequestperson` junction all live in prod Dataverse. Drain mechanics (cleanup cron, `wmkf_appgrantcycle` deployment, `reviewer_suggestions` commit-mode backfill, match-on-discovery wiring + UI, render-emails / send-emails `grant_cycles` cutover, add-candidate-manual) remain to build. See "Spec'd vs. built" table below for the line-by-line state.
 **Priority:** Top — gates the intake portal pilot (mid-June 2026 Phase II Research)
-**Target environment:** WM Keck Sandbox first; managed-solution export to prod
+**Target environment:** Prod (Dataverse Wave 2 schema is live)
 
 ## Read this first: ground truth lives in the Atlas
 
@@ -12,22 +12,25 @@ For live state of any entity/table this plan touches, the canonical reference is
 
 ## Spec'd vs. built (verified 2026-05-07)
 
-This plan refers to scripts and endpoints by name. Most are **specifications, not yet built**. Only one exists today.
+Refreshed 2026-05-12. Several artifacts have shipped since the plan was locked; the table below is line-by-line accurate against `git log` and the live repo state.
 
 | Artifact | Status | Notes |
 |---|---|---|
 | `scripts/backfill-reviewer-suggestions-parity.js` | **BUILT** (S136) | Dry-run classification of all 337 Postgres rows |
-| `scripts/audit-postgres-state.js`, `scripts/audit-dataverse-state.js` | **BUILT** (S136/S137) | Live-state probes |
-| `scripts/backfill-reviewer-suggestions-to-dataverse.js` | spec'd | Idempotent commit-mode backfill of the 2.4% delta |
+| `scripts/audit-postgres-state.js`, `scripts/audit-dataverse-state.js` | **BUILT** (S136/S137) | Live-state probes; re-run before any migration work |
+| `wmkf_apprequestperson` junction entity | **BUILT + DEPLOYED to prod** (S139, commit `c8cbfe1`) | Schema-as-code at `lib/dataverse/schema/wave2/wmkf_app_request_person.json`; alt key on `(wmkf_request, wmkf_contact, wmkf_role)` enforced; one-time backfill script still pending |
+| `pages/api/reviewer-finder/contact-history.js` | **BUILT** (S139, commit `b23586c`) | UNION read strategy across junction + `_wmkf_projectleader_value`; smoke at `scripts/smoke-contact-history.js` |
+| `scripts/backfill-reviewer-suggestions-to-dataverse.js` | spec'd | Idempotent commit-mode backfill of the 2.4% Postgres-only delta |
+| `scripts/backfill-request-person-junction.js` | spec'd | One-time walk of every `akoya_request`, emits ~3,000 junction rows (PI + co-PI) |
+| `pages/api/reviewer-finder/add-candidate-manual.js` | spec'd | Net-new "add candidate by hand" endpoint, replaces retired Database tab |
+| `lib/services/contact-history-service.js` | spec'd | Match-on-discovery aggregation helper (separate from the endpoint — the endpoint exists but the discovery-side wiring + badge UI does not) |
+| Match-on-discovery wiring in `discovery-service.js` + badge UI | spec'd | First-class new scope; consumes `contact-history.js` |
+| `wmkf_appgrantcycle` deployment + `grant_cycles` cutover | spec'd | Blocks `render-emails.js` / `send-emails.js` Postgres-`grant_cycles` dependency |
+| Cleanup cron (`/api/cron/reviewer-cleanup` or similar) | spec'd | Drops unengaged `wmkf_appreviewersuggestion` rows post meeting + 14 days; weekly schedule |
 | `scripts/restore-from-cleanup-backup.js` | spec'd | Reverse the cleanup-cron pre-delete backup blob |
 | `scripts/repair-divergence-postflip.js` | spec'd | Replay Dataverse-window writes back into Postgres if a flag-flip rolls back |
 | `scripts/reconcile-reviewer-migration.js` | spec'd | Pre/post-cutover reconciliation report |
-| `pages/api/reviewer-finder/contact-history.js` | spec'd | Batched contact history lookup for match-on-discovery badges |
-| `pages/api/reviewer-finder/add-candidate-manual.js` | spec'd | Net-new "add candidate by hand" endpoint, replaces retired Database tab |
-| `lib/services/contact-history-service.js` | spec'd | Match-on-discovery aggregation helper |
-| `WAVE2_BACKEND_*` env-flag dispatch in services | spec'd | Modeled on Wave 1's pattern; zero matches in code today |
-
-Treat any unbuilt artifact as **work to do**, not as something to invoke. Order of build: backfill commit-mode → contact-history endpoint + service → flag-dispatch → restore/repair/reconcile (post-cutover).
+| `WAVE2_BACKEND_*` env-flag dispatch in services | spec'd | Zero matches in code today; only needed for the few endpoints that still read Postgres (grant_cycles, reviewer_suggestions during backfill window) |
 
 ## What this doc supersedes
 
@@ -641,10 +644,10 @@ Before W3 application-code rewrites depend on Dataverse schema, every item below
 | Alt key `wmkf_shortcode` on `wmkf_appgrantcycle` confirmed unique-enforced | Justin | W1 | Manual duplicate-create attempt returns Dataverse alt-key violation. |
 | Contact form "Reviewer history" subgrid added | Connor | W2 | Sandbox contact form renders the subgrid; data appears for known reviewer contacts. |
 | `wmkf_appreviewersuggestion` extensions deployed (`wmkf_DeclineReason`, `wmkf_ResponseReceivedAt`) | Justin | W1 | Adapter `select` includes them; sandbox row shows them when set. |
-| `wmkf_apprequestperson` junction created (if Connor approves) | Connor + Justin | W2 | Schema present; alt key `(wmkf_request, wmkf_contact, wmkf_role)` enforced. |
+| ~~`wmkf_apprequestperson` junction created~~ | DONE 2026-05-07 (commit `c8cbfe1`) | — | Schema present in prod; alt key `(wmkf_request, wmkf_contact, wmkf_role)` enforced live. |
 | OData filter performance: `wmkf_appreviewersuggestion` filtered by `wmkf_grantcyclecode` | Justin | W2 | Sandbox query of 100 rows returns < 500ms P95. |
 | OData filter performance: `wmkf_potentialreviewer` filtered by `wmkf_contact` | Justin | W2 | Same. |
-| OData filter performance: `wmkf_apprequestperson` filtered by `wmkf_contact` (if junction exists) | Justin | W2 | Same. |
+| OData filter performance: `wmkf_apprequestperson` filtered by `wmkf_contact` | Justin | W2 | Junction now live; benchmark this against the contact-history endpoint's real query shape. |
 | `$batch` reviewer-suggestion writes succeed at 50-row batches | Justin | W2 | Sandbox batch test against synthetic data. |
 | Managed-solution export from sandbox produces clean ZIP | Justin | W4 | Maker portal export; download + inspect XML; no missing-dependency errors. |
 | Sandbox→prod managed-solution import dry-run | Justin | W4 | Import to a separate scratch environment if available, else paper-only review with Connor. |
