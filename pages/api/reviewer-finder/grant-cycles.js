@@ -170,9 +170,10 @@ async function handleDelete(req, res) {
   try {
     const { id } = req.body;
     if (!id) return res.status(400).json({ error: 'id is required' });
-    // Soft delete: PATCH wmkf_isactive=false (NOT row delete).
-    const updated = await archiveCycleById(id);
-    if (!updated) return res.status(404).json({ error: 'Grant cycle not found' });
+    // Soft delete: PATCH wmkf_isactive=false (NOT row delete). Behavior
+    // parity: old Postgres handler returned 200 unconditionally even when
+    // the row didn't exist; preserved here (idempotent archive).
+    await archiveCycleById(id);
     return res.status(200).json({ success: true, message: 'Grant cycle archived' });
   } catch (error) {
     console.error('Archive grant cycle error:', error);

@@ -98,7 +98,7 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'No reviewers found for the provided IDs' });
     }
 
-    // Cycle-level config still in Postgres.
+    // Cycle-level config from Dataverse `wmkf_appgrantcycle` (W3 cutover).
     const distinctCycleCodes = [...new Set(
       rows.map((r) => r.request?.wmkf_meetingdate ? meetingDateToCycleCode(r.request.wmkf_meetingdate) : null).filter(Boolean)
     )];
@@ -209,16 +209,15 @@ export default async function handler(req, res) {
 
 // Dataverse-backed at W3 cutover. Returns the same snake_case shape the
 // renderer below consumes (short_code, name, program_name, review_deadline,
-// custom_fields) so downstream code is unchanged.
+// custom_fields) so downstream code is unchanged. Transport errors
+// propagate to the endpoint catch (matches pre-cutover behavior where a
+// failed `WHERE short_code = ANY(...)` query would have surfaced as 500);
+// only the "row not found" case (handled inside findByShortCode → null)
+// is silent.
 async function loadCycleConfigs(cycleCodes) {
   const out = {};
   if (!cycleCodes.length) return out;
-  const results = await Promise.all(
-    cycleCodes.map(code => findCycleByShortCode(code).catch(err => {
-      console.warn(`loadCycleConfigs: ${code} lookup failed`, err.message);
-      return null;
-    })),
-  );
+  const results = await Promise.all(cycleCodes.map(code => findCycleByShortCode(code)));
   for (const cycle of results) {
     if (!cycle || !cycle.shortCode) continue;
     if (out[cycle.shortCode]) continue;

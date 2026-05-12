@@ -1069,7 +1069,8 @@ function NewSearchTab({ apiCapabilities, onCandidatesSaved, searchState, setSear
           proposalInstitution: analysisResult?.proposalInfo?.authorInstitution || '',
           programArea: analysisResult?.proposalInfo?.programArea || null,
           summaryBlobUrl: analysisResult?.summaryBlobUrl || null,
-          grantCycleId: currentCycleInfo?.id || null,
+          // save-candidates reads `grantCycleCode` only — dropping legacy
+          // `grantCycleId` payload (which the API silently discarded).
           userProfileId: userProfileId || null,
           requestId: uploadedFiles[0]?.sourceProposal?.requestId || null,
           grantCycleCode: uploadedFiles[0]?.sourceProposal?.cycleCode || null,
@@ -2780,7 +2781,7 @@ function ResearcherDetailModal({ researcherId, onClose, onUpdate, onDelete, onNa
                             onClick={(e) => {
                               e.stopPropagation();
                               onClose();
-                              onNavigateToProposal(proposal.grantCycleId || null, proposal.proposalId);
+                              onNavigateToProposal(proposal.grantCycleCode || null, proposal.proposalId);
                             }}
                             className="text-xs text-blue-600 hover:text-blue-800 hover:underline mt-2 inline-flex items-center gap-1"
                           >
@@ -3322,7 +3323,12 @@ function MyCandidatesTab({ refreshTrigger, userProfileId, navigateToProposal, on
       // Build URL with cycle and user profile filters
       const params = new URLSearchParams();
       if (selectedCycleId && selectedCycleId !== 'all') {
-        params.set('cycleId', selectedCycleId);
+        // After W3 cutover (preference-shape + endpoint), `selectedCycleId`
+        // holds a shortcode like "J26" or the special token "unassigned".
+        // The my-candidates API expects `cycleCode` (NOT `cycleId`); the
+        // old `cycleId` query param was silently ignored by the API even
+        // pre-cutover, so the filter never worked.
+        params.set('cycleCode', selectedCycleId);
       }
       if (userProfileId) {
         params.set('userProfileId', userProfileId);
@@ -3443,12 +3449,15 @@ function MyCandidatesTab({ refreshTrigger, userProfileId, navigateToProposal, on
     }
   };
 
-  const handleUpdateProposalCycle = async (proposalId, grantCycleId) => {
+  const handleUpdateProposalCycle = async (proposalId, grantCycleCode) => {
     try {
+      // my-candidates PATCH expects `grantCycleCode` (shortcode string).
+      // Pre-W3 the frontend sent `grantCycleId` (integer); the API
+      // discarded it silently. Fixed at W3 cutover.
       await fetch('/api/reviewer-finder/my-candidates', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proposalId, grantCycleId })
+        body: JSON.stringify({ proposalId, grantCycleCode })
       });
       fetchCandidates();
     } catch (err) {
@@ -3779,7 +3788,8 @@ function MyCandidatesTab({ refreshTrigger, userProfileId, navigateToProposal, on
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const cycleName = cycles.find(c => c.id === selectedCycleId)?.shortCode || 'all';
+    // After W3 cutover `selectedCycleId` IS a shortcode (or 'all'/'unassigned').
+    const cycleName = selectedCycleId && selectedCycleId !== 'all' ? selectedCycleId : 'all';
     a.download = `email-tracking-${cycleName}-${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(a);
     a.click();
@@ -3969,16 +3979,16 @@ function MyCandidatesTab({ refreshTrigger, userProfileId, navigateToProposal, on
               <label className="text-sm text-gray-600">Cycle:</label>
               <select
                 value={selectedCycleId}
-                onChange={(e) => handleCycleChange(e.target.value === 'all' ? 'all' : e.target.value === 'unassigned' ? 'unassigned' : parseInt(e.target.value, 10))}
+                onChange={(e) => handleCycleChange(e.target.value || 'all')}
                 className="px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">All</option>
                 {unassignedCount.candidates > 0 && (
                   <option value="unassigned">Unassigned ({unassignedCount.candidates})</option>
                 )}
-                {cycles.filter(c => c.isActive).map(cycle => (
-                  <option key={cycle.id} value={cycle.id}>
-                    {cycle.shortCode || cycle.name}
+                {cycles.filter(c => c.isActive && c.shortCode).map(cycle => (
+                  <option key={cycle.id} value={cycle.shortCode}>
+                    {cycle.shortCode}
                   </option>
                 ))}
               </select>
@@ -4150,15 +4160,15 @@ function MyCandidatesTab({ refreshTrigger, userProfileId, navigateToProposal, on
                       <option value="Medical Research Program">Medical</option>
                     </select>
                     <select
-                      value={proposal.grantCycleId || ''}
+                      value={proposal.grantCycleCode || ''}
                       onChange={(e) => {
                         e.stopPropagation();
-                        const cycleId = e.target.value ? parseInt(e.target.value, 10) : null;
-                        handleUpdateProposalCycle(proposal.proposalId, cycleId);
+                        const cycleCode = e.target.value || null;
+                        handleUpdateProposalCycle(proposal.proposalId, cycleCode);
                       }}
                       onClick={(e) => e.stopPropagation()}
                       className={`ml-1 px-1.5 py-0.5 rounded text-xs border-0 cursor-pointer appearance-none pr-4 ${
-                        proposal.grantCycleId
+                        proposal.grantCycleCode
                           ? 'bg-purple-50 text-purple-600'
                           : 'bg-gray-100 text-gray-500'
                       }`}
@@ -4166,9 +4176,9 @@ function MyCandidatesTab({ refreshTrigger, userProfileId, navigateToProposal, on
                       title="Click to change grant cycle"
                     >
                       <option value="">No cycle</option>
-                      {cycles.filter(c => c.isActive).map(cycle => (
-                        <option key={cycle.id} value={cycle.id}>
-                          {cycle.shortCode || cycle.name}
+                      {cycles.filter(c => c.isActive && c.shortCode).map(cycle => (
+                        <option key={cycle.id} value={cycle.shortCode}>
+                          {cycle.shortCode}
                         </option>
                       ))}
                     </select>

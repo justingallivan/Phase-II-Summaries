@@ -146,8 +146,9 @@ export default async function handler(req, res) {
       recipientBySuggestion.set(d.suggestionId, { suggestion: sug, person, request });
     }
 
-    // Cycle-level config (template URL + additional attachments) still lives
-    // in Postgres. Look up once per distinct cycleCode.
+    // Cycle-level config (template URL + additional attachments) loaded
+    // from Dataverse `wmkf_appgrantcycle` (W3 cutover). Look up once per
+    // distinct cycleCode.
     const distinctCycleCodes = [...new Set(
       [...recipientBySuggestion.values()]
         .map((v) => v?.request?.wmkf_meetingdate ? meetingDateToCycleCode(v.request.wmkf_meetingdate) : null)
@@ -377,15 +378,12 @@ export default async function handler(req, res) {
 // sender consumes (short_code, review_template_blob_url,
 // additional_attachments). Duplicate-shortcode resolution is now enforced
 // by the wmkf_shortcode alt-key — there can only be one match per code.
+// Transport errors propagate to the SSE handler (parity with pre-cutover
+// SQL behavior); only row-not-found stays silent.
 async function loadCycleConfigs(cycleCodes) {
   const out = {};
   if (!cycleCodes.length) return out;
-  const results = await Promise.all(
-    cycleCodes.map(code => findCycleByShortCode(code).catch(err => {
-      console.warn(`loadCycleConfigs: ${code} lookup failed`, err.message);
-      return null;
-    })),
-  );
+  const results = await Promise.all(cycleCodes.map(code => findCycleByShortCode(code)));
   for (const cycle of results) {
     if (!cycle || !cycle.shortCode) continue;
     if (out[cycle.shortCode]) continue;
