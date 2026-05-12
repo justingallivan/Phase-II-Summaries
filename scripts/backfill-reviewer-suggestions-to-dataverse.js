@@ -28,7 +28,7 @@
  */
 
 import { readFileSync, existsSync } from 'fs';
-import { resolve, join, dirname } from 'path';
+import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -197,7 +197,10 @@ for (const c of toBackfill) {
         name: c.pg.name,
       });
       personId = personRow.id;
-      nCreatedPerson++;
+      // upsertByEmail returns { id, created } — only increment when truly
+      // created (Codex W4-Day-2 Q8 sub-finding: nCreatedPerson was
+      // overcounting on found-existing).
+      if (personRow.created) nCreatedPerson++;
     } else {
       personId = c.person.wmkf_potentialreviewersid;
     }

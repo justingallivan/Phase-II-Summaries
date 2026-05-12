@@ -6,12 +6,14 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const envPath = join(__dirname, '..', '.env.local');
-for (const line of readFileSync(envPath, 'utf8').split('\n')) {
-  const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-  if (!m) continue;
-  let [, k, v] = m;
-  v = v.trim().replace(/^"(.*)"$/, '$1');
-  if (!process.env[k]) process.env[k] = v;
+if (existsSync(envPath)) {
+  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
+    const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (!m) continue;
+    let [, k, v] = m;
+    v = v.trim().replace(/^"(.*)"$/, '$1');
+    if (!process.env[k]) process.env[k] = v;
+  }
 }
 
 const { sql } = await import('@vercel/postgres');

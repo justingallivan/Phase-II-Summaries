@@ -26,7 +26,7 @@ await bypassDynamicsRestrictions('probe', async () => {
   // 1. Find Harcombe by email (known matched to DV per parity).
   console.log('1. potentialReviewerAdapter.getByEmail("harcombe@umn.edu"):');
   const person = await potentialReviewerAdapter.getByEmail('harcombe@umn.edu');
-  console.log(person ? `  found id=${person.wmkf_potentialreviewerid} name=${person.wmkf_name}` : '  NOT FOUND');
+  console.log(person ? `  found id=${person.wmkf_potentialreviewersid} name=${person.wmkf_name}` : '  NOT FOUND');
   if (!person) return;
 
   // 2. Resolve req 1002365.
@@ -43,7 +43,7 @@ await bypassDynamicsRestrictions('probe', async () => {
   // 3. findByPotentialReviewerAndRequest:
   console.log('\n3. reviewerSuggestionAdapter.findByPotentialReviewerAndRequest:');
   const sug = await reviewerSuggestionAdapter.findByPotentialReviewerAndRequest(
-    person.wmkf_potentialreviewerid,
+    person.wmkf_potentialreviewersid,
     requestId,
   );
   console.log(sug ? `  FOUND id=${sug.wmkf_appreviewersuggestionid} selected=${sug.wmkf_selected}` : '  NOT FOUND');
@@ -52,7 +52,7 @@ await bypassDynamicsRestrictions('probe', async () => {
   console.log('\n4. Raw: all suggestions for this person:');
   const all = await DynamicsService.queryRecords('wmkf_appreviewersuggestions', {
     select: 'wmkf_appreviewersuggestionid,_wmkf_request_value,_wmkf_potentialreviewer_value,wmkf_grantcyclecode,wmkf_selected',
-    filter: `_wmkf_potentialreviewer_value eq ${person.wmkf_potentialreviewerid}`,
+    filter: `_wmkf_potentialreviewer_value eq ${person.wmkf_potentialreviewersid}`,
     top: 10,
   });
   console.log(`  ${all.records.length} suggestion rows`);

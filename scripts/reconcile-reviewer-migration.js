@@ -129,12 +129,20 @@ async function loadPgState() {
   return { activeCycles, inactiveCycles, allSelected };
 }
 
-function classifyPgRow(row) {
-  // Returns { class: 'matchable'|'missing_email'|'missing_request', ... }
+function classifyPgRow(row, knownAkoyaRequestNums) {
+  // Returns { class: 'matchable'|'missing_email'|'missing_request'|'orphan_request' }
+  // Codex W4-Day-2 review Q8: orphan_request is the 4th class per the
+  // contract (docs/W4_RECONCILE_CONTRACT.md §3) — PG rows whose
+  // request_number does not resolve to any akoya_request in DV. Previously
+  // these were silently counted as matchable, inflating PG-side excess
+  // with rows that can never be backfilled.
   const hasEmail = !!row.email;
   const hasReq = !!row.request_number;
   if (!hasEmail) return { class: 'missing_email' };
   if (!hasReq) return { class: 'missing_request' };
+  if (knownAkoyaRequestNums && !knownAkoyaRequestNums.has(String(row.request_number))) {
+    return { class: 'orphan_request' };
+  }
   return { class: 'matchable' };
 }
 
@@ -144,10 +152,13 @@ async function fetchDvCountsForCycle(client, shortCode) {
   const select = '_wmkf_request_value';
   const expand = 'wmkf_Request($select=akoya_requestnum)';
   const filter = `wmkf_grantcyclecode eq '${escapeOData(shortCode)}' and wmkf_selected eq true`;
+  // $orderby ensures deterministic pagination under concurrent DV writes
+  // (Codex W4-Day-2 Q7).
   const initial =
     `/wmkf_appreviewersuggestions?$select=${select}` +
     `&$expand=${encodeURIComponent(expand)}` +
-    `&$filter=${encodeURIComponent(filter)}`;
+    `&$filter=${encodeURIComponent(filter)}` +
+    `&$orderby=wmkf_appreviewersuggestionid`;
 
   const { value: rows, pages } = await fetchAllPaged(client, initial);
 
@@ -177,7 +188,7 @@ async function fetchDvCountsForCycle(client, shortCode) {
       matchablePg: 0,
       matchableDv: 0,
       unmatchableObserved: 0,
-      unmatchableByClass: { missing_email: 0, missing_request: 0 },
+      unmatchableByClass: { missing_email: 0, missing_request: 0, orphan_request: 0 },
       dvOrphans: 0,
     },
     verdict: null,
@@ -192,6 +203,25 @@ async function fetchDvCountsForCycle(client, shortCode) {
   if (!url) throw new Error('DYNAMICS_URL not set');
   const token = await getAccessToken(url);
   const client = createClient({ resourceUrl: url, token });
+
+  // Resolve every distinct PG request_number against DV up-front (Codex
+  // W4-Day-2 Q8): rows whose request_number doesn't resolve become the
+  // 4th anomaly class `orphan_request`, separately accounted for.
+  const distinctPgReqNums = [...new Set(
+    pg.allSelected.map(r => r.request_number).filter(Boolean).map(String),
+  )];
+  const knownAkoyaRequestNums = new Set();
+  for (const num of distinctPgReqNums) {
+    const r = await odataGetWithRetry(
+      client,
+      `/akoya_requests?$select=akoya_requestnum&$filter=akoya_requestnum eq '${escapeOData(num)}'&$top=1`,
+    );
+    if (!r.ok) {
+      console.error(`FATAL: akoya_request lookup for ${num} failed: ${r.status} ${r.text}`);
+      process.exit(2);
+    }
+    if ((r.body.value || []).length > 0) knownAkoyaRequestNums.add(num);
+  }
 
   const dvCyclesRaw = await odataGetWithRetry(
     client,
@@ -223,10 +253,10 @@ async function fetchDvCountsForCycle(client, shortCode) {
     // per-request count but only collapse to one DV (person, request) pair —
     // the count would falsely register as PG-side excess otherwise.
     const pgPairsByReq = new Map();  // req_number -> Set<email>
-    const pgUnmatchable = { missing_email: [], missing_request: [] };
+    const pgUnmatchable = { missing_email: [], missing_request: [], orphan_request: [] };
 
     for (const row of cycleRows) {
-      const c = classifyPgRow(row);
+      const c = classifyPgRow(row, knownAkoyaRequestNums);
       if (c.class === 'matchable') {
         const reqNum = String(row.request_number);
         if (!pgPairsByReq.has(reqNum)) pgPairsByReq.set(reqNum, new Set());
@@ -266,7 +296,10 @@ async function fetchDvCountsForCycle(client, shortCode) {
 
     // Sum of distinct (request, email) pairs = total matchable contribution.
     const pgMatchablePairs = [...pgByReq.values()].reduce((a, b) => a + b, 0);
-    const pgRawMatchableRows = cycleRows.length - pgUnmatchable.missing_email.length - pgUnmatchable.missing_request.length;
+    const pgRawMatchableRows = cycleRows.length
+      - pgUnmatchable.missing_email.length
+      - pgUnmatchable.missing_request.length
+      - pgUnmatchable.orphan_request.length;
 
     const cycleResult = {
       shortCode: cycle.short_code,
@@ -291,6 +324,7 @@ async function fetchDvCountsForCycle(client, shortCode) {
       out.totals.matchableDv += dvCounts.totalRows - dvCounts.orphan;
       out.totals.unmatchableByClass.missing_email += pgUnmatchable.missing_email.length;
       out.totals.unmatchableByClass.missing_request += pgUnmatchable.missing_request.length;
+      out.totals.unmatchableByClass.orphan_request += pgUnmatchable.orphan_request.length;
       out.totals.dvOrphans += dvCounts.orphan;
     } else {
       out.inactiveCycles.push(cycleResult);
@@ -298,7 +332,9 @@ async function fetchDvCountsForCycle(client, shortCode) {
   }
 
   out.totals.unmatchableObserved =
-    out.totals.unmatchableByClass.missing_email + out.totals.unmatchableByClass.missing_request;
+    out.totals.unmatchableByClass.missing_email
+    + out.totals.unmatchableByClass.missing_request
+    + out.totals.unmatchableByClass.orphan_request;
 
   // Verdict.
   //
@@ -338,7 +374,7 @@ async function fetchDvCountsForCycle(client, shortCode) {
     for (const cycle of out.activeCycles) {
       console.log(`### ${cycle.shortCode} (drift=${cycle.drift})`);
       console.log(`  PG matchable: ${cycle.pgMatchableTotal}  DV selected: ${cycle.dvTotalSelected}  DV orphans: ${cycle.dvOrphans}`);
-      console.log(`  Unmatchable: missing_email=${cycle.pgUnmatchable.missing_email.length}  missing_request=${cycle.pgUnmatchable.missing_request.length}`);
+      console.log(`  Unmatchable: missing_email=${cycle.pgUnmatchable.missing_email.length}  missing_request=${cycle.pgUnmatchable.missing_request.length}  orphan_request=${cycle.pgUnmatchable.orphan_request.length}`);
       if (cycle.drift > 0) {
         console.log(`  Per-request deltas:`);
         for (const d of cycle.perRequest.filter(d => d.delta !== 0)) {
@@ -365,6 +401,7 @@ async function fetchDvCountsForCycle(client, shortCode) {
     console.log(`  Unmatchable observed:    ${out.totals.unmatchableObserved} (baseline: ${out.documentedBaseline})`);
     console.log(`    missing_email:         ${out.totals.unmatchableByClass.missing_email}`);
     console.log(`    missing_request:       ${out.totals.unmatchableByClass.missing_request}`);
+    console.log(`    orphan_request:        ${out.totals.unmatchableByClass.orphan_request}`);
     console.log(`  DV orphan suggestions:   ${out.totals.dvOrphans}`);
     console.log(`\n  **Verdict: ${out.verdict}**`);
     console.log(`\n  Note: PG-side excess is the cutover-loss concern — matchable PG rows`);
