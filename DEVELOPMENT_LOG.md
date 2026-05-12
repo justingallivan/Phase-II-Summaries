@@ -10,6 +10,28 @@ The pre-Session 84 chronological per-session log (everything after the September
 
 ---
 
+## May 2026 — Wave 1 prod retirement + thoroughness rule (Session 146)
+
+**Milestone:** Wave 1 (Postgres → Dataverse migration for `system_settings`, `user_app_access`, `user_preferences`) closed out in production. The three Postgres tables were dropped via `lib/db/migrations/007_drop_wave1_tables.sql` at 2026-05-12T01:30:41Z after behavioral verification confirmed zero prod writes since the 2026-05-03 flag flip; Neon PITR was bumped from 6h → 7 days to make rollback viable. Dispatcher defaults in the three service modules flipped from `postgres` to `dataverse` — explicit `WAVE1_BACKEND_*=postgres` now fails loudly against the dropped tables, closing the silent-degradation footgun Codex flagged in `database-service.js` prefs paths. Five bypass scripts targeting the dropped tables archived to `scripts/archive/`. Setup-database.js Wave 1 create blocks (V10 user_preferences, V16, V17, V22) removed so re-running setup against prod is safe. A second outcome: encoded `feedback_thoroughness_default.md` — banner-edit-includes-body-audit, description-edit-includes-body-audit, antonym-grep-after-status-change — after the doc-currency sweep + Wave 2 plan rebuild surfaced ~44 distinct findings across multiple Codex review rounds. Rule applies to all future doc and memory work.
+
+**Sessions:** 146 (2026-05-11 → 2026-05-12)
+
+**Ship state:**
+- 16 commits on main. Headliners: `dc8e745` (drop migration + preflight), `a612d00` (Codex Wave 1 review fixes — dispatcher flip), `7e53c02` (doc-currency 5-tier sweep, 32 files), `af40768` (Codex 19-finding consistency review), `9c99e65`+ (10 commits rebuilding `REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` across 9 Codex rounds).
+- Wave 1 Postgres state: 3 tables dropped. Recovery via Neon PITR until 2026-05-19T01:30Z.
+- Wave 2 plan: Codex-verified READY FOR BUILD. Drain-target endpoint inventory grew from 2 files (the plan's previous list) to 9 (verified via grep). Cardinality of `wmkf_potentialreviewer` locked as global-per-person across all passages. W3-W7 schedule with slip-eligibles moved to Post-pilot.
+- CI gates green: `check:atlas` 26 PG / 27 DV, `check:atlas:self-test` 11/11, `check:api-routes` 80 routes.
+
+**Why it matters:** Closes the migration the team has been carrying since Session 106. The dispatcher default-flip eliminates a class of bugs (missing env flag → routes silently to dropped table → returns empty data) that would have bitten a fresh dev environment or a typo in Vercel env. The thoroughness rule addresses the recurring pattern Justin called out explicitly: edits to a single section being declared "done" without auditing the rest of the doc, costing Codex tokens + review time on every iteration. The Wave 2 plan rebuild establishes the actual scope (9 files, not 2) and the realistic schedule for pilot-gating work.
+
+**Pointers:**
+- `lib/db/migrations/007_drop_wave1_tables.sql` (drop migration), `scripts/wave1-drop-preflight.js` (verification harness)
+- `lib/services/{settings,app-access,database}-service.js` (dispatcher defaults flipped)
+- `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` (Wave 2 build plan, READY FOR BUILD)
+- `.claude-memory/feedback_thoroughness_default.md` (workflow-default rule)
+- `.claude-memory/project_wave1_pending.md` (rewritten — closeout state)
+- Codex review chains: Wave 1 drop preflight `a2e4e5b555a27c543`; Wave 1 doc consistency `a1479a23e17078149`; Wave 2 plan 9-pass `ab6caaf4234c8afd8` → `aecc59a2cd3e8f1a1`
+
 ## May 2026 — AI-config admin surface + policy editor (Session 145)
 
 **Milestone:** Established the AI-config admin pattern (small, narrow, task-specific forms) as distinct from the deferred data-admin surface (general Dataverse CRUD, eventual AkoyaGo replacement). Shipped two instances of the pattern. Tier-keyed Claude model picker swaps stale dated ids for `opus`/`sonnet`/`haiku` tiers resolved against the live `/v1/models` list — defense against silent retirement of pinned snapshots; concrete-id escape hatch preserved. Policy editor (`/api/admin/policies` + `PoliciesSection`) lets superusers publish new `wmkf_policy` versions through a four-round Codex-reviewed flow: pre-flight validation, pending-audit-first, parent-ETag concurrency, alt-key uniqueness on `(parent, versionLabel)`, idempotent dispatch (already_published / label_conflict / resume / fresh-publish), strict markdown pipeline (marked + DOMPurify allowlist), best-effort retire of prior version with `parent.wmkf_activeversion` as sole truth. Audit lives in dedicated Postgres `policy_publish_audit` rather than overloading `wmkf_ai_run`. Admin UX overhaul: collapsible sections, soft-archive user button, 1-day usage period, three crons now record runs in `maintenance_runs`.

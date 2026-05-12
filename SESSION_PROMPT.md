@@ -1,119 +1,131 @@
-# Session 146 Prompt: open
+# Session 147 Prompt: open
 
-## Session 145 summary
+## Session 146 summary
 
-Four commits on main, all pushed to origin. Two architectural deliveries plus an admin UX overhaul.
+Sixteen commits on main, all pushed to origin. The headline is **Wave 1 closeout** (Postgres tables dropped in prod 2026-05-12) plus a multi-stage doc-currency rebuild that ended with the Wave 2 plan re-verified against live code across nine Codex review rounds.
 
 ### What was completed
 
-1. **Tier-keyed Claude model picker (`bc8a389`, `edcd6db`)**
-   - `APP_MODELS` now stores tier keys (`opus`/`sonnet`/`haiku`) instead of dated ids. `lib/services/model-resolver.js` resolves to the latest concrete id by querying `/v1/models` (24h TTL) with a hand-maintained `TIER_FALLBACK_IDS` cold-start safety net.
-   - Concrete ids still pass through as an escape hatch (env vars, Dataverse `wmkf_appsystemsettings`, prompt rows). Audit rows always log the resolved concrete id Anthropic actually ran.
-   - Admin picker rebuilt with grouped optgroups (Default / Tiers / Pin specific version), short labels, friendly app names, manual Refresh button.
-   - `getModelDisplayName` handles tier strings.
+1. **Wave 1 prod retirement — DONE 2026-05-12** (`dc8e745`, `91dbe26`, `a612d00`)
+   - Drop migration `lib/db/migrations/007_drop_wave1_tables.sql` executed against prod Postgres at 2026-05-12T01:30:41Z. All three Wave 1 tables (`system_settings`, `user_app_access`, `user_preferences`) gone.
+   - Pre-flight: built `scripts/wave1-drop-preflight.js` (live catalog probes, FK/view/policy/trigger/grant checks, PG/DV count parity, recent-writes guard, risky-script git-log evidence). Codex-reviewed before execution.
+   - Behavioral verification confirmed zero prod writes since 2026-05-03 flag flip (10 known dev writes from S145 admin model picker on localhost were reconciled to Dataverse 2026-05-11 via PG→DV sync).
+   - Neon PITR bumped from 6h → 7 days (Launch plan via API PATCH) to make rollback viable.
+   - Dispatcher defaults flipped from `postgres` to `dataverse` in `settings-service.js`, `app-access-service.js`, `database-service.js` — explicit `WAVE1_BACKEND_*=postgres` now fails loudly (table dropped, dead branch).
+   - V22 rename in Dataverse verified clean (0 stale `proposal-summarizer` keys, 7 on `phase-ii-writeup`).
+   - `setup-database.js` Wave 1 create blocks removed (V10 user_preferences, V16, V17, V22 runner + summary log lines).
+   - Bypass scripts archived: `manage-preferences.js`, `rotate-encryption-key.js`, `backfill-app-access.js`, `verify-wave1-read-path.js`, `sync-wave1-postgres-to-dataverse.js` → `scripts/archive/` with README explaining rewrite status.
+   - Typo fix: `wmkf_appuserappacces` → `wmkf_appuserappaccesses` in migration header + setup-database comment.
 
-2. **Policy editor — `/api/admin/policies` + PoliciesSection (`d0abcc6`, `61a46f9`)**
-   - Four rounds of Codex review before any code landed (agents `a5af57b…` → `aff1757b…`). Each round surfaced findings; v5 plan absorbed all of them. See DEVELOPMENT_LOG.md S145 entry.
-   - Server: pre-flight validation (allowlist FIRST so OData filter never sees unsanitized slotCode), pending audit row before any mutation (hard-abort on audit-write failure), parent-ETag concurrency, alt-key `wmkf_policyversion_parent_label_unique` enforced at DB level, idempotent branch dispatch (already_published / label_conflict / resume / fresh-publish), best-effort prior-version retire, structured outcome response with per-field diff flags.
-   - Storage: dedicated Postgres `policy_publish_audit` (V28) — NOT `wmkf_ai_run`. Codex review concluded the AI-run table is the wrong long-term home; purpose-named now, generalize when a second AI-config admin surface appears.
-   - Markdown pipeline: `shared/utils/policy-markdown.js` uses `marked` + `dompurify` with strict allowlist (no raw HTML, http/https/mailto schemes only, no event handlers, no non-href attrs on `<a>`). Server validator rejects with `disallowed_content` on any drop; renderer silently strips. 17 unit cases.
-   - UI: `shared/components/admin/PoliciesSection.js` with slot card, active-version preview (markdown-rendered), Prefill-from-active button, live preview pane, version history with residue badges, structured outcome banners (completed / already_published / label_conflict / concurrency_conflict / invalid_body / partial).
+2. **Doc-currency sweep — five tiers** (`7e53c02`, `af40768`)
+   - 32 files updated across plan docs, atlas pages, runbooks, inline code comments, memory entries.
+   - Tier 1 plan-doc status banners: POSTGRES_TO_DATAVERSE_MIGRATION (Planning → Wave 1 COMPLETE), REVIEWER_STAGE_2A_BUILD_PLAN (Draft → Slice 1 SHIPPED), DYNAMICS_IDENTITY_RECONCILIATION_PLAN (TODO → SHIPPED + UNBLOCKED), EXTERNAL_REVIEWER_INTAKE_PLAN (Ready → SHIPPED 2026-05-03), INTAKE_PORTAL_DESIGN (Entra blocker → resolved S129).
+   - Tier 2 Wave 1 drift: API_ROUTE_SECURITY_MATRIX, CREDENTIALS_RUNBOOK, ADMIN_GUIDE, STRATEGY, GRANT_CYCLE_LIFECYCLE, BACKEND_AUTOMATION_PLAN, REVIEWER_FINDER, REVIEWER_FINDER_FUTURE_ARCHITECTURE, REVIEWER_POSTGRES_TO_DATAVERSE_PLAN, PROMPT_STORAGE_DESIGN, SECURITY_ARCHITECTURE (87 KB doc got a top-of-doc banner + targeted §5.4/§5.6 column-name + scoping rewrites + Dynamics-stubbed false claim corrected + app-count drift 14→16 fixed).
+   - Tier 3 inline source: secret-check cron header, maintenance-service header + getRetentionConfig, baseConfig model-resolver block + cache-clear docstring + resolution-order line, reviewerFinderPreferences file header.
+   - Tier 4 archive bypass scripts (above).
+   - Tier 5 memory: 6 entries updated (MEMORY.md index, project_wave1_pending rewritten, project_wave1_onboarding trigger note, project_dynamics_ai_writeback Set B status + SharePoint write-access status, project_external_reviewer_file_access description, project_dynamics_identity_reconciliation description).
+   - Codex consistency review (19 findings, 4 CRITICAL + 11 MODERATE + 4 MINOR) addressed in `af40768`. Identified the dispatcher default-to-Postgres footgun (silent degradation in `database-service.js` prefs paths) — flipped defaults as part of that commit.
 
-3. **Admin UX overhaul (`d0abcc6`)**
-   - New `CollapsibleCard` wrapper. Model Configuration, Policies, Role Management, App Access Management, Dynamics Identity Linkage collapse by default with lazy mount on first open.
-   - Service Health detail grid + Health Check History recent-checks table now collapse; summary boxes stay visible.
-   - API Usage: 1-day period option added (replaces standalone Today's Spend card), three breakdown tables collapse under one Show Breakdowns toggle.
-   - Soft-archive button in App Access Management (`DELETE /api/admin/users` → sets `is_active=false`). Refuses self-archive; row preserved for audit FK integrity.
-   - Health-check, secret-check, log-analysis crons now record runs via `MaintenanceService.startRun/completeRun` — the corresponding tiles will populate once next prod fire lands.
+3. **Thoroughness rule encoded** (`af40768`)
+   - New memory `feedback_thoroughness_default.md`: banner edits include body audit; description-line edits include body audit; antonym grep after status changes; cold re-read pattern; surface incompleteness explicitly.
+   - Indexed in MEMORY.md Operational section. Self-test of the rule applied later in the same session — the rule catches things at edit-time that Codex used to catch at review-time.
 
-### Architectural decision (memorable)
+4. **Wave 2 plan rebuild** (`9c99e65` through `4834c6c`, 10 commits)
+   - Refreshed `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` against live code. The "drain-target endpoint inventory" was materially incomplete in the prior version — original list of 2 files (`render-emails.js`, `send-emails.js`); actual is 9 (`grant-cycles.js`, `generate-emails.js`, `my-proposals.js`, `extract-summary.js`, `researchers.js`, `database-service.js`, `maintenance-service.js`, plus the two originally cited).
+   - Nine Codex review rounds → ~25 distinct findings closed end-to-end. Major fixes: spec-vs-built table accuracy (junction-backfill script was BUILT not spec'd; `wmkf_appgrantcycle` is PARTIALLY DEPLOYED not "designed not deployed"); WAVE2_BACKEND_* "probably don't need" claim reframed as Option A (flags) vs Option B (hard cutover) tradeoff, decision deferred; data-loss subsection reframed (projectleader path = PI history not reviewer history); reviewer-history source corrected to `wmkf_appreviewersuggestion` across 5+ passages; schedule rebalanced from overloaded weeks to one-theme-per-week (W3-W7) with slip-eligibles moved to Post-pilot; readiness checklist dates aligned to schedule.
+   - Final Codex verdict: **READY FOR BUILD.**
 
-Discussed and aligned with Justin: **AI-config admin** (model picker, policy editor, eventually prompts) is intentionally NOT the same surface as **Dataverse data admin** (open-ended search + CRUD across hundreds of entities, AkoyaGo retirement scope). AI-config is narrow, task-specific forms with strict business rules; data admin is a months-long project deferred to a separate scope. Codex's round-1 critique reinforced this — declined to build a generic `VersionedContentEditor` abstraction until `wmkf_ai_prompt` proves the second use case. See `docs/atlas/dataverse-wmkf-policy-and-policy-version.md` for the policy-side pattern.
-
-### Browser-smoke fixes during the session
-
-Two bugs caught during in-browser failure-mode testing on the live admin page:
-- `validatePolicyMarkdown` silently accepted `<script>` at the very start of the body (marked stripped it before DOMPurify could see it). Added a raw-HTML pre-scan that rejects any `<tag>` in the input.
-- Post-publish reload was unmounting every `SlotPanel` (loading branch blanked the whole section), destroying outcome state before the banner could render. Gated the loading placeholder on `!state` so refetches preserve prior render.
-- Added per-field `fieldsMatch` flags to the `label_conflict` response so the diff block shows ✓/✗ per title/body/effectiveDate.
+5. **Memory + plan-doc IRS entry** (`03ae5c0`)
+   - New `project_irs_exempt_verification.md`: design for tax-exempt verification via Postgres-resident reference data + PA→Vercel lookup endpoint + Dynamics writeback of the result. Reframes Postgres as durable reference-data layer, not Dynamics on-ramp.
 
 ### Memory updates
 
-None this session. Strategic conversation about AI-config vs data-admin scope was recorded in DEVELOPMENT_LOG.md S145 entry instead.
+- NEW: `feedback_thoroughness_default.md` (thoroughness-is-default-not-optional rule)
+- NEW: `project_irs_exempt_verification.md` (planned capability design)
+- REWRITTEN: `project_wave1_pending.md` (closeout state)
+- DESCRIPTIONS REFRESHED: `project_dynamics_ai_writeback`, `project_external_reviewer_file_access`, `project_dynamics_identity_reconciliation`, `project_wave1_onboarding`, `project_interim_report_automation`
+- MEMORY.md index: Wave 1 section reframed CLOSED, Field Set B marked deployed, App-Level Access Control note updated, stale currentDate at bottom removed, dev-env note added about `.env.local` Wave 1 flags
 
-### Commits
+### Commits (this session)
 
-- `bc8a389` — Tier-keyed model picker (Opus / Sonnet / Haiku) auto-tracks latest
-- `edcd6db` — Model picker: 24h TTL + manual Refresh button
-- `d0abcc6` — Policy editor + admin UX overhaul
-- `61a46f9` — Policy editor: browser-smoke fixes
+```
+4834c6c Wave 2 plan — close N-11 body residual
+d813d02 Wave 2 plan — close N-11 cardinality + N-12 cross-ref direction
+169b5a9 Wave 2 plan — close N-7 residual + N-8/N-9/N-10
+296eded Wave 2 plan — close 2 blockers from review #5 (N-6, N-7)
+a546392 Wave 2 plan — close final residual + 3 data-model contradictions
+6720f32 Wave 2 plan — close final 4 Codex findings
+da0c8ea Wave 2 plan — close all PARTIAL findings from Codex re-review #2
+977e1b3 Wave 2 plan — second corrective pass for Codex re-review findings
+e58208a Wave 2 plan — fix all Codex consistency findings
+9c99e65 Wave 2 plan — refresh status banner + spec-vs-built table
+af40768 Address Codex consistency review (19 findings) + thoroughness rule
+7e53c02 Doc currency sweep — five-tier pass for drift
+a612d00 Wave 1 closeout — address Codex review findings
+91dbe26 Remove Wave 1 create blocks from setup-database.js + atlas update
+dc8e745 Wave 1 closeout — drop migration + preflight script
+03ae5c0 Memory: planned IRS tax-exempt verification capability
+```
 
 ## Production state
 
-- All five CI gates green: `check:atlas` (29 PG / 27 DV), `check:atlas:self-test` (11/11), `check:api-routes` (80 routes), `check:doc-currency`, `check:doc-currency:self-test`. Build green. Policy markdown unit tests 17/17.
-- Dataverse alt key `wmkf_policyversion_parent_label_unique` deployed live (2026-05-10). Postgres `policy_publish_audit` table live.
-- Wave 1 CLOSED 2026-05-12. Postgres tables dropped. Dispatcher defaults flipped to Dataverse.
-- `reviewer-coi` slot currently has 3 retired Lorem-ipsum versions in history plus an active `2026-05-10-restore` row holding the original `[PLACEHOLDER]` body. Cleanup of the lorem-ipsum retired rows is optional cosmetic — they're unreferenced and can be hard-deleted via Dynamics admin UI when convenient. `reviewer-ai-use` also has a `2026-05-10-restore` row active with the original AI-use body lifted from the review form footer.
-- Stage 2a slice 1 production engagement against a real reviewer cycle is still outstanding. The COI body remains placeholder pending staff wording feedback.
+- **Wave 1 dropped.** Postgres tables gone; dispatcher defaults Dataverse; recovery window via Neon PITR until 2026-05-19T01:30Z.
+- **Wave 2 plan green-lit by Codex** but no Wave 2 build work has started yet. The plan's W3 window (grant cycle migration) is the immediate critical path.
+- CI gates: `check:atlas` 26 PG / 27 DV; `check:atlas:self-test` 11/11; `check:api-routes` 80 routes. All green.
+- Single deferred Wave 1 item: revert temp role elevations on prod app user. Held through pilot iteration per Justin's 2026-05-11 policy call.
 
-## Where to pick up — Session 146 (open)
+## Where to pick up — Session 147 (open)
 
-No headline locked. Plausible threads, roughly ordered by readiness:
+Plausible threads, roughly ordered by readiness:
 
-### A. Real Stage 2a engagement (highest unlock value, externally gated)
+### A. Wave 2 build — start W3 (grant cycle migration)
 
-Pre-production blockers from S143/S144/S145 still standing:
+Highest unlock value, pilot-gating. The plan is at `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` § "Revised pilot timing." W3 deliverables:
 
-1. **End-to-end production engagement** — invite a real reviewer through Review Manager and exercise the Stage 2a flow in production. The smoke scripts (`scripts/find-stage2a-candidates.js`, `inspect-stage2a-state.js`, `reset-stage2a-state.js`) cover offline test cases; this is the first real-cycle run.
-2. **COI policy body wording** — editor is live (`/admin` Policies section). When the staff feedback meeting yields wording, publish a new `wmkf_policyversion` via the form. Atlas page `docs/atlas/dataverse-wmkf-policy-and-policy-version.md` documents the immutability rules.
-3. **Dataverse security role** — restrict delete privilege on `wmkf_policy` and `wmkf_policyversion` to a small admin role. Referential `Restrict` cascade catches the worst case at the DB level; role config is the second layer.
+1. Patch `lib/dataverse/schema/wave2/wmkf_app_grant_cycle.json` to add 3 missing fields (`wmkf_ShortCode`, `wmkf_ProgramName`, `wmkf_CustomFields`); re-run `apply-dataverse-schema.js`.
+2. Verify `wmkf_shortcode` alt-key uniqueness.
+3. Decide `WAVE2_BACKEND_*` Option A (flags) vs Option B (hard cutover).
+4. Rewrite `pages/api/reviewer-finder/grant-cycles.js` against `wmkf_appgrantcycle` (full scope: `grant_cycles` + the file's `proposal_searches` + `reviewer_suggestions` reads).
+5. Rewrite `pages/api/review-manager/{render-emails,send-emails}.js` `loadCycleConfigs()` paths against Dataverse.
+6. Backfill `grant_cycles` data into `wmkf_appgrantcycle`.
 
-### B. Wave 1 retirement (externally gated)
+### B. Stage 2a real-cycle engagement (externally gated)
 
-**B. Wave 1 retirement — CLOSED 2026-05-12 (S146).** Postgres tables dropped via `lib/db/migrations/007_drop_wave1_tables.sql`. Dispatcher defaults in `lib/services/{settings,app-access,database}-service.js` flipped to Dataverse. Single deferred tail item: revert temp role elevations on prod app user — held through intake-portal pilot iteration per Justin's 2026-05-11 policy call. See `project_wave1_pending.md`.
+COI policy body wording (placeholder still in active row) + first production engagement against a real reviewer cycle. Editor is live at `/admin` Policies.
 
-### C. Proposal Context Extraction field-set extension (S, design-only)
+### C. Connor sync — Wave 2 + intake portal
 
-Extend `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md` with the 21 proposed AI fields. Plan at `docs/PROPOSAL_CONTEXT_EXTRACTION_PLAN.md`. ~1-2 hrs.
+Open items: `WAVE2_BACKEND_*` Option A vs B (Justin can decide alone but worth Connor input); intake-portal pilot decisions for the Sarah field-inventory session; revert temp role elevations timing.
 
-### D. Retrospective Analysis Gap 1 — historical-request picker (M)
+### D. Wave 2 post-pilot enhancements
 
-Build the cycle/program/status filter UI with SharePoint folder auto-resolve. Plan at `docs/RETROSPECTIVE_ANALYSIS_PLAN.md`. ~4-6 hrs.
+History badges UI, `add-candidate-manual` endpoint + UI, match-on-discovery wiring, contact form subgrid (Connor). Explicitly out of pilot critical path.
 
-### E. Connor's PA-side ExecutePrompt (externally gated)
+### E. Smaller carry-forward items
 
-When it lands, run the parity oracle from both sides.
+- IRS tax-exempt verification (memory entry; not yet scheduled).
+- Dataverse rewrite of `rotate-encryption-key.js` (archived; CREDENTIALS_RUNBOOK references pending tooling).
+- Atlas spot-check on `policy_publish_audit` index entry (Codex F15 — minor, deferred).
 
-### F. Cleanup follow-ups from S145
-
-- Hard-delete the three Lorem-ipsum `wmkf_policyversion` rows on `reviewer-coi` via Dynamics maker portal (purely cosmetic).
-- If/when `wmkf_ai_prompt` editor becomes useful, extract the `VersionedContentEditor` abstraction Codex round-2 said to defer — same pattern as PoliciesSection but with `activationMode: 'currentFlag'`.
-
-## Key files modified or added (S145)
+## Key files modified or added (S146)
 
 | File | Status | Purpose |
 |---|---|---|
-| `lib/services/model-resolver.js` | NEW | Tier → concrete id resolver; `/v1/models` cache with 24h TTL + static fallback |
-| `shared/config/baseConfig.js` | MODIFIED | `APP_MODELS` tier-keyed; injected resolver |
-| `lib/services/model-override-loader.js` | MODIFIED | Warms model cache alongside override cache |
-| `lib/services/execute-prompt.js` | MODIFIED | `callClaude` resolves prompt-row `wmkf_ai_model` before sending; audit rows log resolved id |
-| `pages/api/admin/models.js` | MODIFIED | Returns tier catalog; validates tier-or-claude-* on PUT; force-refresh query param |
-| `shared/utils/modelNames.js` | MODIFIED | Tier display names |
-| `pages/api/admin/policies.js` | NEW | GET (list slots) + POST (publish new version) |
-| `pages/api/admin/users.js` | NEW | DELETE soft-archive (sets is_active=false) |
-| `shared/components/admin/PoliciesSection.js` | NEW | Policy editor UI |
-| `shared/utils/policy-markdown.js` | NEW | marked + DOMPurify pipeline (renderer + validator) |
-| `tests/unit/policy-markdown.test.js` | NEW | 17 cases for markdown pipeline |
-| `lib/dataverse/schema/wave3/05_wmkf_policyversion_altkey.json` | NEW | Alt key manifest (deployed prod 2026-05-10) |
-| `lib/db/migrations/006_policy_publish_audit.sql` | NEW | Audit table migration (V28 in setup-database.js) |
-| `scripts/probe-policyversion-statecodes.mjs` | NEW | One-time metadata probe for statecode integers |
-| `pages/admin.js` | MODIFIED | `CollapsibleCard` wrapper, section refactors, Remove button, 1-day usage period |
-| `pages/api/admin/stats.js` | MODIFIED | Accepts `?period=1d` |
-| `pages/api/cron/{health-check,secret-check,log-analysis}.js` | MODIFIED | Record runs in `maintenance_runs` |
-| `docs/atlas/dataverse-wmkf-policy-and-policy-version.md` | MODIFIED | Write-paths section + statecode invariant + alt-key entry |
-| `docs/API_ROUTE_SECURITY_MATRIX.md` | MODIFIED | `/api/admin/policies` + `/api/admin/users` entries |
-| `CLAUDE.md` | MODIFIED | `policy_publish_audit` row in DB schema table |
-| `DEVELOPMENT_LOG.md` | MODIFIED | S145 milestone entry |
+| `lib/db/migrations/007_drop_wave1_tables.sql` | NEW | Drop migration with pre-flight DO-block guards anchored to 2026-05-12 reconciliation baseline + Neon recovery procedure in header |
+| `scripts/wave1-drop-preflight.js` | NEW | Live catalog probes (FK/view/policy/trigger/grant), PG vs DV count parity, recent-writes anchor, git-log evidence for risky scripts |
+| `scripts/archive/` | NEW DIR | 5 historical scripts + README explaining each |
+| `scripts/setup-database.js` | MODIFIED | Wave 1 create blocks removed (V10 user_preferences, V16, V17, V22 runner) |
+| `lib/services/{settings,app-access,database}-service.js` | MODIFIED | Dispatcher defaults flipped from postgres to dataverse |
+| `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` | MODIFIED | Rebuilt against live code; 9-file drain-target inventory; Option A/B framing; W3-W7 schedule; Codex-verified |
+| `docs/atlas/postgres-infra-tables.md` | MODIFIED | Wave 1 entries marked RETIRED 2026-05-12 |
+| `docs/APPLICATION_STATE_ATLAS.md` | MODIFIED | Service inventory rows + Postgres-tables index |
+| `docs/SECURITY_ARCHITECTURE.md` | MODIFIED | Top-of-doc Wave 1 banner + §5.4 column names + §5.6 scoping table rewrite + stubbed-Dynamics correction + 14→16 app count |
+| `docs/CREDENTIALS_RUNBOOK.md` | MODIFIED | Wave 1 flag defaults + SQL example → service-module usage + rotation-tool pending-rewrite note |
+| `docs/API_ROUTE_SECURITY_MATRIX.md` | MODIFIED | 6 rows updated for Dataverse persistence |
+| `CLAUDE.md` | MODIFIED | Wave 1 retired in Schema table + service inventory + env-var description |
+| `.claude-memory/feedback_thoroughness_default.md` | NEW | Workflow-default rule encoding |
+| `.claude-memory/project_irs_exempt_verification.md` | NEW | Planned capability design |
+| `.claude-memory/project_wave1_pending.md` | REWRITTEN | Closeout state |
 
 ## Testing
 
@@ -122,26 +134,18 @@ When it lands, run the parity oracle from both sides.
 npm run check:atlas
 npm run check:atlas:self-test
 npm run check:api-routes
-npm run check:doc-currency
-npm run check:doc-currency:self-test
 
 # Build
 npm run build
 
-# Markdown pipeline tests (jsdom env required, set by header in test file)
-npx jest tests/unit/policy-markdown.test.js
+# Wave 1 preflight (idempotent, blocks if anything's regressed)
+node scripts/wave1-drop-preflight.js
 
-# Executor unit tests (still pass after model-resolver wiring)
-npx jest tests/unit/execute-prompt-multi-output.test.js
-
-# Manual: /admin Policies section → publish a new version on a slot.
-# Failure-mode tests covered:
-#   invalid_body  — paste raw <script> or javascript: link
-#   label_conflict — reuse existing label with different content (now shows
-#                    per-field ✓/✗ marks identifying the differing field)
-#   already_published — Prefill from active version → Publish
+# Dispatcher behavior verification — set WAVE1_BACKEND_*=postgres in dev env
+# and confirm settings-service / app-access-service throw "relation does not
+# exist." This is the loud-failure behavior the dispatcher flip enables.
 ```
 
 ## Carryover hygiene
 
-No destructive carryover items in S146. The Lorem-ipsum cleanup under F is additive (hard-delete unreferenced rows via Dynamics maker portal); only acts on rows that are guaranteed unreferenced because they were created during testing.
+The single deferred item — **revert temp role elevations on prod app user** — is destructive in the sense that it changes Connor-granted privileges. Per Justin's 2026-05-11 policy call, **deferred through pilot iteration** so Connor doesn't need to re-add the role for every pilot schema batch. Don't act on it without re-confirming with Justin. See `project_wave1_pending.md` for the resequencing trigger (post-mid-June pilot, schema settling).
