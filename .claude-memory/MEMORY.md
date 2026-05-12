@@ -16,6 +16,9 @@
 - [Wave 1 pending follow-ups](project_wave1_pending.md) — prod cutover done 2026-04-24; two TODO: flip Vercel flags per `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md`; remove temp role elevations per `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md`
 - [Automated onboarding design](project_wave1_onboarding.md) — zero-touch first-login provisioning via NextAuth callback; build after flags flip, not before
 
+## Planned Capabilities
+- [IRS tax-exempt verification](project_irs_exempt_verification.md) — bulk CSVs in Postgres, PA→Vercel lookup endpoint, verified result written back to Dynamics `account`. Reframes Postgres as reference-data layer, not Dynamics on-ramp.
+
 ## Strategic Direction
 - See `docs/STRATEGY.md` for full strategy and [project_strategy_direction.md](memory/project_strategy_direction.md) for key decisions
 - **Minimize reliance on AkoyaGO**, don't plan to replace — vendor/licensing dependency unresolved
