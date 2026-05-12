@@ -60,8 +60,10 @@ Aggregate client-side by the expanded `akoya_requestnum`.
 5. Surface the unmatchable bucket **broken out by class AND cycle**. The DOCUMENTED expected unmatchables (8 J26 rows per `W4_ANOMALY_TRIAGE.md`) and any NEWLY-OBSERVED unmatchables are reported separately. A new unmatchable that didn't exist at the Day-1 baseline is a NEW signal that the gate must surface — not silently absorb.
 6. Summary block:
    - Total active-cycle drift = sum of |delta| across matchable rows
+   - **PG-side excess** = sum of positive deltas (matchable PG rows without a DV counterpart — cutover-loss risk)
+   - **DV-side excess** = sum of negative deltas (DV ahead of PG — normal post-W1 native writes; informational only)
    - Unmatchable count: documented baseline N=8 (as of 2026-05-12) vs. observed today
-   - Verdict: PASS if active-cycle drift == 0 AND observed unmatchable count ≤ documented baseline; FAIL if drift > 0 OR new unmatchables appeared
+   - Verdict (refined post-Day-2-build): PASS if **PG-side excess** ≤ threshold AND observed unmatchable count ≤ documented baseline; FAIL otherwise. **The plan's "0 rows drift" wording is refined to "0 PG-side excess"** — strict-symmetric drift is operationally impossible post-W1 cutover since `save-candidates.js` writes DV-only; DV will always have rows PG doesn't.
 
 **"8" is a 2026-05-12 baseline value, not a fixed expected constant.** A future run that observes 7 unmatchables is fine (one got fixed somehow); a run that observes 9 unmatchables is a NEW anomaly requiring triage and a doc update.
 
