@@ -53,7 +53,7 @@ Every application file holding a live Postgres read/write against a Wave 2 drain
 
 ## What this doc supersedes
 
-The Wave 2 spec in `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md` (Session 106) was written assuming a **researcher-pool model** (free-standing `wmkf_app_researcher` rows accumulated across cycles, optional `wmkf_contact` lookup at promotion). What got actually built is different: a **per-proposal 1:1 sidecar model** (`wmkf_appresearcher` exists 1:1 with `wmkf_potentialreviewer`, scoped to specific proposal slots).
+The Wave 2 spec in `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md` (Session 106) was written assuming a **researcher-pool model** (free-standing `wmkf_app_researcher` rows accumulated across cycles, optional `wmkf_contact` lookup at promotion). What got actually built is different: a **1:1 sidecar model** — `wmkf_appresearcher` exists 1:1 with `wmkf_potentialreviewer`, which is itself a global per-person row keyed on email. See §"Data model: 1:1 sidecar" below for the authoritative cardinality definition.
 
 Connor (2026-05-06) confirmed the underlying intuition: researcher rows are **cycle-bounded transient candidate scratch**, not a permanent bibliometric pool. The 1:1 model coincidentally got this right. This doc operationalizes the migration around that ground truth.
 
@@ -227,7 +227,7 @@ The reviewer-history surface for a contact is `wmkf_appreviewersuggestion` rows 
 - Review form responses: `wmkf_ReviewerAffiliation`, `wmkf_ReviewerImpact`, `wmkf_ReviewerRisk`, `wmkf_ReviewerOverallRating` (with sentinel `99 = unable to answer` on each picklist)
 
 **Implications:**
-- The "engagement predicate" for the cleanup cron reads signals from both sides: (a) suggestion-side signals on `wmkf_appreviewersuggestion` (`wmkf_ExternalTokenIssued`, `wmkf_ProposalFirstAccessed`, any review-form picklist, `wmkf_emailsentat`, `wmkf_responsetype`); and (b) slot-side signals on `wmkf_potentialreviewer` (`wmkf_contact` populated indicates the person was promoted to a contact at some point — a cross-proposal "this person is engaged with us" signal). The keep decision is the union of both — see §"Engaged predicate" below for the full enumerated signal list. Cleanup acts on suggestion rows; the slot itself is never deleted by the cron.
+- The "engagement predicate" for the cleanup cron reads signals from both sides: (a) suggestion-side signals on `wmkf_appreviewersuggestion` (`wmkf_ExternalTokenIssued`, `wmkf_ProposalFirstAccessed`, any review-form picklist, `wmkf_emailsentat`, `wmkf_responsetype`); and (b) slot-side signals on `wmkf_potentialreviewer` (`wmkf_contact` populated indicates the person was promoted to a contact at some point — a cross-proposal "this person is engaged with us" signal). The keep decision is the union of both — see §"Engaged predicate" above for the full enumerated signal list. Cleanup acts on suggestion rows; the slot itself is never deleted by the cron.
 - Match-on-discovery's "reviewer history" lookup walks `wmkf_appreviewersuggestion` rows linked through the slot's contact, not just `wmkf_potentialreviewer` rows. The richer suggestion fields (overall rating, response time derived from issued vs. first-accessed) are what surface in the history modal.
 - **Net-new columns to add to extensions** (locked S136 2026-05-06):
   - `wmkf_DeclineReason` — multi-line text, optional. Captured at decline-time (magic-link landing page; or staff-entered if reviewer told us by email).
