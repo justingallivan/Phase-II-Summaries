@@ -704,30 +704,32 @@ User-provided API keys (Claude, ORCID, NCBI, SerpAPI) are stored encrypted:
 | **Auth tag** | 16 bytes (integrity verification) |
 | **Key source** | `USER_PREFS_ENCRYPTION_KEY` env var (64-char hex = 32 bytes) |
 | **Key derivation** | Direct hex decode if 64-char hex; otherwise SHA-256 hash to 32 bytes |
-| **Storage format** | Base64(IV &#124;&#124; AuthTag &#124;&#124; Ciphertext) in `user_preferences.preference_value` |
+| **Storage format** | Base64(IV &#124;&#124; AuthTag &#124;&#124; Ciphertext) in `wmkf_appuserpreferences.wmkf_preferencevalue` (Dataverse). Postgres `user_preferences.preference_value` was retired 2026-05-12. |
 | **Encrypted keys** | `api_key_claude`, `api_key_orcid_client_id`, `api_key_orcid_client_secret`, `api_key_ncbi`, `api_key_serp` |
-| **Flag** | `user_preferences.is_encrypted = true` marks encrypted rows |
+| **Flag** | `wmkf_appuserpreferences.wmkf_isencrypted = true` marks encrypted rows |
 | **Masking** | Display uses `maskValue()` — shows first 3 and last 3 characters only |
 | **Production guard** | `getEncryptionKey()` throws if `USER_PREFS_ENCRYPTION_KEY` is unset in production |
 | **Dev fallback** | SHA-256 of `'dev-fallback-key-not-for-production'` with console warning |
 
 ### 5.6 User Data Scoping
 
-| Table | Scoping | Mechanism |
-|-------|---------|-----------|
-| `user_preferences` | Per-user | `WHERE user_profile_id = ?` with CASCADE DELETE |
-| `user_app_access` | Per-user | `WHERE user_profile_id = ?` with CASCADE DELETE |
-| `proposal_searches` | Per-user | `WHERE user_profile_id = ?` (SET NULL on profile delete) |
-| `reviewer_suggestions` | Per-user | `WHERE user_profile_id = ?` (SET NULL on profile delete) |
-| `integrity_screenings` | Per-user | `WHERE user_profile_id = ?` |
-| `screening_dismissals` | Indirect per-user | FK to `integrity_screenings`; API does not enforce ownership check on `screeningId` — see note below |
-| `dynamics_query_log` | Per-user | `WHERE user_profile_id = ?` |
-| `api_usage_log` | Per-user | `WHERE user_profile_id = ?` |
-| `researchers` | Shared | All users see same pool |
-| `publications` | Shared | Linked to researchers |
-| `grant_cycles` | Shared | Organization-wide |
-| `retractions` | Shared | Read-only import |
-| `system_settings` | Global | Superuser-managed model overrides |
+Postgres-resident entities scope per-user via `user_profile_id` foreign key. Wave 1 Dataverse-resident entities scope via the `_wmkf_user_value` lookup to `user_profiles`'s Dataverse counterpart (system user) or via `_ownerid_value` for User-owned rows. The dispatcher services (`lib/services/{settings,app-access,database}-service.js`) apply the appropriate scoping per backend.
+
+| Entity | Backend | Scoping | Mechanism |
+|--------|---------|---------|-----------|
+| `wmkf_appuserpreferences` | Dataverse | Per-user | User-owned (`ownerid`); cascade follows Dataverse relationship config |
+| `wmkf_appuserappaccesses` | Dataverse | Per-user | `_wmkf_user_value` lookup to system user |
+| `wmkf_appsystemsettings` | Dataverse | Global | Superuser-managed model overrides + secret-expiration metadata |
+| `proposal_searches` | Postgres | Per-user | `WHERE user_profile_id = ?` (SET NULL on profile delete) |
+| `reviewer_suggestions` | Postgres | Per-user | `WHERE user_profile_id = ?` (SET NULL on profile delete) |
+| `integrity_screenings` | Postgres | Per-user | `WHERE user_profile_id = ?` |
+| `screening_dismissals` | Postgres | Indirect per-user | FK to `integrity_screenings`; API does not enforce ownership check on `screeningId` — see note below |
+| `dynamics_query_log` | Postgres | Per-user | `WHERE user_profile_id = ?` |
+| `api_usage_log` | Postgres | Per-user | `WHERE user_profile_id = ?` |
+| `researchers` | Postgres | Shared | All users see same pool |
+| `publications` | Postgres | Shared | Linked to researchers |
+| `grant_cycles` | Postgres | Shared | Organization-wide |
+| `retractions` | Postgres | Shared | Read-only import |
 
 **Note on `screening_dismissals`:** This table has no direct `user_profile_id` column — it references `screening_id` (FK to `integrity_screenings`). The `/api/integrity-screener/dismiss` endpoint does not verify that the `screeningId` belongs to the authenticated user before creating or reading dismissals. An authenticated user with `integrity-screener` access could dismiss matches on another user's screening by enumerating `screeningId` values. Low risk (all users share the same dismissal intent for false positives), but should be hardened for defense-in-depth.
 
@@ -810,7 +812,7 @@ Token stays in tokenCache until function instance recycles
 
 **Timeout:** 30 seconds per request.
 
-**Operations:** Primarily read-only. Generic write operations (`createRecord`, `updateRecord`) are stubbed and throw errors. The exception is email activity operations: `createEmailActivity`, `addEmailAttachment`, `sendEmail`, and `createAndSendEmail` are functional and create/send email records in Dynamics CRM for reviewer invitation workflows. These require the "Email Sender" security role on the service principal (currently pending IT action — see C3).
+**Operations:** Read-and-write. Generic `createRecord` / `updateRecord` are implemented in `lib/services/dynamics-service.js` and used across the codebase. Write privileges on the service principal were granted and verified 2026-04-14. Specific write paths include reviewer-suggestion lifecycle updates, AI run audit rows (`wmkf_ai_run`), AI field writeback on `akoya_request` (Field Sets A/B/C/D + workflow-chaining fields, deployed 2026-05-07), policy publish flow (`wmkf_policy` / `wmkf_policyversion`, S145), and email activity operations (`createEmailActivity`, `addEmailAttachment`, `sendEmail`, `createAndSendEmail`).
 
 **Query safety limits:**
 - `$top` capped at 100 records per query
@@ -1027,7 +1029,7 @@ All new server-side outbound HTTP requests should use `safeFetch` from `lib/util
 | **Dynamics RBAC** | `superuser` / `read_only` / `read_write` roles with table/field restrictions |
 | **Dynamics restriction enforcement** | Dual-layer: chat handler (user-facing) + DynamicsService (defense-in-depth) |
 | **Dynamics audit trail** | Every CRM query logged with user, session, parameters, timing |
-| **Dynamics read-only** | Write operations disabled (stubbed with error) |
+| **Dynamics write access** | Granted + verified 2026-04-14. Generic write paths active; specific writes are auditable via `wmkf_ai_run` rows for AI-driven writes and `policy_publish_audit` for policy publishes. |
 | **Upload auth** | File uploads require authenticated session |
 | **Blob proxy auth** | Blob downloads require authenticated session + URL validation |
 | **Admin endpoints** | Superuser-only access enforced in-handler for admin stats, model management, role management, and app access management |
@@ -1049,7 +1051,7 @@ All new server-side outbound HTTP requests should use `safeFetch` from `lib/util
 |-----------|--------|
 | **Table** | `api_usage_log` |
 | **Fields** | user_profile_id, app_name, model, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, estimated_cost_cents, latency_ms, request_status, error_message |
-| **Scope** | All Claude API calls across all 14 apps |
+| **Scope** | All Claude API calls across all apps (currently 16 in `shared/config/appRegistry.js`) |
 | **Admin dashboard** | `/admin` — aggregated usage stats, per-app breakdowns, cost tracking (superuser only) |
 | **Non-blocking** | Logging failures do not affect API response |
 
@@ -1200,9 +1202,9 @@ All new server-side outbound HTTP requests should use `safeFetch` from `lib/util
 
 #### L2: No Encryption Key Rotation Mechanism — REMEDIATED
 
-**Finding:** There is no documented process for rotating `USER_PREFS_ENCRYPTION_KEY`. Rotation would require re-encrypting all values in the `user_preferences` table.
+**Finding:** There is no current automated tooling to rotate `USER_PREFS_ENCRYPTION_KEY`. Rotation requires re-encrypting all values where `wmkf_isencrypted=true` in Dataverse `wmkf_appuserpreferences`.
 
-**Remediation:** `scripts/rotate-encryption-key.js` provides a CLI tool for key rotation. The script decrypts all encrypted `user_preferences` rows with the old key, re-encrypts with the new key, and verifies each round-trip before committing. Supports `--dry-run` for preview and `--generate-key` for new key generation. After running, update `USER_PREFS_ENCRYPTION_KEY` in Vercel and redeploy. Secret expiration tracking in the admin dashboard and daily cron alerts provide rotation reminders.
+**Status (2026-05-12):** The legacy CLI `scripts/rotate-encryption-key.js` operated against the Postgres `user_preferences` table and was archived to `scripts/archive/` when the Wave 1 tables were dropped. A Dataverse rewrite is pending; see `docs/CREDENTIALS_RUNBOOK.md` "Pending tooling" note. Manual rotation procedure: read all encrypted rows via the Dataverse adapter, decrypt with old key, re-encrypt with new key, PATCH back via the dispatcher. Secret expiration tracking in the admin dashboard and daily cron alerts still provide rotation reminders.
 
 #### L3: Dynamics Audit Log Unbounded Growth — REMEDIATED
 
@@ -1270,7 +1272,7 @@ All new server-side outbound HTTP requests should use `safeFetch` from `lib/util
 
 #### L10: API Usage Log Unbounded Growth — REMEDIATED
 
-**Finding:** `api_usage_log` grows with every Claude API call across all 14 apps and has no archival or cleanup mechanism.
+**Finding:** `api_usage_log` grows with every Claude API call across all apps (16 in current registry) and has no archival or cleanup mechanism.
 
 **Remediation:** Daily maintenance cron (`/api/cron/maintenance`) runs `MaintenanceService.cleanupUsageLog()` to delete records older than the configured retention period (default 90 days). Retention is configurable via `system_settings` table.
 

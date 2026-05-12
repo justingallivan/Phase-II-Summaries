@@ -117,14 +117,9 @@ Write (verified 2026-05-07):
 
 Postgres `reviewer_suggestions` (337 rows) is parity at ~97.6% per S136 probe (`scripts/backfill-reviewer-suggestions-parity.js`). Cutover plan retires the Postgres table and switches all readers/writers to this entity.
 
-## Planned schema additions (locked S136) [ASSUMED — per `project_reviewer_postgres_to_dataverse_migration.md`]
+## Schema additions — DEPLOYED 2026-05-09 (S143 Stage 2a slice 1)
 
-> **Memory correction (2026-05-07, R5 stress-test):** the locked-S136 list named two fields, but **only `wmkf_DeclineReason` is actually new.** `wmkf_responsereceivedat` is already deployed (verified 2026-05-07 via metadata probe and adapter `FIELD_SELECT` line 27). The migration plan needs to drop the second item.
-
-Field locked for addition:
-- `wmkf_DeclineReason` (Memo/text) — capture why a reviewer declined; replaces free-form `wmkf_notes` for that purpose
-
-Apply via `apply-dataverse-schema.js` before backfill ships. Verify with a metadata probe after deployment.
+`wmkf_declinereason` (Memo, max 2000) — captures why a reviewer declined, replacing free-form `wmkf_notes` for that purpose. Deployed alongside the rest of the Stage 2a slice 1 additions (see the "Stage 2a slice 1 additions" section above for the full field list). The locked-S136 plan originally named two fields; `wmkf_responsereceivedat` turned out to already exist (R5 stress-test 2026-05-07), so only `wmkf_declinereason` was new.
 
 ## Token lifecycle (live, per `project_external_reviewer_file_access.md`)
 

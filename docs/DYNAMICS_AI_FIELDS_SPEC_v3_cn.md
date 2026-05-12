@@ -1,7 +1,7 @@
 # Dynamics Custom Fields for AI Output — Implementation Spec
 
 **Author:** Connor
-**Status:** v3 — `wmkf_ai_run` table, Field Sets A & C, Choices, and permissions live in Dynamics. **Field Set B cleared to build 2026-05-07** (Connor); skeleton creation pending under delegated creator privileges.
+**Status:** v3 — `wmkf_ai_run` table, Field Sets A / B / C / D + workflow-chaining fields, Choices, and permissions all live in Dynamics. Set B deployed 2026-05-07 (28 fields total in that batch); see `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` for the canonical field list.
 **Date:** 2026-04-14
 **Based on:** Justin's v2 spec (`input/DYNAMICS_AI_FIELDS_SPEC.md`)
 
@@ -203,8 +203,9 @@ Sample JSON for `wmkf_ai_reportgoalsassessment`:
 1. ~~`wmkf_ai_run` child table + Choices~~ — **Done** (2026-04-14)
 2. ~~Field Set A — Proposal Intake Summary~~ — **Done** (2026-04-14)
 3. ~~Field Set C — Compliance Check~~ — **Done** (2026-04-14)
-4. Field Set B — **On hold** (pending staff review)
-5. Field Set D — no field work needed, just the write permission grant
+4. ~~Field Set B — Grant Report~~ — **Done** (deployed 2026-05-07; 22 fields on `akoya_request`; see `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` for the field list. Wiring `pages/api/grant-reporting/extract.js` to write the flat fields is a follow-up.)
+5. ~~Field Set D — write permission grant~~ — **Done** (verified 2026-04-14)
+6. ~~Workflow-chaining fields~~ — **Done** (deployed alongside Set B on 2026-05-07: `wmkf_ai_keywords`, `wmkf_ai_methodologies`, `wmkf_ai_riskflags`, `wmkf_ai_teaminfo`, `wmkf_ai_budgetsummary`, `wmkf_ai_timeline`)
 
 ---
 
@@ -230,7 +231,7 @@ Verification and Connor follow-up after the v3 hand-off.
 
 | Item | Resolution |
 |------|------------|
-| Field Set B (Grant Report) hold | Reporting scope still needs input from staff beyond Connor. No timeline; the Grant Reporting app will continue running without CRM writeback until Set B is unblocked. |
+| Field Set B (Grant Report) | Cleared 2026-05-07; deployed alongside workflow-chaining fields the same day. 22 fields on `akoya_request` (8 counts, 7 multi-line text, 6 publication fields, 1 choice). Wiring `grant-reporting/extract.js` to write the flat fields is the remaining follow-up. |
 | Duplicate `wmkf__ai_summary` field (double underscore) on `akoya_request` | Confirmed as a mistake. Connor will delete it. Canonical field is `wmkf_ai_summary` (single underscore). |
 | `wmkf_ai_rundatetime` on `wmkf_ai_run` | Connor created it but it's vestigial. Apps should use the built-in `createdon` column as stated in the main v3 doc. Do **not** write to `wmkf_ai_rundatetime`. |
 

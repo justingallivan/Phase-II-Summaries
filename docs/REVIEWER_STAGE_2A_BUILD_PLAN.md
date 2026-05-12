@@ -80,9 +80,9 @@ This collapses the three-row truth problem: contact-shaped state lives on the su
 | `wmkf_proposalfirstaccessed` (DateTime) | Already stamped by `/api/external/review/[token]/context.js` on first GET; treat as the page-visit audit |
 | `wmkf_reviewstatus` (Picklist) | Read-only at Stage 2a; advances to `materials_sent` later in the journey, which gates reversibility (see §7 state-machine) |
 
-### Field locked for addition before Stage 2a (S136 plan, not yet deployed)
+### Field deployed alongside Stage 2a slice 1 (2026-05-09)
 
-- `wmkf_DeclineReason` (Memo/text) — already locked per `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`. Stage 2a uses this for the freeform decline-reason follow-up. Apply via `apply-dataverse-schema.js` if not yet deployed when slice 1 starts.
+- `wmkf_declinereason` (Memo, max 2000) — DEPLOYED 2026-05-09 as part of the Stage 2a slice 1 schema batch. Captures the freeform decline-reason follow-up. See the deployed-field list in `docs/atlas/dataverse-wmkf-appreviewersuggestion.md`.
 
 ### New fields on `wmkf_appreviewersuggestions`
 
@@ -121,7 +121,7 @@ Stage 2a relies on three layers of audit, each scoped to a different event class
 | Submitted contact-correction values | The new engagement-scope fields above (`wmkf_reviewerfirstname`, etc.) | Suggestion row |
 | Field-level before/after for corrections | Dataverse built-in entity audit on `wmkf_appreviewersuggestions` (verify it's enabled before slice 1; if not, enable per Connor's delegation memo) | Dataverse audit log |
 
-**Decision:** rely on Dataverse's native entity audit for field-level before/after rather than building a parallel `wmkf_reviewer_audit` entity. Reuses an existing capability, no new schema, staff-browsable in the same place as other entity audits. Confirm enablement on `wmkf_appreviewersuggestions` as a pre-build action.
+**Decision:** rely on Dataverse's native entity audit for field-level before/after rather than building a parallel `wmkf_reviewer_audit` entity. Reuses an existing capability, no new schema, staff-browsable in the same place as other entity audits. Native audit was enabled on `wmkf_appreviewersuggestion` via `scripts/enable-suggestion-audit.mjs` on 2026-05-09 as part of the slice 1 deploy.
 
 ---
 

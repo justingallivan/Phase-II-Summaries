@@ -1,10 +1,12 @@
-# Wave 1 — Vercel Flag Rollout (TODO)
+# Wave 1 — Vercel Flag Rollout (HISTORICAL — closed 2026-05-12)
 
-**What:** flip the three `WAVE1_BACKEND_*` env vars in Vercel one at a time to route reads/writes of the three Wave 1 tables from Postgres to Dataverse.
+**Status:** ✅ **CLOSED 2026-05-12.** This runbook is preserved as the historical record of how the flags were flipped and the trailing-newline gotcha that was caught + corrected. Do not follow it as a live procedure.
 
-**Status as of 2026-04-24:** all three default to `postgres`. App is unchanged. Prod Dataverse is a byte-for-byte shadow copy of Postgres, verified 66/66.
+- 2026-05-03 — three `WAVE1_BACKEND_*` env vars set to `dataverse` in Vercel prod after correcting a trailing-newline regression (see `Lessons learned` below).
+- 2026-05-12 — Postgres tables dropped via `lib/db/migrations/007_drop_wave1_tables.sql`; dispatcher defaults flipped to Dataverse in `lib/services/{settings,app-access,database}-service.js`.
+- **Postgres → Dataverse fallback no longer exists.** Setting `WAVE1_BACKEND_*=postgres` now routes to a dropped table and fails loudly. The flags persist only as an explicit-opt-out signal.
 
-**Who does this:** Justin, via Vercel dashboard or `vercel env` CLI.
+The rollout steps below describe the *original* per-flag flip sequence, retained for reference. The runbook is not actionable today.
 
 ---
 

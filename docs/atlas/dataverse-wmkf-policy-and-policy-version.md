@@ -62,7 +62,7 @@ The lookup chain (engagement → version → parent slot) preserves the exact po
 
 ## Write paths
 
-- **`POST /api/admin/policies` — Publish new version** (S145). Single application write path; staff-driven via `/admin` Policies section. Implementation in `pages/api/admin/policies.js`. Server-side allowlist restricts visible/writable slot codes (currently just `reviewer-coi`). Flow:
+- **`POST /api/admin/policies` — Publish new version** (S145). Single application write path; staff-driven via `/admin` Policies section. Implementation in `pages/api/admin/policies.js`. Server-side allowlist (`VISIBLE_SLOT_CODES` at line 42) restricts visible/writable slot codes to `reviewer-coi` and `reviewer-ai-use`. Flow:
   1. Validate inputs (allowlist, lengths, date format, markdown via `shared/utils/policy-markdown.js`).
   2. Write a `pending` row to `policy_publish_audit` (Postgres, see migration `006_policy_publish_audit.sql`). Hard-abort on audit-write failure — audit availability is a precondition.
   3. Resolve parent slot by code; fail loud on 0 or >1 rows (`slot_not_provisioned` / `duplicate_slot_rows`).

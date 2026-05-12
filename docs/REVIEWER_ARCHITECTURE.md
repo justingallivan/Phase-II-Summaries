@@ -70,4 +70,4 @@ When a reviewer is "assigned" to a proposal, they appear in both: a slot lookup 
 
 ## Today (Postgres) → Tomorrow (Dataverse) — same model
 
-The current Postgres schema (`researchers`, `reviewer_suggestions`, plus a flatter person concept) maps onto the same three-table shape. Wave 2 adapters are written but not yet wired into save-candidates. Cutover is the immediate next step; reads from `my-candidates` will repoint after writes are flowing.
+The current Postgres schema (`researchers`, `reviewer_suggestions`, plus a flatter person concept) maps onto the same three-table shape. Wave 2 adapters are live in `/api/reviewer-finder/save-candidates` (writes to Dataverse `wmkf_potentialreviewer`, `wmkf_appresearcher`, `wmkf_appreviewersuggestion`). The `/my-candidates` read path still routes through the legacy Postgres tables for browse/email/grant-cycles workflows; full drain to Dataverse is in progress per `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`.

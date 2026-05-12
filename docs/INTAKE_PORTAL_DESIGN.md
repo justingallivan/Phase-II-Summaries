@@ -539,7 +539,7 @@ New env var: `CLOUDMERSIVE_API_KEY`. Pilot uses the free tier; production cycle 
 | **Justin** | Build, design decisions, schema work | Continuous |
 | **Connor** | PA flows, schema review, AkoyaGO context, form requirements | Engaged now; reviews `wmkf_portal_membership` shape before creation; reviews any Phase 1+ schema work in full |
 | **Sarah** | Form field requirements, UI wishlist, machine-legible capture priorities | Engaged on return from conference; circle back once Connor has rough field inventory |
-| **DFT (IT)** | Entra tenant provisioning | Email sent 2026-05-04; everything blocks on response |
+| **DFT (IT)** | Entra tenant provisioning | DONE — tenant provisioned, foundation shipped S129. No further IT block. |
 | **Foundation staff (broader)** | Pilot dry-run, applicant communication for cycle | Engage 2-3 weeks before pilot launch (mid-May) |
 
 ---
@@ -570,7 +570,7 @@ The smokes shipped this session exercise primitives in isolation. Before opening
 - [ ] **EICAR test file** uploaded through the live path — confirm Cloudmersive flags it, confirm the draft surfaces `scan_result='infected'`, confirm the submit endpoint refuses the draft.
 - [ ] **Idempotent submit replay**: hit `/api/intake/submit` twice with the same idempotency key (DevTools → repeat last fetch). Confirm second call returns the existing job row, not a duplicate.
 - [ ] **End-to-end deadline rehearsal**: 5-10 concurrent submits at the staging URL with the actual `submission_jobs` drain running. Watch logs for 429s from Dynamics/Graph; confirm the queue drains cleanly and partial failures retry.
-- [ ] **Real Entra External ID sign-in flow** end-to-end (only possible once the IT request lands).
+- [x] **Real Entra External ID sign-in flow** end-to-end — verified S129 (`/apply` route round-trip).
 
 This list lives here, not in `scripts/`, because passing the smokes is necessary but not sufficient — production has CORS, auth headers, real network jitter, and Vercel's function runtime that local Node cannot replicate.
 
@@ -583,12 +583,12 @@ This list lives here, not in `scripts/`, because passing the smokes is necessary
 
 ---
 
-## Immediate next steps (in order)
+## Immediate next steps (in order, refreshed 2026-05-12)
 
-1. **Wait for IT response on Entra tenant.** Nothing portal-side ships without it.
-2. **Connor sync** — review `wmkf_portal_membership` shape; rough field inventory for Phase II Research form; confirm PA flow boundary; identify which "Phase II Pending" PA flows need updating to handle portal-originated submissions vs. GOapply-originated.
-3. **Sarah engagement** (on return from conference) — form wishlist, structured-vs-narrative tradeoffs per field, UI must-haves.
-4. **Schema work** — once Entra is ready and shape is reviewed, create the `wmkf_portal_membership` table and add the fields to `contact` and `akoya_request`.
-5. **`/apply` skeleton** — auth flow + dashboard + first form (`phase-ii-research-2026-06`) iteratively. Aim for end-to-end click-through (auth → dashboard → form → submit → land in Dynamics) before polishing any single screen.
+1. ~~**Wait for IT response on Entra tenant.**~~ Done — foundation shipped S129. `/apply` route auth round-trip verified.
+2. **Sarah session** — Phase II Research field inventory; structured-vs-narrative tradeoffs per field; UI must-haves. (Sarah is back from conference travel.)
+3. **Connor light-touch sync** — `wmkf_portal_membership` shape walkthrough (summary-after model per `project_dataverse_creator_privileges`); reviewer-consumable artifact decision; PA trigger confirmation; structured-tables persistence pattern.
+4. **Schema work** — under existing delegated authority, create `wmkf_portal_membership` + `contact.wmkf_portal_oid` + `akoya_request.wmkf_phaseiisubmittedat` / `wmkf_phaseiisubmittedby` + form fields. Catalog in `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md`.
+5. **Form module + `/apply` dashboard build-out** — first form (`phase-ii-research-2026-06`) iteratively. Aim for end-to-end click-through (auth → dashboard → form → submit → land in Dynamics) before polishing any single screen.
 
-Hard target: pilot accepting submissions by **2026-06-01** for the mid-June Phase II Research cycle. The IT timeline is the largest external slip risk; the launch-blocker list above (reviewer artifact, virus scanning, schema sign-off, field inventory, PA triggers) is the largest internal slip risk and is in our control.
+Hard target: pilot accepting submissions by **2026-06-01** for the mid-June Phase II Research cycle. The external (IT) blocker is resolved; remaining slip risk is the Sarah field inventory + Connor sync timing.

@@ -208,7 +208,7 @@ Initial alignment ratified in Session 132. Brief archived at `docs/archive/SECUR
 3. **`wmkf_ai_run` permission review** — kept as a watch item. Read access self-answered same day: in this Dataverse environment, staff have read access to all fields across all tables (per Justin). Watch item's "audience is staff-only" assumption confirmed; escalation threshold remains "non-staff role gains read access" (e.g. external contact, applicant tenant user).
 4. **PR-time AI matrix check** — kept as a soft prompt. CI gate revisited if drift accumulates over two consecutive monthly reviews, or if a contributor is onboarded.
 5. **Watch-item tracking** — matrix rows only. Promotion to GitHub issue only when an item's escalation threshold trips.
-6. **Next non-security priority** — intake portal institution/membership flow as primary thread for sessions 133+, with impersonation re-smoke as soon as Connor unblocks the Delegate role and Dynamics Explorer schema curation as a between-rocks palate cleanser.
+6. **Next non-security priority** — intake portal institution/membership flow as primary thread for sessions 133+. (Delegate role unblock and impersonation re-smoke both completed 2026-05-06; Dynamics Explorer schema curation remains a between-rocks palate cleanser.)
 
 ## Definition of Done For Future Security Work
 

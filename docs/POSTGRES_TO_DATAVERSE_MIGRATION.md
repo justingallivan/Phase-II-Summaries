@@ -240,12 +240,10 @@ Migration doesn't happen all at once. Wave 1 is fully specified below; later wav
 
 Why first: everything downstream looks back at `systemuser`. Get ownership and access-grant plumbing working before any data table moves.
 
-**Status (refreshed 2026-05-07):** prod cutover complete 2026-04-24 (Session 108). Dataverse is a verified byte-for-byte shadow of Postgres. Three feature flags (`WAVE1_BACKEND_SETTINGS`, `WAVE1_BACKEND_PREFS`, `WAVE1_BACKEND_APP_ACCESS`) gate the read/write path. **Flags flipped to `dataverse` on 2026-05-03** (after a 6-day silent-fallback gotcha — see `project_wave1_pending.md`). Live entity sets: `wmkf_appsystemsettings`, `wmkf_appuserpreferences`, `wmkf_appuserappaccesses`. 14-day stability clock started 2026-05-03 (earliest retirement 2026-05-17).
+**Status (refreshed 2026-05-12):** CLOSED. Prod cutover 2026-04-24, flags flipped to `dataverse` 2026-05-03 (after a 6-day silent-fallback gotcha — see `project_wave1_pending.md`), Postgres tables dropped 2026-05-12 via `lib/db/migrations/007_drop_wave1_tables.sql`. Live entity sets: `wmkf_appsystemsettings`, `wmkf_appuserpreferences`, `wmkf_appuserappaccesses`. Dispatcher services default to Dataverse; explicit `WAVE1_BACKEND_*=postgres` fails loudly. Neon PITR recovery window until 2026-05-19.
 
-**Outstanding follow-ups:**
-- ~~Flip the three flags one at a time~~ — done 2026-05-03.
-- Remove temp role elevations per `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md` — **deliberately held** until intake portal schema work lands (app user needs `prvCreateEntity`/`prvCreateAttribute` for new entity creation).
-- Drop the three Postgres tables once flags have been on `dataverse` for 14+ days without regression — earliest 2026-05-17.
+**Single deferred tail item:**
+- Remove temp role elevations per `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md` — **deliberately deferred** through the intake-portal pilot iteration (the app user needs `prvCreateEntity`/`prvCreateAttribute` for ongoing pilot schema work; reverting now would just force Connor to re-add the role every batch).
 
 ### Wave 2 — Reviewer Finder core
 `wmkf_app_researcher`, `wmkf_app_publication`, `wmkf_app_publication_author`, `wmkf_app_proposal_search`, `wmkf_app_reviewer_suggestion`, `wmkf_app_grant_cycle`

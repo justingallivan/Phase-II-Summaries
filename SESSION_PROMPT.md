@@ -8,7 +8,7 @@ Four commits on main, all pushed to origin. Two architectural deliveries plus an
 
 1. **Tier-keyed Claude model picker (`bc8a389`, `edcd6db`)**
    - `APP_MODELS` now stores tier keys (`opus`/`sonnet`/`haiku`) instead of dated ids. `lib/services/model-resolver.js` resolves to the latest concrete id by querying `/v1/models` (24h TTL) with a hand-maintained `TIER_FALLBACK_IDS` cold-start safety net.
-   - Concrete ids still pass through as an escape hatch (env vars, system_settings, prompt rows). Audit rows always log the resolved concrete id Anthropic actually ran.
+   - Concrete ids still pass through as an escape hatch (env vars, Dataverse `wmkf_appsystemsettings`, prompt rows). Audit rows always log the resolved concrete id Anthropic actually ran.
    - Admin picker rebuilt with grouped optgroups (Default / Tiers / Pin specific version), short labels, friendly app names, manual Refresh button.
    - `getModelDisplayName` handles tier strings.
 
@@ -52,7 +52,7 @@ None this session. Strategic conversation about AI-config vs data-admin scope wa
 
 - All five CI gates green: `check:atlas` (29 PG / 27 DV), `check:atlas:self-test` (11/11), `check:api-routes` (80 routes), `check:doc-currency`, `check:doc-currency:self-test`. Build green. Policy markdown unit tests 17/17.
 - Dataverse alt key `wmkf_policyversion_parent_label_unique` deployed live (2026-05-10). Postgres `policy_publish_audit` table live.
-- Wave 1 stability clock: 7 days from 2026-05-10 (originally 2026-05-17, now likely past). Re-verify before flipping flags.
+- Wave 1 CLOSED 2026-05-12. Postgres tables dropped. Dispatcher defaults flipped to Dataverse.
 - `reviewer-coi` slot currently has 3 retired Lorem-ipsum versions in history plus an active `2026-05-10-restore` row holding the original `[PLACEHOLDER]` body. Cleanup of the lorem-ipsum retired rows is optional cosmetic — they're unreferenced and can be hard-deleted via Dynamics admin UI when convenient. `reviewer-ai-use` also has a `2026-05-10-restore` row active with the original AI-use body lifted from the review form footer.
 - Stage 2a slice 1 production engagement against a real reviewer cycle is still outstanding. The COI body remains placeholder pending staff wording feedback.
 
@@ -70,7 +70,7 @@ Pre-production blockers from S143/S144/S145 still standing:
 
 ### B. Wave 1 retirement (externally gated)
 
-Stability clock expired (2026-05-17 was 7 days from S144 close on 2026-05-10). Flip `WAVE1_BACKEND_*` flags to `dataverse` per `docs/WAVE1_VERCEL_FLAG_ROLLOUT.md`, retire Postgres `system_settings` / `user_app_access` / `user_preferences`. Remove temp role elevations per `docs/WAVE1_REVERT_TEMP_ELEVATIONS.md`. Verify no regressions before deleting tables.
+**B. Wave 1 retirement — CLOSED 2026-05-12 (S146).** Postgres tables dropped via `lib/db/migrations/007_drop_wave1_tables.sql`. Dispatcher defaults in `lib/services/{settings,app-access,database}-service.js` flipped to Dataverse. Single deferred tail item: revert temp role elevations on prod app user — held through intake-portal pilot iteration per Justin's 2026-05-11 policy call. See `project_wave1_pending.md`.
 
 ### C. Proposal Context Extraction field-set extension (S, design-only)
 

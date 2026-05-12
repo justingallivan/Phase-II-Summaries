@@ -1,10 +1,6 @@
-# Wave 1 Production Cutover — Runbook for Connor
+# Wave 1 Production Cutover — Runbook for Connor (HISTORICAL — applied 2026-04-24)
 
-**What this is:** the end-of-sandbox summary and the three commands needed in prod.
-
-**Time needed from you:** ~5 minutes of terminal time, plus whatever you'd like to spend reviewing the diff.
-
-**Blast radius:** three new tables, 149 rows. Postgres stays authoritative during and after; this is additive only. No existing akoyaGO data touched.
+**Status:** ✅ Cutover applied 2026-04-24. Flag flip 2026-05-03. Postgres tables dropped 2026-05-12 via `lib/db/migrations/007_drop_wave1_tables.sql`. This runbook is the historical record of the cutover-day commands; verification queries against the dropped Postgres tables will fail. Do not run as a live procedure.
 
 ---
 
