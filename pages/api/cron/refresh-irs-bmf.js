@@ -38,12 +38,13 @@ export default async function handler(req, res) {
   if (!verifyCronSecret(req, res)) return;
 
   const dryRun = req.query?.dryRun === '1' || req.query?.dryRun === 'true';
+  const strict = req.query?.strict === '1' || req.query?.strict === 'true';
   const runId = await MaintenanceService.startRun(
     dryRun ? 'irs-bmf-refresh-dryrun' : 'irs-bmf-refresh',
   );
 
   try {
-    const stats = await refresh({ dryRun });
+    const stats = await refresh({ dryRun, strict });
 
     await MaintenanceService.completeRun(runId, {
       status: 'completed',

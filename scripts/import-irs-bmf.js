@@ -16,6 +16,8 @@
  * Usage:
  *   node scripts/import-irs-bmf.js              # dry-run (downloads + counts, no swap)
  *   node scripts/import-irs-bmf.js --commit     # real run (atomic swap to live)
+ *   node scripts/import-irs-bmf.js --strict     # fail if any rows skipped / duplicated
+ *   node scripts/import-irs-bmf.js --commit --strict   # combined
  *
  * Requires POSTGRES_URL in env (.env.local).
  */
@@ -39,15 +41,16 @@ if (existsSync(envPath)) {
 }
 
 const COMMIT = process.argv.includes('--commit');
+const STRICT = process.argv.includes('--strict');
 
 const { refresh } = await import('../lib/services/irs-bmf-service.js');
 
 console.log('# IRS BMF refresh');
-console.log(`Mode: ${COMMIT ? 'COMMIT (atomic swap to live)' : 'DRY-RUN (download + stage only)'}`);
+console.log(`Mode: ${COMMIT ? 'COMMIT (atomic swap to live)' : 'DRY-RUN (download + stage only)'}${STRICT ? ' [STRICT]' : ''}`);
 console.log(`Generated: ${new Date().toISOString()}\n`);
 
 try {
-  const stats = await refresh({ dryRun: !COMMIT });
+  const stats = await refresh({ dryRun: !COMMIT, strict: STRICT });
   console.log('\n## Results');
   let totalSkipped = 0;
   for (const [region, info] of Object.entries(stats.perRegion)) {
