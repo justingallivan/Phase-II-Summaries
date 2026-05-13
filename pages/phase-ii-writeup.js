@@ -6,8 +6,10 @@ import RequireAppAccess from '../shared/components/RequireAppAccess';
 import ErrorAlert from '../shared/components/ErrorAlert';
 import { useProfile } from '../shared/context/ProfileContext';
 import { parseSections } from '../shared/config/prompts/proposal-summarizer';
-import { renderAppMarkdown } from '../shared/utils/app-markdown';
 import { parseSseStream } from '../shared/utils/sse-stream';
+import Phase2FeedbackModal from '../shared/components/Phase2FeedbackModal';
+import Phase2WordExportModal from '../shared/components/Phase2WordExportModal';
+import Phase2QAModal from '../shared/components/Phase2QAModal';
 
 function ProposalSummarizer() {
   const { profileName } = useProfile();
@@ -552,324 +554,40 @@ function ProposalSummarizer() {
       )}
 
       {/* Q&A Side Panel */}
-      {showQAModal && (
-        <>
-          {/* Backdrop — light tint so main content stays readable */}
-          <div
-            className="fixed inset-0 bg-black bg-opacity-20 z-40 animate-fade-in"
-            onClick={() => { if (!isQAProcessing) { if (qaAbortRef.current) qaAbortRef.current.abort(); setShowQAModal(false); } }}
-          />
-          {/* Panel */}
-          <div className="fixed top-0 right-0 h-full w-[520px] max-w-[90vw] bg-white shadow-2xl z-50 flex flex-col animate-slide-in-right">
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
-              <div className="min-w-0 flex-1 mr-3">
-                <h2 className="text-sm font-semibold text-gray-900 truncate">Ask Questions</h2>
-                <p className="text-xs text-gray-500 truncate">{selectedFileForQA}</p>
-              </div>
-              <button
-                onClick={() => { if (qaAbortRef.current) qaAbortRef.current.abort(); setShowQAModal(false); }}
-                className="text-gray-400 hover:text-gray-600 p-1 rounded-md hover:bg-gray-200 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            {/* Messages */}
-            <div ref={qaChatRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-              {qaMessages.length === 0 && (
-                <div className="text-center text-gray-500 py-12">
-                  <p className="text-sm">Ask questions about this proposal.</p>
-                  <p className="text-xs text-gray-400 mt-1">Claude can search the web for PI publications, institutional context, and related research.</p>
-                </div>
-              )}
-              {qaMessages.map((msg, index) => {
-                if (msg.isThinking) {
-                  return (
-                    <div key={index} className="flex justify-start">
-                      <div className="bg-gray-100 text-gray-600 p-3 rounded-lg flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-400 border-t-transparent"></div>
-                        <span className="text-sm">{msg.thinkingText || 'Thinking...'}</span>
-                      </div>
-                    </div>
-                  );
-                }
-                return (
-                  <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] rounded-lg p-3 ${
-                      msg.role === 'user'
-                        ? 'bg-blue-600 text-white'
-                        : msg.isError
-                          ? 'bg-red-50 text-red-800 border border-red-200'
-                          : 'bg-gray-100 text-gray-900'
-                    }`}>
-                      {msg.role === 'user' ? (
-                        <div className="whitespace-pre-wrap text-sm">{msg.content}</div>
-                      ) : (
-                        <div className="text-sm" dangerouslySetInnerHTML={{ __html: renderAppMarkdown(msg.content) }} />
-                      )}
-                      {msg.isStreaming && <span className="inline-block w-2 h-4 bg-gray-400 ml-0.5 animate-pulse" />}
-                      {msg.sources && msg.sources.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-gray-200">
-                          <p className="text-xs font-medium text-gray-500 mb-1">Sources:</p>
-                          <div className="space-y-0.5">
-                            {msg.sources.map((source, i) => (
-                              <a
-                                key={i}
-                                href={source.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="block text-xs text-blue-600 hover:text-blue-800 hover:underline truncate"
-                                title={source.url}
-                              >
-                                {source.title || source.url}
-                              </a>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {/* Input */}
-            <div className="border-t border-gray-200 p-3 bg-white">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={currentQuestion}
-                  onChange={(e) => setCurrentQuestion(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && !isQAProcessing && submitQuestion()}
-                  placeholder="Ask a question..."
-                  disabled={isQAProcessing}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                />
-                <Button
-                  variant="primary"
-                  onClick={submitQuestion}
-                  disabled={isQAProcessing || !currentQuestion.trim()}
-                >
-                  Ask
-                </Button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+      <Phase2QAModal
+        isOpen={showQAModal}
+        selectedFile={selectedFileForQA}
+        messages={qaMessages}
+        chatRef={qaChatRef}
+        currentQuestion={currentQuestion}
+        onChangeQuestion={setCurrentQuestion}
+        isProcessing={isQAProcessing}
+        onClose={() => {
+          if (qaAbortRef.current) qaAbortRef.current.abort();
+          setShowQAModal(false);
+        }}
+        onSubmit={submitQuestion}
+      />
 
-      {/* Feedback Modal */}
-      {showFeedbackModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={isRefining ? null : () => setShowFeedbackModal(false)}>
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-900">Refine Summary - {selectedFileForRefine}</h2>
-              <button
-                onClick={() => setShowFeedbackModal(false)}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-                disabled={isRefining}
-              >
-                ✕
-              </button>
-            </div>
-            <div className="flex-1 overflow-hidden flex flex-col p-4">
-              {isRefining ? (
-                <div className="text-center space-y-4">
-                  <div className="flex items-center justify-center gap-3">
-                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-400 border-t-transparent"></div>
-                    <span className="text-gray-700 font-medium">Claude is refining your summary...</span>
-                  </div>
-                  <p className="text-gray-600">Please wait while your feedback is being processed and incorporated into an improved summary.</p>
-                  <div className="bg-gray-50 p-4 rounded-lg text-left">
-                    <p className="font-medium text-gray-900 mb-2">Your feedback:</p>
-                    <p className="text-gray-700 italic">&quot;{feedbackText}&quot;</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <textarea
-                    value={feedbackText}
-                    onChange={(e) => setFeedbackText(e.target.value)}
-                    placeholder="Provide specific feedback on how to improve the summary..."
-                    rows={6}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                  />
-                  <div className="flex justify-end gap-3">
-                    <Button
-                      variant="secondary"
-                      onClick={() => setShowFeedbackModal(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="primary"
-                      onClick={submitRefinement}
-                      disabled={isRefining || !feedbackText.trim()}
-                    >
-                      {isRefining ? 'Refining...' : 'Refine Summary'}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <Phase2FeedbackModal
+        isOpen={showFeedbackModal}
+        selectedFile={selectedFileForRefine}
+        feedbackText={feedbackText}
+        onChangeFeedbackText={setFeedbackText}
+        isRefining={isRefining}
+        onClose={() => setShowFeedbackModal(false)}
+        onSubmit={submitRefinement}
+      />
 
-      {/* Word Export Modal */}
-      {showWordExportModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={isGeneratingWord ? null : () => setShowWordExportModal(false)}>
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Export Word Document</h2>
-              <button
-                onClick={() => setShowWordExportModal(false)}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-                disabled={isGeneratingWord}
-              >
-                ✕
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
-              <p className="text-sm text-gray-600 mb-4">
-                Review and complete the fields below. Pre-filled values come from the AI analysis. The generated Word document will follow the Keck Phase II writeup template format.
-              </p>
-
-              <div className="space-y-4">
-                {/* Pre-filled from Claude */}
-                <div className="bg-gray-50 rounded-lg p-3 space-y-3">
-                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">From Proposal (editable)</h3>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Institution</label>
-                    <input
-                      type="text"
-                      value={wordExportFields.institution}
-                      onChange={(e) => updateExportField('institution', e.target.value)}
-                      placeholder="Common institution name (e.g., University of California, Los Angeles)"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">City, State</label>
-                    <input
-                      type="text"
-                      value={wordExportFields.cityState}
-                      onChange={(e) => updateExportField('cityState', e.target.value)}
-                      placeholder="e.g., Berkeley, CA"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Project Title</label>
-                    <input
-                      type="text"
-                      value={wordExportFields.projectTitle}
-                      onChange={(e) => updateExportField('projectTitle', e.target.value)}
-                      placeholder="Full project title"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Meeting Date</label>
-                      <input
-                        type="text"
-                        value={wordExportFields.meetingDate}
-                        onChange={(e) => updateExportField('meetingDate', e.target.value)}
-                        placeholder="e.g., June 2026"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Requested Amount</label>
-                      <input
-                        type="text"
-                        value={wordExportFields.requestedAmount}
-                        onChange={(e) => updateExportField('requestedAmount', e.target.value)}
-                        placeholder="e.g., $1,000,000"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Invited Amount</label>
-                      <input
-                        type="text"
-                        value={wordExportFields.invitedAmount}
-                        onChange={(e) => updateExportField('invitedAmount', e.target.value)}
-                        placeholder="e.g., $1,000,000"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Project Budget (Total Project Cost)</label>
-                      <input
-                        type="text"
-                        value={wordExportFields.projectBudget}
-                        onChange={(e) => updateExportField('projectBudget', e.target.value)}
-                        placeholder="e.g., $1,500,000"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Internal fields */}
-                <div className="bg-blue-50 rounded-lg p-3 space-y-3">
-                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Internal Fields</h3>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Program Type</label>
-                    <select
-                      value={wordExportFields.programType}
-                      onChange={(e) => updateExportField('programType', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="Science and Engineering">Science and Engineering</option>
-                      <option value="Medical Research">Medical Research</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Staff Lead</label>
-                    <input
-                      type="text"
-                      value={staffLead}
-                      disabled
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-100 text-gray-600"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Set in the main upload form</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-gray-200 p-4 flex justify-end gap-3">
-              <Button
-                variant="secondary"
-                onClick={() => setShowWordExportModal(false)}
-                disabled={isGeneratingWord}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={generateWordDocument}
-                disabled={isGeneratingWord}
-              >
-                {isGeneratingWord ? 'Generating...' : 'Generate Word Document'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Phase2WordExportModal
+        isOpen={showWordExportModal}
+        fields={wordExportFields}
+        onChangeField={updateExportField}
+        staffLead={staffLead}
+        isGenerating={isGeneratingWord}
+        onClose={() => setShowWordExportModal(false)}
+        onGenerate={generateWordDocument}
+      />
     </Layout>
   );
 }
