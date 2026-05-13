@@ -110,13 +110,41 @@ describe('parseSseStream', () => {
     expect(warns).toHaveLength(1);
   });
 
-  test('empty and comment frames are silently dropped', async () => {
+  test('empty and standalone comment frames are silently dropped', async () => {
     const stream = streamFromChunks([
       '\n\n: keepalive\n\nevent: real\ndata: {"v":1}\n\n',
     ]);
     const events = await collect(parseSseStream({ stream }));
     expect(events).toHaveLength(1);
     expect(events[0].event).toBe('real');
+  });
+
+  test('comment line before data line in same frame does not drop the event', async () => {
+    // Producer may interleave keepalive-style `:` lines with real
+    // data lines in a single frame. Comments are LINE-prefixed per
+    // the SSE spec; the parser must skip them individually rather
+    // than dropping the entire frame on first-line prefix.
+    const stream = streamFromChunks([
+      ': keepalive\nevent: text_delta\ndata: {"text":"hello"}\n\n',
+    ]);
+    const events = await collect(parseSseStream({ stream }));
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      event: 'text_delta',
+      data: { text: 'hello' },
+    });
+  });
+
+  test('parses CRLF-delimited streams', async () => {
+    // Some producers (or CRLF-normalizing middleboxes) emit
+    // `\r\n\r\n` frame separators instead of `\n\n`. The parser
+    // must handle both forms.
+    const stream = streamFromChunks([
+      'event: a\r\ndata: {"i":1}\r\n\r\nevent: b\r\ndata: {"i":2}\r\n\r\n',
+    ]);
+    const events = await collect(parseSseStream({ stream }));
+    expect(events.map((e) => e.event)).toEqual(['a', 'b']);
+    expect(events.map((e) => e.data.i)).toEqual([1, 2]);
   });
 
   test('[DONE] sentinel is yielded as synthetic done event', async () => {

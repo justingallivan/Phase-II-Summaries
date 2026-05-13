@@ -14,7 +14,7 @@
  */
 
 import { Button } from './Layout';
-import { renderAppMarkdown } from '../utils/app-markdown';
+import { renderAppMarkdown, isSafeAppUrl } from '../utils/app-markdown';
 
 export default function Phase2QAModal({
   isOpen,
@@ -91,18 +91,35 @@ export default function Phase2QAModal({
                     <div className="mt-2 pt-2 border-t border-gray-200">
                       <p className="text-xs font-medium text-gray-500 mb-1">Sources:</p>
                       <div className="space-y-0.5">
-                        {msg.sources.map((source, i) => (
-                          <a
-                            key={i}
-                            href={source.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block text-xs text-blue-600 hover:text-blue-800 hover:underline truncate"
-                            title={source.url}
-                          >
-                            {source.title || source.url}
-                          </a>
-                        ))}
+                        {msg.sources.map((source, i) => {
+                          // Source URLs come from upstream tool/search events
+                          // (provider/Anthropic web-search) and bypass the
+                          // markdown sanitizer entirely. Scheme-check before
+                          // assigning to href so an adversarial source can't
+                          // smuggle javascript:/data:/tel: into the DOM.
+                          const safe = isSafeAppUrl(source.url);
+                          const label = source.title || source.url;
+                          return safe ? (
+                            <a
+                              key={i}
+                              href={source.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block text-xs text-blue-600 hover:text-blue-800 hover:underline truncate"
+                              title={source.url}
+                            >
+                              {label}
+                            </a>
+                          ) : (
+                            <span
+                              key={i}
+                              className="block text-xs text-gray-500 truncate"
+                              title="Source URL was rejected by the scheme allowlist"
+                            >
+                              {label}
+                            </span>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

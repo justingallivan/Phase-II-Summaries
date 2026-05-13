@@ -4,29 +4,40 @@
  * which uses a stricter allowlist and adds a `validate*` companion for
  * policy bodies.
  *
+ * Trust model:
+ *   - Inputs are LLM-generated assistant messages from `/api/qa`. The
+ *     model receives proposal text, summary text, staff question text,
+ *     and prior QA messages — any of which could carry adversarial
+ *     content (prompt injection inside an uploaded proposal, a
+ *     malicious staff question, etc.) that the model then reflects
+ *     back as raw HTML, classes, or links. We do NOT assume the
+ *     input is safe; the renderer + DOMPurify + the per-attribute
+ *     hooks installed below are the safety boundary.
+ *
  * Difference from policy-markdown.js:
- *   - Allows `class` on rendered tags so a custom marked renderer can
- *     inject Tailwind utility classes that mirror the visual treatment
- *     of the regex parser this replaces.
- *   - No validator companion — there is no "fail loud" surface here; we
- *     drop disallowed nodes silently because the upstream input is
- *     trusted LLM output rendered to staff, not user-submitted content.
- *   - Link handling: `<a href>` is allowed for `http(s)` and `mailto`,
- *     with `target="_blank" rel="noopener noreferrer"` applied so a
- *     stray cited URL in a QA response opens out-of-app and can't
- *     navigate the foundation tab away from the in-progress proposal.
+ *   - Allows `class` attributes, but ONLY for the Tailwind class
+ *     strings our marked renderer emits (allowlist enforced via the
+ *     `uponSanitizeAttribute` hook). User-injected class values are
+ *     stripped — closes the "raw HTML uses existing bundle utilities
+ *     for UI redress" attack vector.
+ *   - No validator companion — there is no "fail loud" surface here;
+ *     disallowed nodes/attrs are stripped silently.
+ *   - `<a href>` enforced to http(s)/mailto schemes regardless of
+ *     source. The custom renderer's link function drops the wrapper
+ *     on disallowed schemes for marked-emitted links; the DOMPurify
+ *     hook catches raw HTML links that bypass the renderer
+ *     (DOMPurify's defaults allow tel/ftp/callto/sms/cid/xmpp/matrix,
+ *     so we cannot rely on default behavior).
  *
  * Safety contract:
  *   - Storage format is markdown UTF-8.
  *   - Rendered output is HTML produced by `marked`, then sanitized by
- *     DOMPurify with the allowlist below.
+ *     DOMPurify with the allowlist below + per-attribute hooks.
  *   - Allowed tags: p, h1-h6, ul, ol, li, blockquote, code, pre, strong,
  *     em, a, hr, br. Anything else dropped.
- *   - Allowed attributes: href (a) and class (any). class is only useful
- *     for elements emitted by our custom renderer; user-injected classes
- *     survive sanitization but Tailwind's content purge means unknown
- *     classes have no styles attached to them — surviving "class" is
- *     a visual nuisance at worst, not a privilege escalation.
+ *   - Allowed attributes: href (scheme-allowlist hook), class
+ *     (value-allowlist hook), target+rel via ADD_ATTR (only emitted
+ *     by our renderer alongside http(s) hrefs).
  */
 
 const { Marked, Renderer } = require('marked');
@@ -48,10 +59,13 @@ const ALLOWED_ATTR = ['href', 'class'];
 // strips them even when present in ALLOWED_ATTR. ADD_ATTR is the
 // documented escape hatch — these are safe here because our link
 // renderer always emits `rel="noopener noreferrer"` alongside
-// `target="_blank"`, and the surface only renders trusted LLM output.
+// `target="_blank"`, and the surface only renders LLM output passing
+// through the same scheme-allowlist hook applied to all hrefs.
 const ADD_ATTR = ['target', 'rel'];
 
-const ALLOWED_URI_REGEXP = /^(https?:|mailto:)/i;
+// Scheme allowlist enforced on every href the sanitizer sees — both
+// renderer-emitted links and raw HTML that survives the marked pass.
+const ALLOWED_HREF_REGEXP = /^(https?:|mailto:)/i;
 
 const markedOptions = {
   gfm: true,
@@ -62,7 +76,10 @@ const markedOptions = {
 
 // Tailwind utility classes reproduce the inline styling the regex
 // renderer applied per-tag. Kept in one place so visual tweaks land
-// here, not buried in regex literals.
+// here, not buried in regex literals. The set is ALSO the allowlist
+// the `uponSanitizeAttribute` hook checks below — any class value
+// not exactly matching one of these strings is stripped, even on
+// otherwise-allowed elements.
 const TAILWIND = {
   h1: 'font-bold text-base mt-3 mb-1',
   h2: 'font-semibold text-base mt-3 mb-1',
@@ -73,6 +90,8 @@ const TAILWIND = {
   ol: 'my-1 ml-4 list-decimal',
   hr: 'my-2 border-gray-300',
 };
+
+const ALLOWED_CLASS_VALUES = new Set(Object.values(TAILWIND));
 
 function buildRenderer() {
   const r = new Renderer();
@@ -95,11 +114,11 @@ function buildRenderer() {
     `<hr class="${TAILWIND.hr}" />`;
 
   r.link = (href, title, text) => {
-    // Defensive: marked has already run, but the sanitizer will also
-    // enforce the scheme allowlist. If href fails the scheme test, drop
-    // the link wrapper and render text alone — sanitizer can't always
-    // recover a clean visible string from a dropped <a>.
-    if (typeof href !== 'string' || !ALLOWED_URI_REGEXP.test(href)) {
+    // Defensive: marked has already run, but the sanitizer hook also
+    // enforces the scheme allowlist. If href fails the scheme test,
+    // drop the link wrapper and render text alone — sanitizer can't
+    // always recover a clean visible string from a dropped <a>.
+    if (typeof href !== 'string' || !ALLOWED_HREF_REGEXP.test(href)) {
       return text;
     }
     const titleAttr = title ? ` title="${title}"` : '';
@@ -116,13 +135,44 @@ function getDOMPurify() {
   // module is reachable from a React component. Same pattern as
   // shared/utils/policy-markdown.js.
   if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
-    return createDOMPurify(window);
+    return installHooks(createDOMPurify(window));
   }
   // eslint-disable-next-line no-eval
   const nodeRequire = eval('require');
   const { JSDOM } = nodeRequire('jsdom');
   const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
-  return createDOMPurify(dom.window);
+  return installHooks(createDOMPurify(dom.window));
+}
+
+/**
+ * Install the per-attribute hooks that enforce the href scheme
+ * allowlist and the class value allowlist. Both run for every
+ * sanitize() call on this purifier instance.
+ */
+function installHooks(p) {
+  p.addHook('uponSanitizeAttribute', (node, data) => {
+    if (!data || !data.attrName) return;
+
+    // Scheme allowlist for href on anchors.
+    if (data.attrName === 'href') {
+      const value = typeof data.attrValue === 'string' ? data.attrValue : '';
+      if (!ALLOWED_HREF_REGEXP.test(value)) {
+        data.keepAttr = false;
+      }
+      return;
+    }
+
+    // Value allowlist for class. Only renderer-emitted Tailwind
+    // strings survive; user-injected classes are stripped even if
+    // their value happens to be a real Tailwind utility.
+    if (data.attrName === 'class') {
+      if (!ALLOWED_CLASS_VALUES.has(data.attrValue)) {
+        data.keepAttr = false;
+      }
+      return;
+    }
+  });
+  return p;
 }
 
 let _purifier = null;
@@ -153,23 +203,34 @@ function renderAppMarkdown(body) {
     ALLOWED_TAGS,
     ALLOWED_ATTR,
     ADD_ATTR,
-    // Note: ALLOWED_URI_REGEXP intentionally omitted. Setting it triggers
-    // DOMPurify's internal anchor-attribute handling, which strips
-    // target/rel even when they're in ADD_ATTR (reproduced 2026-05-12).
-    // Two layers of defense remain: (1) the link renderer above rejects
-    // any href that doesn't match ALLOWED_URI_REGEXP and drops the
-    // wrapper, (2) DOMPurify's default URI-scheme handling rejects
-    // javascript: and data: URLs.
+    // Note: `ALLOWED_URI_REGEXP` is intentionally NOT set. Setting it
+    // triggers DOMPurify's internal anchor-attribute handling, which
+    // strips target/rel even when they're in ADD_ATTR (reproduced
+    // 2026-05-12). The `uponSanitizeAttribute` hook installed in
+    // `installHooks` is the canonical scheme-allowlist for hrefs;
+    // it covers both renderer-emitted links and raw HTML links.
     KEEP_CONTENT: true,
     RETURN_TRUSTED_TYPE: false,
   });
+}
+
+/**
+ * Public helper for scheme-checking ad-hoc URLs that don't go through
+ * the markdown pipeline (e.g., source links rendered directly in JSX
+ * from API event payloads). Returns true if the URL uses http, https,
+ * or mailto. Use this anywhere an attacker-influenced URL is about to
+ * end up in an `href` attribute outside `renderAppMarkdown()`.
+ */
+function isSafeAppUrl(url) {
+  return typeof url === 'string' && ALLOWED_HREF_REGEXP.test(url);
 }
 
 module.exports = {
   ALLOWED_TAGS,
   ALLOWED_ATTR,
   ADD_ATTR,
-  ALLOWED_URI_REGEXP,
+  ALLOWED_HREF_REGEXP,
   TAILWIND,
   renderAppMarkdown,
+  isSafeAppUrl,
 };

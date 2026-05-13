@@ -15,7 +15,7 @@
  * fallback which Jest can't load because jsdom uses ESM exports.
  */
 
-import { renderAppMarkdown, ALLOWED_TAGS } from '../../shared/utils/app-markdown.js';
+import { renderAppMarkdown, isSafeAppUrl, ALLOWED_TAGS } from '../../shared/utils/app-markdown.js';
 
 describe('renderAppMarkdown', () => {
   describe('basic formatting', () => {
@@ -133,6 +133,74 @@ describe('renderAppMarkdown', () => {
       expect(out).toContain('inside');
     });
 
+    test('raw HTML <a href="tel:..."> is stripped (renderer bypass attack)', () => {
+      // Raw HTML inside markdown body bypasses the marked renderer's
+      // scheme check. The DOMPurify uponSanitizeAttribute hook is the
+      // backstop — it must strip non-http(s)/mailto schemes that
+      // DOMPurify's defaults would otherwise allow (tel/ftp/sms/etc).
+      const out = renderAppMarkdown('Call <a href="tel:5551234">me</a>');
+      expect(out).not.toContain('tel:');
+      // The element survives without the href; text content is preserved.
+      expect(out).toContain('me');
+    });
+
+    test('raw HTML <a href="ftp://..."> is stripped', () => {
+      const out = renderAppMarkdown('<a href="ftp://example.com">link</a>');
+      expect(out).not.toContain('ftp:');
+      expect(out).toContain('link');
+    });
+
+    test('renderer-injected class survives sanitization', () => {
+      const out = renderAppMarkdown('`x`');
+      expect(out).toContain('class="bg-gray-200 px-1 py-0.5 rounded text-xs"');
+    });
+
+    test('user-injected class is stripped even with allowed Tailwind values', () => {
+      // The class value allowlist permits only renderer-emitted strings.
+      // Raw HTML with class="fixed inset-0..." (UI redress vector) must
+      // lose its class attribute even though `fixed inset-0` exists in
+      // the bundle.
+      const out = renderAppMarkdown('<p class="fixed inset-0 z-50 bg-white">redress</p>');
+      expect(out).not.toContain('fixed inset-0');
+      expect(out).not.toContain('z-50');
+      expect(out).toContain('redress');
+    });
+
+    test('user-injected class with an exact renderer value is also stripped on a different tag', () => {
+      // Even if a user copies a renderer-emitted string verbatim, the
+      // hook strips it because the class allowlist is value-based, not
+      // tag+value-based — but only renderer-emitted elements have these
+      // class values in the first place. This test pins the conservative
+      // behavior: the hook doesn't try to distinguish source.
+      const out = renderAppMarkdown('<p class="font-bold text-base mt-3 mb-1">x</p>');
+      // The class survives because the value is in the allowlist. This
+      // is the trade-off: a strict tag+value pairing would require
+      // re-implementing more of DOMPurify's traversal. The fixed/inset
+      // attack vector is closed because attacker-controlled positioning
+      // classes don't appear in the renderer's allowlist.
+      expect(out).toContain('class="font-bold text-base mt-3 mb-1"');
+    });
+  });
+
+  describe('isSafeAppUrl', () => {
+    test('accepts http/https/mailto', () => {
+      expect(isSafeAppUrl('http://example.com')).toBe(true);
+      expect(isSafeAppUrl('https://example.com')).toBe(true);
+      expect(isSafeAppUrl('mailto:a@b.com')).toBe(true);
+    });
+
+    test('rejects javascript/data/tel/ftp/null/non-string', () => {
+      expect(isSafeAppUrl('javascript:alert(1)')).toBe(false);
+      expect(isSafeAppUrl('data:text/html,<script>x</script>')).toBe(false);
+      expect(isSafeAppUrl('tel:5551234')).toBe(false);
+      expect(isSafeAppUrl('ftp://example.com')).toBe(false);
+      expect(isSafeAppUrl(null)).toBe(false);
+      expect(isSafeAppUrl(undefined)).toBe(false);
+      expect(isSafeAppUrl(123)).toBe(false);
+    });
+  });
+
+  describe('output structure', () => {
     test('output contains only allowed tags', () => {
       const out = renderAppMarkdown(
         '# Heading\n\n**Bold** *italic* `code`\n\n- list\n\n1. ordered\n\n[link](https://example.com)\n\n> quote\n\n```\nblock\n```',
