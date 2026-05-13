@@ -76,5 +76,23 @@ try {
   if (!COMMIT) console.log('\nDRY-RUN — re-run with --commit to apply.');
 } catch (err) {
   console.error('\nERROR:', err.message);
+  if (err.stats) {
+    console.error('\n## Partial stats from failed run');
+    let totalSkipped = 0;
+    for (const [region, info] of Object.entries(err.stats.perRegion || {})) {
+      const skipNote = info.skipped > 0 ? `, ${info.skipped} skipped` : '';
+      console.error(`  region ${region}: ${info.rows.toLocaleString()} rows${skipNote} (${(info.csvSizeBytes / 1024 / 1024).toFixed(1)} MB)`);
+      if (info.skippedSamples?.length > 0) {
+        console.error(`    skipped samples: ${JSON.stringify(info.skippedSamples)}`);
+      }
+      totalSkipped += info.skipped || 0;
+    }
+    if (err.stats.totalRows !== undefined) {
+      console.error(`  total rows: ${err.stats.totalRows.toLocaleString()}${totalSkipped > 0 ? ` (${totalSkipped} skipped)` : ''}`);
+    }
+    if (err.stats.duplicatesRemoved > 0) {
+      console.error(`  duplicates removed across regions: ${err.stats.duplicatesRemoved.toLocaleString()}`);
+    }
+  }
   process.exit(1);
 }
