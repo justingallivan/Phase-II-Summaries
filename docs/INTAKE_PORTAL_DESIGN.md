@@ -548,14 +548,15 @@ New env var: `CLOUDMERSIVE_API_KEY`. Pilot uses the free tier; production cycle 
 
 **Launch blockers** (must resolve before the portal goes live):
 
-1. **Reviewer-consumable artifact.** Default plan is staff-rendered Word/PDF dropped into `Reviewer_Downloads/` (option 1 above). Confirm with Connor; alternative is PA-built review packet on `'Phase II Pending'` flip.
-2. **`wmkf_portal_membership` shape sign-off** with Connor — including the new approval-state fields.
-3. **Phase II Research field inventory** with Sarah + Connor — drives the form module.
-4. **PA trigger confirmation** — which existing `'Phase II Pending'` flows fire for portal-originated submissions vs. which need updating.
-5. **Structured-tables persistence contract** with Connor — pick one storage pattern (real child entities, JSON columns on `akoya_request`, or defer) so submit endpoints can be wired. See `docs/archive/CONNOR_INTAKE_PORTAL_SYNC.md` § 6.
+1. **Phase II Research field inventory** with Sarah — drives the form module. Track 2 of 2026-05-13 sync ran out of clock; carry to next Sarah session.
+2. **Child-entity naming alignment** with Connor — 2026-05-06 suggested `wmkf_budgetline` / `wmkf_personnel`; 2026-05-13 sketch used `wmkf_proposalbudgetline` / `wmkf_proposalroster`. Final names land at Connor's schema design review by **2026-05-15**.
 
 **Resolved (decisions made, build remaining):**
 
+- ~~Reviewer-consumable artifact~~ — **2026-05-13 reversal: PA-built review packet on `'Phase II Pending'` flip, dropped in `Reviewer_Downloads/`** (Option 2). Connor owns the build. Supersedes the 2026-05-06 Option 1 (staff-rendered on demand) decision. The structured-data layout for the cover-doc template is now upstream of his packet build.
+- ~~`wmkf_portal_membership` shape sign-off~~ — **shape approved as drafted 2026-05-13**, ships under existing delegated authority with summary-after model. Institution-claim approval workflow lives in the portal's `/apply/admin/*` (Option A) — `intake-admin` app key + `/apply/admin/memberships` page on Justin/Claude's plate. Connor's plate unchanged by the approval-workflow decision.
+- ~~PA trigger confirmation (`'Phase II Pending'`)~~ — **Connor states the existing flows are origin-agnostic and work as-is for portal-originated rows.** No `wmkf_originatingsystem` field needed for pilot. Verification: manually flip a throwaway test request at the **2026-05-26 dry-run** and watch what fires. Flow list request emailed to Connor 2026-05-13, target turnaround 2026-05-15.
+- ~~Structured-tables persistence~~ — **2026-05-13: real child entities for pilot, scoped to budget + roster.** Milestones → narrative field for pilot, prior-support → attached PDF for pilot. Narrows the 2026-05-06 decision which included `wmkf_priorsupport` and `wmkf_milestone`. Both entities ship under existing delegated authority; Connor design-reviews shapes by 2026-05-15.
 - ~~Virus scanning approach~~ — **Cloudmersive, fail-closed, scan at upload completion.** See "Cross-cutting → File handling → Virus scanning."
 - ~~Submit-time vs. async externalization to Dynamics/SharePoint~~ — **async via `submission_jobs` queue + drain cron.** See "Submission lifecycle."
 - ~~Upload path capacity~~ — **direct browser-to-Blob client uploads, function never sees bytes.** 25 MB round-trip verified by `scripts/smoke-blob-upload.js` (server-side `put()` against the real Blob endpoint).

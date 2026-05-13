@@ -1,246 +1,134 @@
-# Session 148 Prompt: open
+# Session 149 Prompt: Post-2026-05-13-sync execution + Sarah field inventory
 
-## Session 147 summary
+## Heads up
 
-Twenty-four commits on main. Three independent workstreams shipped:
-**Wave 2 W5 reader cutover closed + W6 step 1 (researchers.js retirement)**,
-**IRS tax-exempt verification capability** (PA-callable, quarterly cron),
-and **Gemini-suggestions refactor** of `pages/phase-ii-writeup.js`
-(executed by Claude after Codex dispatch failed twice). Plus an
-intake-portal meeting agenda for the 2026-05-13 Sarah+Connor sync.
+Session 148 was a meeting-support session, not a build session. No code commits.
+The session ran Track 1 of the 2026-05-13 Connor+Sarah sync (four decisions
+closed) and captured the outputs in design doc + schema-changes catalog +
+memory. Track 2 (Sarah field inventory) did not run; carry it forward.
+
+**The most important deltas to be aware of**:
+- **1C reversed**: reviewer-consumable artifact is now PA-built on `'Phase II Pending'` flip, not staff-rendered on demand. Connor owns the build. Reverses 2026-05-06 Item 2.
+- **1D narrowed**: real child entities for pilot, but **only budget + roster**. Milestones and prior-support deferred to next cycle. Narrows 2026-05-06 Item 6.
+
+Memory `project_intake_portal_pilot_decisions_2026-05-13.md` is the authority on those — the 2026-05-06 memory now has a banner pointing readers there.
+
+## Session 148 summary
 
 ### What was completed
 
-1. **Wave 2 W5 closeout** (`29ae474`, `04d891c`, `52c1aa2`, `0dfcf73`)
-   - W5 step 3 followup: Co-PI derivation + summary-URL writer gap fixes.
-   - W5 step 4: `my-proposals.js` cut from Postgres `reviewer_suggestions`
-     aggregation to Dataverse via `queryAllRecords` (not `queryRecords` —
-     silent 100-row cap). Adapter exports `RESPONSE_TYPE_MAP` to single-
-     source picklist values.
-   - W5 step 5: Deleted `pages/api/reviewer-finder/extract-summary.js`
-     (Dataverse-side already does this).
-   - W5 step 6: `maintenance-service.cleanupBlobs` reads from Dataverse
-     (`wmkf_appgrantcycles`, `wmkf_appreviewersuggestions`) +
-     `intake_drafts.attachments[*].blob_url`. Fails closed on `capped`.
+Meeting-support only — no commits beyond doc updates.
 
-2. **Wave 2 W6 step 1 — researchers.js retirement** (`27931b9`)
-   - Deleted `pages/api/reviewer-finder/researchers.js` (1061 lines).
-   - Excised 4 functions from `pages/reviewer-finder.js`
-     (ResearcherDetailModal, DatabaseTab, DuplicatesModal,
-     ResearcherRow), navigation state, tabs entry. ~1500 lines removed.
-   - Total drop across step 1: ~2,692 lines.
-   - Step 2 (cleanup cron + restore script) **deferred to post-pilot**
-     per Codex's Wave 1 same-day DROP precedent argument (`cea4c27`).
-     Trigger memory: `project_w6_table_drop_pending.md` (fires ≥ 2026-07-01).
+**Track 1 of 2026-05-13 Connor+Sarah sync — four decisions closed:**
 
-3. **IRS BMF tax-exempt verification** (`2ad2528`, `f5d421f`, `2bb1820`,
-   `b192087`, `7d45418`, `9573ff9`, `3b2450e`)
-   - New Postgres table `irs_exempt_orgs` (V29) keyed on EIN. 1.26M rows
-     live from 4 regional BMF CSVs (NE/MA/SO/IN).
-   - New `lib/services/irs-bmf-service.js`: atomic-swap quarterly refresh
-     (stage → COPY FROM STDIN → dedupe via ROW_NUMBER over PARTITION BY
-     ein ORDER BY region, ctid → ADD PK → rename). `verifyEin()` returns
-     `{found, name, subsection, status, deductibility, foundation,
-     rulingDate, state, is501c3PublicCharity, asOfRefreshDate}`.
-   - New `/api/cron/refresh-irs-bmf` (quarterly `0 6 15 1,4,7,10 *`,
-     `maxDuration: 300`).
-   - New `/api/irs/verify-ein` (PA-callable, shared-secret
-     `IRS_VERIFY_SECRET` via `crypto.timingSafeEqual` wrapper).
-   - CLI runner `scripts/import-irs-bmf.js` (`--commit`, `--strict`).
-   - Atlas page `docs/atlas/postgres-irs-exempt-orgs.md` —
-     reference-data, NOT Wave 2 eligible.
-   - Codex review applied: NAME validation, deterministic region
-     dedupe, full stats on errors, plausibility threshold rebased to
-     1M (actual ~1.26M; old anchor 1.95M was stale IRS-page figure).
-   - **Pending**: PA wiring (Connor) — `account` writeback target +
-     `IRS_VERIFY_SECRET` secret share + flow design.
+| # | Decision | Status |
+|---|---|---|
+| 1A | `wmkf_portal_membership` shape | Approved as drafted. Institution-claim approval = **Option A** (portal-side `/apply/admin/memberships`, new `intake-admin` app key). Connor's plate unchanged on the approval workflow. |
+| 1B | PA flows on `'Phase II Pending'` | Connor: origin-agnostic, works as-is. **No `wmkf_originatingsystem` field needed.** Verification = manual flip of a throwaway test request at 2026-05-26 dry-run. Flow-list email sent to Connor (target reply 2026-05-15). |
+| 1C | Reviewer-consumable artifact | **REVERSAL**: PA-built review packet on `'Phase II Pending'` flip, dropped in `Reviewer_Downloads/` (Option 2). Connor owns the build. Cover-doc structured-data layout is now upstream of his packet build. |
+| 1D | Structured-tables persistence | Real child entities (Option 1) — **scoped to budget + roster only**. Milestones → narrative field for pilot, prior-support → attached PDF. |
 
-4. **Gemini-suggestions refactor** (`fd07318`, `ec87253`, `680c9a5`,
-   `6e6204c`, `efeaceb`, `49d9905`) — Claude-executed after two
-   Codex dispatch failures (dirty tree, then sandbox bash issue).
-   - Phase 1: `shared/utils/app-markdown.js` (marked v12 + DOMPurify
-     with `uponSanitizeAttribute` hook enforcing http(s)/mailto on
-     href + Tailwind class allowlist). 23 Jest cases.
-   - Phase 2: `shared/utils/sse-stream.js` (async-iterator parser
-     with AbortSignal; CRLF-aware; per-line comment skip; `[DONE]`
-     sentinel). 13 Jest cases. `phase-ii-writeup` QA stream cut over.
-   - Phase 3: Extracted `Phase2{QA,Feedback,WordExport}Modal.js`.
-     `phase-ii-writeup.js` 879 → 597 lines.
-   - Phase 4: `database-service.js` top docstring rewrite + tightened
-     removed-methods block (comments only, no SQL).
-   - Codex post-pass review: 8 MODERATE, 6 fixed (URL-scheme widening,
-     class injection vector, trust-model docs, SSE CRLF + comment edge
-     cases, DatabaseService docstring completeness, QA source-link
-     scheme validation). 2 documented (Phase 2 consumer-throw contract,
-     handoff-report overclaims).
-   - **Known gap**: dev-server visual smoke not performed — Babel parse
-     + 36 Jest tests + CI gates green, but parity not visually verified.
+**Track 2 (Sarah's Phase II Research field inventory) was not reached** — meeting ran out of clock. Carry to next Sarah session.
 
-5. **Intake portal meeting agenda** (`23e3fd9`)
-   - `docs/INTAKE_PORTAL_MEETING_AGENDA_2026-05-13.md` — 60-90 min,
-     3 tracks (Connor: Wave 2/intake schema; Sarah: form wishlist;
-     joint: pilot scope). Tracked to git for cross-machine access;
-     cleanup trigger memory `project_intake_meeting_agenda_cleanup.md`
-     (fires ≥ 2026-05-27).
+**Doc updates landed (single commit, will land at session-end push)**:
+- `docs/INTAKE_PORTAL_DESIGN.md` — Open questions/work section rewritten to strike resolved blockers with date + outcome.
+- `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` — new 2026-05-13 batch entry queuing `wmkf_portal_membership` + budget + roster entities for design review by 2026-05-15.
+- New memory entry `project_intake_portal_pilot_decisions_2026-05-13.md`; `MEMORY.md` index updated; the 2026-05-06 memory's frontmatter now flags items 2 + 6 as superseded.
 
-6. **Memory housekeeping** (`61a5648`)
-   - New: `project_w6_table_drop_pending.md`,
-     `project_intake_meeting_agenda_cleanup.md`,
-     `project_dataverse_schema_deploy_gotchas.md` (added gotcha #3).
-   - Updated: `project_irs_exempt_verification.md` (planned → SHIPPED).
-
-### Commits (this session)
-
-```
-49d9905 Gemini-plan review fixes — close 6 MODERATEs from Codex pass
-efeaceb Handoff report — Gemini action plan, Claude-executed pass
-6e6204c Phase 4 — DatabaseService comment cleanup
-680c9a5 Phase 3 — extract Phase II modals
-ec87253 Phase 2 — shared SSE stream parser + QA cutover
-fd07318 Phase 1 — shared app-markdown renderer
-3b2450e IRS BMF — address Codex review (2 MODERATE + 3 MINOR)
-c181e9f Preserve Codex artifacts before relaunch
-9573ff9 Loosen IRS BMF plausibility threshold + stats-on-error
-7d45418 Add --strict / ?strict=1 to IRS BMF refresh
-b192087 Dedupe IRS BMF cross-region duplicate EINs
-2bb1820 Tolerate malformed rows in IRS BMF CSVs
-f5d421f Bootstrap irs_exempt_orgs table inside refresh()
-2ad2528 Add IRS tax-exempt verification (BMF reference data + verify endpoint)
-61a5648 S147 memory housekeeping — index + new trigger entries
-23e3fd9 Add intake portal meeting agenda for 2026-05-13
-f35387f Revise Codex action plan — Gemini suggestions triage
-cea4c27 W6 step 2 deferred — record decision + post-pilot checklist
-27931b9 W6 step 1 — retire researchers.js + Database tab UI
-0dfcf73 W5 step 6 — maintenance blob-scanner → Dataverse
-52c1aa2 W5 step 5 — retire extract-summary.js
-6a64f9a W5/W6 plan note — researchers.js Postgres reads are W6 scope
-04d891c W5 step 4 — my-proposals reviewer-count reader → Dataverse
-29ae474 W5 step 3 followup — Co-PI derivation + summary URL writer gap
-```
+**Other session activity (non-committed):**
+- Reviewer-portal demo for colleagues — minted a 14-day Stage 2a token for suggestion `489ecf2c-f144-f111-88b4-6045bd019e44` (request 1002379, Quantum Chimera, Aspuru-Guzik). Wrote a dev-only `EXTERNAL_LINK_SECRET` to `.env.local` (gitignored). Note: minting the token wrote the hash to **prod Dataverse** on that suggestion row — `wmkf_proposalfirstaccessed` and related fields will reflect the demo visit if colleagues clicked through.
+- Drafted a follow-up email to Connor asking for the named list of `'Phase II Pending'` PA flows (target reply 2026-05-15). User sent it.
 
 ## Production state
 
-- **W5 reader cutover complete.** All Postgres `reviewer_suggestions`
-  readers retired or migrated. `extract-summary.js` deleted.
-  `researchers.js` deleted (W6 step 1). Database tab UI excised.
-- **W6 step 2 (cleanup cron + restore) deferred to post-pilot.**
-  Drain-only table drop checklist tracked in
-  `REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`. Trigger memory fires
-  ≥ 2026-07-01.
-- **IRS BMF table live in prod Postgres**, 1.26M rows. Verify endpoint
-  + cron deployed. PA wiring pending Connor.
-- **Gemini refactor merged** but not visually smoke-tested.
-- CI gates: `check:atlas`, `check:atlas:self-test`,
-  `check:api-routes` — all green. 80 API routes catalogued (post
-  IRS additions and extract-summary removal).
-- Route count in CLAUDE.md: 80.
+- Working tree clean (no code commits this session).
+- Dev server stopped.
+- The 5 stage-2a candidates on request 1002379 (Quantum Chimera) still have `no-token` on rows the demo didn't touch — minting only consumed the one Aspuru-Guzik row.
+- All CI gates still green from S147; nothing changed.
 
-## Where to pick up — Session 148 (open)
+## Where to pick up — Session 149
 
 Ordered by readiness:
 
-### A. Visual smoke of the Gemini refactor (~15 min, blocking)
+### A. Sarah field inventory (Track 2 carryover) — PRIMARY blocker
 
-`npm run dev`, click through on `/phase-ii-writeup`:
-- Upload + process streaming (untouched but imports new modules).
-- QA streaming: open Q&A modal → ask question → confirm markdown
-  renders + sources show with target=_blank → close cancels cleanly.
-- Feedback modal: open → submit → close.
-- Word export modal: open → export → close.
-Babel parse + 36 Jest tests + atlas/route gates passed — wiring is
-intact, visual parity expected but not verified. See
-`docs/CODEX_HANDOFF_REPORT_2026-05-12.md` §5 checklist.
+Drives the form module + confirms whether budget + roster are the only repeating sections worth structuring for pilot. **Schedule before the 2026-05-19 checkpoint.** Per agenda §2B, 80% complete is enough to unblock; refinements can come in async passes.
 
-### B. Post-meeting intake portal work
+Concrete deliverable: a working field-inventory table (field name, type, required?, notes) covering the current Phase II Research form, plus per-row column detail for the budget and roster sections (column-level fields, not just "there's a budget").
 
-After the 2026-05-13 Sarah+Connor meeting, fold decisions into
-`docs/INTAKE_PORTAL_DESIGN.md` + create build slices. Agenda at
-`docs/INTAKE_PORTAL_MEETING_AGENDA_2026-05-13.md` (delete after
-meeting per cleanup trigger memory; commit removal).
+### B. Connor design review on child-entity shapes (2026-05-15)
 
-### C. Wave 2 W7 (reviewer history badges) or pause
+Once Connor's flow-list reply lands, follow up with the two budget/roster JSON schema specs for design review:
 
-W3–W6 of `REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` are shipped.
-W7 (history badges UI, match-on-discovery wiring) is post-pilot
-critical-path-optional. Pause is acceptable until intake portal
-direction settles.
+- **Naming decision needed**: `wmkf_proposalbudgetline` vs. `wmkf_budgetline` (2026-05-06 suggestion); `wmkf_proposalroster` vs. `wmkf_personnel`. Resolve before writing the JSON files.
+- **Category choice values** for `wmkf_proposalbudgetline.wmkf_category` — confirm WMKF Research conventions (current sketch: Personnel / Equipment / Supplies / Travel / Other Direct / Indirect).
+- **Roster shape** — not yet sketched. Working assumption: 1:N parental from `akoya_request`; per-row `_wmkf_contact_value` + role choice + percent effort + optional biosketch attachment. Align with `wmkf_apprequestperson` junction's role taxonomy.
+- **Cover-doc template structure** — Connor needs the row shape to design the Word template; we need the Word template to know whether `wmkf_name` synthesis is required.
 
-### D. IRS verification PA wiring (Connor)
+Sketch outline for budget is captured in `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` 2026-05-13 entry.
 
-- Share `IRS_VERIFY_SECRET` with Connor (already in Vercel prod env).
-- Connor builds PA flow: trigger on `account` create/update, call
-  `GET /api/irs/verify-ein?ein={ein}` with header
-  `x-irs-verify-secret: ...`, write result back to `account` fields.
-- Verify endpoint API contract documented in
-  `pages/api/irs/verify-ein.js` header.
+### C. `wmkf_portal_membership` schema apply
 
-### E. Gemini refactor follow-ups (low priority)
+Shape was approved as drafted. Can ship under existing delegated authority anytime, doesn't need to wait on B. Send Connor the summary after creation (per summary-after model).
 
-From `docs/CODEX_HANDOFF_REPORT_2026-05-12.md` §6:
-1. `pages/dynamics-explorer.js:95` has its own regex `renderMarkdownText`
-   — clean follow-up cutover to `shared/utils/app-markdown.js`.
-2. Nine other pages with hand-rolled `reader.read()` SSE loops —
-   candidates for the same SSE-parser cutover.
-3. `useAIStream` hook design (parser proved out, hook deferred).
-4. `useDataversePrefs()` dead-Postgres branch (out of Phase 4 scope).
+### D. `/apply/admin/memberships` build (Option A)
 
-### F. Smaller carry-forward items
+Once `wmkf_portal_membership` is live:
+- Add `intake-admin` to `shared/config/appRegistry.js` (key, name, route, icon, category, description).
+- `GET /api/intake/admin/memberships?status=requested` (list) + `POST /api/intake/admin/memberships/:id/approve|reject` (action).
+- `/apply/admin/memberships` page with `requireAppAccess(req, res, 'intake-admin')`.
+- Grant `intake-admin` to the staff who will run pilot triage (need name list from Sarah).
 
-- COI policy body wording (Stage 2a Reviewer engagement).
-- Revert temp role elevations on prod app user (deferred through
-  pilot iteration — see S146 carryover).
+### E. Connor's flow-list reply (target 2026-05-15)
 
-## Carryover hygiene
+Watch for the reply to today's email asking him to name the `'Phase II Pending'` flows. If anything in his reply suggests GOapply-coupling in a flow he hadn't thought about, escalate to a quick sync rather than waiting for the 2026-05-26 dry-run.
 
-- **W6 step 2 trigger** (`project_w6_table_drop_pending.md`) fires
-  ≥ 2026-07-01. When fired, run the 6-item checklist in
-  `REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` § "W6 step 2 (deferred)".
-- **Meeting agenda cleanup** (`project_intake_meeting_agenda_cleanup.md`)
-  fires ≥ 2026-05-27. Delete `docs/INTAKE_PORTAL_MEETING_AGENDA_*.md`
-  + fold any persistent decisions into `INTAKE_PORTAL_DESIGN.md`.
-- All destructive carryover items must be grep-verified per
-  `feedback_verify_before_destructive_carryover` rule.
+### F. Carryover from S147 (low priority)
 
-## Key files added/modified (S147)
+- COI policy body wording (Stage 2a reviewer engagement).
+- Revert temp role elevations on prod app user (deferred through pilot iteration).
+- Visual smoke of the Gemini refactor on `/phase-ii-writeup` (S147 carryover — Babel parse + 36 Jest tests + atlas/route gates passed but visual parity not yet verified).
+
+## Calendar checkpoints
+
+- **2026-05-15** — Connor flow-list reply target; budget+roster naming resolved; JSON specs drafted; `wmkf_portal_membership` summary sent.
+- **2026-05-18** — Two child-entity schemas applied to prod.
+- **2026-05-19** — Checkpoint: schema applied, form-module skeleton renders, end-to-end smoke (auth → form → save-draft → submit-mock → land-in-Dynamics) working on Vercel preview.
+- **2026-05-26** — Dry-run: manually flip throwaway test request to `'Phase II Pending'` and watch PA flows fire.
+- **2026-05-30** — Go/no-go review.
+- **2026-06-01** — Pilot accepting submissions for mid-June Phase II Research cycle.
+
+## Key files modified this session
 
 | File | Status | Purpose |
 |---|---|---|
-| `lib/db/migrations/008_irs_exempt_orgs.sql` | NEW | IRS BMF reference table (V29) |
-| `lib/services/irs-bmf-service.js` | NEW | Atomic-swap refresh + verifyEin |
-| `pages/api/cron/refresh-irs-bmf.js` | NEW | Quarterly cron |
-| `pages/api/irs/verify-ein.js` | NEW | PA-callable verify endpoint |
-| `scripts/import-irs-bmf.js` | NEW | CLI runner |
-| `shared/utils/app-markdown.js` | NEW | Marked v12 + DOMPurify shared renderer |
-| `shared/utils/sse-stream.js` | NEW | Shared SSE parser w/ AbortSignal |
-| `shared/components/Phase2{QA,Feedback,WordExport}Modal.js` | NEW | Extracted Phase II modals |
-| `tests/unit/app-markdown.test.js` + `sse-stream.test.js` | NEW | 36 Jest cases |
-| `pages/api/reviewer-finder/researchers.js` | DELETED | W6 step 1 |
-| `pages/api/reviewer-finder/extract-summary.js` | DELETED | W5 step 5 |
-| `pages/reviewer-finder.js` | MODIFIED | Database tab + 4 functions excised |
-| `pages/phase-ii-writeup.js` | MODIFIED | 879 → 597 lines (modal extraction + SSE cutover) |
-| `pages/api/reviewer-finder/my-proposals.js` | MODIFIED | Postgres → Dataverse via queryAllRecords |
-| `lib/services/maintenance-service.js` | MODIFIED | cleanupBlobs → Dataverse |
-| `lib/services/database-service.js` | MODIFIED | Phase 4 docstring cleanup |
-| `middleware.js`, `vercel.json`, `CLAUDE.md` | MODIFIED | IRS endpoint allowlist + cron + env-var docs |
-| `docs/atlas/postgres-irs-exempt-orgs.md` | NEW | Atlas reference-data page |
-| `docs/CODEX_HANDOFF_REPORT_2026-05-12.md` | NEW | Gemini refactor handoff |
-| `docs/INTAKE_PORTAL_MEETING_AGENDA_2026-05-13.md` | NEW | 60-90 min meeting agenda (delete post-meeting) |
+| `docs/INTAKE_PORTAL_DESIGN.md` | EDITED | Open questions/work section restructured to reflect 4 closed Track-1 items; pilot-blocker list trimmed to Sarah inventory + naming alignment |
+| `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` | EDITED | New 2026-05-13 entry queues 3 entities for design review (membership shape approved; budget+roster shapes queued; milestone+priorsupport deferred) |
+| `memory/project_intake_portal_pilot_decisions_2026-05-13.md` | NEW | Authoritative source for 2026-05-13 Track-1 decisions including 1C reversal + 1D narrowing |
+| `memory/project_intake_portal_pilot_decisions_2026-05-06.md` | EDITED | Frontmatter + banner flag items 2 + 6 as superseded |
+| `memory/MEMORY.md` | EDITED | Added 2026-05-13 index entry; annotated 2026-05-06 entry as partially superseded |
+| `SESSION_PROMPT.md` | REWRITTEN | This file |
 
 ## Testing
 
 ```bash
+# Sanity gates (should remain green — nothing in this session changed code)
 npm run check:atlas
 npm run check:atlas:self-test
 npm run check:api-routes
-npx jest tests/unit/app-markdown.test.js tests/unit/sse-stream.test.js
 
-# IRS refresh (dry run)
-node scripts/import-irs-bmf.js --strict
+# When picking up B/C/D in Session 149:
+# Schema apply rerun is idempotent
+node scripts/apply-dataverse-schema.js --target=prod --wave=2
 
-# IRS verify (dev — no secret required)
-curl 'http://localhost:3000/api/irs/verify-ein?ein=521693387'
-
-# Gemini refactor — visual smoke (NOT yet performed)
-npm run dev
-# → /phase-ii-writeup → Q&A modal → feedback modal → Word export modal
+# Reviewer-portal demo token (still valid through 2026-05-27 — same flow, swap suggestionId)
+node scripts/find-stage2a-candidates.js list 15
+node scripts/find-stage2a-candidates.js mint <suggestionId>
 ```
+
+## Gotchas to remember
+
+- **Dataverse `EntityCustomization` 429s** between metadata writes — wrap multi-attribute deploys in 30s-backoff retry per `project_dataverse_schema_deploy_gotchas`.
+- **`@odata.bind` keys are PascalCase nav-property names**, not lowercase logical names. The portal submit handler will hit this when posting budget/roster rows with `Request@odata.bind` (or whatever name the lookup gets at creation time — confirm during schema apply).
+- **Demo-token mint wrote to prod Dataverse** on suggestion `489ecf2c-...` (Aspuru-Guzik). If any colleague accessed the URL during/after the demo, that suggestion has live `wmkf_proposalfirstaccessed` data. Not a problem, just be aware if you query that row.
+- **`EXTERNAL_LINK_SECRET`** in `.env.local` is a dev-only random secret, gitignored. Different from prod. Re-mint dev tokens against the same `.env.local` value or generate a new one.

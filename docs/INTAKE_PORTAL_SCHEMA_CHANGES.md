@@ -9,6 +9,49 @@ Per `project_dataverse_creator_privileges.md` (2026-05-06), Connor delegated ent
 
 ---
 
+## 2026-05-13 — Intake portal pilot — three entities queued (Connor sync, Track 1)
+
+**Scope:** Three new pilot entities approved in shape during the 2026-05-13 Connor+Sarah sync. Two are confirmed for pilot; one is narrowed-scope replacement of the 2026-05-06 plan.
+
+**Status:** Queued — JSON specs to be drafted by Justin/Claude under `lib/dataverse/schema/intake/` for Connor design review by **2026-05-15**. Apply to prod by **2026-05-18** (idempotent reruns + 30s-backoff retry per recent gotchas). Names below are working — naming alignment with the 2026-05-06 suggestions (`wmkf_budgetline` / `wmkf_personnel`) is itself an open question for Connor's review.
+
+### `wmkf_portal_membership` — contact ↔ account join with approval state
+
+Shape approved 2026-05-13 as drafted in `INTAKE_PORTAL_DESIGN.md` "One new entity" section. No changes from the 2026-05-06 baseline. Institution-claim approval workflow lives portal-side at `/apply/admin/memberships` (Option A); Connor's PA is not on the approval path.
+
+### `wmkf_proposalbudgetline` (working name) — budget rows child of `akoya_request`
+
+| Attribute | Type | Notes |
+|---|---|---|
+| `wmkf_proposalbudgetlineid` | PK | |
+| `wmkf_name` | Text(160) | Synthesized: `Y{year} — {category}: {description}` |
+| `_wmkf_request_value` | Lookup → `akoya_request` | Parental, cascade delete |
+| `wmkf_year` | Whole number (1–10) | Int, not Choice (forward-compatible across program lengths) |
+| `wmkf_category` | Choice | Pilot values: Personnel, Equipment, Supplies, Travel, Other Direct, Indirect (reserved) |
+| `wmkf_description` | Text(500) | Line-item description |
+| `wmkf_amount` | Money (USD) | |
+| `wmkf_lineorder` | Whole number | Display order within `(request, year, category)` |
+
+### `wmkf_proposalroster` (working name) — co-PI + key personnel child of `akoya_request`
+
+Shape not yet sketched — to be drafted alongside `wmkf_proposalbudgetline` for Connor's 2026-05-15 review. Working assumptions: 1:N parental from `akoya_request`; per-row contact lookup + role choice (PI / Co-PI / Senior Personnel / Key Personnel / Other) + percent effort + optional biosketch attachment reference. Shape should align with the existing `wmkf_apprequestperson` junction's role taxonomy where possible.
+
+### Deferred (was in 2026-05-06 plan, dropped to next cycle)
+
+- **`wmkf_milestone`** — captured as narrative field on `akoya_request` for pilot.
+- **`wmkf_priorsupport`** — captured as attached PDF for pilot.
+
+Both expand to real child entities post-pilot. Narrowing the 2026-05-06 set keeps schema work to two entities in the 20-day pilot window.
+
+### Outstanding before specs are written
+
+- Connor weighs in on the `wmkf_proposalbudgetline` vs. `wmkf_budgetline` naming (and `wmkf_proposalroster` vs. `wmkf_personnel`).
+- Connor confirms the category Choice values for `wmkf_proposalbudgetline.wmkf_category` match WMKF Research conventions.
+- Cover-doc template structure (Connor's PA reads the rows + populates a Word template grouped by year + category) — drives whether we need a synthesized `wmkf_name` or PA assembles its own display strings.
+- Sarah's Phase II Research field inventory (Track 2 carryover from 2026-05-13) — confirms whether budget + roster are the only repeating sections worth structuring for pilot.
+
+---
+
 ## 2026-05-07 — Workflow-chaining fields on `akoya_request` + Field Set B (deployed, Justin/Claude)
 
 **Scope:** 6 workflow-chaining `wmkf_ai_*` fields + 22 Field Set B fields on `akoya_request` (28 total). Deployed to prod 2026-05-07 in a single batch via `lib/dataverse/schema/wave2-existing/akoya_request-ai-extensions.json`. Closes Q5 in `docs/archive/CONNOR_QUESTIONS_2026-04-15.md` and the Field Set B skeleton entry below.
