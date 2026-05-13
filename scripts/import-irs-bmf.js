@@ -49,10 +49,16 @@ console.log(`Generated: ${new Date().toISOString()}\n`);
 try {
   const stats = await refresh({ dryRun: !COMMIT });
   console.log('\n## Results');
+  let totalSkipped = 0;
   for (const [region, info] of Object.entries(stats.perRegion)) {
-    console.log(`  region ${region}: ${info.rows.toLocaleString()} rows (${(info.csvSizeBytes / 1024 / 1024).toFixed(1)} MB downloaded)`);
+    const skipNote = info.skipped > 0 ? `, ${info.skipped} skipped` : '';
+    console.log(`  region ${region}: ${info.rows.toLocaleString()} rows${skipNote} (${(info.csvSizeBytes / 1024 / 1024).toFixed(1)} MB downloaded)`);
+    if (info.skipped > 0 && info.skippedSamples?.length > 0) {
+      console.log(`    skipped samples: ${JSON.stringify(info.skippedSamples)}`);
+    }
+    totalSkipped += info.skipped || 0;
   }
-  console.log(`  total rows: ${stats.totalRows.toLocaleString()}`);
+  console.log(`  total rows: ${stats.totalRows.toLocaleString()}${totalSkipped > 0 ? ` (skipped ${totalSkipped} malformed)` : ''}`);
   if (stats.swappedAt) {
     console.log(`  swapped to live at: ${stats.swappedAt}`);
   } else if (COMMIT) {
