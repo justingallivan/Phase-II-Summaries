@@ -59,6 +59,9 @@ try {
     totalSkipped += info.skipped || 0;
   }
   console.log(`  total rows: ${stats.totalRows.toLocaleString()}${totalSkipped > 0 ? ` (skipped ${totalSkipped} malformed)` : ''}`);
+  if (stats.duplicatesRemoved > 0) {
+    console.log(`  duplicates removed across regions: ${stats.duplicatesRemoved.toLocaleString()}`);
+  }
   if (stats.swappedAt) {
     console.log(`  swapped to live at: ${stats.swappedAt}`);
   } else if (COMMIT) {
