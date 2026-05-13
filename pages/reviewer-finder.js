@@ -3284,7 +3284,6 @@ function MyCandidatesTab({ refreshTrigger, userProfileId, navigateToProposal, on
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailModalData, setEmailModalData] = useState({ candidates: [], proposalInfo: {} });
   const [editingCandidate, setEditingCandidate] = useState(null);
-  const [extractingProposal, setExtractingProposal] = useState(null); // proposalId being re-extracted
 
   // Grant cycles state
   const [cycles, setCycles] = useState([]);
@@ -3526,51 +3525,6 @@ function MyCandidatesTab({ refreshTrigger, userProfileId, navigateToProposal, on
       console.error('Bulk delete failed:', err);
     } finally {
       setIsDeleting(false);
-    }
-  };
-
-  // Handle re-extracting summary from a proposal
-  const handleReExtractSummary = async (proposalId, file) => {
-    if (!file) return;
-
-    // Get summary pages setting from localStorage
-    let summaryPages = '2';
-    try {
-      const storedCycle = localStorage.getItem('email_grant_cycle');
-      if (storedCycle) {
-        const decoded = JSON.parse(atob(storedCycle));
-        summaryPages = decoded.summaryPages || '2';
-      }
-    } catch (e) {
-      // Use default
-    }
-
-    setExtractingProposal(proposalId);
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('proposalId', proposalId);
-      formData.append('summaryPages', summaryPages);
-
-      const response = await fetch('/api/reviewer-finder/extract-summary', {
-        method: 'POST',
-        body: formData
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        // Refresh to show updated status
-        fetchCandidates();
-      } else {
-        alert(result.message || 'Failed to extract summary');
-      }
-    } catch (err) {
-      console.error('Extract summary failed:', err);
-      alert('Failed to extract summary: ' + err.message);
-    } finally {
-      setExtractingProposal(null);
     }
   };
 
@@ -4185,7 +4139,7 @@ function MyCandidatesTab({ refreshTrigger, userProfileId, navigateToProposal, on
                   </p>
                 </div>
               </div>
-              {/* Summary Status & Re-extract */}
+              {/* Summary Status (read-only; re-extract retired in W5 step 5) */}
               <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                 {proposal.summaryBlobUrl ? (
                   <span className="text-xs text-green-600 flex items-center gap-1">
@@ -4194,31 +4148,6 @@ function MyCandidatesTab({ refreshTrigger, userProfileId, navigateToProposal, on
                 ) : (
                   <span className="text-xs text-gray-400">No summary</span>
                 )}
-                <label className="cursor-pointer">
-                  <input
-                    type="file"
-                    accept=".pdf"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleReExtractSummary(proposal.proposalId, file);
-                      e.target.value = ''; // Reset for future uploads
-                    }}
-                    disabled={extractingProposal === proposal.proposalId}
-                  />
-                  <span
-                    className={`text-xs px-2 py-1 rounded ${
-                      extractingProposal === proposal.proposalId
-                        ? 'bg-gray-100 text-gray-400'
-                        : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                    }`}
-                    title="Upload proposal PDF to extract/re-extract summary page(s)"
-                  >
-                    {extractingProposal === proposal.proposalId
-                      ? 'Extracting...'
-                      : proposal.summaryBlobUrl ? 'Re-extract' : 'Extract'}
-                  </span>
-                </label>
               </div>
             </div>
 

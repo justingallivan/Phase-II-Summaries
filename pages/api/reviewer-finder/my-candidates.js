@@ -140,12 +140,21 @@ async function handleGet(req, res, access) {
           grantCycleCode: s.wmkf_grantcyclecode || request.cycleCode,
           grantCycleLabel: request.cycleLabel,
           meetingDate: request.meetingDate,
+          summaryBlobUrl: s.wmkf_summarybloburl || null,
           candidates: [],
         };
-      } else if (!byRequest[reqId].grantCycleCode && s.wmkf_grantcyclecode) {
-        // First suggestion was null; pick up later non-null suggestion-level
-        // override (defensive — bulkUpdate writes all at once but be safe).
-        byRequest[reqId].grantCycleCode = s.wmkf_grantcyclecode;
+      } else {
+        if (!byRequest[reqId].grantCycleCode && s.wmkf_grantcyclecode) {
+          // First suggestion was null; pick up later non-null suggestion-level
+          // override (defensive — bulkUpdate writes all at once but be safe).
+          byRequest[reqId].grantCycleCode = s.wmkf_grantcyclecode;
+        }
+        if (!byRequest[reqId].summaryBlobUrl && s.wmkf_summarybloburl) {
+          // Same defensive pattern: summaryBlobUrl is written per-suggestion
+          // at save-candidates time. All suggestions for a given proposal
+          // should carry the same URL, but pick up the first non-null.
+          byRequest[reqId].summaryBlobUrl = s.wmkf_summarybloburl;
+        }
       }
       const person = personById[s._wmkf_potentialreviewer_value] || {};
       const researcher = researcherByPerson[s._wmkf_potentialreviewer_value] || null;

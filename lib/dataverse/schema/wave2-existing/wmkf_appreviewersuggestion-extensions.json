@@ -100,7 +100,7 @@
       "type": "String",
       "schemaName": "wmkf_SummaryBlobUrl",
       "displayName": "Summary Blob URL",
-      "description": "Vercel Blob URL of the AI-generated proposal summary attached to the reviewer's invitation email. Migrated from Postgres `reviewer_suggestions.summary_blob_url` at W5 cutover (2026-05-12). generate-emails.js reads this per-candidate so multi-proposal email batches attach the correct summary per recipient. Set by analyze.js (and historically extract-summary.js, retiring in W5 step 5).",
+      "description": "Vercel Blob URL of the AI-generated proposal summary attached to the reviewer's invitation email. Migrated from Postgres `reviewer_suggestions.summary_blob_url` at W5 cutover (2026-05-12). generate-emails.js reads this per-candidate so multi-proposal email batches attach the correct summary per recipient. Set by analyze.js and persisted via save-candidates.",
       "maxLength": 500
     }
   ]

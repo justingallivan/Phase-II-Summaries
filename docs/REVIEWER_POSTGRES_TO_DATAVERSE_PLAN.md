@@ -440,7 +440,7 @@ The 8 anomalies trace cleanly to known data-quality gaps in the audit:
 
 `pages/api/reviewer-finder/save-candidates.js` writes Dataverse-only today, but at some prior point it wrote both Postgres and Dataverse — the 97.6% Group A overlap is consistent with sustained dual-write history rather than recent Dataverse adoption. The Postgres-only window must have been brief.
 
-**Operational implication**: the original "reviewer-suggestions backfill is a large blocker" framing is wrong. 329/337 rows already match Dataverse; only 8 anomalies need triage. The backfill commit-mode run is scheduled in W4 per the refreshed schedule below; endpoint rewrites for `reviewer_suggestions` readers (`generate-emails.js`, `my-proposals.js`, `extract-summary.js`, `maintenance-service.js`, `database-service.js`) are in W5.
+**Operational implication**: the original "reviewer-suggestions backfill is a large blocker" framing is wrong. 329/337 rows already match Dataverse; only 8 anomalies need triage. The backfill commit-mode run is scheduled in W4 per the refreshed schedule below; endpoint rewrites for `reviewer_suggestions` readers (`generate-emails.js`, `my-proposals.js`, `maintenance-service.js`, `database-service.js`) are in W5. `extract-summary.js` retires entirely in W5 step 5 — no rewrite, no Dataverse counterpart.
 
 ### Patch precedence (residual, only matters if anomaly triage finds anything migrate-worthy)
 
