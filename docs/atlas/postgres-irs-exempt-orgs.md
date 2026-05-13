@@ -1,7 +1,7 @@
 # Atlas: `irs_exempt_orgs` (Postgres)
 
-**Last verified:** 2026-05-12 (initial creation, migration 008)
-**Live row count:** populated by `/api/cron/refresh-irs-bmf` (target: ~1.95M rows after first run)
+**Last verified:** 2026-05-12 (initial creation, migration 008; first real-data load completed 2026-05-13)
+**Live row count:** **~1.26M** post-import unique-EIN baseline. The IRS publishes ~1.95M total records in the broader BMF, but the four regional CSVs (eo1–eo4) we load aggregate to ~1.26M after dropping rows missing required fields (EIN/NAME/SUBSECTION/STATUS) and deduping cross-region overlap. A future operator seeing 1.26M should NOT treat that as suspicious — the gap to 1.95M reflects how the IRS scopes the regional files plus our schema-required-field filter, not a partial download.
 
 ## Source of truth
 

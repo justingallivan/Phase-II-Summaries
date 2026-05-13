@@ -48,7 +48,22 @@
  *   docs/atlas/postgres-irs-exempt-orgs.md
  */
 
+import { timingSafeEqual } from 'crypto';
 import { verifyEin } from '../../../lib/services/irs-bmf-service';
+
+function constantTimeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  // timingSafeEqual requires equal-length buffers; pad to longest so
+  // mismatched lengths don't short-circuit and leak length via timing.
+  const len = Math.max(aBuf.length, bBuf.length);
+  const aPad = Buffer.alloc(len);
+  const bPad = Buffer.alloc(len);
+  aBuf.copy(aPad);
+  bBuf.copy(bPad);
+  return timingSafeEqual(aPad, bPad) && aBuf.length === bBuf.length;
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -56,7 +71,10 @@ export default async function handler(req, res) {
   }
 
   // Shared-secret auth. Dev mode bypasses for local testing — matches
-  // the convention used by the cron auth helper.
+  // the convention used by the cron auth helper. Production uses
+  // constant-time comparison so a timing oracle can't peel the secret
+  // byte-by-byte (defense in depth — high-entropy secret + HTTPS, but
+  // the fix is two lines and removes a known footgun).
   const expected = process.env.IRS_VERIFY_SECRET;
   if (process.env.NODE_ENV !== 'development') {
     if (!expected) {
@@ -64,7 +82,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Verify secret not configured' });
     }
     const provided = req.headers['x-irs-verify-secret'];
-    if (!provided || provided !== expected) {
+    if (!provided || !constantTimeEqual(provided, expected)) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
   }
