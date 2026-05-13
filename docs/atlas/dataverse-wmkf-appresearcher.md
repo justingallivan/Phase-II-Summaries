@@ -47,7 +47,7 @@ Alternate keys: `wmkf_orcid`, `wmkf_potentialreviewer` (1:1 enforcement).
 - `pages/api/reviewer-finder/save-candidates.js` — per-proposal save
 - `pages/api/reviewer-finder/my-candidates.js` — per-PD picker
 - `pages/api/review-manager/reviewers.js` `fetchResearchersByPerson` — joins researcher snapshots onto Review Manager's reviewer list (filter `_wmkf_potentialreviewer_value` OR-chain)
-- (No standalone browse/list endpoint yet — Postgres `pages/api/reviewer-finder/researchers.js` still serves browse via Postgres)
+- (No standalone browse/list endpoint. The Postgres-backed `pages/api/reviewer-finder/researchers.js` admin tab was retired 2026-05-12 in W6 step 1; the 1:1 contact model has no shared researcher pool to browse. A post-pilot "Add candidate by hand" feature is planned as the replacement entry point.)
 
 ## Write paths
 

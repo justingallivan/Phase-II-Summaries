@@ -1170,7 +1170,7 @@ All new server-side outbound HTTP requests should use `safeFetch` from `lib/util
 
 **Risk:** Data created by authenticated users was silently lost (invisible in their view). Additionally, `save-candidates.js` accepting `userProfileId` from the request body is the same class of vulnerability as M3 — a user could create records attributed to another user's profile.
 
-**Status: REMEDIATED.** Both endpoints now use `access.profileId` from the authenticated session as the source of truth for `user_profile_id`. The `save-candidates.js` endpoint falls back to the request body value only when auth is bypassed (dev mode). The `researchers.js` `handleCreate` function now receives the `access` object from the handler and uses `access.profileId` directly.
+**Status: REMEDIATED.** `save-candidates.js` uses `access.profileId` from the authenticated session as the source of truth for `user_profile_id` (falls back to the request body value only when auth is bypassed in dev mode). The `researchers.js` endpoint was retired entirely 2026-05-12 in W6 step 1 of the Postgres→Dataverse migration; the second leg of this finding therefore no longer has a live surface.
 
 #### M8: No CSRF Protection Beyond SameSite Cookies
 

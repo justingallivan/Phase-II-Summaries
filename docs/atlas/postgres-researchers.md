@@ -27,7 +27,7 @@ Postgres-only **for now**. Wave 2 migrates the canonical identity to Dataverse `
 | created_at | timestamp | default `now()` |
 | last_updated | timestamp | default `now()` |
 | last_checked | timestamp | "last verified" stamp |
-| metrics_updated_at | timestamp | added by `setup-database.js`; written on h-index/citations updates by `pages/api/reviewer-finder/researchers.js` (≈line 601) |
+| metrics_updated_at | timestamp | added by `setup-database.js`; was written on h-index/citations updates by `pages/api/reviewer-finder/researchers.js` (≈line 601, retired W6 step 1 2026-05-12) |
 | email_source | varchar(100) | M002 — `pubmed \| orcid \| claude_search \| manual` |
 | email_year | integer | M002 — pub year where email was found (recency signal) |
 | email_verified_at | timestamp | M002 |
@@ -39,7 +39,7 @@ Postgres-only **for now**. Wave 2 migrates the canonical identity to Dataverse `
 
 Indexes: `normalized_name`, `email`, `last_updated`, `(email IS NOT NULL)`, `contact_enriched_at`, `orcid` (M002). (See `lib/db/schema.sql` + `lib/db/migrations/002_contact_enrichment.sql`.)
 
-> **Verified active readers/writers of the M002 columns:** `pages/api/reviewer-finder/researchers.js` (UI edit) and `lib/services/contact-enrichment-service.js` (enrichment pipeline).
+> **Verified active readers/writers of the M002 columns:** `pages/api/reviewer-finder/researchers.js` (retired W6 step 1 2026-05-12) and `lib/services/contact-enrichment-service.js` (enrichment pipeline migrated to Dataverse adapter chain in W5).
 
 ## Live state notes
 
@@ -48,26 +48,26 @@ Indexes: `normalized_name`, `email`, `last_updated`, `(email IS NOT NULL)`, `con
 
 ## Read paths
 
-**W5 update (commit `c0c5b5b` + `0c58da4`):** all three `DatabaseService.findResearcher` callers migrated to Dataverse adapters; the method itself was gutted from `database-service.js`. Remaining Postgres readers are the legacy admin/script paths only.
+**W6 update (2026-05-12):** the last live reader (`pages/api/reviewer-finder/researchers.js` admin UI) has been retired. No live application code reads this table. Remaining readers are admin scripts only.
 
-- `pages/api/reviewer-finder/researchers.js` — UI's researcher browse/edit view (W6 retirement target)
 - `scripts/audit-postgres-state.js`, `scripts/clear-all-database.js`, `scripts/cleanup-database.js` — admin scripts
 
-Pre-W5 callers (now removed, kept for archaeology):
+Pre-W5/W6 callers (now removed, kept for archaeology):
 - `lib/services/discovery-service.js` — replaced with unconditional PubMed verification
 - `lib/services/deduplication-service.js` — replaced with transient merged candidates (no PG id thread)
 - `lib/services/contact-enrichment-service.js` — replaced with Dataverse adapter chain
+- `pages/api/reviewer-finder/researchers.js` — deleted W6 step 1
 
 ## Write paths
 
-**W5 update:** writer was `DatabaseService.createOrUpdateResearcher`, gutted in commit `0c58da4`. Live writers reduced to admin paths only.
+**W6 update:** no live application writers remain. Table is now drain-only (no inserts/updates from production code). Admin scripts retain DELETE for cleanup.
 
-- `pages/api/reviewer-finder/researchers.js` — UI edit + delete (W6 retirement target)
+- `scripts/clear-all-database.js`, `scripts/cleanup-database.js` — DELETE only
 
-Pre-W5 writer (now removed):
-- `lib/services/contact-enrichment-service.js` — enrichment writeback now targets `wmkf_potentialreviewer` + `wmkf_appresearcher` via the adapter chain.
-
-DELETE writers: `clear-all-database.js`, `cleanup-database.js`, `pages/api/reviewer-finder/researchers.js`, `scripts/cleanup-database.js`.
+Pre-W5/W6 writers (now removed):
+- `lib/services/contact-enrichment-service.js` — enrichment writeback now targets `wmkf_potentialreviewer` + `wmkf_appresearcher` via the adapter chain (W5)
+- `DatabaseService.createOrUpdateResearcher` — gutted in commit `0c58da4` (W5 step 2)
+- `pages/api/reviewer-finder/researchers.js` — deleted W6 step 1
 
 ## Cross-system linkages
 
