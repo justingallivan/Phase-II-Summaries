@@ -106,6 +106,7 @@ Required for any deployment:
 Required for production-only paths:
 - `CRON_SECRET` — `/api/cron/*` authentication
 - `EXTERNAL_LINK_SECRET` — 32+ char HMAC for external-reviewer JWTs (separate from `NEXTAUTH_SECRET`)
+- `IRS_VERIFY_SECRET` — shared secret for `/api/irs/verify-ein` (PowerAutomate caller; separate from `CRON_SECRET`)
 - `VRP_ALLOWED_PROVIDERS` — Virtual Review Panel allowlist (intersects with configured API keys; production fails closed if unset; must include `claude`)
 - `EXTERNAL_AZURE_AD_*` (tenant/client/secret) — applicant intake portal; provider only registers when all three are set, so staff-only deployments don't need them
 
@@ -137,7 +138,7 @@ For multi-Mac development, see `docs/MULTI_MAC_SETUP.md`.
 
 Three-layer defense-in-depth:
 
-1. **Server-side middleware** (`middleware.js`) — Edge Runtime `withAuth`/`jose` validates JWT before any HTML/JS is served. Unauthenticated users never see the app. Respects `AUTH_REQUIRED` kill switch. Excludes `/api/auth/*` and `/api/cron/*` (cron jobs authenticate via `CRON_SECRET`, not JWT).
+1. **Server-side middleware** (`middleware.js`) — Edge Runtime `withAuth`/`jose` validates JWT before any HTML/JS is served. Unauthenticated users never see the app. Respects `AUTH_REQUIRED` kill switch. Excludes `/api/auth/*`, `/api/cron/*` (`CRON_SECRET`), and `/api/irs/*` (`IRS_VERIFY_SECRET` shared-secret header for PowerAutomate).
 2. **API route auth** (`lib/utils/auth.js`) — App-specific endpoints use `requireAppAccess(req, res, ...appKeys)` which combines CSRF origin check + auth + `is_active` check + app access in one call. Returns `{ profileId, session }` on success; sends 401/403 on failure. Uses in-memory cache with 2-min TTL (includes `isActive` flag). Disabled accounts blocked before superuser bypass. Infrastructure endpoints (auth, admin, health) use `requireAuth()` or `requireAuthWithProfile()`.
 3. **Client-side guards** (`RequireAuth`, `RequireAppAccess`) — Defense in depth for navigation/UI.
 
@@ -241,7 +242,7 @@ User-scoping convention: shared tables for organization-wide reference data; per
 
 ## API Endpoints
 
-The full route catalogue lives in **`docs/API_ROUTE_SECURITY_MATRIX.md`** (78 routes, CI-gated via `npm run check:api-routes` — PRs touching `pages/api/**` fail without a matrix update). Source files in `pages/api/<app>/` are authoritative for behavior.
+The full route catalogue lives in **`docs/API_ROUTE_SECURITY_MATRIX.md`** (80 routes, CI-gated via `npm run check:api-routes` — PRs touching `pages/api/**` fail without a matrix update). Source files in `pages/api/<app>/` are authoritative for behavior.
 
 Conventions:
 - App-specific routes use `requireAppAccess(req, res, 'app-key')`. App keys live in `shared/config/appRegistry.js`.
@@ -257,7 +258,7 @@ Conventions:
 Operational docs to know about (others in `docs/` are design backdrop, roadmaps, or point-in-time audits — find via grep when relevant):
 
 - **`docs/EXECUTOR_CONTRACT.md`** — shared spec PA `ExecutePrompt` and Vercel `executePrompt()` both implement. Read before any prompt work.
-- **`docs/API_ROUTE_SECURITY_MATRIX.md`** — 78-route catalogue, CI-gated.
+- **`docs/API_ROUTE_SECURITY_MATRIX.md`** — 80-route catalogue, CI-gated.
 - **`docs/SECURITY_OPERATING_PLAN.md`** — weekly/monthly/quarterly security cadence + watch-item escalation thresholds.
 - **`docs/CREDENTIALS_RUNBOOK.md`** — env vars, secret rotation, diagnostics.
 - **`docs/AUTHENTICATION_SETUP.md`** — Azure AD configuration.

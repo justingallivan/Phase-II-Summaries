@@ -128,7 +128,8 @@ export const config = {
      * - apple-touch-icon* (iOS home screen icons)
      * - /api/auth/* (NextAuth routes must be accessible for login flow)
      * - /api/cron/* (Vercel cron jobs authenticate via CRON_SECRET, not JWT)
+     * - /api/irs/* (PowerAutomate authenticates via IRS_VERIFY_SECRET header, not JWT)
      */
-    '/((?!_next/static|_next/image|favicon\\.ico|apple-touch-icon|api/auth|api/cron).*)',
+    '/((?!_next/static|_next/image|favicon\\.ico|apple-touch-icon|api/auth|api/cron|api/irs).*)',
   ],
 };

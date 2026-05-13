@@ -1,26 +1,40 @@
 ---
 name: project-irs-exempt-verification
-description: "Planned IRS tax-exempt status verification — Postgres-resident reference data, queried by PowerAutomate via Vercel endpoint, verified result written back to Dynamics account row"
-metadata: 
+description: "IRS tax-exempt status verification — SHIPPED 2026-05-12. Postgres-resident BMF reference data, quarterly refresh cron, PowerAutomate-callable /api/irs/verify-ein endpoint. Verified results written back to Dynamics account rows by PA, not by this app."
+metadata:
   node_type: memory
   type: project
   originSessionId: e2f71cb4-b29c-4510-b8fe-1da4a49ec6ee
 ---
 
-Need to verify tax-exempt status of applicant institutions. IRS publishes ~3 CSVs (~100 MB each — likely Pub 78, EO BMF, Auto-Revocation List), refreshed a few times per year. No IRS API.
+**Status: SHIPPED 2026-05-12 (Session 147).** Initial implementation in commit pending. First IRS BMF load not yet run — kick off via `node scripts/import-irs-bmf.js --commit` or wait for the next quarterly cron run.
 
-**Decision: store the bulk data in Postgres, NOT Dataverse.**
+## What got built
 
-**Why:** Dataverse storage is sold in stingy per-environment tiers (~10 GB DB baseline + ~250 MB per licensed user; with ~16 staff that's ~14 GB row capacity). 300 MB of CSV becomes 1–3 GB as Dataverse rows with overhead/indexes — meaningful chunk of capacity for pure reference data with no relational value to other entities. Bulk upserting ~1.8M rows via Web API is also slow and throttled. Postgres handles 2M EIN-indexed rows trivially; refresh = `COPY` from CSV in a quarterly script.
+- **Migration 008:** `irs_exempt_orgs` Postgres table (`lib/db/migrations/008_irs_exempt_orgs.sql`, also inlined as v29 in `scripts/setup-database.js`). PK on EIN, partial index on state, composite on (subsection, status).
+- **Service:** `lib/services/irs-bmf-service.js` exports `refresh()` (atomic-swap import) and `verifyEin()` (single-EIN lookup). Stream-parses CSV via `csv-parse` and streams into a staging table via `pg-copy-streams`. Both Vercel cron and the CLI call the same `refresh()`.
+- **Cron handler:** `pages/api/cron/refresh-irs-bmf.js`, scheduled `0 6 15 1,4,7,10 *` in `vercel.json` (15th of Jan/Apr/Jul/Oct, 06:00 UTC). `maxDuration: 300` override (download + COPY of ~1.95M rows). `CRON_SECRET` auth. Audited via `maintenance_runs`; failure raises `system_alerts` row.
+- **Verify endpoint:** `pages/api/irs/verify-ein.js`. `x-irs-verify-secret` shared-secret header (`IRS_VERIFY_SECRET` env var). Allowlisted in `middleware.js` so it does not require an NextAuth session.
+- **CLI:** `scripts/import-irs-bmf.js` — `--commit` flag for manual runs (local dev, ad-hoc refresh outside the cron cadence).
 
-**Architecture:**
-- Postgres table `irs_exempt_orgs` keyed on EIN, refreshed quarterly via a script.
-- PA flow calls a Vercel endpoint (e.g. `/api/irs/verify-ein?ein=...`) with a shared-secret header — same shape as the Executor contract, no LLM, just indexed lookup.
-- Endpoint returns structured answer (exempt status + ruling year + last-refreshed date), PA writes the *verified result* back to the `account` row in Dynamics.
-- Only the answer lives in CRM (boolean + verification date per account); the bulk IRS dataset stays in Postgres.
+## Refresh cadence rationale
 
-**Why a Vercel endpoint vs PA's native PostgreSQL connector:** one auth surface, single place for EIN normalization/validation, logging, caching, rate-limiting. Extra hop is worth it.
+**Quarterly, not monthly.** IRS publishes monthly (~14th of each month) but for the research-program pilot (mostly universities with decades-stable status) the marginal benefit of monthly refresh is negligible. The 15th-of-quarter schedule picks up the freshest available data right before each natural usage window (April refresh covers June cycle, October covers December cycle, etc.).
 
-**How to apply:** When this gets built, follow the call-and-respond shape used by other PA-triggered endpoints. Likely needs a `IRS_VERIFY_SECRET` env var (separate from `CRON_SECRET` since PA isn't a Vercel cron). The 3 IRS files may not all be needed — BMF alone covers "currently exempt?"; Pub 78 is a subset, Auto-Revocation is the negative list. Confirm scope before loading all three.
+**Bump to monthly when the SoCal program comes online.** SoCal deals with smaller, less-established orgs whose tax status changes more often; the staleness window matters more there. Edit `vercel.json` cron entry from `0 6 15 1,4,7,10 *` → `0 6 15 * *` at that point.
 
-**Mental model shift this surfaces:** Postgres's durable role is "app's reference-data layer" (researchers, publications, retractions, IRS), not "Dynamics on-ramp". The staging-style use is what Wave 1 is draining; the reference-data use is what stays. Related: [[project_wave1_pending]], [[project_reviewer_postgres_to_dataverse_migration]].
+## Boundaries
+
+**This app never writes to Dynamics for IRS verification.** PA owns the writeback to the `account` row. The endpoint is purely read-only against the Postgres reference data; what PA does with the response is its own contract.
+
+**Bulk extract stays in Postgres, not Dataverse.** Wave 2 reframing: Postgres's durable role is reference data (researchers, retractions, IRS); the staging/system-of-record role is what Wave 1/2 drained. The IRS extract is a textbook reference-data fit.
+
+## Open items + gotchas (carry these into future sessions)
+
+- **First load not yet run.** Until `refresh()` runs against the live IRS endpoints once, the table is empty and verify-ein returns `found: false` for all EINs. Run via `node scripts/import-irs-bmf.js --commit` from a machine with `POSTGRES_URL` set.
+- **CSV encoding.** Not formally declared by the IRS. We use `csv-parse` with `bom: true`; if Latin-1 (e.g. accented org names) surfaces, the importer may need an encoding pass. Watch first-run logs.
+- **Pub 78 + Auto-Revocation List are NOT loaded.** BMF alone answers "currently exempt?" (removal from BMF = effectively revoked per the data dictionary). Add if a real edge case surfaces.
+- **PA timing decision still owed.** When does PA fire the verification — on `account` create, on submit, or on `'Phase II Pending'` flip? Connor's call; sub-question under intake portal Track 1B (`docs/INTAKE_PORTAL_MEETING_AGENDA_2026-05-13.md`).
+- **EIN form field on the intake form.** Required so the `account` row gets the EIN at submission time. Add to Sarah's field inventory at the 2026-05-13 meeting.
+
+Related: [[w6-table-drop-pending]] (other Postgres reference-data work), [[reviewer-postgres-to-dataverse-migration]] (the strategic reframing this verification path benefits from).

@@ -553,6 +553,38 @@ const v23bStatements = [
   `CREATE INDEX IF NOT EXISTS idx_dynamics_feedback_session ON dynamics_feedback(session_id)`,
 ];
 
+// V29: IRS exempt-organizations reference data (BMF extract).
+// See migration 008_irs_exempt_orgs.sql. Reference data only — NOT wave-2
+// migrate-eligible. Atomic-swap refresh by /api/cron/refresh-irs-bmf.
+const v29Statements = [
+  `CREATE TABLE IF NOT EXISTS irs_exempt_orgs (
+    ein              VARCHAR(9)  PRIMARY KEY,
+    name             TEXT NOT NULL,
+    ico              TEXT,
+    street           TEXT,
+    city             TEXT,
+    state            VARCHAR(2),
+    zip              VARCHAR(10),
+    group_exemption  VARCHAR(4),
+    subsection       VARCHAR(2) NOT NULL,
+    affiliation      VARCHAR(1),
+    classification   VARCHAR(4),
+    ruling_date      VARCHAR(6),
+    deductibility    VARCHAR(1),
+    foundation       VARCHAR(2),
+    organization     VARCHAR(1),
+    status           VARCHAR(2) NOT NULL,
+    ntee_cd          VARCHAR(4),
+    sort_name        TEXT,
+    region           VARCHAR(1) NOT NULL,
+    refresh_date     DATE NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_irs_exempt_orgs_state
+     ON irs_exempt_orgs(state) WHERE state IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_irs_exempt_orgs_subsection_status
+     ON irs_exempt_orgs(subsection, status)`,
+];
+
 // V28: Policy publish audit (append-only). See migration 006_policy_publish_audit.sql
 // for full rationale. Dedicated Postgres table rather than overloading wmkf_ai_run.
 const v28Statements = [
@@ -1297,6 +1329,25 @@ async function runMigration() {
           console.log(`[v28-${i + 1}/${v28Statements.length}] ○ Already exists: ${preview}...`);
         } else {
           console.error(`[v28-${i + 1}/${v28Statements.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
+      }
+    }
+
+    // Run V29 table creation (IRS BMF reference data)
+    console.log(`\nApplying v29 schema updates - IRS BMF reference data (${v29Statements.length} statements)...`);
+    for (let i = 0; i < v29Statements.length; i++) {
+      const statement = v29Statements[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v29-${i + 1}/${v29Statements.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v29-${i + 1}/${v29Statements.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v29-${i + 1}/${v29Statements.length}] ✗ Error: ${error.message}`);
           throw error;
         }
       }

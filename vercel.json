@@ -11,6 +11,9 @@
     },
     "pages/api/cron/*.js": {
       "maxDuration": 120
+    },
+    "pages/api/cron/refresh-irs-bmf.js": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -37,6 +40,10 @@
     {
       "path": "/api/cron/reconcile-identities",
       "schedule": "0 7 * * 1"
+    },
+    {
+      "path": "/api/cron/refresh-irs-bmf",
+      "schedule": "0 6 15 1,4,7,10 *"
     }
   ]
 }
