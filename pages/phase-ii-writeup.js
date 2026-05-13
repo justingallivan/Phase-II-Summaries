@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import DOMPurify from 'dompurify';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import FileUploaderSimple from '../shared/components/FileUploaderSimple';
 import ResultsDisplay from '../shared/components/ResultsDisplay';
@@ -7,37 +6,7 @@ import RequireAppAccess from '../shared/components/RequireAppAccess';
 import ErrorAlert from '../shared/components/ErrorAlert';
 import { useProfile } from '../shared/context/ProfileContext';
 import { parseSections } from '../shared/config/prompts/proposal-summarizer';
-
-function renderMarkdown(text) {
-  if (!text) return '';
-  let html = text;
-  // Headers (process h3 before h2 before h1 to avoid partial matches)
-  html = html.replace(/^### (.+)$/gm, '<h3 class="font-semibold text-sm mt-3 mb-1">$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2 class="font-semibold text-base mt-3 mb-1">$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1 class="font-bold text-base mt-3 mb-1">$1</h1>');
-  // Bold+italic, bold, italic
-  html = html.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code class="bg-gray-200 px-1 py-0.5 rounded text-xs">$1</code>');
-  // Horizontal rule
-  html = html.replace(/^---$/gm, '<hr class="my-2 border-gray-300" />');
-  // Unordered list items
-  html = html.replace(/^[*-] (.+)$/gm, '<li class="ml-4 list-disc">$1</li>');
-  // Numbered list items
-  html = html.replace(/^\d+\. (.+)$/gm, '<li class="ml-4 list-decimal">$1</li>');
-  // Line breaks
-  html = html.replace(/\n/g, '<br/>');
-  // Clean up <br/> around block elements
-  html = html.replace(/<br\/>\s*(<h[1-3]|<hr|<li)/g, '$1');
-  html = html.replace(/(<\/h[1-3]>|<hr[^>]*>)\s*<br\/>/g, '$1');
-  // Wrap consecutive <li> in <ul>
-  html = html.replace(/((?:<li[^>]*>.*?<\/li>(?:<br\/>)?)+)/g, (match) => {
-    return `<ul class="my-1">${match.replace(/<br\/>/g, '')}</ul>`;
-  });
-  return html;
-}
+import { renderAppMarkdown } from '../shared/utils/app-markdown';
 
 function ProposalSummarizer() {
   const { profileName } = useProfile();
@@ -653,7 +622,7 @@ function ProposalSummarizer() {
                       {msg.role === 'user' ? (
                         <div className="whitespace-pre-wrap text-sm">{msg.content}</div>
                       ) : (
-                        <div className="text-sm" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdown(msg.content)) }} />
+                        <div className="text-sm" dangerouslySetInnerHTML={{ __html: renderAppMarkdown(msg.content) }} />
                       )}
                       {msg.isStreaming && <span className="inline-block w-2 h-4 bg-gray-400 ml-0.5 animate-pulse" />}
                       {msg.sources && msg.sources.length > 0 && (
