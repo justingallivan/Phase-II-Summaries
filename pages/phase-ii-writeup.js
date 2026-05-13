@@ -7,6 +7,7 @@ import ErrorAlert from '../shared/components/ErrorAlert';
 import { useProfile } from '../shared/context/ProfileContext';
 import { parseSections } from '../shared/config/prompts/proposal-summarizer';
 import { renderAppMarkdown } from '../shared/utils/app-markdown';
+import { parseSseStream } from '../shared/utils/sse-stream';
 
 function ProposalSummarizer() {
   const { profileName } = useProfile();
@@ -255,98 +256,82 @@ function ProposalSummarizer() {
         throw new Error(errorMessage);
       }
 
-      // Parse SSE stream
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
+      // Parse SSE stream via the shared parser. Same AbortController
+      // drives both fetch() above and the parser's signal, so a modal
+      // close triggers both teardowns in one call.
       let streamedText = '';
       let streamedSources = [];
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      for await (const evt of parseSseStream({
+        stream: response.body,
+        signal: abortController.signal,
+      })) {
+        const { event: eventType, data: parsed } = evt;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n\n');
-        buffer = lines.pop();
-
-        for (const chunk of lines) {
-          const eventMatch = chunk.match(/^event: (\w+)\ndata: (.+)$/s);
-          if (!eventMatch) continue;
-
-          const [, eventType, eventData] = eventMatch;
-          let parsed;
-          try {
-            parsed = JSON.parse(eventData);
-          } catch {
-            continue;
-          }
-
-          switch (eventType) {
-            case 'thinking':
-              // Update thinking indicator text
-              setQAMessages(prev => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last && last.isThinking) {
-                  updated[updated.length - 1] = { ...last, thinkingText: parsed.message };
-                }
-                return updated;
-              });
-              break;
-
-            case 'text_delta':
-              streamedText += parsed.text;
-              // Replace thinking indicator with streaming message, or update streaming message
-              setQAMessages(prev => {
-                const updated = [...prev];
-                const lastIdx = updated.length - 1;
-                const last = updated[lastIdx];
-                if (last && (last.isThinking || last.isStreaming)) {
-                  updated[lastIdx] = { role: 'assistant', content: streamedText, isStreaming: true };
-                } else {
-                  updated.push({ role: 'assistant', content: streamedText, isStreaming: true });
-                }
-                return updated;
-              });
-              break;
-
-            case 'sources':
-              // Collect web search sources for citation display
-              if (parsed.sources) {
-                streamedSources = parsed.sources;
+        switch (eventType) {
+          case 'thinking':
+            // Update thinking indicator text
+            setQAMessages(prev => {
+              const updated = [...prev];
+              const last = updated[updated.length - 1];
+              if (last && last.isThinking) {
+                updated[updated.length - 1] = { ...last, thinkingText: parsed.message };
               }
-              break;
+              return updated;
+            });
+            break;
 
-            case 'complete':
-              // Finalize the message with sources if available
-              setQAMessages(prev => {
-                const updated = [...prev];
-                const lastIdx = updated.length - 1;
-                if (updated[lastIdx]?.isStreaming || updated[lastIdx]?.isThinking) {
-                  updated[lastIdx] = {
-                    role: 'assistant',
-                    content: streamedText || 'No response received.',
-                    ...(streamedSources.length > 0 ? { sources: streamedSources } : {}),
-                  };
-                }
-                return updated;
-              });
-              break;
+          case 'text_delta':
+            streamedText += parsed.text;
+            // Replace thinking indicator with streaming message, or update streaming message
+            setQAMessages(prev => {
+              const updated = [...prev];
+              const lastIdx = updated.length - 1;
+              const last = updated[lastIdx];
+              if (last && (last.isThinking || last.isStreaming)) {
+                updated[lastIdx] = { role: 'assistant', content: streamedText, isStreaming: true };
+              } else {
+                updated.push({ role: 'assistant', content: streamedText, isStreaming: true });
+              }
+              return updated;
+            });
+            break;
 
-            case 'error':
-              setQAMessages(prev => {
-                const updated = [...prev];
-                const lastIdx = updated.length - 1;
-                if (updated[lastIdx]?.isThinking || updated[lastIdx]?.isStreaming) {
-                  updated[lastIdx] = { role: 'assistant', content: parsed.message, isError: true };
-                } else {
-                  updated.push({ role: 'assistant', content: parsed.message, isError: true });
-                }
-                return updated;
-              });
-              break;
-          }
+          case 'sources':
+            // Collect web search sources for citation display
+            if (parsed.sources) {
+              streamedSources = parsed.sources;
+            }
+            break;
+
+          case 'complete':
+            // Finalize the message with sources if available
+            setQAMessages(prev => {
+              const updated = [...prev];
+              const lastIdx = updated.length - 1;
+              if (updated[lastIdx]?.isStreaming || updated[lastIdx]?.isThinking) {
+                updated[lastIdx] = {
+                  role: 'assistant',
+                  content: streamedText || 'No response received.',
+                  ...(streamedSources.length > 0 ? { sources: streamedSources } : {}),
+                };
+              }
+              return updated;
+            });
+            break;
+
+          case 'error':
+            setQAMessages(prev => {
+              const updated = [...prev];
+              const lastIdx = updated.length - 1;
+              if (updated[lastIdx]?.isThinking || updated[lastIdx]?.isStreaming) {
+                updated[lastIdx] = { role: 'assistant', content: parsed.message, isError: true };
+              } else {
+                updated.push({ role: 'assistant', content: parsed.message, isError: true });
+              }
+              return updated;
+            });
+            break;
         }
       }
 
