@@ -10,6 +10,28 @@ The pre-Session 84 chronological per-session log (everything after the September
 
 ---
 
+## May 2026 — Wave 2 W5/W6 cutover + IRS BMF reference layer (Session 147)
+
+**Milestone:** Closed Wave 2 W5 (reader cutover for `reviewer_suggestions` aggregation) and W6 step 1 (`pages/api/reviewer-finder/researchers.js` + Database tab UI retired, ~2,700 lines removed). Same session introduced a new product capability — IRS tax-exempt verification — that establishes Postgres as a durable **reference-data layer**, not just a Dynamics on-ramp. `irs_exempt_orgs` (V29) holds 1.26M rows from the 4 IRS BMF regional CSVs; quarterly cron does an atomic-swap refresh (stage → COPY FROM STDIN → dedupe by `(ein, region, ctid)` → ADD PK → rename); `/api/irs/verify-ein` is shared-secret-gated for PowerAutomate to call on `account` create/update. Threshold + dedupe + validation hardened across 5 Codex-driven iterations; not user-facing by design.
+
+**Sessions:** 147 (2026-05-12)
+
+**Ship state:**
+- 24 commits on main. Three independent workstreams: Wave 2 W5/W6 (`29ae474` → `cea4c27`), IRS BMF (`2ad2528` → `3b2450e`), Gemini-suggestions refactor of `pages/phase-ii-writeup.js` (`fd07318` → `49d9905`, Claude-executed after Codex dispatch failed twice).
+- W6 step 2 (cleanup cron + restore script) **deferred to post-pilot** per Codex's Wave 1 same-day DROP precedent. Trigger memory `project_w6_table_drop_pending.md` fires ≥ 2026-07-01.
+- New shared utilities: `shared/utils/app-markdown.js` (marked v12 + DOMPurify with `uponSanitizeAttribute` hook for href scheme + class allowlist) and `shared/utils/sse-stream.js` (async-iterator parser with AbortSignal, CRLF-aware). 36 Jest cases. `phase-ii-writeup.js` 879 → 597 lines via modal extraction (`Phase2{QA,Feedback,WordExport}Modal.js`).
+- CI gates green: `check:atlas`, `check:atlas:self-test`, `check:api-routes` (80 routes after IRS adds + `extract-summary.js` removal).
+- **Known gap:** Gemini refactor not visually smoke-tested (CLI-agent limitation); flagged in `docs/CODEX_HANDOFF_REPORT_2026-05-12.md`.
+
+**Why it matters:** The IRS layer is the first non-migration use of Postgres after Wave 1 closeout — proves the architectural reframe (Postgres = reference data + per-user/per-session state; Dataverse = organizational ground truth). The capability is PA-callable so it slots into Connor's backend-automation flows without new Vercel UI. W6 step 1 finishes the reviewer-finder reads cutover; remaining Postgres reviewer tables are drain-only and dropped post-pilot. The Gemini refactor extracts two shared utilities (`app-markdown`, `sse-stream`) that 10+ other pages can adopt later (`pages/dynamics-explorer.js:95` is the first candidate).
+
+**Pointers:**
+- `lib/services/irs-bmf-service.js`, `pages/api/cron/refresh-irs-bmf.js`, `pages/api/irs/verify-ein.js`, `scripts/import-irs-bmf.js`, `docs/atlas/postgres-irs-exempt-orgs.md`
+- `shared/utils/app-markdown.js`, `shared/utils/sse-stream.js`, `shared/components/Phase2{QA,Feedback,WordExport}Modal.js`
+- `docs/CODEX_HANDOFF_REPORT_2026-05-12.md` (Gemini refactor handoff + known-gap list)
+- `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` (W6 step 2 deferred checklist)
+- `.claude-memory/project_irs_exempt_verification.md` (planned → SHIPPED), `project_w6_table_drop_pending.md` (post-pilot trigger)
+
 ## May 2026 — Wave 1 prod retirement + thoroughness rule (Session 146)
 
 **Milestone:** Wave 1 (Postgres → Dataverse migration for `system_settings`, `user_app_access`, `user_preferences`) closed out in production. The three Postgres tables were dropped via `lib/db/migrations/007_drop_wave1_tables.sql` at 2026-05-12T01:30:41Z after behavioral verification confirmed zero prod writes since the 2026-05-03 flag flip; Neon PITR was bumped from 6h → 7 days to make rollback viable. Dispatcher defaults in the three service modules flipped from `postgres` to `dataverse` — explicit `WAVE1_BACKEND_*=postgres` now fails loudly against the dropped tables, closing the silent-degradation footgun Codex flagged in `database-service.js` prefs paths. Five bypass scripts targeting the dropped tables archived to `scripts/archive/`. Setup-database.js Wave 1 create blocks (V10 user_preferences, V16, V17, V22) removed so re-running setup against prod is safe. A second outcome: encoded `feedback_thoroughness_default.md` — banner-edit-includes-body-audit, description-edit-includes-body-audit, antonym-grep-after-status-change — after the doc-currency sweep + Wave 2 plan rebuild surfaced ~44 distinct findings across multiple Codex review rounds. Rule applies to all future doc and memory work.

@@ -1,151 +1,246 @@
-# Session 147 Prompt: open
+# Session 148 Prompt: open
 
-## Session 146 summary
+## Session 147 summary
 
-Sixteen commits on main, all pushed to origin. The headline is **Wave 1 closeout** (Postgres tables dropped in prod 2026-05-12) plus a multi-stage doc-currency rebuild that ended with the Wave 2 plan re-verified against live code across nine Codex review rounds.
+Twenty-four commits on main. Three independent workstreams shipped:
+**Wave 2 W5 reader cutover closed + W6 step 1 (researchers.js retirement)**,
+**IRS tax-exempt verification capability** (PA-callable, quarterly cron),
+and **Gemini-suggestions refactor** of `pages/phase-ii-writeup.js`
+(executed by Claude after Codex dispatch failed twice). Plus an
+intake-portal meeting agenda for the 2026-05-13 Sarah+Connor sync.
 
 ### What was completed
 
-1. **Wave 1 prod retirement — DONE 2026-05-12** (`dc8e745`, `91dbe26`, `a612d00`)
-   - Drop migration `lib/db/migrations/007_drop_wave1_tables.sql` executed against prod Postgres at 2026-05-12T01:30:41Z. All three Wave 1 tables (`system_settings`, `user_app_access`, `user_preferences`) gone.
-   - Pre-flight: built `scripts/wave1-drop-preflight.js` (live catalog probes, FK/view/policy/trigger/grant checks, PG/DV count parity, recent-writes guard, risky-script git-log evidence). Codex-reviewed before execution.
-   - Behavioral verification confirmed zero prod writes since 2026-05-03 flag flip (10 known dev writes from S145 admin model picker on localhost were reconciled to Dataverse 2026-05-11 via PG→DV sync).
-   - Neon PITR bumped from 6h → 7 days (Launch plan via API PATCH) to make rollback viable.
-   - Dispatcher defaults flipped from `postgres` to `dataverse` in `settings-service.js`, `app-access-service.js`, `database-service.js` — explicit `WAVE1_BACKEND_*=postgres` now fails loudly (table dropped, dead branch).
-   - V22 rename in Dataverse verified clean (0 stale `proposal-summarizer` keys, 7 on `phase-ii-writeup`).
-   - `setup-database.js` Wave 1 create blocks removed (V10 user_preferences, V16, V17, V22 runner + summary log lines).
-   - Bypass scripts archived: `manage-preferences.js`, `rotate-encryption-key.js`, `backfill-app-access.js`, `verify-wave1-read-path.js`, `sync-wave1-postgres-to-dataverse.js` → `scripts/archive/` with README explaining rewrite status.
-   - Typo fix: `wmkf_appuserappacces` → `wmkf_appuserappaccesses` in migration header + setup-database comment.
+1. **Wave 2 W5 closeout** (`29ae474`, `04d891c`, `52c1aa2`, `0dfcf73`)
+   - W5 step 3 followup: Co-PI derivation + summary-URL writer gap fixes.
+   - W5 step 4: `my-proposals.js` cut from Postgres `reviewer_suggestions`
+     aggregation to Dataverse via `queryAllRecords` (not `queryRecords` —
+     silent 100-row cap). Adapter exports `RESPONSE_TYPE_MAP` to single-
+     source picklist values.
+   - W5 step 5: Deleted `pages/api/reviewer-finder/extract-summary.js`
+     (Dataverse-side already does this).
+   - W5 step 6: `maintenance-service.cleanupBlobs` reads from Dataverse
+     (`wmkf_appgrantcycles`, `wmkf_appreviewersuggestions`) +
+     `intake_drafts.attachments[*].blob_url`. Fails closed on `capped`.
 
-2. **Doc-currency sweep — five tiers** (`7e53c02`, `af40768`)
-   - 32 files updated across plan docs, atlas pages, runbooks, inline code comments, memory entries.
-   - Tier 1 plan-doc status banners: POSTGRES_TO_DATAVERSE_MIGRATION (Planning → Wave 1 COMPLETE), REVIEWER_STAGE_2A_BUILD_PLAN (Draft → Slice 1 SHIPPED), DYNAMICS_IDENTITY_RECONCILIATION_PLAN (TODO → SHIPPED + UNBLOCKED), EXTERNAL_REVIEWER_INTAKE_PLAN (Ready → SHIPPED 2026-05-03), INTAKE_PORTAL_DESIGN (Entra blocker → resolved S129).
-   - Tier 2 Wave 1 drift: API_ROUTE_SECURITY_MATRIX, CREDENTIALS_RUNBOOK, ADMIN_GUIDE, STRATEGY, GRANT_CYCLE_LIFECYCLE, BACKEND_AUTOMATION_PLAN, REVIEWER_FINDER, REVIEWER_FINDER_FUTURE_ARCHITECTURE, REVIEWER_POSTGRES_TO_DATAVERSE_PLAN, PROMPT_STORAGE_DESIGN, SECURITY_ARCHITECTURE (87 KB doc got a top-of-doc banner + targeted §5.4/§5.6 column-name + scoping rewrites + Dynamics-stubbed false claim corrected + app-count drift 14→16 fixed).
-   - Tier 3 inline source: secret-check cron header, maintenance-service header + getRetentionConfig, baseConfig model-resolver block + cache-clear docstring + resolution-order line, reviewerFinderPreferences file header.
-   - Tier 4 archive bypass scripts (above).
-   - Tier 5 memory: 6 entries updated (MEMORY.md index, project_wave1_pending rewritten, project_wave1_onboarding trigger note, project_dynamics_ai_writeback Set B status + SharePoint write-access status, project_external_reviewer_file_access description, project_dynamics_identity_reconciliation description).
-   - Codex consistency review (19 findings, 4 CRITICAL + 11 MODERATE + 4 MINOR) addressed in `af40768`. Identified the dispatcher default-to-Postgres footgun (silent degradation in `database-service.js` prefs paths) — flipped defaults as part of that commit.
+2. **Wave 2 W6 step 1 — researchers.js retirement** (`27931b9`)
+   - Deleted `pages/api/reviewer-finder/researchers.js` (1061 lines).
+   - Excised 4 functions from `pages/reviewer-finder.js`
+     (ResearcherDetailModal, DatabaseTab, DuplicatesModal,
+     ResearcherRow), navigation state, tabs entry. ~1500 lines removed.
+   - Total drop across step 1: ~2,692 lines.
+   - Step 2 (cleanup cron + restore script) **deferred to post-pilot**
+     per Codex's Wave 1 same-day DROP precedent argument (`cea4c27`).
+     Trigger memory: `project_w6_table_drop_pending.md` (fires ≥ 2026-07-01).
 
-3. **Thoroughness rule encoded** (`af40768`)
-   - New memory `feedback_thoroughness_default.md`: banner edits include body audit; description-line edits include body audit; antonym grep after status changes; cold re-read pattern; surface incompleteness explicitly.
-   - Indexed in MEMORY.md Operational section. Self-test of the rule applied later in the same session — the rule catches things at edit-time that Codex used to catch at review-time.
+3. **IRS BMF tax-exempt verification** (`2ad2528`, `f5d421f`, `2bb1820`,
+   `b192087`, `7d45418`, `9573ff9`, `3b2450e`)
+   - New Postgres table `irs_exempt_orgs` (V29) keyed on EIN. 1.26M rows
+     live from 4 regional BMF CSVs (NE/MA/SO/IN).
+   - New `lib/services/irs-bmf-service.js`: atomic-swap quarterly refresh
+     (stage → COPY FROM STDIN → dedupe via ROW_NUMBER over PARTITION BY
+     ein ORDER BY region, ctid → ADD PK → rename). `verifyEin()` returns
+     `{found, name, subsection, status, deductibility, foundation,
+     rulingDate, state, is501c3PublicCharity, asOfRefreshDate}`.
+   - New `/api/cron/refresh-irs-bmf` (quarterly `0 6 15 1,4,7,10 *`,
+     `maxDuration: 300`).
+   - New `/api/irs/verify-ein` (PA-callable, shared-secret
+     `IRS_VERIFY_SECRET` via `crypto.timingSafeEqual` wrapper).
+   - CLI runner `scripts/import-irs-bmf.js` (`--commit`, `--strict`).
+   - Atlas page `docs/atlas/postgres-irs-exempt-orgs.md` —
+     reference-data, NOT Wave 2 eligible.
+   - Codex review applied: NAME validation, deterministic region
+     dedupe, full stats on errors, plausibility threshold rebased to
+     1M (actual ~1.26M; old anchor 1.95M was stale IRS-page figure).
+   - **Pending**: PA wiring (Connor) — `account` writeback target +
+     `IRS_VERIFY_SECRET` secret share + flow design.
 
-4. **Wave 2 plan rebuild** (`9c99e65` through `4834c6c`, 10 commits)
-   - Refreshed `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` against live code. The "drain-target endpoint inventory" was materially incomplete in the prior version — original list of 2 files (`render-emails.js`, `send-emails.js`); actual is 9 (`grant-cycles.js`, `generate-emails.js`, `my-proposals.js`, `extract-summary.js`, `researchers.js`, `database-service.js`, `maintenance-service.js`, plus the two originally cited).
-   - Nine Codex review rounds → ~25 distinct findings closed end-to-end. Major fixes: spec-vs-built table accuracy (junction-backfill script was BUILT not spec'd; `wmkf_appgrantcycle` is PARTIALLY DEPLOYED not "designed not deployed"); WAVE2_BACKEND_* "probably don't need" claim reframed as Option A (flags) vs Option B (hard cutover) tradeoff, decision deferred; data-loss subsection reframed (projectleader path = PI history not reviewer history); reviewer-history source corrected to `wmkf_appreviewersuggestion` across 5+ passages; schedule rebalanced from overloaded weeks to one-theme-per-week (W3-W7) with slip-eligibles moved to Post-pilot; readiness checklist dates aligned to schedule.
-   - Final Codex verdict: **READY FOR BUILD.**
+4. **Gemini-suggestions refactor** (`fd07318`, `ec87253`, `680c9a5`,
+   `6e6204c`, `efeaceb`, `49d9905`) — Claude-executed after two
+   Codex dispatch failures (dirty tree, then sandbox bash issue).
+   - Phase 1: `shared/utils/app-markdown.js` (marked v12 + DOMPurify
+     with `uponSanitizeAttribute` hook enforcing http(s)/mailto on
+     href + Tailwind class allowlist). 23 Jest cases.
+   - Phase 2: `shared/utils/sse-stream.js` (async-iterator parser
+     with AbortSignal; CRLF-aware; per-line comment skip; `[DONE]`
+     sentinel). 13 Jest cases. `phase-ii-writeup` QA stream cut over.
+   - Phase 3: Extracted `Phase2{QA,Feedback,WordExport}Modal.js`.
+     `phase-ii-writeup.js` 879 → 597 lines.
+   - Phase 4: `database-service.js` top docstring rewrite + tightened
+     removed-methods block (comments only, no SQL).
+   - Codex post-pass review: 8 MODERATE, 6 fixed (URL-scheme widening,
+     class injection vector, trust-model docs, SSE CRLF + comment edge
+     cases, DatabaseService docstring completeness, QA source-link
+     scheme validation). 2 documented (Phase 2 consumer-throw contract,
+     handoff-report overclaims).
+   - **Known gap**: dev-server visual smoke not performed — Babel parse
+     + 36 Jest tests + CI gates green, but parity not visually verified.
 
-5. **Memory + plan-doc IRS entry** (`03ae5c0`)
-   - New `project_irs_exempt_verification.md`: design for tax-exempt verification via Postgres-resident reference data + PA→Vercel lookup endpoint + Dynamics writeback of the result. Reframes Postgres as durable reference-data layer, not Dynamics on-ramp.
+5. **Intake portal meeting agenda** (`23e3fd9`)
+   - `docs/INTAKE_PORTAL_MEETING_AGENDA_2026-05-13.md` — 60-90 min,
+     3 tracks (Connor: Wave 2/intake schema; Sarah: form wishlist;
+     joint: pilot scope). Tracked to git for cross-machine access;
+     cleanup trigger memory `project_intake_meeting_agenda_cleanup.md`
+     (fires ≥ 2026-05-27).
 
-### Memory updates
-
-- NEW: `feedback_thoroughness_default.md` (thoroughness-is-default-not-optional rule)
-- NEW: `project_irs_exempt_verification.md` (planned capability design)
-- REWRITTEN: `project_wave1_pending.md` (closeout state)
-- DESCRIPTIONS REFRESHED: `project_dynamics_ai_writeback`, `project_external_reviewer_file_access`, `project_dynamics_identity_reconciliation`, `project_wave1_onboarding`, `project_interim_report_automation`
-- MEMORY.md index: Wave 1 section reframed CLOSED, Field Set B marked deployed, App-Level Access Control note updated, stale currentDate at bottom removed, dev-env note added about `.env.local` Wave 1 flags
+6. **Memory housekeeping** (`61a5648`)
+   - New: `project_w6_table_drop_pending.md`,
+     `project_intake_meeting_agenda_cleanup.md`,
+     `project_dataverse_schema_deploy_gotchas.md` (added gotcha #3).
+   - Updated: `project_irs_exempt_verification.md` (planned → SHIPPED).
 
 ### Commits (this session)
 
 ```
-4834c6c Wave 2 plan — close N-11 body residual
-d813d02 Wave 2 plan — close N-11 cardinality + N-12 cross-ref direction
-169b5a9 Wave 2 plan — close N-7 residual + N-8/N-9/N-10
-296eded Wave 2 plan — close 2 blockers from review #5 (N-6, N-7)
-a546392 Wave 2 plan — close final residual + 3 data-model contradictions
-6720f32 Wave 2 plan — close final 4 Codex findings
-da0c8ea Wave 2 plan — close all PARTIAL findings from Codex re-review #2
-977e1b3 Wave 2 plan — second corrective pass for Codex re-review findings
-e58208a Wave 2 plan — fix all Codex consistency findings
-9c99e65 Wave 2 plan — refresh status banner + spec-vs-built table
-af40768 Address Codex consistency review (19 findings) + thoroughness rule
-7e53c02 Doc currency sweep — five-tier pass for drift
-a612d00 Wave 1 closeout — address Codex review findings
-91dbe26 Remove Wave 1 create blocks from setup-database.js + atlas update
-dc8e745 Wave 1 closeout — drop migration + preflight script
-03ae5c0 Memory: planned IRS tax-exempt verification capability
+49d9905 Gemini-plan review fixes — close 6 MODERATEs from Codex pass
+efeaceb Handoff report — Gemini action plan, Claude-executed pass
+6e6204c Phase 4 — DatabaseService comment cleanup
+680c9a5 Phase 3 — extract Phase II modals
+ec87253 Phase 2 — shared SSE stream parser + QA cutover
+fd07318 Phase 1 — shared app-markdown renderer
+3b2450e IRS BMF — address Codex review (2 MODERATE + 3 MINOR)
+c181e9f Preserve Codex artifacts before relaunch
+9573ff9 Loosen IRS BMF plausibility threshold + stats-on-error
+7d45418 Add --strict / ?strict=1 to IRS BMF refresh
+b192087 Dedupe IRS BMF cross-region duplicate EINs
+2bb1820 Tolerate malformed rows in IRS BMF CSVs
+f5d421f Bootstrap irs_exempt_orgs table inside refresh()
+2ad2528 Add IRS tax-exempt verification (BMF reference data + verify endpoint)
+61a5648 S147 memory housekeeping — index + new trigger entries
+23e3fd9 Add intake portal meeting agenda for 2026-05-13
+f35387f Revise Codex action plan — Gemini suggestions triage
+cea4c27 W6 step 2 deferred — record decision + post-pilot checklist
+27931b9 W6 step 1 — retire researchers.js + Database tab UI
+0dfcf73 W5 step 6 — maintenance blob-scanner → Dataverse
+52c1aa2 W5 step 5 — retire extract-summary.js
+6a64f9a W5/W6 plan note — researchers.js Postgres reads are W6 scope
+04d891c W5 step 4 — my-proposals reviewer-count reader → Dataverse
+29ae474 W5 step 3 followup — Co-PI derivation + summary URL writer gap
 ```
 
 ## Production state
 
-- **Wave 1 dropped.** Postgres tables gone; dispatcher defaults Dataverse; recovery window via Neon PITR until 2026-05-19T01:30Z.
-- **Wave 2 plan green-lit by Codex** but no Wave 2 build work has started yet. The plan's W3 window (grant cycle migration) is the immediate critical path.
-- CI gates: `check:atlas` 26 PG / 27 DV; `check:atlas:self-test` 11/11; `check:api-routes` 80 routes. All green.
-- Single deferred Wave 1 item: revert temp role elevations on prod app user. Held through pilot iteration per Justin's 2026-05-11 policy call.
+- **W5 reader cutover complete.** All Postgres `reviewer_suggestions`
+  readers retired or migrated. `extract-summary.js` deleted.
+  `researchers.js` deleted (W6 step 1). Database tab UI excised.
+- **W6 step 2 (cleanup cron + restore) deferred to post-pilot.**
+  Drain-only table drop checklist tracked in
+  `REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`. Trigger memory fires
+  ≥ 2026-07-01.
+- **IRS BMF table live in prod Postgres**, 1.26M rows. Verify endpoint
+  + cron deployed. PA wiring pending Connor.
+- **Gemini refactor merged** but not visually smoke-tested.
+- CI gates: `check:atlas`, `check:atlas:self-test`,
+  `check:api-routes` — all green. 80 API routes catalogued (post
+  IRS additions and extract-summary removal).
+- Route count in CLAUDE.md: 80.
 
-## Where to pick up — Session 147 (open)
+## Where to pick up — Session 148 (open)
 
-Plausible threads, roughly ordered by readiness:
+Ordered by readiness:
 
-### A. Wave 2 build — start W3 (grant cycle migration)
+### A. Visual smoke of the Gemini refactor (~15 min, blocking)
 
-Highest unlock value, pilot-gating. The plan is at `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` § "Revised pilot timing." W3 deliverables:
+`npm run dev`, click through on `/phase-ii-writeup`:
+- Upload + process streaming (untouched but imports new modules).
+- QA streaming: open Q&A modal → ask question → confirm markdown
+  renders + sources show with target=_blank → close cancels cleanly.
+- Feedback modal: open → submit → close.
+- Word export modal: open → export → close.
+Babel parse + 36 Jest tests + atlas/route gates passed — wiring is
+intact, visual parity expected but not verified. See
+`docs/CODEX_HANDOFF_REPORT_2026-05-12.md` §5 checklist.
 
-1. Patch `lib/dataverse/schema/wave2/wmkf_app_grant_cycle.json` to add 3 missing fields (`wmkf_ShortCode`, `wmkf_ProgramName`, `wmkf_CustomFields`); re-run `apply-dataverse-schema.js`.
-2. Verify `wmkf_shortcode` alt-key uniqueness.
-3. Decide `WAVE2_BACKEND_*` Option A (flags) vs Option B (hard cutover).
-4. Rewrite `pages/api/reviewer-finder/grant-cycles.js` against `wmkf_appgrantcycle` (full scope: `grant_cycles` + the file's `proposal_searches` + `reviewer_suggestions` reads).
-5. Rewrite `pages/api/review-manager/{render-emails,send-emails}.js` `loadCycleConfigs()` paths against Dataverse.
-6. Backfill `grant_cycles` data into `wmkf_appgrantcycle`.
+### B. Post-meeting intake portal work
 
-### B. Stage 2a real-cycle engagement (externally gated)
+After the 2026-05-13 Sarah+Connor meeting, fold decisions into
+`docs/INTAKE_PORTAL_DESIGN.md` + create build slices. Agenda at
+`docs/INTAKE_PORTAL_MEETING_AGENDA_2026-05-13.md` (delete after
+meeting per cleanup trigger memory; commit removal).
 
-COI policy body wording (placeholder still in active row) + first production engagement against a real reviewer cycle. Editor is live at `/admin` Policies.
+### C. Wave 2 W7 (reviewer history badges) or pause
 
-### C. Connor sync — Wave 2 + intake portal
+W3–W6 of `REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` are shipped.
+W7 (history badges UI, match-on-discovery wiring) is post-pilot
+critical-path-optional. Pause is acceptable until intake portal
+direction settles.
 
-Open items: `WAVE2_BACKEND_*` Option A vs B (Justin can decide alone but worth Connor input); intake-portal pilot decisions for the Sarah field-inventory session; revert temp role elevations timing.
+### D. IRS verification PA wiring (Connor)
 
-### D. Wave 2 post-pilot enhancements
+- Share `IRS_VERIFY_SECRET` with Connor (already in Vercel prod env).
+- Connor builds PA flow: trigger on `account` create/update, call
+  `GET /api/irs/verify-ein?ein={ein}` with header
+  `x-irs-verify-secret: ...`, write result back to `account` fields.
+- Verify endpoint API contract documented in
+  `pages/api/irs/verify-ein.js` header.
 
-History badges UI, `add-candidate-manual` endpoint + UI, match-on-discovery wiring, contact form subgrid (Connor). Explicitly out of pilot critical path.
+### E. Gemini refactor follow-ups (low priority)
 
-### E. Smaller carry-forward items
+From `docs/CODEX_HANDOFF_REPORT_2026-05-12.md` §6:
+1. `pages/dynamics-explorer.js:95` has its own regex `renderMarkdownText`
+   — clean follow-up cutover to `shared/utils/app-markdown.js`.
+2. Nine other pages with hand-rolled `reader.read()` SSE loops —
+   candidates for the same SSE-parser cutover.
+3. `useAIStream` hook design (parser proved out, hook deferred).
+4. `useDataversePrefs()` dead-Postgres branch (out of Phase 4 scope).
 
-- IRS tax-exempt verification (memory entry; not yet scheduled).
-- Dataverse rewrite of `rotate-encryption-key.js` (archived; CREDENTIALS_RUNBOOK references pending tooling).
-- Atlas spot-check on `policy_publish_audit` index entry (Codex F15 — minor, deferred).
+### F. Smaller carry-forward items
 
-## Key files modified or added (S146)
+- COI policy body wording (Stage 2a Reviewer engagement).
+- Revert temp role elevations on prod app user (deferred through
+  pilot iteration — see S146 carryover).
+
+## Carryover hygiene
+
+- **W6 step 2 trigger** (`project_w6_table_drop_pending.md`) fires
+  ≥ 2026-07-01. When fired, run the 6-item checklist in
+  `REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` § "W6 step 2 (deferred)".
+- **Meeting agenda cleanup** (`project_intake_meeting_agenda_cleanup.md`)
+  fires ≥ 2026-05-27. Delete `docs/INTAKE_PORTAL_MEETING_AGENDA_*.md`
+  + fold any persistent decisions into `INTAKE_PORTAL_DESIGN.md`.
+- All destructive carryover items must be grep-verified per
+  `feedback_verify_before_destructive_carryover` rule.
+
+## Key files added/modified (S147)
 
 | File | Status | Purpose |
 |---|---|---|
-| `lib/db/migrations/007_drop_wave1_tables.sql` | NEW | Drop migration with pre-flight DO-block guards anchored to 2026-05-12 reconciliation baseline + Neon recovery procedure in header |
-| `scripts/wave1-drop-preflight.js` | NEW | Live catalog probes (FK/view/policy/trigger/grant), PG vs DV count parity, recent-writes anchor, git-log evidence for risky scripts |
-| `scripts/archive/` | NEW DIR | 5 historical scripts + README explaining each |
-| `scripts/setup-database.js` | MODIFIED | Wave 1 create blocks removed (V10 user_preferences, V16, V17, V22 runner) |
-| `lib/services/{settings,app-access,database}-service.js` | MODIFIED | Dispatcher defaults flipped from postgres to dataverse |
-| `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` | MODIFIED | Rebuilt against live code; 9-file drain-target inventory; Option A/B framing; W3-W7 schedule; Codex-verified |
-| `docs/atlas/postgres-infra-tables.md` | MODIFIED | Wave 1 entries marked RETIRED 2026-05-12 |
-| `docs/APPLICATION_STATE_ATLAS.md` | MODIFIED | Service inventory rows + Postgres-tables index |
-| `docs/SECURITY_ARCHITECTURE.md` | MODIFIED | Top-of-doc Wave 1 banner + §5.4 column names + §5.6 scoping table rewrite + stubbed-Dynamics correction + 14→16 app count |
-| `docs/CREDENTIALS_RUNBOOK.md` | MODIFIED | Wave 1 flag defaults + SQL example → service-module usage + rotation-tool pending-rewrite note |
-| `docs/API_ROUTE_SECURITY_MATRIX.md` | MODIFIED | 6 rows updated for Dataverse persistence |
-| `CLAUDE.md` | MODIFIED | Wave 1 retired in Schema table + service inventory + env-var description |
-| `.claude-memory/feedback_thoroughness_default.md` | NEW | Workflow-default rule encoding |
-| `.claude-memory/project_irs_exempt_verification.md` | NEW | Planned capability design |
-| `.claude-memory/project_wave1_pending.md` | REWRITTEN | Closeout state |
+| `lib/db/migrations/008_irs_exempt_orgs.sql` | NEW | IRS BMF reference table (V29) |
+| `lib/services/irs-bmf-service.js` | NEW | Atomic-swap refresh + verifyEin |
+| `pages/api/cron/refresh-irs-bmf.js` | NEW | Quarterly cron |
+| `pages/api/irs/verify-ein.js` | NEW | PA-callable verify endpoint |
+| `scripts/import-irs-bmf.js` | NEW | CLI runner |
+| `shared/utils/app-markdown.js` | NEW | Marked v12 + DOMPurify shared renderer |
+| `shared/utils/sse-stream.js` | NEW | Shared SSE parser w/ AbortSignal |
+| `shared/components/Phase2{QA,Feedback,WordExport}Modal.js` | NEW | Extracted Phase II modals |
+| `tests/unit/app-markdown.test.js` + `sse-stream.test.js` | NEW | 36 Jest cases |
+| `pages/api/reviewer-finder/researchers.js` | DELETED | W6 step 1 |
+| `pages/api/reviewer-finder/extract-summary.js` | DELETED | W5 step 5 |
+| `pages/reviewer-finder.js` | MODIFIED | Database tab + 4 functions excised |
+| `pages/phase-ii-writeup.js` | MODIFIED | 879 → 597 lines (modal extraction + SSE cutover) |
+| `pages/api/reviewer-finder/my-proposals.js` | MODIFIED | Postgres → Dataverse via queryAllRecords |
+| `lib/services/maintenance-service.js` | MODIFIED | cleanupBlobs → Dataverse |
+| `lib/services/database-service.js` | MODIFIED | Phase 4 docstring cleanup |
+| `middleware.js`, `vercel.json`, `CLAUDE.md` | MODIFIED | IRS endpoint allowlist + cron + env-var docs |
+| `docs/atlas/postgres-irs-exempt-orgs.md` | NEW | Atlas reference-data page |
+| `docs/CODEX_HANDOFF_REPORT_2026-05-12.md` | NEW | Gemini refactor handoff |
+| `docs/INTAKE_PORTAL_MEETING_AGENDA_2026-05-13.md` | NEW | 60-90 min meeting agenda (delete post-meeting) |
 
 ## Testing
 
 ```bash
-# CI gates — all should be green
 npm run check:atlas
 npm run check:atlas:self-test
 npm run check:api-routes
+npx jest tests/unit/app-markdown.test.js tests/unit/sse-stream.test.js
 
-# Build
-npm run build
+# IRS refresh (dry run)
+node scripts/import-irs-bmf.js --strict
 
-# Wave 1 preflight (idempotent, blocks if anything's regressed)
-node scripts/wave1-drop-preflight.js
+# IRS verify (dev — no secret required)
+curl 'http://localhost:3000/api/irs/verify-ein?ein=521693387'
 
-# Dispatcher behavior verification — set WAVE1_BACKEND_*=postgres in dev env
-# and confirm settings-service / app-access-service throw "relation does not
-# exist." This is the loud-failure behavior the dispatcher flip enables.
+# Gemini refactor — visual smoke (NOT yet performed)
+npm run dev
+# → /phase-ii-writeup → Q&A modal → feedback modal → Word export modal
 ```
-
-## Carryover hygiene
-
-The single deferred item — **revert temp role elevations on prod app user** — is destructive in the sense that it changes Connor-granted privileges. Per Justin's 2026-05-11 policy call, **deferred through pilot iteration** so Connor doesn't need to re-add the role for every pilot schema batch. Don't act on it without re-confirming with Justin. See `project_wave1_pending.md` for the resequencing trigger (post-mid-June pilot, schema settling).
