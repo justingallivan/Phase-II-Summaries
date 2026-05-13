@@ -78,11 +78,12 @@ export default async function handler(req, res) {
 
     // Upload to Vercel Blob
     const filename = `summary_${proposalId}_${Date.now()}.pdf`;
-    // Private — server-side intermediate artifact. The deprecated
-    // generate-emails .eml flow used to fetch this via raw HTTP; the active
-    // review-manager/send-emails path attaches cycle-level templates instead.
+    // Public to match analyze.js — generate-emails fetches summary URLs via
+    // unauthenticated safeFetch to attach the PDF to outreach emails. This
+    // endpoint retires in W5 step 5; until then a re-extracted URL could
+    // still reach generate-emails, so it must use the same access policy.
     const blob = await put(filename, Buffer.from(extraction.buffer), {
-      access: 'private',
+      access: 'public',
       contentType: 'application/pdf'
     });
 

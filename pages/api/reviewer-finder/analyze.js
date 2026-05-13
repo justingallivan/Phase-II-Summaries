@@ -100,12 +100,14 @@ export default async function handler(req, res) {
             // Upload extracted pages to Vercel Blob
             const timestamp = Date.now();
             summaryFilename = `summary_${timestamp}.pdf`;
-            // Private — server-side intermediate artifact. The Dataverse-native
-            // save-candidates path no longer persists this URL; the deprecated
-            // generate-emails .eml flow that fetched it via raw HTTP only sees
-            // legacy Postgres rows whose blobs were uploaded as public.
+            // Public access: the generate-emails flow fetches the URL via raw
+            // HTTP to attach the summary PDF to outreach emails, and W5 step 3
+            // (2026-05-12) wired save-candidates to persist `summaryBlobUrl` to
+            // Dataverse `wmkf_summarybloburl` so generate-emails can read it
+            // per-candidate. Private blobs would 401 against the unauthenticated
+            // fetch path used there.
             const blob = await put(summaryFilename, extraction.buffer, {
-              access: 'private',
+              access: 'public',
               contentType: 'application/pdf'
             });
             summaryBlobUrl = blob.url;

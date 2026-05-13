@@ -35,25 +35,20 @@ import { DynamicsService } from '../../../lib/services/dynamics-service';
 import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
 import * as suggestionAdapter from '../../../lib/dataverse/adapters/reviewer-suggestion';
 
+const ROLE_COPI = 100000001;
+
 /**
  * Look up proposal info for candidates from Dataverse.
  *
  * Returns a map of suggestionId (Dataverse GUID, string) → proposalInfo.
  *
- * Post-W5 cutover (commit pending): reads suggestion + linked
- * `akoya_request` rather than Postgres `reviewer_suggestions`. The
- * `userProfileId` parameter is preserved for signature compatibility but
- * no longer scopes the lookup (suggestion access is now staff-shared per
- * the post-W1 model; `requireAppAccess` gates entry at the route level).
- *
- * `summaryBlobUrl` comes from the suggestion's `wmkf_summarybloburl`
- * (migrated 2026-05-12 via `scripts/backfill-summary-blob-url-to-
- * dataverse.js`). `coInvestigators` / `coInvestigatorCount` are
- * deliberately null — matching `render-emails.js` precedent at W3
- * cutover. If co-PI personalization is reintroduced, derive from
- * `wmkf_apprequestperson` junction filtered by request + role=copi.
+ * Reads the suggestion + linked `akoya_request` directly; no per-user
+ * scoping (staff-shared per the post-W1 model, gated by `requireAppAccess`
+ * at the route). `summaryBlobUrl` comes from `wmkf_summarybloburl`
+ * (migrated 2026-05-12). `coInvestigators` is derived from the
+ * `wmkf_apprequestperson` junction filtered by request + role=Co-PI.
  */
-async function lookupProposalInfoForCandidates(suggestionIds, _userProfileId) {
+async function lookupProposalInfoForCandidates(suggestionIds) {
   if (!suggestionIds || suggestionIds.length === 0) {
     return new Map();
   }
@@ -75,6 +70,7 @@ async function lookupProposalInfoForCandidates(suggestionIds, _userProfileId) {
       sugs.filter(Boolean).map(s => s._wmkf_request_value).filter(Boolean),
     )];
     const requestById = new Map();
+    const coPiNamesByRequestId = new Map();
     await Promise.all(distinctRequestIds.map(async (rid) => {
       try {
         const req = await DynamicsService.getRecord('akoya_requests', rid, {
@@ -83,6 +79,21 @@ async function lookupProposalInfoForCandidates(suggestionIds, _userProfileId) {
         requestById.set(rid, req);
       } catch (err) {
         console.error(`akoya_request lookup failed for ${rid}:`, err.message);
+      }
+      try {
+        const { records: copiRows } = await DynamicsService.queryRecords('wmkf_apprequestpersons', {
+          select: '_wmkf_contact_value,wmkf_authorposition',
+          filter: `_wmkf_request_value eq ${rid} and wmkf_role eq ${ROLE_COPI}`,
+          orderby: 'wmkf_authorposition asc,createdon asc',
+          top: 50,
+        });
+        const names = copiRows
+          .map(r => r._wmkf_contact_value_formatted)
+          .filter(Boolean);
+        coPiNamesByRequestId.set(rid, names);
+      } catch (err) {
+        console.error(`wmkf_apprequestpersons lookup failed for ${rid}:`, err.message);
+        coPiNamesByRequestId.set(rid, []);
       }
     }));
 
@@ -94,6 +105,9 @@ async function lookupProposalInfoForCandidates(suggestionIds, _userProfileId) {
       if (!sug) continue;
 
       const req = sug._wmkf_request_value ? requestById.get(sug._wmkf_request_value) : null;
+      const coPiNames = sug._wmkf_request_value
+        ? (coPiNamesByRequestId.get(sug._wmkf_request_value) || [])
+        : [];
 
       proposalInfoMap.set(String(id), {
         title: req?.akoya_title || '',
@@ -103,8 +117,8 @@ async function lookupProposalInfoForCandidates(suggestionIds, _userProfileId) {
           || '',
         institution: req?.wmkf_organizationname || '',
         summaryBlobUrl: sug.wmkf_summarybloburl || '',
-        coInvestigators: '',       // Not migrated; see render-emails W3 precedent.
-        coInvestigatorCount: 0,    // Same.
+        coInvestigators: coPiNames.join(', '),
+        coInvestigatorCount: coPiNames.length,
       });
     }
 
@@ -234,7 +248,7 @@ export default async function handler(req, res) {
         stage: 'lookup',
         message: 'Looking up proposal info for candidates...'
       });
-      proposalInfoMap = await lookupProposalInfoForCandidates(suggestionIds, userProfileId);
+      proposalInfoMap = await lookupProposalInfoForCandidates(suggestionIds);
     }
 
     // Attachment cache to avoid re-fetching the same files
@@ -452,10 +466,6 @@ export default async function handler(req, res) {
         });
 
         const now = new Date().toISOString();
-        // Post-W5 cutover: write to Dataverse via the suggestion adapter.
-        // `userProfileId` is no longer a scoping filter (staff-shared per
-        // post-W1 model; requireAppAccess gates the route). Wrap in a
-        // bypass context for the AsyncLocalStorage requirement.
         await bypassDynamicsRestrictions('generate-emails-mark-sent', async () => {
           for (const suggestionId of suggestionIdsToUpdate) {
             try {

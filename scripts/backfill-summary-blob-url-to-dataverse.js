@@ -21,6 +21,13 @@
  * Dry-run by default; --commit to write.
  * Idempotent: skips rows where DV already has a non-null wmkf_summarybloburl
  * matching the source value.
+ *
+ * Expected drift: 7 PG rows will not match a DV suggestion. These are a
+ * proper subset of the 8 accept-loss anomalies documented in
+ * `docs/W4_ANOMALY_TRIAGE.md` — the 8th anomaly had no `summary_blob_url`
+ * to migrate (its PG row was missing the field entirely), so only 7 surface
+ * here. All 7 are J26-era rows whose identity chain (email + request_number)
+ * doesn't resolve in Dataverse; no manual recovery is planned.
  */
 
 import { readFileSync, existsSync } from 'fs';

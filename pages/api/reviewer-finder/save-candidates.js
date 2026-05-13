@@ -36,6 +36,7 @@ export default async function handler(req, res) {
       requestId,
       grantCycleCode,
       candidates,
+      summaryBlobUrl,
     } = req.body;
 
     if (!requestId) {
@@ -122,6 +123,7 @@ export default async function handler(req, res) {
           matchReason,
           sources: sources.join(','),
           selected: true,
+          summaryBlobUrl: summaryBlobUrl || null,
         }, { actingUserSystemId });
 
         savedCount++;
