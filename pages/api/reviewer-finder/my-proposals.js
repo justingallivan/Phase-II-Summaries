@@ -23,12 +23,12 @@
  *     since they never need outside reviewers.
  */
 
-import { sql } from '@vercel/postgres';
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { DynamicsService } from '../../../lib/services/dynamics-service';
 import { bypassDynamicsRestrictions } from '../../../lib/services/dynamics-context';
 import { resolveByEmail } from '../../../lib/services/program-director-resolver';
 import { meetingDateToCycleCode, cycleCodeToOdataFilter } from '../../../lib/utils/cycle-code';
+import { RESPONSE_TYPE_MAP } from '../../../lib/dataverse/adapters/reviewer-suggestion';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -150,18 +150,17 @@ async function listProposalsInCycle(res, pd, cycleCode, status) {
     orderby: 'wmkf_meetingdate asc',
   });
 
-  // Fetch Postgres-tracked invite/accept counts in one query, keyed by
-  // request_number. Postgres remains the source of truth for lifecycle
-  // state until the wave-2 ledger backfill happens. A request with no
-  // saved candidates won't have a row — treated as 0/0.
-  const requestNumbers = records.map((r) => r.akoya_requestnum).filter(Boolean);
-  const counts = await fetchReviewerCounts(requestNumbers, pd.systemuserid);
+  // Fetch reviewer-suggestion lifecycle counts from Dataverse, keyed by
+  // request GUID. A request with no saved candidates won't have any
+  // suggestion rows — treated as 0/0/0.
+  const requestIds = records.map((r) => r.akoya_requestid).filter(Boolean);
+  const counts = await fetchReviewerCounts(requestIds);
 
   const proposals = records.map((r) => {
     const slotsFilled = ['1', '2', '3', '4', '5'].filter(
       (n) => r[`_wmkf_potentialreviewer${n}_value`]
     ).length;
-    const c = counts[r.akoya_requestnum] || { invited: 0, accepted: 0, declined: 0 };
+    const c = counts[r.akoya_requestid] || { invited: 0, accepted: 0, declined: 0 };
     return {
       requestId: r.akoya_requestid,
       requestNumber: r.akoya_requestnum,
@@ -193,38 +192,40 @@ async function listProposalsInCycle(res, pd, cycleCode, status) {
 
 /**
  * Aggregate reviewer-suggestion lifecycle counts (invited / accepted /
- * declined) by request_number, scoped to the current PD's saved suggestions.
- * Postgres remains the source of truth until the wave-2 ledger backfill.
+ * declined) by akoya_request GUID, scoped to selected=true rows in
+ * `wmkf_appreviewersuggestion`. Staff-shared per the post-W1 model — no
+ * per-user scoping (a request has one lead PD; the badge reflects the
+ * proposal-level outreach state).
  *
- * Note: user_profile_id on reviewer_suggestions is the Postgres user id, not
- * the Dynamics systemuserid — so we don't filter by user here. Two PDs
- * working the same request would see merged counts; acceptable today since
- * each request has one lead PD.
+ * Chunked at 25 request IDs per query to keep the OR-chain URL within
+ * Dataverse limits (same pattern the suggestion adapter uses in findByPD).
+ * Uses `queryAllRecords` (paginated) rather than `queryRecords` — the
+ * latter silently caps `top` at 100 in `DynamicsService`, which would
+ * undercount any chunk whose total rows exceed that.
+ *
+ * Throws on chunk failure rather than silently returning partial counts,
+ * since the badges look authoritative in the UI and an undercount of
+ * "invited" reviewers is worse than a clean 500.
  */
-async function fetchReviewerCounts(requestNumbers /* eslint-disable-line no-unused-vars */, _systemuserid) {
-  if (!requestNumbers || requestNumbers.length === 0) return {};
-  try {
-    const result = await sql`
-      SELECT
-        request_number,
-        COUNT(*) FILTER (WHERE invited = true OR email_sent_at IS NOT NULL) AS invited,
-        COUNT(*) FILTER (WHERE accepted = true OR response_type = 'accepted') AS accepted,
-        COUNT(*) FILTER (WHERE declined = true OR response_type = 'declined') AS declined
-      FROM reviewer_suggestions
-      WHERE selected = true AND request_number = ANY(${requestNumbers})
-      GROUP BY request_number
-    `;
-    const out = {};
-    for (const row of result.rows) {
-      out[row.request_number] = {
-        invited: Number(row.invited) || 0,
-        accepted: Number(row.accepted) || 0,
-        declined: Number(row.declined) || 0,
-      };
+async function fetchReviewerCounts(requestIds) {
+  if (!requestIds || requestIds.length === 0) return {};
+  const out = {};
+  const CHUNK = 25;
+  for (let i = 0; i < requestIds.length; i += CHUNK) {
+    const chunk = requestIds.slice(i, i + CHUNK);
+    const orChain = chunk.map((id) => `_wmkf_request_value eq ${id}`).join(' or ');
+    const { records } = await DynamicsService.queryAllRecords('wmkf_appreviewersuggestions', {
+      select: '_wmkf_request_value,wmkf_invited,wmkf_accepted,wmkf_declined,wmkf_emailsentat,wmkf_responsetype',
+      filter: `(${orChain}) and wmkf_selected eq true`,
+    });
+    for (const s of records) {
+      const rid = s._wmkf_request_value;
+      if (!rid) continue;
+      if (!out[rid]) out[rid] = { invited: 0, accepted: 0, declined: 0 };
+      if (s.wmkf_invited === true || s.wmkf_emailsentat) out[rid].invited += 1;
+      if (s.wmkf_accepted === true || s.wmkf_responsetype === RESPONSE_TYPE_MAP.accepted) out[rid].accepted += 1;
+      if (s.wmkf_declined === true || s.wmkf_responsetype === RESPONSE_TYPE_MAP.declined) out[rid].declined += 1;
     }
-    return out;
-  } catch (err) {
-    console.error('fetchReviewerCounts failed:', err.message);
-    return {};
   }
+  return out;
 }
