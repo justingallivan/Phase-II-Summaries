@@ -17,6 +17,12 @@
 - [Wave 1 closeout](project_wave1_pending.md) — Postgres tables dropped 2026-05-12; dispatcher defaults flipped to Dataverse. Only tail item: elevation revert on prod app user (deferred until pilot iteration settles).
 - [Automated onboarding design](project_wave1_onboarding.md) — zero-touch first-login provisioning via NextAuth callback; design still relevant for future build
 
+## Wave 2 Pending Tail Items
+- [W6 Postgres table-drop pending (fire ≥ 2026-07-01)](project_w6_table_drop_pending.md) — drain-only reviewer tables (researchers / researcher_keywords / publications / proposal_searches) await one-shot DELETE + DROP. Cleanup cron deferred per Codex / Wave 1 precedent. P0 start-of-session item if today ≥ 2026-07-01 and tables still exist.
+
+## Repo Hygiene Triggers
+- [Archive intake meeting agenda (fire ≥ 2026-05-27)](project_intake_meeting_agenda_cleanup.md) — `git mv` `docs/INTAKE_PORTAL_MEETING_AGENDA_2026-05-13.md` to `docs/archive/` once meeting decisions have landed in design + schema-changes docs. Routine housekeeping, not P0.
+
 ## Planned Capabilities
 - [IRS tax-exempt verification](project_irs_exempt_verification.md) — bulk CSVs in Postgres, PA→Vercel lookup endpoint, verified result written back to Dynamics `account`. Reframes Postgres as reference-data layer, not Dynamics on-ramp.
 
