@@ -1,137 +1,135 @@
-# Home Mac Memory Sync Fix
+# iCloud Migration + Home Mac Setup
 
-**Written from the work Mac (2026-05-14).** The work Mac has Claude Code memory correctly wired into git via a symlink. The home Mac likely does not — memories written there have been local-only and out of sync.
-
----
-
-## What's Happening
-
-Claude Code stores per-project memory in a directory whose name is derived from the **full absolute path** of the project on that machine:
-
-```
-~/.claude/projects/<slug>/memory/
-```
-
-where `<slug>` is the project path with every `/` replaced by `-`
-(e.g., `/Users/alice/Code/MyApp` → `-Users-alice-Code-MyApp`).
-
-**If the project lives at a different path on the home Mac** (different username, different folder structure), Claude Code uses a completely different slug and a completely different memory directory. The home Mac has been writing memories there, entirely disconnected from the repo.
-
-On the work Mac, the memory directory is a **symlink** → `.claude-memory/` inside this repo, so writes flow through git. The home Mac needs the same wiring — but pointed at whatever slug it actually uses.
+**Written 2026-05-14.** One-time procedure to move the project into iCloud Drive so it syncs automatically between Macs, including `.env.local` and Claude Code memory.
 
 ---
 
-## Step 0: Find the Correct Slug on the Home Mac
+## Work Mac — Before Leaving Today
 
-The slug must be derived from the project's actual path on the home Mac, not assumed from the work Mac's path.
+### Step 1: Git push
 
 ```bash
-# From inside the cloned repo on the home Mac:
-cd /path/to/your/clone/of/Phase-II-Summaries
+cd ~/Programming/WMKF_Apps/Phase-II-Summaries
+git push origin main
+```
+
+### Step 2: Move the project into iCloud Drive
+
+```bash
+mkdir -p ~/Library/Mobile\ Documents/com\~apple\~CloudDocs/Programming/WMKF_Apps
+
+mv ~/Programming/WMKF_Apps/Phase-II-Summaries \
+   ~/Library/Mobile\ Documents/com\~apple\~CloudDocs/Programming/WMKF_Apps/
+
+cd ~/Library/Mobile\ Documents/com\~apple\~CloudDocs/Programming/WMKF_Apps/Phase-II-Summaries
+```
+
+Adjust the destination path if you want a different folder structure inside iCloud Drive.
+
+### Step 3: Exclude node_modules and .next from iCloud sync
+
+iCloud syncing `node_modules` causes terminal slowness — hundreds of thousands of small files. The `.nosync` suffix tells iCloud to skip a folder. Node and Next.js follow the symlinks transparently.
+
+```bash
+mv node_modules node_modules.nosync
+ln -s node_modules.nosync node_modules
+
+# .next may not exist yet — that's fine
+mv .next .next.nosync 2>/dev/null || true
+ln -s .next.nosync .next
+```
+
+### Step 4: Update the memory symlink
+
+Moving the project changed its path, which broke the old symlink. Recreate it from the new location:
+
+```bash
 PROJECT_PATH=$(pwd)
 PROJECT_SLUG=$(echo "$PROJECT_PATH" | sed 's|/|-|g')
-echo "Slug: $PROJECT_SLUG"
-echo "Memory dir: ~/.claude/projects/$PROJECT_SLUG/memory"
-```
-
-Then verify the directory exists:
-```bash
-ls -la ~/.claude/projects/$PROJECT_SLUG/
-```
-
-If it doesn't exist yet, Claude Code hasn't opened this project on the home Mac under that path — create it in Step 4.
-
----
-
-## Step 1: Check Whether the Problem Exists
-
-```bash
-# Still inside the repo root, with PROJECT_SLUG set from Step 0:
-ls -la ~/.claude/projects/$PROJECT_SLUG/memory
-```
-
-**If you see `-> /…/.claude-memory`** — you're already set up. Stop here, nothing to do.
-
-**If you see a real directory listing** — continue below.
-
----
-
-## Step 2: Diff Home-Only Memories Against the Repo
-
-Before touching anything, see what's unique to the home Mac:
-
-```bash
-diff -rq \
-  ~/.claude/projects/$PROJECT_SLUG/memory \
-  "$(pwd)/.claude-memory"
-```
-
-Note any files that appear **only on the home side** (`Only in …/memory`). These are the orphaned memories that need to be rescued.
-
----
-
-## Step 3: Copy Orphaned Files Into the Repo
-
-For each file that exists only on the home side, copy it into `.claude-memory/`:
-
-```bash
-cp ~/.claude/projects/$PROJECT_SLUG/memory/<filename> \
-   "$(pwd)/.claude-memory/"
-```
-
-If a file exists on both sides with different content, open both and merge manually — the repo version reflects work-Mac sessions, the local version reflects home-Mac sessions. Combine the "How to apply" sections where they diverged.
-
-Also check `MEMORY.md` itself — it may have entries on the home side that aren't in the repo version. Merge those in.
-
----
-
-## Step 4: Back Up and Replace With Symlink
-
-```bash
-# Back up just in case
-cp -r \
-  ~/.claude/projects/$PROJECT_SLUG/memory \
-  ~/Desktop/claude-memory-backup-$(date +%Y%m%d)
-
-# Create the target directory if it doesn't exist yet
 mkdir -p ~/.claude/projects/$PROJECT_SLUG
-
-# Replace the real directory with a symlink to the repo
 rm -rf ~/.claude/projects/$PROJECT_SLUG/memory
 ln -s "$(pwd)/.claude-memory" ~/.claude/projects/$PROJECT_SLUG/memory
 
 # Verify
 ls -la ~/.claude/projects/$PROJECT_SLUG/memory
-# Should show: memory -> /path/to/your/clone/.claude-memory
+# Should show: memory -> /Users/.../iCloud Drive/.../Phase-II-Summaries/.claude-memory
 ```
 
----
-
-## Step 5: Commit and Push Any Rescued Files
+### Step 5: Sanity check
 
 ```bash
-git status .claude-memory/
-git add .claude-memory/
-git commit -m "Rescue orphaned home-Mac memories — wire symlink"
-git push origin main
+git status      # should be clean
+git remote -v   # should show origin on GitHub
 ```
 
----
-
-## What to Expect Going Forward
-
-Once the symlink is in place on both machines, memory writes on either machine flow into `.claude-memory/` and get committed + pushed like any other repo file. The `/stop` skill commits `.claude-memory/` and pushes at session end.
-
-**One habit to maintain:** always run `/stop` before switching machines. If you close a session without pushing, the other machine won't have that session's memory writes until you push manually.
+Done. iCloud will begin syncing. You can leave.
 
 ---
 
-## Verify the Setup Is Working
+## Home Mac — After iCloud Syncs
 
-After the symlink is created, open Claude Code on the home Mac and start a session. The memories from work-Mac sessions should be visible — in particular the behavioral rules (verbatim Codex output, red gates are P0, verify before destructive carryover, etc.).
+### Step 1: Wait for the sync to finish
 
-If Claude still seems to be missing rules it should know:
+Open Finder → iCloud Drive and find the project folder. Files still downloading show a cloud icon — wait until they're all local. For a project this size it may take a few minutes.
+
+### Step 2: Open a terminal in the project
+
 ```bash
-ls ~/.claude/projects/$PROJECT_SLUG/memory/
-# Should show the same files as .claude-memory/ in the repo
+cd ~/Library/Mobile\ Documents/com\~apple\~CloudDocs/Programming/WMKF_Apps/Phase-II-Summaries
 ```
+
+### Step 3: Reinstall dependencies
+
+iCloud syncs symlinks unreliably — `node_modules.nosync` may not have transferred cleanly. Do a fresh install:
+
+```bash
+rm -rf node_modules.nosync
+mkdir node_modules.nosync
+npm install
+```
+
+If `.next.nosync` didn't sync (it's build output, iCloud may have skipped it):
+
+```bash
+mkdir -p .next.nosync
+```
+
+### Step 4: Set up the memory symlink
+
+The project is now at the same iCloud path on both Macs, so this command is identical to what you ran at work:
+
+```bash
+PROJECT_PATH=$(pwd)
+PROJECT_SLUG=$(echo "$PROJECT_PATH" | sed 's|/|-|g')
+mkdir -p ~/.claude/projects/$PROJECT_SLUG
+rm -rf ~/.claude/projects/$PROJECT_SLUG/memory
+ln -s "$(pwd)/.claude-memory" ~/.claude/projects/$PROJECT_SLUG/memory
+
+# Verify
+ls -la ~/.claude/projects/$PROJECT_SLUG/memory
+```
+
+### Step 5: Handle the old local clone
+
+The old clone (wherever it was on the home Mac) is no longer needed. Check it has nothing uncommitted first, then delete it:
+
+```bash
+cd ~/old/path/to/Phase-II-Summaries
+git status   # should be clean
+
+cd ~
+rm -rf ~/old/path/to/Phase-II-Summaries
+```
+
+### Step 6: Open Claude Code and run /start
+
+Everything should be in sync. Memory, skills, `.env.local`, and project files all come from the same iCloud-synced directory.
+
+---
+
+## Going Forward
+
+- **`.env.local`** syncs automatically via iCloud — no separate handling needed.
+- **Claude Code memory** (`.claude-memory/`) syncs via both iCloud and git. Either path keeps it consistent.
+- **Always run `/stop` before switching Macs.** The skill commits `.claude-memory/` and pushes so the git history stays current alongside iCloud.
+- **`node_modules` and `.next`** are local-only on each Mac. Run `npm install` after any `package.json` changes pulled from the other machine.
