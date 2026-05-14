@@ -1,7 +1,7 @@
 ---
 name: start
 description: Start a new session by reviewing SESSION_PROMPT.md and CLAUDE.md
-allowed-tools: Read, Bash(git status, git fetch:*, git pull:*, git rev-parse:*, git log:*)
+allowed-tools: Read, Bash(git status, git fetch:*, git pull:*, git rev-parse:*, git log:*, npm run check:*)
 ---
 
 # Session Start
@@ -34,16 +34,28 @@ Before reading any files, ensure the repository is in sync:
    - These may be leftover from a previous session
    - Ask if they should be committed, stashed, or discarded
 
-## Step 2: Load Context
+## Step 2: Run CI Gates
+
+Run both CI gates before loading context:
+
+```bash
+npm run check:atlas
+npm run check:api-routes
+```
+
+If either is red, report it as the **first item** in the session summary — before git status, before the prior-session recap. A red gate means the ground-truth rubric is being violated right now and is a P0 blocker for any data-layer commits this session.
+
+## Step 3: Load Context
 
 Read the following files to get context for this session:
 
 1. **SESSION_PROMPT.md** - Previous session summary and potential next steps
 2. **CLAUDE.md** - Project documentation and conventions
 
-## Step 3: Present Summary
+## Step 4: Present Summary
 
 After completing the above:
+- Report any red CI gates (P0 — list first if applicable)
 - Report git sync status (up to date, pulled N commits, or any issues)
 - Summarize what was accomplished in the previous session
 - List the potential next steps from SESSION_PROMPT.md
