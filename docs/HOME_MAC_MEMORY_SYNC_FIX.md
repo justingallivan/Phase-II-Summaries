@@ -45,7 +45,8 @@ Moving the project changed its path, which broke the old symlink. Recreate it fr
 
 ```bash
 PROJECT_PATH=$(pwd)
-PROJECT_SLUG=$(echo "$PROJECT_PATH" | sed 's|/|-|g')
+# Claude Code encodes /, spaces, ~, and _ all as hyphens in the project slug
+PROJECT_SLUG=$(echo "$PROJECT_PATH" | sed 's|[/ ~_]|-|g')
 mkdir -p ~/.claude/projects/$PROJECT_SLUG
 rm -rf ~/.claude/projects/$PROJECT_SLUG/memory
 ln -s "$(pwd)/.claude-memory" ~/.claude/projects/$PROJECT_SLUG/memory
@@ -100,7 +101,8 @@ The project is now at the same iCloud path on both Macs, so this command is iden
 
 ```bash
 PROJECT_PATH=$(pwd)
-PROJECT_SLUG=$(echo "$PROJECT_PATH" | sed 's|/|-|g')
+# Claude Code encodes /, spaces, ~, and _ all as hyphens in the project slug
+PROJECT_SLUG=$(echo "$PROJECT_PATH" | sed 's|[/ ~_]|-|g')
 mkdir -p ~/.claude/projects/$PROJECT_SLUG
 rm -rf ~/.claude/projects/$PROJECT_SLUG/memory
 ln -s "$(pwd)/.claude-memory" ~/.claude/projects/$PROJECT_SLUG/memory
