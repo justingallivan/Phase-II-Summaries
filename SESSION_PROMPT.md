@@ -1,153 +1,161 @@
-# Session 149 Prompt: Connor schema review + execute the unblocked slices
+# Session 150 Prompt: Item 6 test results → schema-slice build, plus carryovers
 
-## Session 148 summary
+## Heads up
 
-Nine commits on `main`. Three workstreams:
+Session 149 was a long live-meeting day with two distinct Connor syncs:
 
-1. **Visual smoke of the Gemini refactor** (carryover from S147). Playwright MCP added to local Claude Code config; `/phase-ii-writeup` exercised end-to-end against a real Phase II PDF. Q&A modal (SSE streaming + markdown + 18 source links with `target=_blank rel=noopener noreferrer`), Refine modal (mount verified), Word export modal (`.docx` 41.6KB downloaded). All three pass. Gemini refactor is visually green; one commit (`75cfe67`) added `.playwright-mcp/` to `.gitignore`.
+- **Morning sync** ran the 2026-05-14 schema review — 7 of 8 items closed under a "human-legibility over normalization purity" principle that emerged mid-meeting. Item 6 (drain-vs-PA write conflict on aggregate fields) deferred to a separate decision.
+- **Afternoon sync** worked Item 6 to a locked path (A+B hybrid) and produced a maker-portal test runbook Connor takes back to prove the mechanics.
 
-2. **Intake-admin memberships build plan** (`/apply/admin/memberships`). Four versions through three Codex review passes:
-   - v1 (`ffb966d`): initial draft — 12 findings (2H, 5M, 4L, 1N).
-   - v2 (`ed9e05c`): folded v1 findings — 8 ADDRESSED, 3 PARTIAL, 1 NEW ISSUE; introduced 8 new findings (helper-contract guesses).
-   - v3 (`1632453`): grounded every helper call in live signatures from `intake-audit-service.js`, `dataverse-identity-map.js`, `dynamics-service.js`, `auth.js`, `[...nextauth].js`. 7 of 8 v2 NF findings ADDRESSED; 5 new findings (2M, 2L, 1N).
-   - v4 (`f6e33c5`): closed all 5 v3 findings — `wmkf_priordecisionstatus` field promoted to slice 0 (no more inference), §9 disposition table promoted to entry point, `noFallback` threading specified end-to-end, 403 vs 503 status-code split, `getRecord` named consistently.
-   Plan is at `docs/INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN.md` (440 lines) with companion reviews in `_CODEX_REVIEW.md`, `_V2.md`, `_V3.md`.
+The most important deltas to be aware of:
+- **Item 6's pre-deploy preconditions are not yet cleared.** Schema slice 0 is blocked on Connor's maker-portal test results + the rule-exception edit to `INTAKE_PORTAL_DESIGN.md`. Do not write JSON specs or apply schema until those land.
+- **Five Wave 2 / Item 5 schema-fact corrections went live during the meeting** via `EntityDefinitions` probe. The agenda-doc's proposed-new fields collapsed: 3 of 4 already exist on `akoya_request` (`wmkf_numberofyearsoffunding`, `akoya_request` Money field, `akoya_expenses`). Only `wmkf_totalothersources` is net-new.
+- **Codex caught a recurring failure mode of mine** — making confident platform-behavior claims (Dataverse rollup latency, PA filter capability, plug-in cost) from training-data memory rather than verifying against Microsoft Learn. Memory rule saved: `feedback_verify_external_platform_claims`. Use-case-specific verification, not feature-existence verification.
 
-3. **Budget form spec** — three commits:
-   - **`52409ac`** — `docs/BUDGET_FORM_SPEC.md` (originated as a parallel claude.ai browser-session paste, scoped to user-facing UX) brought under this session's ownership. Reflowed from a single 10K-char line into proper markdown. Replaced the wrong direct-to-Dataverse Data Schema section with a Postgres-first / async-drain wiring model matching `INTAKE_PORTAL_DESIGN.md`. Added the file to git.
-   - **`567cf83`** — locked seven schema-design decisions with Justin: unified entity (Q1), name `wmkf_proposalbudgetline` (Q2), three Currency aggregates on `akoya_request` (Q3), `wmkf_projectyears` location (Q4), delete-and-replace in `$batch` (Q5), Facilities/Overhead always written (Q6), Whole Number for `headcount`/`effortpct` (Q7).
-   - **`5f437dc`** — v2 reconcile after Codex flagged 17 findings (1C, 4H, 7M, 5L). Material change: v1 missed the pre-existing `wmkf_proposalbudgetline` sketch already in `INTAKE_PORTAL_SCHEMA_CHANGES.md` line 22 (committed earlier 2026-05-13 from morning meeting decisions). v2 reconciles to the catalog's **row-per-year** shape, moves Other Sources to a separate `wmkf_proposalcostshare` entity (the catalog's category enum has no home for institutional cost-share), fixes the drain-attribution contradiction (uses WMK app user systemuserid via `MSCRMCallerID`, not the OAuth service principal), adds `intake_audit` write events, and surfaces three portal-wide infrastructure gaps (`$batch` not in `dynamics-service.js`, `submission_jobs` not in migration 005, AkoyaGO inline-edit hardening). Codex v2 review pass: 9 of 17 v1 findings ADDRESSED, 7 PARTIAL, 1 NOT ADDRESSED, 0 new issues introduced; 9 new findings (2H, 4M, 2L, 1N), mostly procedural tightening rather than structural bugs.
+## Session 149 summary
 
-4. **Schema review agenda for Connor** (`52ced07`). `docs/INTAKE_PORTAL_SCHEMA_REVIEW_2026-05-14.md` — 362-line walkthrough doc covering 8 schema items needing his sign-off + 2 FYI items. Each item structured as context / options / recommendation / rationale. Anchored against what was already settled this morning (Items 1A/1B/1C/1D plus the seven Q&A) so we don't re-litigate.
+### Morning — 2026-05-14 schema review w/ Connor
 
-### Commits (this session)
+Eight items walked through; outcomes:
 
-```
-52ced07 Schema review agenda for 2026-05-14 walkthrough w/ Connor
-5f437dc BUDGET_FORM_SPEC v2 — reconcile with catalog + Codex review
-567cf83 BUDGET_FORM_SPEC — lock 7 schema decisions 2026-05-13
-52409ac Track BUDGET_FORM_SPEC + rewrite wiring section
-f6e33c5 Intake-admin plan v4 — close 5 Codex v3 findings
-1632453 Intake-admin plan v3 — fold in 8 Codex v2 findings
-ed9e05c Intake-admin plan v2 — fold in 12 Codex findings
-ffb966d Draft intake-admin memberships build plan
-75cfe67 Gitignore Playwright MCP snapshot dir
-```
+| # | Topic | Outcome |
+|---|---|---|
+| 1 | Cost-share entity | **Unified into `wmkf_proposalbudgetline.wmkf_category` enum** (no new entity). 3 new values: `WaivedIndirect`, `WaivedTuition`, `OtherCostShare`. Accepted forever-filter cost. |
+| 2 | Budget line extra fields | Add 3 fields: `wmkf_rolecode`, `wmkf_headcount`, `wmkf_effortpct`. |
+| 3 | Roster entity | **Extend existing `wmkf_apprequestperson`** (5,561-row junction). Add 3 nullable fields. Expand `wmkf_role` enum from 2 → 5 values (PI / Co-PI / Senior Personnel / Key Personnel / Other). |
+| 4 | Re-application history | Add `wmkf_priordecisionstatus` to `wmkf_portal_membership`. |
+| 5 | Aggregate fields | **Live-probe found 3 of 4 already exist.** Reuse `wmkf_numberofyearsoffunding`, `akoya_request`, `akoya_expenses`. Add only `wmkf_totalothersources`. |
+| 6 | Cache-drift protection | **Deferred** — in-meeting PA-flow-on-child-writes plan flagged by Codex as violating `INTAKE_PORTAL_DESIGN.md` § "Power Automate boundary." See afternoon sync. |
+| 7 | Reviewer packet rendering | No `wmkf_category` enum expansion. Single packet PA renders rows via `wmkf_description` + `wmkf_rolecode`. |
+| 8 | Naming | Moot — Items 1+3 collapsed both new-entity-naming questions. |
+
+Code patches downstream of decisions:
+- `pages/api/reviewer-finder/contact-history.js` — PI/Co-PI source filter so expanded role enum doesn't pollute reviewer history.
+- `pages/api/grant-reporting/lookup-grant.js` — removed `akoya_request` fallback for award amount (drain will now write that field with applicant ask).
+- `scripts/acceptance-w4.js` — same role filter + zero-row hit-rate gate.
+- `scripts/inspect-request-copis.js` — comment documenting expanded enum.
+- `shared/forms/phase-ii-research-2026-06/map-to-dynamics.js` — resolved entity-choice TODOs for budget + roster.
+
+Doc normalization (BUDGET_FORM_SPEC v3 + agenda outcome banner + new SCHEMA_CHANGES 2026-05-14 entry + Atlas amendments + INTAKE_PORTAL_DESIGN open-work refresh).
+
+### Afternoon — Item 6 sync w/ Connor
+
+Two questions answered:
+- **Q1:** "Does anything in AkoyaGO today write to `akoya_request` (Money field) or `akoya_expenses`?" → **"GoApply updates write to these fields."** Option C (rollup fields) is dead.
+- **Q2:** "Are you OK with an explicit narrow exception to the 'they never write the same field' rule?" → **"Yes, with the narrow exception language."**
+
+Active path locked: **A+B hybrid.**
+- Option A (status-gated PA flow filtering on parent status via lookup navigation) ships for slice 0.
+- Option B (`$batch` + change sets in `dynamics-service.js`) ships as near-term infrastructure follow-up after pilot.
+
+Four preconditions, three pre-deploy + one post-deploy:
+1. PA trigger filter expression validates on Create AND Update AND Delete events.
+2. Delete trigger payload exposes deleted row's parent ID.
+3. Rule-exception language lands in `INTAKE_PORTAL_DESIGN.md` § "Power Automate boundary."
+4. Real-schema verification after slice 0 deploys (post-deploy; blocks PA flow go-live, not the deploy itself).
+
+Codex review went through six rounds across the two new docs (`INTAKE_PORTAL_ITEM_6_DISCUSSION.md` v1 → v3 + post-sync patches; `INTAKE_PORTAL_ITEM_6_MAKER_PORTAL_TESTS.md` + `INTAKE_PORTAL_ITEM_6_QUICK_PROBE.md`). Final state: all findings resolved, gates green.
+
+### Commits this session
+
+- `4bcfdd6` — S149 schema-review decisions (code + doc patches, Item 6 deferred)
+- `83b4495` — Item 6 discussion doc (v3, three Codex review rounds)
+- `1c9e143` — Item 6 Connor sync (Q1+Q2 locked, A+B hybrid path, maker-portal test runbook)
 
 ## Production state
 
-- **No production deploys this session.** All work is design/plan/spec.
-- **Gemini refactor visually green** via Playwright MCP smoke; no follow-up needed.
-- **Three pre-deploy specs ready for Connor 2026-05-14 review**: `wmkf_proposalbudgetline` v2-additions, new `wmkf_proposalcostshare` entity, `wmkf_priordecisionstatus` on `wmkf_portal_membership`.
-- **CI gates** (`check:atlas`, `check:atlas:self-test`, `check:api-routes`) all green; no data-layer code touched.
+- 4 commits ahead of `origin/main` at session-end (this prompt's commit is the fourth).
+- Working tree clean once this prompt is committed.
+- CI gates green (`check:atlas`, `check:api-routes`).
+- Connor has both Item 6 docs (`DISCUSSION.md` + `MAKER_PORTAL_TESTS.md` + `QUICK_PROBE.md`) for the maker-portal runbook.
 
-## Where to pick up — Session 149
+## Where to pick up — Session 150
 
-Ordered by readiness:
+### A. Wait for Connor's Item 6 test results (PRIMARY blocker)
 
-### A. Walk through the schema review with Connor (TOMORROW, 2026-05-14 morning)
+Connor runs Test 1 (filter-expression syntax — Candidates A–E) and Test 2 (Delete trigger payload introspection). Three outcomes route to three paths:
 
-Doc: `docs/INTAKE_PORTAL_SCHEMA_REVIEW_2026-05-14.md`. 8 ask items + 2 FYI. Time budget 20–30 min. The one item where his answer materially changes the plan is **Item 6** (does AkoyaGO surface inline-edit on `wmkf_proposalbudgetline`?). Everything else is recommendations he can rubber-stamp or push back on.
+| Test outcome | Path |
+|---|---|
+| Both pass cleanly | **A+B hybrid confirmed.** Connor builds the PA flow; we write the schema slice + plan Option B. |
+| Test 1 passes, Test 2 fails | A handles Create/Update; design huddle for Delete fallback (stored mapping + reconcile cron). |
+| Test 1 fails on any event | A is dead. **Option B alone** — build `$batch` first; slips schema slice past 2026-05-19. |
 
-Outputs to capture after the meeting:
-- Sign-offs on Items 1–4 + 8 (architecture + naming) → unblock schema deploy
-- Confirmations on Items 5 (live field-collision check) + 6 (AkoyaGO behavior) + 7 (PA cover-doc grouping)
-- Any pushback gets folded into v3 of `BUDGET_FORM_SPEC.md` and v5 of `INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN.md`
-- Memory entry for the seven+v2 budget decisions can be locked in after the meeting (Justin said earlier "we can lock in the memory later" — that's now)
+Until results land, do not write JSON specs or apply schema. Idle work that doesn't depend on Item 6:
 
-### B. Schema deploy slice (target 2026-05-19)
+### B. Land the rule-exception edit in `INTAKE_PORTAL_DESIGN.md` (PRE-DEPLOY PRECONDITION #3)
 
-After Connor sign-off, deploy under existing delegated authority + summary-after model:
-- `wmkf_proposalbudgetline` (with v2-additions if approved)
-- `wmkf_proposalcostshare` (if Item 1 approved)
-- `wmkf_proposalroster` (with shape from Item 3)
-- `wmkf_priordecisionstatus` field on `wmkf_portal_membership`
-- Four fields on `akoya_request` (`wmkf_projectyears`, three aggregates) — after Item 5 live-verify
-- Atlas pages: `dataverse-wmkf-proposalbudgetline.md`, `dataverse-wmkf-proposalcostshare.md`, `dataverse-wmkf-proposalroster.md`, `dataverse-wmkf-portal-membership.md`
-- Update `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` to record final names + the three v2-additions
+Draft the narrow-exception language from `INTAKE_PORTAL_ITEM_6_DISCUSSION.md` § 6 Q2 into the existing § "Power Automate boundary" section. Name the three aggregate fields and the lifecycle gate. Non-negotiable; do not skip.
 
-Per the gotcha checklist in `project_dataverse_schema_deploy_gotchas.md` — 30s-backoff between metadata writes; PascalCase `@odata.bind` keys.
+### C. Postgres migration `009_submission_jobs.sql`
 
-### C. Membership approval slice build (after schema deploys)
+Tracked all session as missing infrastructure that blocks any drain. Independent of Item 6 outcome — can land now. Schema is sketched in `INTAKE_PORTAL_DESIGN.md` § "Submission lifecycle"; needs the actual `.sql` file under `lib/db/migrations/`.
 
-Build plan: `docs/INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN.md` v4. Six slices:
-- Slice 0: schema deploy (covered in B above).
-- Slice 1: app key + middleware carve-out + skeleton page.
-- Slice 2: `GET /api/apply/admin/memberships` + table render with `priorDecision`.
-- Slice 3: `dynamics-service.updateRecord { noFallback }` extension + `POST /approve`.
-- Slice 4: `POST /reject` + reject modal.
-- Slice 5: tabs + toasts + 409 auto-refetch.
+### D. Reserve numeric integer values for new enum entries (pre-deploy)
 
-### D. Budget-form skeleton build (after schema deploys)
+Codex flagged "picking integers at deploy is too late." For slice 0 deploy, decide and document:
+- `wmkf_proposalbudgetline.wmkf_category` — 9 values (6 WMKF-spend + 3 cost-share). Microsoft convention: 100000000, 100000001, …
+- `wmkf_apprequestperson.wmkf_role` — 3 new values (Senior Personnel, Key Personnel, Other) extending existing PI=100000000 / Co-PI=100000001.
+- `wmkf_portal_membership.wmkf_priordecisionstatus` — 3 values (Rejected, Revoked, Approved).
 
-Spec: `docs/BUDGET_FORM_SPEC.md` v2. UI sections 1–6 ready; React Component Architecture sketched. Needs:
-- React Hook Form + Zod scaffolding (or Formik — pick one)
-- JSONB persistence to `intake_drafts.draft_json` under `budget` key
-- Per-row Copy-Year-1 shortcut
-- `<InfoPopover />` component
-- Mobile single-year tab view
-- `$100K`-multiple live validation banner
-- Validation rules per the spec's Validation Rules table
+Record in Atlas pages at slice 0.
 
-Submission externalization (the drain step) is gated on `submission_jobs` migration + `$batch` helper landing — see § E.
+### E. Carryover from S147–S148 (low priority)
 
-### E. Portal-wide infrastructure gaps surfaced this session
+- COI policy body wording (Stage 2a reviewer engagement).
+- Revert temp role elevations on prod app user (deferred through pilot iteration).
+- Visual smoke of the Gemini refactor on `/phase-ii-writeup` (S148 carryover — landed visually green per S148 prompt; if any regressions surface, this is the carryover).
+- Sarah's Phase II Research field inventory (Track 2 carryover from 2026-05-13; primary blocker for the form module).
 
-Three items surfaced by Codex during budget-spec review. Not budget-scope; tracked at the intake-portal level. **All three block production-grade externalization but not the skeleton UI builds in C and D.**
+## Calendar checkpoints
 
-1. **`$batch` not implemented in `dynamics-service.js`.** Drain falls back to sequential calls with progress markers. Cross-cutting infra — every async-drain consumer (budget, roster, attachments) needs it eventually.
-2. **`submission_jobs` Postgres table** described in `INTAKE_PORTAL_DESIGN.md` § "Submission lifecycle" but not in migration `005_intake_portal.sql`. Add to V30 migration before drain slice ships.
-3. **AkoyaGO inline-edit hardening for cached `akoya_request` aggregates.** Item 6 of the Connor agenda resolves this — depending on his answer, we either rely on daily reconcile cron (pilot fine) or add a Dataverse business rule / plug-in.
+- **2026-05-15** — Connor's flow-list reply target (from S148 — still pending if not arrived).
+- **2026-05-19** — Schema slice 0 deploy target. **Blocked on Item 6 test results + rule-exception edit + `submission_jobs` migration + enum integer reservations.**
+- **2026-05-26** — Dry-run: manually flip throwaway test request to `'Phase II Pending'` and watch PA flows fire.
+- **2026-05-30** — Go/no-go review.
+- **2026-06-01** — Pilot accepting submissions for mid-June Phase II Research cycle.
 
-Recommend logging these in `INTAKE_PORTAL_DESIGN.md` § "Open questions / open work" after the Connor meeting so they're tracked at the right scope.
-
-### F. Track 2 — Sarah field inventory (still carryover from S147)
-
-Never ran in S148. The pilot Phase II Research form's full field list still needs a Sarah session before form-module skeleton goes beyond budget + roster. Schedule before the 2026-05-19 schema-deploy checkpoint.
-
-### G. Lock in the 2026-05-13 budget-spec memory
-
-User said earlier in S148 "we can lock in the memory later." After Connor's meeting + any v3 revisions, write `project_budget_form_decisions_2026-05-14.md` capturing:
-- 7 Justin-locked decisions from morning + 6 v2 additions from Codex-driven revision
-- Whatever Connor signs off on / pushes back on at the 2026-05-14 review
-- Index under "Intake Portal" in `MEMORY.md`
-
-### H. Smaller carry-forward items
-
-- **W6 step 2 trigger** (`project_w6_table_drop_pending.md`) fires ≥ 2026-07-01.
-- **Meeting agenda cleanup trigger** (`project_intake_meeting_agenda_cleanup.md`) fires ≥ 2026-05-27 — delete `docs/INTAKE_PORTAL_MEETING_AGENDA_2026-05-13.md` (and now `docs/INTAKE_PORTAL_SCHEMA_REVIEW_2026-05-14.md` similarly post-meeting).
-- **IRS PA wiring** (Connor's plate from S147) — `IRS_VERIFY_SECRET` already in prod; awaiting his flow build.
-- **Revert temp role elevations on prod app user** (deferred through pilot per S146 carryover).
-- **COI policy body wording** (Stage 2a reviewer engagement).
-- **9 follow-up SSE cutovers** from the Gemini refactor (`pages/dynamics-explorer.js` regex markdown + 9 other pages with hand-rolled SSE loops — low priority).
-
-## Carryover hygiene
-
-- All destructive carryover items must be grep-verified per `feedback_verify_before_destructive_carryover` rule before action.
-- The two meeting-doc cleanup triggers above are routine housekeeping — verify the file exists, verify decisions made it into the relevant docs, then archive/delete.
-
-## Key files added/modified (S148)
+## Key files modified this session
 
 | File | Status | Purpose |
 |---|---|---|
-| `.gitignore` | MODIFIED | Add `.playwright-mcp/` |
-| `docs/INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN.md` | NEW | v1 → v4 — six-slice build plan for `/apply/admin/memberships` |
-| `docs/INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN_CODEX_REVIEW.md` | NEW | v1 Codex review (12 findings) |
-| `docs/INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN_CODEX_REVIEW_V2.md` | NEW | v2 Codex review (8 new findings) |
-| `docs/INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN_CODEX_REVIEW_V3.md` | NEW | v3 Codex review (5 new findings) |
-| `docs/BUDGET_FORM_SPEC.md` | NEW (tracked) + REWRITTEN v2 | Budget-form UI/UX + Postgres-first wiring + 13 locked decisions |
-| `docs/BUDGET_FORM_SPEC_CODEX_REVIEW.md` | NEW | v1 Codex review (17 findings) |
-| `docs/BUDGET_FORM_SPEC_CODEX_REVIEW_V2.md` | NEW | v2 Codex review (9 new findings) |
-| `docs/INTAKE_PORTAL_SCHEMA_REVIEW_2026-05-14.md` | NEW | 8-item walkthrough agenda for Connor meeting |
+| `docs/INTAKE_PORTAL_ITEM_6_DISCUSSION.md` | NEW | Full Item 6 walkthrough; § 0 locks Connor sync decisions, § 5 Option A–F analysis, § 8 active next steps |
+| `docs/INTAKE_PORTAL_ITEM_6_MAKER_PORTAL_TESTS.md` | NEW (Codex) | Step-by-step PA maker-portal runbook for Connor — 823 lines |
+| `docs/INTAKE_PORTAL_ITEM_6_QUICK_PROBE.md` | NEW (Codex) | Fast-path Item 6 probe — companion to the full runbook |
+| `docs/BUDGET_FORM_SPEC.md` | EDITED → v3 | Unified-table decision, reused-field aggregate definitions, Item 6 deferral inline |
+| `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` | EDITED | New 2026-05-14 entry as authoritative; pre-deploy checklist explicit |
+| `docs/INTAKE_PORTAL_SCHEMA_REVIEW_2026-05-14.md` | EDITED | Outcome banner mapping each item to actual decision |
+| `docs/INTAKE_PORTAL_DESIGN.md` | EDITED | Launch blockers refreshed (Item 6, missing `submission_jobs`); resolved-decision entry for 2026-05-14 |
+| `docs/atlas/dataverse-wmkf-apprequestperson.md` | EDITED | Read-path filter narrowing + missing consumers |
+| `docs/atlas/dataverse-akoya-request.md` | EDITED | Stale `wmkf_personnel` references replaced |
+| `pages/api/reviewer-finder/contact-history.js` | EDITED | PI/Co-PI source filter |
+| `pages/api/grant-reporting/lookup-grant.js` | EDITED | Removed `akoya_request` award-amount fallback |
+| `scripts/acceptance-w4.js` | EDITED | Role filter + zero-row hit-rate gate |
+| `scripts/inspect-request-copis.js` | EDITED | Expanded-enum comment |
+| `shared/forms/.../map-to-dynamics.js` | EDITED | Resolved 2 entity-choice TODOs; header distinguishes Item-6 vs. design-question blockers |
+| `.claude-memory/feedback_human_legibility_schema_principle.md` | NEW | Schema design principle from morning sync |
+| `.claude-memory/feedback_codex_verbatim_output.md` | NEW | Codex output must be pasted verbatim |
+| `.claude-memory/feedback_verify_external_platform_claims.md` | NEW | Verify external-platform claims via WebFetch before stating |
+| `SESSION_PROMPT.md` | REWRITTEN | This file |
 
 ## Testing
 
 ```bash
+# Sanity gates (should remain green — nothing in this session broke ground-truth)
 npm run check:atlas
-npm run check:atlas:self-test
 npm run check:api-routes
+
+# When Item 6 test results land, slice 0 schema work begins:
+node scripts/apply-dataverse-schema.js --target=prod --wave=2
 ```
 
-All green at session end. No new code; no test additions.
+## Gotchas to remember
 
-For the next session, Playwright MCP is now configured locally (`claude mcp add playwright npx @playwright/mcp@latest`). It loads on session start. Use for any UI verification work.
+- **Item 6 is the schema-slice blocker.** Three pre-deploy preconditions must clear: Connor's two maker-portal tests + the design-doc rule-exception edit. Plus `submission_jobs` migration + enum integers. Do not write schema JSON before they land.
+- **GoApply still writes `akoya_request` and `akoya_expenses`.** Drain's future writes to these fields must coexist with GoApply for the pilot duration. Don't convert them to rollups, don't take them over.
+- **External-platform claims need WebFetch verification before being stated.** Memory rule `feedback_verify_external_platform_claims`. Use-case-specific verification ("Y works for combination Z") not just feature-existence ("Y exists").
+- **Codex output is verbatim, always.** Memory rule `feedback_codex_verbatim_output`. My commentary goes AFTER the verbatim block, never instead of it.
+- **Dataverse `EntityCustomization` 429s** between metadata writes — wrap multi-attribute deploys in 30s-backoff retry per `project_dataverse_schema_deploy_gotchas`.
+- **`@odata.bind` keys are PascalCase nav-property names**, not lowercase logical names. The portal submit handler will hit this when posting budget rows with `wmkf_Request@odata.bind`.
+- **Demo-token mint wrote to prod Dataverse** on suggestion `489ecf2c-...` (Aspuru-Guzik) — left over from S148. If you query that row, expect live `wmkf_proposalfirstaccessed` data from the demo visit.
+- **`EXTERNAL_LINK_SECRET`** in `.env.local` is a dev-only random secret, gitignored. Different from prod.

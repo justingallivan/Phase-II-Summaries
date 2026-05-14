@@ -2542,4 +2542,52 @@ All five planned Wave 2 / pilot build items landed and were verified live agains
 
 ---
 
-Last Updated: May 7, 2026
+## Session 149 — 2026-05-14
+
+**Two live Connor syncs in one day: schema review + Item 6 resolution**
+
+Long meeting day. Eight schema items + one deferred decision worked across two sessions. Three commits at end-of-day.
+
+### Morning — 2026-05-14 schema review
+
+Walked through `docs/INTAKE_PORTAL_SCHEMA_REVIEW_2026-05-14.md` with Connor. Eight items closed under a "human-legibility over normalization purity" design principle that emerged mid-meeting (memory `feedback_human_legibility_schema_principle`). Material outcomes:
+
+- Item 1: cost-share **unified into `wmkf_proposalbudgetline.wmkf_category` enum** (3 new values: WaivedIndirect / WaivedTuition / OtherCostShare) instead of a separate `wmkf_proposalcostshare` entity.
+- Item 3: roster **extends existing `wmkf_apprequestperson`** (3 nullable fields + 5-value `wmkf_role` enum) instead of a new `wmkf_proposalroster` entity.
+- Item 5: live-probed `akoya_request` via `EntityDefinitions` API in the meeting — 3 of 4 proposed fields already exist (`wmkf_numberofyearsoffunding`, `akoya_request` Money field, `akoya_expenses`). Only `wmkf_totalothersources` is net-new.
+- Item 6 (drain-vs-PA write conflict): deferred — in-meeting plan (PA flow recomputes on every child write) flagged by Codex as direct violation of `INTAKE_PORTAL_DESIGN.md` § "Power Automate boundary" rule.
+- Items 2, 4, 7, 8: locked as recommended.
+
+Downstream code patches landed for the Item 3 enum expansion (PI/Co-PI source filter in `contact-history.js`, `acceptance-w4.js`, plus comment in `inspect-request-copis.js`) and the Item 5 reuse of `akoya_request` field (removed award-amount fallback in `lookup-grant.js` to avoid surfacing drain-written applicant ask as award amount on pre-decision records). Form mapper resolved 2 entity-choice TODOs.
+
+### Afternoon — Item 6 resolution sync
+
+Wrote `docs/INTAKE_PORTAL_ITEM_6_DISCUSSION.md` — 5 options (A–F) conditional on two Connor-only answers. Three doc-iteration rounds with Codex before the meeting tightened verification claims to Microsoft Learn (v1 had wrong rollup latency 1hr vs actual 12hr-mass/1hr-incremental, unverified PA trigger filter capability, vague plug-in cost; v2 over-claimed feature combinations; v3 narrowed VERIFIED tags to feature-existence with combination claims tagged `[partially verified — Connor must test in maker portal]`).
+
+Connor's answers locked the **A+B hybrid** path:
+- **Q1 — does AkoyaGO write `akoya_request` / `akoya_expenses`?** "GoApply updates write to these fields." → Option C (rollup fields) is dead.
+- **Q2 — accept narrow exception to 'they never write the same field'?** "Yes, with the narrow exception language."
+
+Option A (status-gated PA flow filtering on parent status via lookup navigation) ships for slice 0; Option B (`$batch` + change sets in `dynamics-service.js`) ships as near-term infrastructure follow-up.
+
+Four preconditions before deploy: three pre-deploy (maker-portal Test 1 + Test 2 + rule-exception edit in design doc) + one post-deploy gate (real-schema verification before PA flow goes live).
+
+Codex in parallel wrote `docs/INTAKE_PORTAL_ITEM_6_MAKER_PORTAL_TESTS.md` (823 lines, step-by-step PA runbook for Connor) and `docs/INTAKE_PORTAL_ITEM_6_QUICK_PROBE.md` (companion fast-path probe). Post-sync doc patches went through three more Codex review rounds catching internal-consistency issues across § 0 preconditions, § 8 next-steps, and Status paragraph wording.
+
+### Commits
+
+- `4bcfdd6` — S149 schema-review decisions — code + doc patches, Item 6 deferred
+- `83b4495` — Item 6 discussion doc — drain-vs-PA write conflict options for Connor
+- `1c9e143` — Item 6 Connor sync — Q1+Q2 locked, A+B hybrid path, maker-portal test runbook
+
+### Cross-cutting findings worth carrying forward
+
+- **Codex catches `[VERIFIED]`-tag over-claims systematically.** v1 claimed feature behavior from training-data memory (wrong). v2 verified primitives against Microsoft Learn but claimed combinations as VERIFIED when only the individual features were documented. v3 separates the two: `[VERIFIED via URL]` for feature-existence, `[partially verified — Connor tests in maker portal]` for combinations. Saved as memory rule `feedback_verify_external_platform_claims`.
+- **Codex output must be pasted verbatim.** I summarized two Codex round-trips mid-session; Justin caught it. Memory rule `feedback_codex_verbatim_output` — applies regardless of how Codex was invoked (inline command vs. Agent subagent).
+- **GoApply coexistence shapes schema decisions.** Item 6's path collapsed because Connor confirmed GoApply still writes the same fields the drain wants to write. Read-only conversions (rollup fields) are off the table for any field GoApply touches until the GoApply replacement is complete.
+- **Live `EntityDefinitions` probing during meetings is high-leverage.** Item 5's "verify Connor live" step landed 3 field reuses in 5 minutes that would otherwise have shipped as net-new fields, defeating the human-legibility principle that the morning session had just locked in.
+- **Background `codex-rescue` agents can't get Bash permission grants.** Two attempts in this session stalled; relaunched in foreground both times. Use foreground for `codex-rescue` until permission flow improves.
+
+---
+
+Last Updated: May 14, 2026
