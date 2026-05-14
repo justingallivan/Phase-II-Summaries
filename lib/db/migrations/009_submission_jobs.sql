@@ -12,12 +12,20 @@
 --
 -- Frozen payload: payload JSONB is the validated draft snapshot at submit time.
 -- The drain consumes only payload, never re-reads intake_drafts — so draft edits
--- after submit do not affect the in-flight job.
+-- after submit do not affect the in-flight job. draft_id is a nullable back-
+-- reference with ON DELETE SET NULL — drafts may be cleared on submit per the
+-- intake_drafts lifecycle; traceability lives in the frozen payload, not the FK.
+--
+-- Active-job uniqueness: a partial unique index on (account_id, request_id,
+-- form_key) restricted to non-terminal status prevents tab-refresh-and-resubmit
+-- from spawning a second concurrent job. idempotency_key uniqueness alone only
+-- collapses double-clicks within the same UUID; the partial index is the
+-- belt-and-suspenders guard a fresh UUID would otherwise slip past.
 
 CREATE TABLE IF NOT EXISTS submission_jobs (
   id                SERIAL PRIMARY KEY,
   idempotency_key   TEXT NOT NULL UNIQUE,                  -- client-generated UUID per submit click
-  draft_id          INTEGER NOT NULL REFERENCES intake_drafts(id),
+  draft_id          INTEGER REFERENCES intake_drafts(id) ON DELETE SET NULL,
   contact_oid       TEXT NOT NULL,                         -- Entra External ID OID
   account_id        TEXT NOT NULL,                         -- Dynamics account GUID
   request_id        TEXT NOT NULL,                         -- Dynamics akoya_request GUID
@@ -52,6 +60,14 @@ CREATE TABLE IF NOT EXISTS submission_jobs (
 -- Partial index keeps it small even after thousands of completed jobs accumulate.
 CREATE INDEX IF NOT EXISTS idx_submission_jobs_active_ready
   ON submission_jobs (next_attempt_at, created_at)
+  WHERE status NOT IN ('completed', 'failed', 'cancelled');
+
+-- Active-job uniqueness: at most one non-terminal job per (account_id,
+-- request_id, form_key). Belt-and-suspenders alongside idempotency_key —
+-- catches the case where a fresh UUID gets generated (tab refresh, retry from
+-- a different device) for what is logically the same submission.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_submission_jobs_one_active_per_request
+  ON submission_jobs (account_id, request_id, form_key)
   WHERE status NOT IN ('completed', 'failed', 'cancelled');
 
 -- Back-references for admin views and per-request serialization lookups.

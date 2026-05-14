@@ -592,7 +592,7 @@ const v30Statements = [
   `CREATE TABLE IF NOT EXISTS submission_jobs (
     id                SERIAL PRIMARY KEY,
     idempotency_key   TEXT NOT NULL UNIQUE,
-    draft_id          INTEGER NOT NULL REFERENCES intake_drafts(id),
+    draft_id          INTEGER REFERENCES intake_drafts(id) ON DELETE SET NULL,
     contact_oid       TEXT NOT NULL,
     account_id        TEXT NOT NULL,
     request_id        TEXT NOT NULL,
@@ -617,6 +617,9 @@ const v30Statements = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_submission_jobs_active_ready
      ON submission_jobs (next_attempt_at, created_at)
+     WHERE status NOT IN ('completed', 'failed', 'cancelled')`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_submission_jobs_one_active_per_request
+     ON submission_jobs (account_id, request_id, form_key)
      WHERE status NOT IN ('completed', 'failed', 'cancelled')`,
   `CREATE INDEX IF NOT EXISTS idx_submission_jobs_draft ON submission_jobs(draft_id)`,
   `CREATE INDEX IF NOT EXISTS idx_submission_jobs_request ON submission_jobs(request_id)`,
@@ -1512,7 +1515,9 @@ async function runMigration() {
     console.log('\nV27 column additions (Dynamics identity reconciliation):');
     console.log('  • user_profiles.dynamics_systemuser_id');
     console.log('  • user_profiles.dynamics_reconciled_at');
-    console.log('\nIndexes created: 64');
+    console.log('\nV30 new tables (Intake Portal submission jobs queue):');
+    console.log('  • submission_jobs (async submission queue — idempotency-keyed, drained by cron)');
+    console.log('\nIndexes created: 64 (plus 7 added in V30)');
 
   } catch (error) {
     console.error('\n✗ Migration failed:', error.message);
