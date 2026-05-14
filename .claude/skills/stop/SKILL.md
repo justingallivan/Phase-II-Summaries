@@ -49,9 +49,11 @@ If there are uncommitted changes:
 
 After updating documentation files:
 ```bash
-git add SESSION_PROMPT.md CLAUDE.md DEVELOPMENT_LOG.md
+git add SESSION_PROMPT.md CLAUDE.md DEVELOPMENT_LOG.md .claude-memory/
 git commit -m "Document Session N and create Session N+1 prompt"
 ```
+
+Including `.claude-memory/` ensures any memory writes from this session are committed and available on the other Mac after push.
 
 ## Step 5: Push to Remote (Critical for Multi-Mac Workflow)
 
