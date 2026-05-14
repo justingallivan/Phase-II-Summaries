@@ -1,6 +1,6 @@
 # WMKF Research Phase II — Budget Form: UI/UX & Data Spec
 
-**Status:** Owned by the Claude Code session as of 2026-05-13 (S148). Originally drafted in a parallel claude.ai browser session, scoped to user-facing UX. This rewrite reflows the doc into proper markdown, retains the UX content verbatim, and replaces the Data Schema section with a Postgres-first / async-drain wiring model that matches `docs/INTAKE_PORTAL_DESIGN.md`. Final externalized Dataverse field names land at Connor's 2026-05-15 schema design review (see § Open Questions). Companion build plan: `docs/INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN.md` (different slice — membership approval, not budget).
+**Status:** Owned by the Claude Code session as of 2026-05-13 (S148). Originally drafted in a parallel claude.ai browser session, scoped to user-facing UX. This rewrite reflows the doc into proper markdown, retains the UX content verbatim, and replaces the Data Schema section with a Postgres-first / async-drain wiring model that matches `docs/INTAKE_PORTAL_DESIGN.md`. **All seven schema-design questions were resolved 2026-05-13 by Justin** (see § Decisions locked); the externalized layer is implementation-ready, modulo a 15-min walkthrough with Connor at the 2026-05-15 schema design review to confirm no surprises. Companion build plan: `docs/INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN.md` (different slice — membership approval, not budget).
 
 ---
 
@@ -289,27 +289,75 @@ Notes on the shape:
 
 ### Externalized layer — Dataverse (on submit, via drain cron)
 
-When the submit endpoint queues a `submission_jobs` row, the drain cron's `dynamics_patched` step walks `payload.budget` and writes child entities to Dataverse, tied to the parent `akoya_request` via the standard `_regardingobjectid_value` or a dedicated lookup (depends on the schema review).
+When the submit endpoint queues a `submission_jobs` row, the drain cron's `dynamics_patched` step walks `payload.budget` and writes to Dataverse: child entity rows under one unified `wmkf_proposalbudgetline` entity, plus four field updates on the parent `akoya_request`. All writes go through `MSCRMCallerID` impersonation tied to the system service principal during async drain (this is server-driven externalization, not user-initiated — drain-cron attribution is distinct from the admin-slice attribution covered by `INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN.md`).
 
-**Proposed externalized shape (names TBD pending Connor's 2026-05-15 schema design review):**
+**Externalized shape (decisions locked 2026-05-13):**
 
-| Source JSONB | Target Dataverse entity | Notes |
+| Source JSONB | Target | Notes |
 |---|---|---|
-| `budget.personnel[]` | one row per entry into `wmkf_*budgetline` (name TBD) with `wmkf_category='personnel'` | Carries `headcount`, `effortPct`, per-year amounts, label/roleCode |
-| `budget.equipment[]` | same entity, `wmkf_category='equipment'` | No headcount/effort fields populated |
-| `budget.operations[]` | same entity, `wmkf_category='operations'` | Facilities/overhead row included for audit but always 0 |
-| `budget.otherSources[]` | either same entity with `wmkf_category='other-source'` + `wmkf_sourcetype` discriminator, OR a separate `wmkf_othersourceline` entity | **Open question for Connor** |
-| `budget.projectYears` | field on `akoya_request` (e.g., `wmkf_projectyears`) | Single integer 1/2/3 |
+| `budget.personnel[]` | one `wmkf_proposalbudgetline` row per entry, `wmkf_category='personnel'` | Carries `wmkf_headcount`, `wmkf_effortpct`, per-year amounts, label / roleCode |
+| `budget.equipment[]` | same entity, `wmkf_category='equipment'` | `wmkf_headcount` and `wmkf_effortpct` left null |
+| `budget.operations[]` | same entity, `wmkf_category='operations'` | Facilities/overhead row **always written** (see § Idempotency note) |
+| `budget.otherSources[]` | same entity, `wmkf_category='other-source'`, with `wmkf_sourcetype` discriminator (`waived-indirect-costs` / `waived-tuition-costs` / `other-cost-share`) | Decision: unified entity, not a separate `wmkf_othersourceline` table. Reduces table count and simplifies the drain step. |
+| `budget.projectYears` | `akoya_request.wmkf_projectyears` | Single Whole-Number 1/2/3. Lives on the parent request, not on a cycle/opportunity entity (deferred to Phase 1+). |
+| Cumulative totals (derived) | `akoya_request.wmkf_totalwmkfrequested`, `wmkf_totalothersources`, `wmkf_totalprojectcost` | See § Aggregate fields below. |
 
-The original spec proposed a parent `wmkf_budgetsubmission` table with its own `wmkf_status` (Draft / Submitted / Approved / Rejected). **That table is intentionally dropped** in this revision — `akoya_request` already serves as the parent, and the draft/submitted state machine is handled by `intake_drafts` (draft) → `submission_jobs` (in-flight) → externalization (terminal). Re-introducing per-budget status would duplicate state already carried by those tables.
+The original spec proposed a parent `wmkf_budgetsubmission` table with its own `wmkf_status` (Draft / Submitted / Approved / Rejected). **That table is intentionally dropped** — `akoya_request` already serves as the parent, and the draft/submitted state machine is handled by `intake_drafts` (draft) → `submission_jobs` (in-flight) → externalization (terminal). Re-introducing per-budget status would duplicate state already carried by those tables.
+
+### `wmkf_proposalbudgetline` entity fields
+
+| Field | Type | Notes |
+|---|---|---|
+| `wmkf_proposalbudgetlineid` | Unique Identifier (PK) | Auto |
+| `_wmkf_akoyarequest_value` | Lookup → `akoya_request` | Parent request. Bound via nav-property `@odata.bind` on write per `project_dataverse_schema_deploy_gotchas.md`. Exact bind key recorded at slice 0 deploy. |
+| `wmkf_category` | Option Set | `personnel` / `equipment` / `operations` / `other-source` |
+| `wmkf_lineitemkind` | Option Set | `fixed` / `dynamic` — mirrors JSONB `kind` |
+| `wmkf_rolecode` | String (100) | Stable code for fixed rows (`principal-investigators`, `consumable-supplies`, etc.); null for dynamic rows |
+| `wmkf_sourcetype` | Option Set | Populated only when `wmkf_category='other-source'`: `waived-indirect-costs` / `waived-tuition-costs` / `other-cost-share`. Null otherwise. |
+| `wmkf_label` | String (200) | User-editable for dynamic rows; static for fixed |
+| `wmkf_description` | Memo (500) | Required when `wmkf_sourcetype='other-cost-share'` and any year > 0; otherwise optional |
+| `wmkf_headcount` | Whole Number | Populated only when `wmkf_category='personnel'`; null otherwise |
+| `wmkf_effortpct` | Whole Number (Min 0, Max 100) | Populated only when `wmkf_category='personnel'`; null otherwise |
+| `wmkf_year1amount` | Currency | Always populated (may be 0) |
+| `wmkf_year2amount` | Currency | Null when `akoya_request.wmkf_projectyears < 2` |
+| `wmkf_year3amount` | Currency | Null when `akoya_request.wmkf_projectyears < 3` |
+| `wmkf_sortorder` | Whole Number | Preserves display order from the JSONB array |
+| `wmkf_locked` | Boolean | True for Facilities/Overhead row; informational |
+
+Data-type choices (locked 2026-05-13): integer for `wmkf_headcount` and `wmkf_effortpct` (whole-numbers-sufficient policy stated in the validation table). If real applicants post-pilot need decimal effort (12.5%), upgrading to Decimal is a non-breaking schema change.
+
+### Aggregate fields on `akoya_request` (locked 2026-05-13)
+
+The drain writes three cumulative totals to the parent request atomically with the line-item batch:
+
+| Field | Type | Definition |
+|---|---|---|
+| `wmkf_totalwmkfrequested` | Currency | Sum of all `wmkf_year{1,2,3}amount` across `wmkf_category IN ('personnel', 'equipment', 'operations')`. The $100K-multiple invariant applies to this number. |
+| `wmkf_totalothersources` | Currency | Sum of all `wmkf_year{1,2,3}amount` across `wmkf_category='other-source'`. |
+| `wmkf_totalprojectcost` | Currency | `wmkf_totalwmkfrequested + wmkf_totalothersources`. |
+
+**Why cache:** Connor's PA flows fire on `akoya_request`, AkoyaGO grid views display headline numbers without drilling into children, and the $100K-multiple business rule is more discoverable as a named field on the parent than as a child-rollup. Matches the existing pattern of putting AI summary + status directly on `akoya_request`.
+
+**Per-year aggregates are intentionally skipped for pilot** (9 more fields). If a real downstream consumer needs them, easy non-breaking add later.
+
+**Drift:** the drain is the only normal-operation writer to budget children. If staff manually edits a child row in Dataverse, the aggregate goes stale — acceptable at pilot scale (rare; visibly off by an obvious amount). Phase 1+ can add a Dataverse business rule or plug-in to recompute on child write.
 
 ### Why not write to Dataverse during draft
 
 Patching Dataverse on every autosave would burn Web API quota and hit throttling during peak submission windows. The intake portal explicitly chose Postgres staging to avoid this — see `INTAKE_PORTAL_DESIGN.md` § "Draft staging — Postgres, not Dynamics" for the full reasoning.
 
-### Idempotency
+### Idempotency (locked 2026-05-13)
 
-A submit re-run (drain retry or applicant double-click) must not produce duplicate budget child rows. The drain step writes child entities tagged by stable keys derived from the JSONB (e.g., `roleCode + year` for fixed personnel; a deterministic hash of `label + sortOrder` for dynamic rows) and upserts by those keys, or alternatively performs a delete-and-replace inside one Dataverse transaction. Final approach lands at the drain implementation slice; the spec just notes the constraint.
+A submit re-run (drain retry or applicant double-click) must not produce duplicate budget child rows. **Approach: delete-and-replace inside a single Dataverse `$batch` request.** Each drain attempt deletes all existing `wmkf_proposalbudgetline` rows where `_wmkf_akoyarequest_value` matches this request, then inserts fresh rows from the JSONB payload, and updates the three `akoya_request` aggregate fields — all in one atomic batch.
+
+Why delete-and-replace over upsert-by-stable-key:
+- No current consumer holds budget-child GUIDs externally. PA flows fire on `akoya_request` status. Reviewer pipeline reads parent summary fields. AkoyaGO grid views render children but don't reference them externally.
+- Simpler drain code, fewer edge cases (renamed dynamic rows, deleted line items, reordered rows all collapse to "delete then insert").
+- The drain's existing per-`request_id` advisory lock (`INTAKE_PORTAL_DESIGN.md` § "Drain cron") prevents two concurrent jobs from interleaving writes on the same request.
+
+If a future consumer needs stable child GUIDs, switching to upsert-by-stable-key is a drain-step-only change — the JSONB payload shape stays the same.
+
+**Facilities/Overhead row is always written**, even when amounts are 0, for symmetry with the other fixed Operations rows and to preserve audit / future-policy-change semantics. The drain asserts `wmkf_year{1,2,3}amount === 0` on the locked row before writing as defense-in-depth against a client-side bug.
 
 ---
 
@@ -364,20 +412,18 @@ Offer per row (or per section). Copies Year 1 values to Year 2 and Year 3 as-is 
 
 ---
 
-## Open questions for Connor's 2026-05-15 schema review
+## Decisions locked 2026-05-13
 
-1. **Other Sources entity split.** Is Other Sources a separate child entity (`wmkf_othersourceline` or similar) or part of a unified `wmkf_*budgetline` table with a `wmkf_category='other-source'` + `wmkf_sourcetype` discriminator? The spec doc proposed separate; a unified entity reduces table count and simplifies the drain step. Connor's preference governs.
+Resolved with Justin during S148. Walk Connor through these at the 2026-05-15 schema review to confirm no surprises; the spec body above already reflects each decision.
 
-2. **Final naming for the budget line entity.** Per memory, 2026-05-06 sketch was `wmkf_budgetline`; 2026-05-13 sketch was `wmkf_proposalbudgetline`. Pick one and record on the Atlas page.
+| # | Question | Decision |
+|---|---|---|
+| 1 | Other Sources entity | **Unified** under `wmkf_proposalbudgetline` with `wmkf_category='other-source'` + `wmkf_sourcetype` discriminator. No separate `wmkf_othersourceline` table. |
+| 2 | Budget line entity name | **`wmkf_proposalbudgetline`** (the 2026-05-13 sketch wins over the 2026-05-06 `wmkf_budgetline`). |
+| 3 | Aggregate fields on `akoya_request` | **Three Currency fields** cached on the parent: `wmkf_totalwmkfrequested`, `wmkf_totalothersources`, `wmkf_totalprojectcost`. Per-year aggregates skipped for pilot. |
+| 4 | `wmkf_projectyears` location | **Field on `akoya_request`.** Cycle/opportunity entity is deferred to Phase 1+. |
+| 5 | Idempotency | **Delete-and-replace within one Dataverse `$batch`.** No external consumer holds child GUIDs; simplest drain code path. Switch to stable-key upsert is a drain-only change if needed later. |
+| 6 | Facilities/Overhead row | **Always written**, even when 0, for symmetry / audit / future policy change. Drain asserts amounts === 0 on the locked row. |
+| 7 | `headcount` / `effortpct` types | **Integer (Whole Number) for both.** Matches the whole-numbers-sufficient validation policy. Decimal upgrade post-pilot is non-breaking. |
 
-3. **Aggregate fields on `akoya_request`.** Do we want cached cumulative totals on `akoya_request` itself (`wmkf_totalwmkfrequested`, `wmkf_totalprojectcost`) so AkoyaGO-side reports don't need to roll up children? If yes, the drain step writes both the line items and the aggregates atomically and the schema review needs to land the names.
-
-4. **`wmkf_projectyears` location.** Confirmed as a field on `akoya_request`, or does it belong on a separate entity tied to the cycle/opportunity? Pilot answer: simplest is `akoya_request.wmkf_projectyears`.
-
-5. **Idempotency strategy for re-drains.** Delete-and-replace of all budget child rows inside one transaction, or upsert-by-stable-key? Connor's preference depends on whether external systems hold references to specific child-row GUIDs.
-
-6. **Facilities/Overhead row externalization.** Always write the row even when amounts are 0 (for audit / future policy change), or skip writing when 0? Recommend write-always for symmetry; Connor's call.
-
-7. **Personnel `headcount` + `effortPct` data types.** Integers in JSONB; Dataverse-side does Connor want integer fields, decimal fields, or store as strings? Pilot recommendation: integer for both (whole-number policy already in the spec).
-
-These need a 15-minute walkthrough at the 2026-05-15 schema design review. After resolution, the externalized-layer table in § Data Wiring becomes implementation-ready.
+Schema deploy (slice 0 in the drain implementation slice plan, separately) ships under the existing delegated authority, summary-after model. The Atlas page `docs/atlas/dataverse-wmkf-proposalbudgetline.md` is created with the entity + records the exact `@odata.bind` keys, alternate keys (none for pilot — the `_wmkf_akoyarequest_value + wmkf_category + wmkf_rolecode + wmkf_sortorder` tuple is sufficient via `$filter`), and choice values for both `wmkf_category` and `wmkf_sourcetype`.
