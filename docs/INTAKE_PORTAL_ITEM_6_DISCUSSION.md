@@ -1,6 +1,37 @@
 # Intake Portal Item 6 — Drain vs. PA Write Conflict on Aggregate Fields
 
-**Status:** Unresolved blocker for slice 0 schema deploy. Carried out of the 2026-05-14 schema review after Codex flagged the in-meeting decision as violating a foundational design rule.
+**Status (updated 2026-05-14, Connor sync):** Q1 + Q2 answered; active path locked as A+B hybrid pending three pre-deploy preconditions (maker-portal Tests 1 + 2 + design-doc rule-exception edit) plus one post-deploy PA-flow-live gate (real-schema verification). See § 0.
+
+## 0. Decisions locked 2026-05-14 (Connor sync — post-doc-draft)
+
+**Q1 answer:** "GoApply updates write to `akoya_request` and `akoya_expenses`." → **Option C (rollup fields) is dead.** Converting either field to a rollup would make it read-only and break GoApply's continued writes during the pilot transition.
+
+**Q2 answer:** "Yes, with the narrow exception language." → Boundary-rule exception accepted with the three non-negotiable preconditions documented in § 6 Q2.
+
+**Active path: A+B hybrid.**
+- **Option A** (status-gated PA flow filtering on `_wmkf_request_value/akoya_requeststatus`) ships for slice 0 to handle post-submit edit recompute. Connor builds.
+- **Option B** (`$batch` + change sets in `lib/services/dynamics-service.js`) ships as near-term portal-wide infrastructure investment after pilot opens. Removes drain partial-state windows and benefits future drain consumers (roster, attachments). Justin/Vercel side builds.
+
+**Preconditions** — ALL FOUR must clear before the PA recompute flow goes live (preconditions 1–3 also block slice 0 schema deploy; precondition 4 is a post-deploy gate that blocks flow-live, not the deploy itself):
+
+1. **PA trigger filter expression validates on all three events.** "Validates" means more than the flow checker accepting the syntax at save time — it must demonstrate at runtime that (a) the flow does NOT fire when the parent's status is a pre-submit value (so drain's child writes don't trip it), (b) the flow DOES fire when status is `'Phase II Pending'` (so post-submit edits recompute), and (c) all three trigger events (Create, Update, Delete) bind under the chosen syntax. The exact OData expression form is open — multiple candidate syntaxes need probing in the maker portal (lookup-property traversal `_wmkf_request_value/akoya_requeststatus eq 'Phase II Pending'`, single-valued navigation-property with option-set integer, and others). See `docs/INTAKE_PORTAL_ITEM_6_MAKER_PORTAL_TESTS.md` § 3 Candidates A–E for the variations Connor probes.
+
+2. **Delete trigger parent-ID resolution.** Delete event payload exposes the deleted row's `_wmkf_request_value` (or equivalent pre-image / stored-mapping fallback) so the flow knows which `akoya_request` to recompute. See `MAKER_PORTAL_TESTS.md` § 4.
+
+3. **Rule-exception language landed in design doc.** The narrow exception accepted in § 6 Q2 must be drafted into `docs/INTAKE_PORTAL_DESIGN.md` at the "Power Automate boundary" rule site, naming `akoya_request` / `wmkf_totalothersources` / `akoya_expenses` and the lifecycle gate. Not a "later" item — landing this is one of the three non-negotiable preconditions for the exception itself per § 6 Q2.
+
+4. **Real-schema verification after slice 0 deploys** (post-deploy gate — blocks PA flow go-live, NOT slice 0 deploy itself). Tests 1 and 2 may run against an existing parent-child proxy entity if Connor uses the proxy path in `MAKER_PORTAL_TESTS.md` § 2. If so, after the slice 0 schema deploys and `wmkf_proposalbudgetline` exists, a final verification pass against the real entity is required before the PA flow goes live. The team can explicitly waive this only with documented acceptance of proxy-only interim risk (per `MAKER_PORTAL_TESTS.md` § 6).
+
+If precondition 1 fails completely → Option A dead, fall back to Option B alone (more work, slower delivery).
+If precondition 1 fails on Delete only → A handles Create/Update; design huddle for Delete fallback.
+If precondition 2 fails → Delete event needs a fallback (stored mapping + reconcile cron); design huddle.
+Precondition 3 is a doc edit (us); precondition 4 is a post-deploy smoke (Connor) — neither blocks the maker-portal test pass.
+
+Step-by-step maker-portal test instructions: **`docs/INTAKE_PORTAL_ITEM_6_MAKER_PORTAL_TESTS.md`** (drafted 2026-05-14 by parallel Codex pass; ready for Connor).
+
+**Sections 1–10 below** are the pre-decision walkthrough that produced this outcome; kept for context and for the option analysis under the boundary-rule exception. Sections 6 (questions) and 7 (recommendation matrix) are now historical — the answers locked above are authoritative.
+
+---
 
 **Note:** This document is v3. v1 stated several platform claims from memory that were wrong (rollup latency, plug-in cost). v2 verified those against Microsoft Learn but then over-applied the verification — claiming "VERIFIED" for combinations of features that Microsoft Learn documents only as separate primitives. v3 narrows the verification claims to what Microsoft Learn actually documents, surfaces the combinations that need Connor to test in the maker portal, and corrects a rollup-over-rollup design error in Option C. Every platform claim is now tagged: `[VERIFIED via URL]`, `[partially verified — Connor must test in maker portal]`, or `[unverified — needs Connor confirmation]`.
 
@@ -182,7 +213,7 @@ All three are direct rollups over child rows — no rollup-over-rollup. Datavers
 
 ---
 
-## 6. Two questions Connor needs to answer
+## 6. Two questions Connor needs to answer (HISTORICAL — answered 2026-05-14, see § 0)
 
 These determine which option ships. Both can be answered in the meeting if Connor has 5–10 minutes of maker-portal time.
 
@@ -215,7 +246,7 @@ This is a real exception, not a refinement. The three preconditions are non-nego
 - "Yes, with the narrow exception language" → Options A and B are on the table; pick between them based on Q1 and timing.
 - "No, the rule is absolute" → Only Options C, D, E, F are viable. Of those, C (if Q1 clears) and D are the only ones with correctness stories; E and F have the trade-offs noted above.
 
-## 7. Recommendation (conditional on Connor's answers)
+## 7. Recommendation (HISTORICAL — Q1+Q2 answers landed on the A+B hybrid cell, see § 0)
 
 **If Q1 clears (no AkoyaGO writers) AND Q2 declines the exception:**
 → **Option C (rollup fields with PA force-recompute on critical events).** No code, no flow conflict, rule preserved absolutely. Tolerates inline edits by design. Connor builds force-recompute action into the cover-doc PA so it reads fresh totals after status flip.
@@ -229,9 +260,23 @@ This is a real exception, not a refinement. The three preconditions are non-nego
 **If Q1 doesn't clear AND Q2 declines the exception:**
 → Hard situation. Option D (plug-in) is the only correctness story left, and Connor's skill mismatch makes it expensive. Option E (separate fields) defeats human-legibility. Option F (no cache) reworks three consumers. Honest call: if we end up here, the right move is to **negotiate Q2** — the exception is narrow, documented, and the alternative is materially worse. The exception is a real rule change, but the alternative is "ship something with known correctness gaps because the rule is absolute." Note: even if Q2 is renegotiated to accept the exception, the recommendation still requires Option A's Delete-trigger test to land cleanly. If the Delete path doesn't bind in the maker portal, A is incomplete and we fall further to D or accept correctness gaps on the Delete surface only.
 
-## 8. What this unblocks
+## 8. Next steps (active — supersedes the brief original below)
 
-Slice 0 schema deploy is currently waiting on Item 6. Locking unblocks:
+
+With Q1+Q2 locked, the schema slice can move toward deploy provided the three pre-deploy preconditions in § 0 clear (maker-portal Test 1, maker-portal Test 2, and the design-doc rule-exception edit). The fourth precondition is a post-deploy gate before the PA flow goes live. Concrete next steps:
+
+1. **Connor:** runs the maker-portal tests per `docs/INTAKE_PORTAL_ITEM_6_MAKER_PORTAL_TESTS.md` (ready now). Target: complete before 2026-05-19 schema-slice deploy. Tests cover candidates A–E for the filter-expression syntax + Delete-trigger payload introspection.
+2. **Justin/Claude:** drafts the rule-exception language into `docs/INTAKE_PORTAL_DESIGN.md` § "Power Automate boundary" naming the three specific aggregate fields and the lifecycle gate. **Pre-deploy precondition #3 from § 0** — landing the doc edit is part of the exception itself, not a follow-up.
+3. **Justin/Claude:** writes the schema slice JSON specs for the locked changes — `wmkf_proposalbudgetline` new entity, `wmkf_apprequestperson` extension (3 fields + role enum expansion), `wmkf_totalothersources` field + `wmkf_priordecisionstatus` field. Reserves enum integer values pre-deploy and records them in the slice 0 Atlas page additions.
+4. **Justin/Claude:** writes Postgres migration `009_submission_jobs.sql` (currently missing; prerequisite to drain regardless of Item 6 outcome).
+5. **Connor (post-test):** builds the status-gated PA recompute flow per Option A. Effort estimate TBD pending test outcomes.
+6. **Connor (post-schema-deploy):** final real-schema verification of the maker-portal tests against the actual `wmkf_proposalbudgetline` (precondition #4) before the PA flow goes live; team may waive with documented proxy-only risk acceptance.
+7. **Justin/Claude (post-pilot-open):** builds `$batch` support into `lib/services/dynamics-service.js` per Option B; rolls out drain to use atomic change sets.
+8. **Justin/Claude (slice 0):** creates new Atlas page `docs/atlas/dataverse-wmkf-proposalbudgetline.md` and amends `docs/atlas/dataverse-wmkf-apprequestperson.md` with the new fields + 5-value role enum.
+
+### Original brief (pre-Connor-sync — kept for context; superseded by the detailed list above)
+
+Pre-sync, the brief framing of next steps was: "Slice 0 schema deploy is waiting on Item 6 — locking unblocks:
 
 - `wmkf_proposalbudgetline` entity creation (9-value `wmkf_category` enum)
 - `wmkf_apprequestperson` extension (3 nullable fields, 5-value role enum)
@@ -242,18 +287,13 @@ Two other prerequisites remain regardless of Item 6:
 - `submission_jobs` Postgres migration (missing from `005_intake_portal.sql`)
 - Reserve and document numeric integer values for all new enum entries
 
-## 9. If we can't decide today
+## 9. If we couldn't decide today (HISTORICAL — Q1+Q2 locked 2026-05-14, see § 0)
 
-The next checkpoint is 2026-05-19. Safe default: **Option A** with the boundary-rule exception clause drafted in this doc. Connor can answer Q1 async later; if it clears, we migrate to Option C as a future simplification. Migrating from A to C later means converting the fields to rollups — a schema operation, not a code rewrite, so it's tractable.
+Kept for context — this was the contingency framing before Connor's sync answered both questions. The "safe default = Option A" landing line is now the actual locked outcome (per § 0 A+B hybrid), so the substance below is no longer a contingency, just a description of the path the meeting did select.
 
-**Even as a safe default, Option A still requires Connor to pass the maker-portal tests called out in § 3, § 5 Option A, and § 7:**
+The next checkpoint is 2026-05-19. Option A (status-gated PA flow) ships for slice 0 with the boundary-rule exception clause drafted in this doc. Migrating from A to C later (i.e., converting to rollup fields) would require resolving Q1 in the other direction, which the Connor sync foreclosed for the lifetime of GoApply coexistence.
 
-1. Confirm `_wmkf_request_value/akoya_requeststatus`-style filter expressions bind in PA trigger conditions on `wmkf_proposalbudgetline` for Create, Update, AND Delete events.
-2. Confirm the Delete trigger payload exposes the deleted row's parent lookup (or document the stored-mapping fallback).
-
-If either test fails, the safe default is no longer Option A as drafted — escalate to a sync rather than ship a known-broken flow.
-
-The cost of deferring: if Q1 would have cleared, we will have shipped a PA flow that wasn't needed. Connor's effort, not ours, but real.
+Option A's preconditions are now the four in § 0; the two listed previously in this section are subsumed into precondition #1 and precondition #2 there.
 
 ## 10. Honest note on this document's history
 
