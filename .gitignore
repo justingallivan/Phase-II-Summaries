@@ -42,3 +42,4 @@ scripts/dynamics-schema-output.json
 scripts/dynamics-schema-diff.json
 .git.nosync
 tmp/
+.playwright-mcp/
