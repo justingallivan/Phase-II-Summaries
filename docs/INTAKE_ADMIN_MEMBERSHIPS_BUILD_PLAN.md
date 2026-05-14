@@ -1,6 +1,6 @@
 # Intake Admin — Membership Approval Build Plan
 
-**Status:** Draft v3 (2026-05-13). Revised against two Codex review passes (`INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN_CODEX_REVIEW.md` + `_V2.md`). v3 grounds every helper call in the live signatures of `lib/services/intake-audit-service.js`, `lib/services/dataverse-identity-map.js`, `lib/services/dynamics-service.js`, `lib/utils/auth.js`, and `pages/api/auth/[...nextauth].js`. Ready to build once `wmkf_portal_membership` exists in Dataverse (slice 0).
+**Status:** Draft v4 (2026-05-13). Revised against three Codex review passes (`INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN_CODEX_REVIEW.md` + `_V2.md` + `_V3.md`). v4 closes the last 2 MOD + 2 LOW + 1 NIT findings: prior-decision persisted as a Dataverse field (no inference), §9 disposition table promoted to entry point, `noFallback` threading specified end-to-end, status codes split (403 for unmapped staff, 503 for env misconfig), and `getRecord` named consistently. Ready to build once `wmkf_portal_membership` exists in Dataverse (slice 0).
 
 **Predecessor:** `docs/INTAKE_PORTAL_DESIGN.md` (schema + Option A decision near line 557, captured 2026-05-13).
 
@@ -33,6 +33,16 @@ Not in scope:
 
 This slice assumes `wmkf_portal_membership` already exists in Dataverse with the shape locked at `INTAKE_PORTAL_DESIGN.md` line 100. Deploy follows the gotcha checklist at `project_dataverse_schema_deploy_gotchas.md`.
 
+### Slice-0 addition: `wmkf_priordecisionstatus`
+
+v3 review surfaced that inferring prior-decision status from `rejectionReason !== null` is fragile — an applicant approved → revoked (with `rejectionReason` null) → re-applies can't be rendered. v4 promotes this from a follow-up to a **slice-0 schema addition**:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `wmkf_priordecisionstatus` | Choice | `null` (no prior decision) \| `'rejected'` \| `'revoked'` \| `'approved'`. Snapshots the prior terminal status when the applicant slice flips a row back to `requested`. Read by admin GET for `priorDecision.status`. |
+
+The applicant slice (§ 9) writes this field as the second step of a re-application upsert: before setting `wmkf_approvalstatus: 'requested'`, copy the current `wmkf_approvalstatus` value into `wmkf_priordecisionstatus`. Slice 0 records the bind/field name in the Atlas page.
+
 ### Semantic contract for disposition fields
 
 Reusing `_wmkf_approvedby_value` / `wmkf_approvedat` to carry rejection state changes the schema semantics. v3 adopts the **"decided by / decided at"** contract:
@@ -59,6 +69,7 @@ Any downstream PA flow or report reading these fields **must filter on `wmkf_app
 | `_wmkf_approvedby_value` | ✓ for prior-decision display | bind via `@odata.bind` to caller systemuser | bind via `@odata.bind` to caller systemuser |
 | `wmkf_approvedat` | ✓ for prior-decision display | set `new Date().toISOString()` | set `new Date().toISOString()` |
 | `wmkf_rejectionreason` | ✓ for prior-decision display | set `null` | set trimmed body `reason` |
+| `wmkf_priordecisionstatus` | ✓ for `priorDecision.status` | set `null` (clear snapshot after decision) | set `null` (clear snapshot after decision) |
 | `statecode` | ✓ | (stays active) | (stays active; status carries rejection) |
 | `@odata.etag` | ✓ | required as `If-Match`; new etag obtained by re-fetch (see § 5) | same |
 
@@ -72,6 +83,7 @@ Read-side projections use `_wmkf_approvedby_value` (read-only shadow). **Writes 
 - `wmkf_Contact@odata.bind` → for applicant-side upsert (cross-slice § 9)
 - `wmkf_Account@odata.bind` → for applicant-side upsert
 - `wmkf_RequestedBy@odata.bind` → for applicant-side write
+- `wmkf_priordecisionstatus` (choice field, no bind — direct value write) → applicant-side snapshot, admin-side clear
 
 Do **not** hard-code bind keys in this plan until slice 0 lands them; reference the Atlas page from code.
 
@@ -156,6 +168,8 @@ Codex NF-02 surfaced two holes beyond an unmapped staff profile:
 
 Both must be addressed for attribution to be a hard guarantee:
 
+**Status-code split (Codex v3 review):** `DYNAMICS_IMPERSONATION_ENABLED !== 'true'` is global server misconfig → **HTTP 503** (transient, ops fix). Unmapped staff profile is an authorization/precondition failure on that specific caller → **HTTP 403** (not transient — caller can't retry their way out).
+
 ```js
 // In approve / reject handler, after requireAppAccess:
 if (process.env.DYNAMICS_IMPERSONATION_ENABLED !== 'true') {
@@ -168,7 +182,7 @@ if (process.env.DYNAMICS_IMPERSONATION_ENABLED !== 'true') {
 const mapping = await resolveProfileToSystemUser(access.profileId);
 // resolveProfileToSystemUser returns null when no entry OR when entry has skip flag
 if (!mapping || !mapping.systemuserid) {
-  return res.status(503).json({
+  return res.status(403).json({
     error: 'staff_identity_unmapped',
     message: 'Your staff profile is not linked to a Dynamics systemuser — contact admin to reconcile.',
   });
@@ -177,13 +191,35 @@ if (!mapping || !mapping.systemuserid) {
 const actingUserSystemId = mapping.systemuserid;
 ```
 
-The 403-fallback hole is harder. Two ways to neutralize it for these routes:
+The 403-fallback hole is harder — `_writeFetch` retries without `MSCRMCallerID` before `updateRecord` ever sees the first 403. Plan ships **Option A:** a `noFallback` option threaded end-to-end through both `updateRecord` and `_writeFetch`.
 
-**Option A (preferred — minimal code change to `dynamics-service.js`):** extend `updateRecord` (and `_writeFetch`) with `{ noFallback: true }` so a 403 on the impersonated attempt throws without the retry, and have approve/reject pass `noFallback: true`. Map the thrown 403 to HTTP 403 in the route with a clear "Dataverse rejected impersonation — verify Delegate role on app user."
+```js
+// lib/services/dynamics-service.js — proposed shape (slice 3 sub-task)
 
-**Option B (no helper change — post-write verification):** after `updateRecord` returns, re-fetch the row and verify `_modifiedby_value === actingUserSystemId`. If not, treat as failure and audit-log the mismatch. Pilot fallback if Option A slips, but doubles round-trips and races concurrent edits.
+static async updateRecord(entitySet, recordId, data, { ifMatch, actingUserSystemId, noFallback = false } = {}) {
+  // ...existing setup...
+  const resp = await this._writeFetch(url, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(data),
+  }, actingUserSystemId, { noFallback });
+  // ...
+}
 
-Pilot ships Option A — `dynamics-service.js` change is small and benefits any future caller needing strict attribution. Track it as a slice-3 sub-task.
+static async _writeFetch(url, init, actingUserSystemId, { noFallback = false } = {}) {
+  let resp = await fetchWithTimeout(url, init, API_TIMEOUT);
+  const triedImpersonation = !!(actingUserSystemId && init.headers?.MSCRMCallerID);
+  if (resp.status === 403 && triedImpersonation && !noFallback) {
+    // existing retry-without-callerid path
+  }
+  // when noFallback=true and the impersonated attempt 403s, return the 403 unchanged
+  return resp;
+}
+```
+
+Approve/reject call `updateRecord(..., { ifMatch, actingUserSystemId, noFallback: true })`. The route catches `err.status === 403` and returns HTTP 403 with `{ error: 'impersonation_rejected', message: 'Dataverse rejected the impersonated write — verify Delegate role on the app user.' }`.
+
+**Option B (post-write verification re-reading `_modifiedby_value`)** stays as a fallback if Option A slips, but doubles round-trips and races concurrent edits — not the pilot path.
 
 ### ETag plumbing (writes only)
 
@@ -277,7 +313,7 @@ Response shape:
 
 For `rejected` and `approved` rows, `priorDecision` is `null` (the row's own status carries that info via `approvalStatus`, `decidedBy`, `decidedAt`).
 
-**Design caveat for slice 0:** the Dataverse row doesn't natively distinguish "this approvedat is for the current rejection" vs. "this approvedat is for a prior rejection before re-application." The applicant-side upsert (§ 9) **preserves** `_wmkf_approvedby_value` / `wmkf_approvedat` / `wmkf_rejectionreason` when flipping status back to `'requested'`. The admin route reads those fields and interprets "status=requested + approvedat non-null" as "this is a re-application; show prior decision." The `priorDecision.status` field is **inferred** from `rejectionReason !== null` (→ rejected) vs. `rejectionReason === null` (→ revoked or approved-then-re-requested). If the inference proves fragile in practice, slice 0 can add `wmkf_priordecisionstatus` (choice) to make it explicit.
+**How priorDecision is populated:** `priorDecision.status` reads directly from `wmkf_priordecisionstatus` (added in slice 0 per § 2). The other fields (`decidedBy`, `decidedAt`, `rejectionReason`) read from `_wmkf_approvedby_value` / `wmkf_approvedat` / `wmkf_rejectionreason`, which the applicant-side upsert **preserves** when flipping status back to `'requested'` (see § 9). No inference is performed — the prior status is persisted, not derived.
 
 ### `POST /api/apply/admin/memberships/[id]/approve`
 
@@ -288,13 +324,14 @@ Validations (in order, per Common contract):
 2. `requireAppAccess(..., 'intake-admin')` → 403 if no grant.
 3. 400 if `If-Match` header missing.
 4. Impersonation gate (env flag + identity-map resolution) → 503 on either failure.
-5. Read row (single `retrieveRecord`); current `wmkf_approvalstatus` must be `'requested'` or `'rejected'`. 200 idempotent return on already-`'approved'` (refetch + return). 422 on `'revoked'`.
+5. Read row (single `getRecord`); current `wmkf_approvalstatus` must be `'requested'` or `'rejected'`. 200 idempotent return on already-`'approved'` (refetch + return). 422 on `'revoked'`.
 
 Side effects (single `updateRecord` with `ifMatch` + `actingUserSystemId` + `noFallback: true`):
 - `wmkf_approvalstatus: 'approved'`
 - `wmkf_ApprovedBy@odata.bind: '/systemusers(<actingUserSystemId>)'` (bind key from Atlas)
 - `wmkf_approvedat: new Date().toISOString()`
 - `wmkf_rejectionreason: null` (clear if re-approving previously-rejected)
+- `wmkf_priordecisionstatus: null` (clear prior-decision snapshot)
 
 On 412 (caught from `err.status === 412`): return 409 `{ error: 'conflict', currentState: <refetched row> }`.
 On 403 with `noFallback` (Dataverse rejected impersonation): return 403 `{ error: 'impersonation_rejected', message: 'Verify Delegate role on app user.' }`.
@@ -321,6 +358,7 @@ Side effects (single `updateRecord` with `ifMatch` + `actingUserSystemId` + `noF
 - `wmkf_ApprovedBy@odata.bind: '/systemusers(<actingUserSystemId>)'`
 - `wmkf_approvedat: new Date().toISOString()`
 - `wmkf_rejectionreason: <trimmed body reason>`
+- `wmkf_priordecisionstatus: null` (clear prior-decision snapshot)
 
 After PATCH success: re-fetch + audit + return `{ id, etag, approvalStatus, decidedBy, decidedAt, rejectionReason }`.
 
@@ -367,7 +405,7 @@ CI gates fold into the slices that introduce them — no deferred "gate" slices.
 
 | # | Slice | CI gate landing same commit | Risk |
 |---|---|---|---|
-| 0 | **Pre-req — `wmkf_portal_membership` entity creation** in Dataverse. Connor design-reviews shape. Catalog in `INTAKE_PORTAL_SCHEMA_CHANGES.md` + new Atlas page `docs/atlas/dataverse-wmkf-portal-membership.md` (records bind keys, semantic contract, alt-key, choice values). Update `MEMORY.md` note. | `check:atlas` | Low |
+| 0 | **Pre-req — `wmkf_portal_membership` entity creation** in Dataverse, including the v4-added `wmkf_priordecisionstatus` choice field (values: `null` / `'rejected'` / `'revoked'` / `'approved'`). Connor design-reviews shape. Catalog in `INTAKE_PORTAL_SCHEMA_CHANGES.md` + new Atlas page `docs/atlas/dataverse-wmkf-portal-membership.md` (records bind keys, semantic contract, alt-key, choice values for both `wmkf_approvalstatus` and `wmkf_priordecisionstatus`). Update `MEMORY.md` note. | `check:atlas` | Low |
 | 1 | App key + middleware carve-out (exact-or-slash) + skeleton `/apply/admin/memberships` page (empty state). No API yet. | none | Low |
 | 2 | `GET /api/apply/admin/memberships` + table render. Verifies `queryRecords` shape, `$expand`, etag projection. Includes `priorDecision` inference for re-applied rows. | `check:api-routes` row added | Low |
 | 3 | `dynamics-service` `updateRecord` `{ noFallback }` extension. `POST /approve` endpoint + UI button. End-to-end with `If-Match`, 412→409, 503 impersonation gate, 403 impersonation-rejected, audit log. | `check:api-routes` row added | Medium |
@@ -395,23 +433,26 @@ End-to-end target: seed `requested` → approve → seed another `requested` →
 
 Built before applicant-side claim slice. The applicant slice must honor this row-state contract:
 
-**Rule:** when an applicant claims membership at an institution where they already have a `wmkf_portal_membership` row (any disposition), the applicant slice **upserts by alternate key** `(contact, account)`:
+**Entry point — disposition table.** When an applicant claims membership at an institution where they already have a `wmkf_portal_membership` row, the applicant slice branches on the row's current `wmkf_approvalstatus` **first**, then applies the per-branch rules. There is no universal "always upsert to requested" rule — Codex v3 flagged that approved rows must not be reset.
 
-1. Update existing row in place (alt-key forces this — naive POST would 409 from Dataverse).
-2. Set `wmkf_approvalstatus: 'requested'`.
-3. Set `wmkf_RequestedBy@odata.bind: '/contacts(<applicant-contactid>)'` (navigation-property `@odata.bind`, **not** the read-only `_wmkf_requestedby_value` shadow field — Codex NF-08).
-4. Set `wmkf_requestedat: new Date().toISOString()`.
-5. **Preserve** `_wmkf_approvedby_value`, `wmkf_approvedat`, `wmkf_rejectionreason` from the prior decision (the admin route reads these as `priorDecision` context).
-6. `statecode` stays active throughout.
-
-### Re-application disposition table
-
-| Prior `approvalStatus` | After re-apply | Notes |
+| Prior `approvalStatus` | Action | Audit |
 |---|---|---|
-| `requested` | `requested` (no-op, just refresh `requestedat`) | Applicant re-submitted before staff acted |
-| `rejected` | `requested` (preserve prior-decision fields) | Standard re-apply; admin sees `priorDecision` |
-| `approved` | `approved` (no-op) | Already in. Don't reset |
-| `revoked` | `requested` (preserve prior-decision fields, audit-flag the row) | Same as rejected, flag in audit payload |
+| `requested` | **No-op write.** Optionally refresh `wmkf_requestedat` if you want to track re-submits. Do not touch any other field. | `membership.request.duplicate` |
+| `approved` | **No-op write.** Applicant is already in; the row stays as-is. Surface "you already have access" to the applicant. | `membership.request.already-approved` |
+| `rejected` | **Apply the reset rules below.** Admin sees `priorDecision.status = 'rejected'`. | `membership.request.reapply-after-rejection` |
+| `revoked` | **Apply the reset rules below**, and additionally set the audit payload's `metadata.reapplyAfterRevocation: true` so staff can spot it. Admin sees `priorDecision.status = 'revoked'`. | `membership.request.reapply-after-revocation` |
+
+### Reset rules (apply only to `rejected` → `requested` and `revoked` → `requested` transitions)
+
+1. Update the existing row in place (alt-key `(contact, account)` forces this — a naive POST would 409 from Dataverse).
+2. **Snapshot the prior status:** set `wmkf_priordecisionstatus` to the current `wmkf_approvalstatus` value (`'rejected'` or `'revoked'`). This is the slice-0 field added in v4 (§ 2). Read once, write once — do not reset between branches.
+3. Set `wmkf_approvalstatus: 'requested'`.
+4. Set `wmkf_RequestedBy@odata.bind: '/contacts(<applicant-contactid>)'` (navigation-property `@odata.bind`, **not** the read-only `_wmkf_requestedby_value` shadow field — Codex NF-08).
+5. Set `wmkf_requestedat: new Date().toISOString()`.
+6. **Preserve** `_wmkf_approvedby_value`, `wmkf_approvedat`, `wmkf_rejectionreason` from the prior decision (admin reads them as `priorDecision`).
+7. `statecode` stays `active` throughout.
+
+When the staff member subsequently approves or rejects the re-applied row, the admin slice's write **clears** `wmkf_priordecisionstatus` back to `null` (along with the normal status/decidedat updates) so the prior-decision snapshot only persists during the re-applied-pending window. Add this to slice 3 / 4 implementation.
 
 ### What the admin slice needs from the applicant slice
 
@@ -433,13 +474,12 @@ Built before applicant-side claim slice. The applicant slice must honor this row
 - Submitted-requests admin view — blocked on Sarah's field inventory.
 - Field rename `_wmkf_approvedby_value` → `decidedby` — Phase 1+ schema review.
 - `updateRecord` `{ returnRepresentation: true }` — single-round-trip alternative to post-write refetch; tracked as nice-to-have.
-- Explicit `wmkf_priordecisionstatus` field on the entity if the `rejectionReason !== null` inference proves fragile.
 
 ---
 
 ## 11. Open questions
 
-None as of v3 (2026-05-13). All HIGH/MODERATE/LOW Codex findings from both review passes are folded in or have explicit followups documented. Live helper signatures verified at:
+None as of v4 (2026-05-13). All HIGH/MODERATE/LOW Codex findings from three review passes are folded in. Live helper signatures verified at:
 
 - `lib/services/intake-audit-service.js:32`
 - `lib/services/dataverse-identity-map.js:70`
