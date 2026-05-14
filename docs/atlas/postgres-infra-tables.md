@@ -73,6 +73,10 @@ Multi-LLM review history. `panel_review_items` holds per-LLM responses.
 **Source of truth:** Postgres. V005 migration (May 2026).
 Drafts cleared on submit; audit append-only sha256-hashed. Pilot launch mid-June 2026.
 
+### `submission_jobs` (0 rows)
+**Source of truth:** Postgres. V030 migration / `009_submission_jobs.sql` (S150, 2026-05-15).
+One row per applicant submit click (idempotency-keyed). `/api/intake/submit` INSERTs (`ON CONFLICT (idempotency_key) DO NOTHING`) and returns immediately; `/api/cron/drain-submissions` advances each row through the state machine one step per tick (`queued → scanning → files_moved → dynamics_patched → status_flipped → completed`; terminal `failed` / `cancelled`). `payload` is the frozen validated-draft snapshot — drain never re-reads `intake_drafts`. See `docs/INTAKE_PORTAL_DESIGN.md` § "Submission lifecycle".
+
 ## Monitoring / observability
 
 ### `health_check_history` (2,927 rows), `system_alerts` (110 rows), `maintenance_runs` (73 rows)

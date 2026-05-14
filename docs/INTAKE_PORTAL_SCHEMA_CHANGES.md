@@ -62,12 +62,52 @@ Downstream patches landed 2026-05-14: `pages/api/grant-reporting/lookup-grant.js
 |---|---|---|
 | `wmkf_priordecisionstatus` | Choice (null / Rejected / Revoked / Approved) | Snapshot prior `wmkf_approvalstatus` on re-application; clear back to null on next decision |
 
+### Numeric integer values reserved (pre-deploy)
+
+Microsoft custom option-set convention: values start at `100000000` and increment by 1 within a single option set. Reserved 2026-05-14 (S150) so the JSON specs can be written with stable integers and Atlas reads identically across consumers. **Do not renumber after slice 0 deploys** — third-party consumers (Connor's PAs, drain guards, packet builder) will hardcode these.
+
+**`wmkf_proposalbudgetline.wmkf_category`** (new option set, 9 values total):
+
+| Integer | Label | Class |
+|---|---|---|
+| `100000000` | `Personnel` | WMKF-spend |
+| `100000001` | `Equipment` | WMKF-spend |
+| `100000002` | `Supplies` | WMKF-spend |
+| `100000003` | `Travel` | WMKF-spend |
+| `100000004` | `Other Direct` | WMKF-spend |
+| `100000005` | `Indirect` | WMKF-spend (reserved, always $0) |
+| `100000006` | `WaivedIndirect` | Cost-share |
+| `100000007` | `WaivedTuition` | Cost-share |
+| `100000008` | `OtherCostShare` | Cost-share |
+
+WMKF-spend aggregate queries filter `wmkf_category NOT IN (100000006, 100000007, 100000008)`. Cost-share aggregate (`wmkf_totalothersources`) uses the inverse `IN` set.
+
+**`wmkf_apprequestperson.wmkf_role`** (existing option set, extending from 2 → 5 values):
+
+| Integer | Label | Status |
+|---|---|---|
+| `100000000` | `PI` | Existing (preserved) |
+| `100000001` | `Co-PI` | Existing (preserved) |
+| `100000002` | `Senior Personnel` | **NEW** |
+| `100000003` | `Key Personnel` | **NEW** |
+| `100000004` | `Other` | **NEW** |
+
+Existing readers (contact-history, generate-emails, external review context, acceptance-w4) already filter `wmkf_role IN (100000000, 100000001)` per the 2026-05-14 source-scope patch, so the enum expansion is non-breaking by construction.
+
+**`wmkf_portal_membership.wmkf_priordecisionstatus`** (new option set, 3 values; field is nullable so "no prior decision" is represented by absence, not a fourth value):
+
+| Integer | Label |
+|---|---|
+| `100000000` | `Rejected` |
+| `100000001` | `Revoked` |
+| `100000002` | `Approved` |
+
 ### Outstanding pre-deploy
 
-- **Item 6 — drain-vs-PA aggregate write conflict.** Tracked separately; blocks deploy.
+- **Item 6 — drain-vs-PA aggregate write conflict.** Tracked separately; blocks deploy. Three preconditions (maker-portal Tests 1+2 + rule-exception edit). Rule-exception edit landed S150 — see `INTAKE_PORTAL_DESIGN.md` § "Power Automate boundary" → "Exception — intake portal aggregate fields on `akoya_request`".
 - **`submission_jobs` migration** — missing from `005_intake_portal.sql`; add `009_submission_jobs.sql` before slice 0.
-- **Numeric integer values for new enum entries** — pick + document in Atlas pre-deploy (do not defer to deploy time).
-- **Atlas pages:** new `docs/atlas/dataverse-wmkf-proposalbudgetline.md`; amend `docs/atlas/dataverse-wmkf-apprequestperson.md` for new fields + expanded enum.
+- ~~**Numeric integer values for new enum entries**~~ — reserved S150, see above. Transcribe to new `dataverse-wmkf-proposalbudgetline.md` Atlas page at slice 0 + amend `dataverse-wmkf-portal-membership.md` (if created) / inline note in design doc otherwise.
+- **Atlas pages:** new `docs/atlas/dataverse-wmkf-proposalbudgetline.md`; amend `docs/atlas/dataverse-wmkf-apprequestperson.md` for new fields + expanded enum (apprequestperson page amended S150 for the expanded enum; new-fields amendment lands at slice 0).
 - **Form mapping `shared/forms/phase-ii-research-2026-06/map-to-dynamics.js`** — entity targets resolved 2026-05-14; remaining markers now flagged `blockedOn: 'item-6'`.
 - **Drain server-side validation** — must reject negative `wmkf_amount` Money values per row before `createRecord` (Dataverse won't enforce). Add to drain implementation slice (downstream of Item 6).
 

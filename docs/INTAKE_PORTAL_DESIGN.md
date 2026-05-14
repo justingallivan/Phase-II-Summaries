@@ -421,6 +421,32 @@ Portal owns **every write that originates from an applicant action.** PA owns **
 
 **Critical invariant: PA never creates Dynamics records on portal submission.** A submission that needs new rows → portal creates them directly. PA reads them and fans out. This avoids race conditions and dual-write bugs.
 
+### Exception — intake portal aggregate fields on `akoya_request`
+
+The "they never write the same field" rule has **one** narrow exception: three cached aggregate fields on `akoya_request` that the drain writes at submit time and a status-gated PA flow recomputes on post-submit edits to child `wmkf_proposalbudgetline` rows. Locked 2026-05-14 (Connor sync, Item 6). See `docs/INTAKE_PORTAL_ITEM_6_DISCUSSION.md` § 0 for the full decision record.
+
+**Scope of the exception (exhaustive):**
+
+| Field | On entity | Aggregated from | Drain writes | PA flow writes |
+|---|---|---|---|---|
+| `akoya_request` (Money) | `akoya_request` | sum of `wmkf_proposalbudgetline` rows where `wmkf_category` ∈ WMKF-spend values, scoped to the parent request | At submit time (one write inside drain) | On post-submit Create / Update / Delete of any child row, gated by parent status |
+| `akoya_expenses` (Money) | `akoya_request` | sum across categorized expense child rows for the parent request | At submit time | Same gate as above |
+| `wmkf_totalothersources` (Money) | `akoya_request` | sum of `wmkf_proposalbudgetline` rows where `wmkf_category` ∈ cost-share values, scoped to the parent request | At submit time | Same gate as above |
+
+No other fields are covered. Future designs cannot extend this exception to other aggregates by analogy — adding a fourth field requires a new explicit decision and an update to this section.
+
+**Lifecycle gate:** The PA recompute flow fires only when the parent `akoya_request.akoya_requeststatus` equals `'Phase II Pending'` (the post-submit, pre-decision state). Pre-submit child writes happen during drain while the parent is still in `'Phase I Pending'` (or earlier), so the trigger filter excludes them and there is no in-window double-write.
+
+**Non-negotiable preconditions (all three must hold for the exception to apply):**
+
+1. The PA flow filters at the **trigger condition** (not inside the flow body) on the parent's lifecycle field, and the filter has been verified in the maker portal to bind for **all three** trigger events — Create, Update, AND Delete. Verification artifact: `docs/INTAKE_PORTAL_ITEM_6_MAKER_PORTAL_TESTS.md` Tests 1 and 2.
+2. The Delete event has a tested mechanism to resolve the deleted row's parent ID — trigger pre-image, stored mapping, or equivalent. Verification artifact: same doc, Test 2.
+3. This exception is documented at the site of the rule (i.e., this section), naming the specific aggregate fields and the lifecycle gate. Updating the field list or the gate without updating this section breaks the exception.
+
+If any precondition fails, the exception is aspirational, not operational — the path falls back to Option B alone (drain uses `$batch` change sets so submit-time writes are atomic; PA never recomputes). See `docs/INTAKE_PORTAL_ITEM_6_DISCUSSION.md` § 5 Option B.
+
+**Co-existence note (GoApply transition):** During the GoApply → portal transition, GoApply continues to write `akoya_request` and `akoya_expenses` directly on its own submission path. The exception covers portal-originated writes only; GoApply writes are unaffected by the PA flow because they happen against pre-`'Phase II Pending'` lifecycle states or against requests outside the portal pilot scope. Once GoApply is decommissioned, the exception still stands as written.
+
 ---
 
 ## Pilot plan: Phase II Research mid-June 2026
@@ -550,7 +576,7 @@ New env var: `CLOUDMERSIVE_API_KEY`. Pilot uses the free tier; production cycle 
 
 1. **Phase II Research field inventory** with Sarah — drives the form module. Track 2 of 2026-05-13 sync ran out of clock; carry to next Sarah session.
 2. **Item 6 — drain-vs-PA write conflict on aggregate fields.** 2026-05-14 schema review left this unresolved after Codex flagged the in-meeting sketch (PA flow recomputes parent totals on every child write) as a direct violation of the § "Power Automate boundary" invariant below. Three viable redesigns; resolution deferred to a separate decision. **Blocks slice 0 deploy.**
-3. **`submission_jobs` migration missing.** Referenced throughout § "Submission lifecycle" but not in `lib/db/migrations/005_intake_portal.sql`. Add `009_submission_jobs.sql` before slice 0.
+3. ~~**`submission_jobs` migration missing.**~~ Landed S150 as `lib/db/migrations/009_submission_jobs.sql` (+ V30 inline block in `scripts/setup-database.js`). Table not yet applied to prod — runs with the slice 0 deploy.
 
 **Resolved (decisions made, build remaining):**
 

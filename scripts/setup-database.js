@@ -585,6 +585,47 @@ const v29Statements = [
      ON irs_exempt_orgs(subsection, status)`,
 ];
 
+// V30: Intake Portal submission jobs queue. See migration 009_submission_jobs.sql
+// and docs/INTAKE_PORTAL_DESIGN.md § "Submission lifecycle". One row per submit
+// click (idempotency-keyed); drained by /api/cron/drain-submissions.
+const v30Statements = [
+  `CREATE TABLE IF NOT EXISTS submission_jobs (
+    id                SERIAL PRIMARY KEY,
+    idempotency_key   TEXT NOT NULL UNIQUE,
+    draft_id          INTEGER NOT NULL REFERENCES intake_drafts(id),
+    contact_oid       TEXT NOT NULL,
+    account_id        TEXT NOT NULL,
+    request_id        TEXT NOT NULL,
+    form_key          TEXT NOT NULL,
+    status            TEXT NOT NULL DEFAULT 'queued',
+    payload           JSONB NOT NULL,
+    sharepoint_paths  JSONB NOT NULL DEFAULT '[]'::jsonb,
+    dynamics_patches  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    attempts          INTEGER NOT NULL DEFAULT 0,
+    last_error        TEXT,
+    next_attempt_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at      TIMESTAMPTZ,
+    CONSTRAINT submission_jobs_status_check CHECK (status IN (
+      'queued', 'scanning', 'files_moved', 'dynamics_patched',
+      'status_flipped', 'completed', 'failed', 'cancelled'
+    )),
+    CONSTRAINT submission_jobs_attempts_nonneg CHECK (attempts >= 0),
+    CONSTRAINT submission_jobs_completed_when_terminal CHECK (
+      (status IN ('completed', 'failed', 'cancelled')) = (completed_at IS NOT NULL)
+    )
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_submission_jobs_active_ready
+     ON submission_jobs (next_attempt_at, created_at)
+     WHERE status NOT IN ('completed', 'failed', 'cancelled')`,
+  `CREATE INDEX IF NOT EXISTS idx_submission_jobs_draft ON submission_jobs(draft_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_submission_jobs_request ON submission_jobs(request_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_submission_jobs_account ON submission_jobs(account_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_submission_jobs_contact ON submission_jobs(contact_oid)`,
+  `CREATE INDEX IF NOT EXISTS idx_submission_jobs_status ON submission_jobs(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_submission_jobs_created ON submission_jobs(created_at DESC)`,
+];
+
 // V28: Policy publish audit (append-only). See migration 006_policy_publish_audit.sql
 // for full rationale. Dedicated Postgres table rather than overloading wmkf_ai_run.
 const v28Statements = [
@@ -1348,6 +1389,25 @@ async function runMigration() {
           console.log(`[v29-${i + 1}/${v29Statements.length}] ○ Already exists: ${preview}...`);
         } else {
           console.error(`[v29-${i + 1}/${v29Statements.length}] ✗ Error: ${error.message}`);
+          throw error;
+        }
+      }
+    }
+
+    // Run V30 table creation (Intake Portal submission jobs queue)
+    console.log(`\nApplying v30 schema updates - Intake submission jobs queue (${v30Statements.length} statements)...`);
+    for (let i = 0; i < v30Statements.length; i++) {
+      const statement = v30Statements[i];
+      const preview = statement.substring(0, 60).replace(/\s+/g, ' ');
+
+      try {
+        await sql.query(statement);
+        console.log(`[v30-${i + 1}/${v30Statements.length}] ✓ ${preview}...`);
+      } catch (error) {
+        if (error.message.includes('already exists')) {
+          console.log(`[v30-${i + 1}/${v30Statements.length}] ○ Already exists: ${preview}...`);
+        } else {
+          console.error(`[v30-${i + 1}/${v30Statements.length}] ✗ Error: ${error.message}`);
           throw error;
         }
       }

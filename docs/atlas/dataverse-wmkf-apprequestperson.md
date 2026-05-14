@@ -22,7 +22,7 @@ Lookups (PascalCase nav-property names — `@odata.bind` requires PascalCase, pl
 - `wmkf_Contact` / `_wmkf_contact_value` → `contact` (ApplicationRequired)
 
 Role + provenance:
-- `wmkf_role` (Picklist, ApplicationRequired): `100000000=PI`, `100000001=Co-PI`. AO/Liaison are account-level (intake portal pilot scope) and not in this junction; reviewers stay on `wmkf_potentialreviewer`.
+- `wmkf_role` (Picklist, ApplicationRequired): `100000000=PI`, `100000001=Co-PI`. Slice 0 (intake portal pilot) expands to 5 values — `100000002=Senior Personnel`, `100000003=Key Personnel`, `100000004=Other` reserved S150, not yet deployed. AO/Liaison are account-level (intake portal pilot scope) and not in this junction; reviewers stay on `wmkf_potentialreviewer`. **Source-filter invariant:** reviewer / co-PI consumers MUST filter `wmkf_role IN (100000000, 100000001)` at the OData level so the slice 0 expansion is non-breaking; intake-portal-roster consumers can read the full set.
 - `wmkf_authorposition` (Integer 0..5): provenance from legacy slot fields — `0` for PI (from `_wmkf_projectleader_value`), `1..5` for co-PI (from `_wmkf_copi1..5_value`). Optional; PA-flow-created rows may leave this null.
 
 Alternate key:
