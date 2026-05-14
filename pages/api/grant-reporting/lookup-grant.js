@@ -166,7 +166,11 @@ function buildHeader(record) {
     if (copi && !pis.includes(copi)) pis.push(copi);
   }
 
-  const awardAmountRaw = record.akoya_grant ?? record.akoya_request ?? null;
+  // akoya_grant is the awarded amount; akoya_request is the applicant's ask
+  // (intake-drain may populate this pre-decision once the intake portal ships,
+  // so falling back to it would surface ask-as-award on records without a
+  // decision yet). Pre-decision records show no award amount, which is correct.
+  const awardAmountRaw = record.akoya_grant ?? null;
   const awardAmount = formatCurrency(awardAmountRaw);
 
   return {

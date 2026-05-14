@@ -9,6 +9,70 @@ Per `project_dataverse_creator_privileges.md` (2026-05-06), Connor delegated ent
 
 ---
 
+## 2026-05-14 — Schema review w/ Connor — decisions superseding 2026-05-13 entries
+
+**Scope:** Live schema-decision walkthrough with Connor. Established "human-legibility over normalization purity" as the governing principle (memory `feedback_human_legibility_schema_principle`). Multiple proposed new entities collapsed into extensions of existing ones; live Dataverse probe found existing fields covering 3 of 4 proposed aggregate additions.
+
+**Status:** Decisions locked; JSON specs not yet written. **Schema slice deploy blocked on Item 6** (drain-vs-PA write conflict on aggregate fields) until that decision is taken separately. Authoritative summary: `docs/BUDGET_FORM_SPEC.md` v3 top status block + `docs/INTAKE_PORTAL_SCHEMA_REVIEW_2026-05-14.md` outcome banner.
+
+### Cost-share — unified into `wmkf_proposalbudgetline.wmkf_category` enum
+
+The 2026-05-13 plan to create `wmkf_proposalcostshare` as a separate entity is **withdrawn.** Cost-share rows live in `wmkf_proposalbudgetline` via three new `wmkf_category` enum values:
+
+- `WaivedIndirect`
+- `WaivedTuition`
+- `OtherCostShare`
+
+Aggregate queries asking "what is WMKF being asked to fund?" must filter `wmkf_category NOT IN (WaivedIndirect, WaivedTuition, OtherCostShare)`. This is the forever-filter cost accepted in exchange for fewer obscure child tables.
+
+Numeric integer values for the three new categories: **TBD pre-deploy** — reserve and document before the schema slice deploys (Codex feedback: too late to pick at deploy).
+
+### `wmkf_proposalbudgetline` — three additions to 2026-05-13 shape
+
+| Field | Type | Notes |
+|---|---|---|
+| `wmkf_rolecode` | Text(60) | Fixed rows only (`principal-investigators`, `consumable-supplies`, `facilities-overhead`); null for dynamic rows |
+| `wmkf_headcount` | Whole Number | `wmkf_category = Personnel`; null otherwise |
+| `wmkf_effortpct` | Whole Number (0–100) | `wmkf_category = Personnel`; null otherwise |
+
+### Roster — extend `wmkf_apprequestperson`, do NOT create `wmkf_proposalroster`
+
+The 2026-05-13 plan to create `wmkf_proposalroster` is **withdrawn.** Roster data lives in the existing `wmkf_apprequestperson` junction (S139, 5,561 rows). Slice 0 changes:
+
+- Add three nullable fields: `wmkf_effortpct` (Whole 0–100), `wmkf_biosketchurl` (Text 500), `wmkf_lineorder` (Whole).
+- Expand `wmkf_role` enum from 2 values (PI=100000000, Co-PI=100000001) to 5 by adding `Senior Personnel`, `Key Personnel`, `Other`. Reserve integer values pre-deploy.
+- Existing readers `pages/api/reviewer-finder/contact-history.js`, `pages/api/reviewer-finder/generate-emails.js`, `pages/api/external/review/[token]/context.js`, and `scripts/acceptance-w4.js` filter `wmkf_role IN (PI, Co-PI)` to preserve current scope. Patched 2026-05-14.
+
+### Aggregate fields on `akoya_request` — reuse existing where possible
+
+Live Dataverse probe 2026-05-14: 577 attributes on `akoya_request`; 0 collisions on proposed-new names; 3 functional equivalents present.
+
+| Aggregate | Field on `akoya_request` | Source |
+|---|---|---|
+| Year count | `wmkf_numberofyearsoffunding` (Picklist 1–5) | Existing — reuse |
+| WMKF-requested total | `akoya_request` (Money, "Requested Amount") | Existing — reuse |
+| Total project cost | `akoya_expenses` (Money, "Total Project Budget") | Existing — reuse |
+| Cost-share total | `wmkf_totalothersources` (Money) | **NEW** — only net-new field |
+
+Downstream patches landed 2026-05-14: `pages/api/grant-reporting/lookup-grant.js` no longer falls back to `akoya_request` as award amount when `akoya_grant` is null (drain-written requested amount would otherwise display as award amount on pre-decision records).
+
+### `wmkf_portal_membership` — `wmkf_priordecisionstatus` add
+
+| Field | Type | Notes |
+|---|---|---|
+| `wmkf_priordecisionstatus` | Choice (null / Rejected / Revoked / Approved) | Snapshot prior `wmkf_approvalstatus` on re-application; clear back to null on next decision |
+
+### Outstanding pre-deploy
+
+- **Item 6 — drain-vs-PA aggregate write conflict.** Tracked separately; blocks deploy.
+- **`submission_jobs` migration** — missing from `005_intake_portal.sql`; add `009_submission_jobs.sql` before slice 0.
+- **Numeric integer values for new enum entries** — pick + document in Atlas pre-deploy (do not defer to deploy time).
+- **Atlas pages:** new `docs/atlas/dataverse-wmkf-proposalbudgetline.md`; amend `docs/atlas/dataverse-wmkf-apprequestperson.md` for new fields + expanded enum.
+- **Form mapping `shared/forms/phase-ii-research-2026-06/map-to-dynamics.js`** — entity targets resolved 2026-05-14; remaining markers now flagged `blockedOn: 'item-6'`.
+- **Drain server-side validation** — must reject negative `wmkf_amount` Money values per row before `createRecord` (Dataverse won't enforce). Add to drain implementation slice (downstream of Item 6).
+
+---
+
 ## 2026-05-13 — Intake portal pilot — three entities queued (Connor sync, Track 1)
 
 **Scope:** Three new pilot entities approved in shape during the 2026-05-13 Connor+Sarah sync. Two are confirmed for pilot; one is narrowed-scope replacement of the 2026-05-06 plan.

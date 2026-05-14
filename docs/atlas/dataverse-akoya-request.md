@@ -32,7 +32,7 @@ People (lookups):
 - `akoya_payee` → `accounts`
 - `akoya_primarycontactid` → `contacts`
 - `wmkf_projectleader`, `wmkf_researchleader`, `wmkf_ceo` → `contacts`
-- `wmkf_copi1..5` → `contacts` (legacy 5-slot Co-PI roster — to be replaced by `wmkf_personnel` child entity per intake portal pilot)
+- `wmkf_copi1..5` → `contacts` (legacy 5-slot Co-PI roster — superseded by `wmkf_apprequestperson` junction since S139; intake portal pilot will extend that junction with `wmkf_effortpct` / `wmkf_biosketchurl` / `wmkf_lineorder` and expand `wmkf_role` to PI / Co-PI / Senior Personnel / Key Personnel / Other per 2026-05-14 schema review)
 - `wmkf_potentialreviewer1..5` → `wmkf_potentialreviewers` (legacy slots — actual reviewer state lives in `wmkf_appreviewersuggestion`)
 - `wmkf_programdirector` (lead PD), `wmkf_programdirector2` (secondary, no reviewer assignment role) → `systemusers`
 - `wmkf_programcoordinator` → `systemusers`
@@ -116,4 +116,4 @@ Stays as the system of record. WMKF AI fields and lifecycle additions are merged
 ## Open questions / gotchas
 
 - 5,000+ rows; many vendor-only fields not in our scope. Don't accidentally touch fields outside the WMKF-owned set.
-- The 5-slot `wmkf_copi1..5` and `wmkf_potentialreviewer1..5` patterns are vendor-conceived but feel artificial — they're being phased out via child entities (`wmkf_personnel`, `wmkf_appreviewersuggestion`). Code that reads slots directly should be flagged for migration.
+- The 5-slot `wmkf_copi1..5` and `wmkf_potentialreviewer1..5` patterns are vendor-conceived but feel artificial — they're being phased out via child entities (`wmkf_apprequestperson` extended per 2026-05-14 schema review for roster, `wmkf_appreviewersuggestion` for reviewer state). Code that reads slots directly should be flagged for migration.

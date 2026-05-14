@@ -83,10 +83,14 @@ export default async function handler(req, res) {
       // historian PIs/co-PIs; the cap flag below surfaces the boundary if we
       // ever brush against it (no live contact comes anywhere near).
       const [junctionResp, projectLeaderResp] = await Promise.all([
-        // Junction rows for this contact (any role).
+        // Junction rows for this contact, restricted to PI/Co-PI.
+        // The wmkf_role enum was expanded 2026-05-14 to include Senior Personnel /
+        // Key Personnel / Other for the intake portal roster; reviewer-finder
+        // history must stay scoped to PI + Co-PI, so filter at source rather
+        // than relying on the PI-or-else-Co-PI mapping below.
         DynamicsService.queryAllRecords('wmkf_apprequestpersons', {
           select: '_wmkf_request_value,wmkf_role,wmkf_authorposition',
-          filter: `_wmkf_contact_value eq ${escapedContactId} and wmkf_role ne null`,
+          filter: `_wmkf_contact_value eq ${escapedContactId} and (wmkf_role eq ${ROLE_PI} or wmkf_role eq ${ROLE_COPI})`,
         }),
         // akoya_request rows where this contact is the project leader.
         // Role inferred = pi, position = 0 (matches backfill convention).
@@ -123,6 +127,7 @@ export default async function handler(req, res) {
       }
 
       for (const r of junctionResp.records || []) {
+        if (r.wmkf_role !== ROLE_PI && r.wmkf_role !== ROLE_COPI) continue;
         const role = r.wmkf_role === ROLE_PI ? 'pi' : 'copi';
         const row = ensureRow(r._wmkf_request_value, role, r.wmkf_authorposition ?? null);
         row.sources.add('junction');

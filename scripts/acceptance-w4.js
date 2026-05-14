@@ -132,9 +132,11 @@ await bypassDynamicsRestrictions('w4-acceptance', async () => {
       const start = Date.now();
       // Mirror the endpoint's UNION read strategy: junction OR projectleader.
       const [junctionRows, projLeaderRows] = await Promise.all([
+        // Mirror contact-history.js: filter to PI/Co-PI so post-2026-05-14
+        // Senior/Key/Other roster rows don't inflate the smoke counts.
         DynamicsService.queryRecords('wmkf_apprequestpersons', {
           select: 'wmkf_apprequestpersonid,_wmkf_request_value,wmkf_role,wmkf_authorposition',
-          filter: `_wmkf_contact_value eq ${contactId}`,
+          filter: `_wmkf_contact_value eq ${contactId} and (wmkf_role eq 100000000 or wmkf_role eq 100000001)`,
           top: 100,
         }),
         DynamicsService.queryRecords('akoya_requests', {
@@ -151,9 +153,15 @@ await bypassDynamicsRestrictions('w4-acceptance', async () => {
     const p95Ms = p95(timings);
     const avgMs = Math.round(timings.reduce((a, b) => a + b, 0) / timings.length);
 
+    // Belt-and-suspenders: the 2026-05-14 PI/Co-PI source-filter narrows the
+    // junction read. If every sampled contact happens to hold only Senior/Key/Other
+    // intake-roster rows (and no projectleader history), we'd silently pass with
+    // zero validated history. Require a non-trivial hit rate.
+    const hitRateOk = hadResults >= Math.ceil(distinctContacts.length / 5);
+
     return {
-      pass: p95Ms < 1000,
-      detail: `Sampled ${distinctContacts.length} contacts; ${hadResults} with junction or projectleader rows. avg=${avgMs}ms p95=${p95Ms}ms (target: P95 < 1000ms).`,
+      pass: p95Ms < 1000 && hitRateOk,
+      detail: `Sampled ${distinctContacts.length} contacts; ${hadResults} with junction or projectleader rows. avg=${avgMs}ms p95=${p95Ms}ms (target: P95 < 1000ms, hit-rate ≥ 20%).`,
     };
   });
 

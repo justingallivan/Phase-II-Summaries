@@ -1,5 +1,18 @@
 # Intake Portal Schema Review — 2026-05-14
 
+> **Outcome banner (added post-meeting).** This document captures what I *recommended* walking into the 2026-05-14 review. The *decisions* diverged from several recommendations under a "human-legibility over normalization purity" principle that emerged mid-meeting. Authoritative summary of decisions is now in `docs/BUDGET_FORM_SPEC.md` (v3, top status block). Quick map:
+>
+> - **Item 1 — REVERSED to "unified."** Cost-share returns to `wmkf_proposalbudgetline` via three new `wmkf_category` enum values (`WaivedIndirect`, `WaivedTuition`, `OtherCostShare`). No new `wmkf_proposalcostshare` entity.
+> - **Item 2 — accepted as recommended.** All three fields added.
+> - **Item 3 — chose path "3D" (not on the menu in this doc).** Extend existing `wmkf_apprequestperson` (S139 junction, 5,561 rows). Add three nullable fields; expand `wmkf_role` enum from 2 → 5 values (add Senior Personnel / Key Personnel / Other). No new `wmkf_proposalroster` entity.
+> - **Item 4 — accepted.** Add `wmkf_priordecisionstatus`.
+> - **Item 5 — live-probed during the meeting.** 3 of 4 proposed fields already exist on `akoya_request`: reuse `wmkf_numberofyearsoffunding` (Picklist 1–5), `akoya_request` (Money — WMKF requested), `akoya_expenses` (Money — total project cost). Add only `wmkf_totalothersources` (Money) for cost-share total.
+> - **Item 6 — UNRESOLVED.** In-meeting decision (PA flow recomputes on child writes) was flagged by Codex review as a direct violation of `INTAKE_PORTAL_DESIGN.md` § "Power Automate boundary" invariant. Deferred to a separate decision; **blocks schema slice deploy.**
+> - **Item 7 — accepted, with clarification.** Reviewer packet is one PA-built document (not concatenated files); budget detail surfaces row identity via `wmkf_description` + `wmkf_rolecode`, so no `wmkf_category` enum expansion needed.
+> - **Item 8 — moot.** Items 1 + 3 collapsed both naming questions.
+>
+> The body of this doc below is the pre-meeting agenda — kept for context. Aggregate-field definitions (Item 5) and cost-share rationale (Item 1) are superseded by `BUDGET_FORM_SPEC.md` v3.
+
 **Purpose:** Walk through eight schema decisions that need Connor's sign-off before the pilot schema deploys. Two additional items are FYI / quick-confirm.
 
 **Attendees:** Justin, Connor (plus Claude on-screen if helpful).

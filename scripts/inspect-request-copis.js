@@ -41,6 +41,9 @@ require('./../lib/dataverse/client').loadEnvLocal();
       console.log('  (no rows)');
     } else {
       for (const r of records) {
+        // wmkf_role enum (post-2026-05-14): 100000000=PI, 100000001=Co-PI,
+        // plus Senior/Key/Other for intake roster (integer values reserved at
+        // schema deploy). Unknown values render as role=<integer>.
         const roleName = r.wmkf_role === 100000000 ? 'PI' : r.wmkf_role === 100000001 ? 'Co-PI' : `role=${r.wmkf_role}`;
         const contact = r['_wmkf_contact_value@OData.Community.Display.V1.FormattedValue'] || r._wmkf_contact_value;
         console.log(`  ${roleName.padEnd(6)} pos=${r.wmkf_authorposition ?? '-'} → ${contact}`);

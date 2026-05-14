@@ -12,6 +12,15 @@
  *
  * Three target categories:
  *
+ * `TODO_ASK_CONNOR_*` markers fall into two distinct blocker categories
+ * (do not conflate; future editors decide what to ask Connor based on which):
+ *
+ *   - `blockedOn: 'item-6'` — field choice is settled but the WRITER (drain vs.
+ *     PA flow vs. rollup) is gated on the unresolved Item 6 decision from the
+ *     2026-05-14 schema review. Document: `docs/BUDGET_FORM_SPEC.md` v3 status block.
+ *   - No `blockedOn` set — field/entity target itself still needs Connor's design
+ *     input. These move when Connor surfaces the right home, independent of Item 6.
+ *
  *   1. CONFIRMED — matched to a real `akoya_request` field that exists
  *      in production (verified in lib/services/dynamics-service.js call
  *      sites and other API routes). Safe to PATCH on submit.
@@ -88,10 +97,11 @@ const AKOYA_REQUEST_DIRECT_MAP = {
     note: 'Probably belongs on contact, not akoya_request.',
   },
 
-  // NEEDS CONNOR — total dollars. May exist already as a Phase I-level
-  // "amount requested"; confirm whether to overwrite or use a separate
-  // Phase II field.
-  total_request_usd: { field: 'TODO_ASK_CONNOR_totalrequestusd', needsConnor: true },
+  // BLOCKED ON Item 6 (drain-vs-PA aggregate write conflict). Live-probe
+  // 2026-05-14 settled the FIELD as existing akoya_request.akoya_request
+  // (Money, "Requested Amount"); WRITER is gated on Item 6 resolution.
+  // See docs/BUDGET_FORM_SPEC.md v3 status block.
+  total_request_usd: { field: 'TODO_ITEM_6_totalrequestusd', needsConnor: true, blockedOn: 'item-6' },
 
   // NEEDS CONNOR — compliance flags.
   human_subjects:     { field: 'TODO_ASK_CONNOR_humansubjects',    needsConnor: true },
@@ -107,14 +117,23 @@ const AKOYA_REQUEST_DIRECT_MAP = {
  */
 const CHILD_ENTITY_MAP = {
   co_investigators: {
-    entitySet: 'TODO_ASK_CONNOR_coinvestigators',
-    needsConnor: true,
-    note: 'Per docs/INTAKE_PORTAL_DESIGN.md, schema-light pilot. May reuse existing wmkf_copi1..5 lookup slots on akoya_request instead of a new child entity. Decision needed.',
+    // RESOLVED 2026-05-14: extends wmkf_apprequestperson junction (S139, 5,561 rows);
+    // adds wmkf_effortpct/wmkf_biosketchurl/wmkf_lineorder + expanded wmkf_role enum
+    // (PI / Co-PI / Senior Personnel / Key Personnel / Other). Mapper update blocked
+    // on Item 6 only insofar as the parent-aggregate writers settle; entity choice locked.
+    entitySet: 'wmkf_apprequestpersons',
+    needsConnor: false,
+    note: 'See docs/INTAKE_PORTAL_SCHEMA_CHANGES.md 2026-05-14 entry.',
   },
   budget_lines: {
-    entitySet: 'TODO_ASK_CONNOR_budgetlines',
-    needsConnor: true,
-    note: 'Year × category × amount rows. Almost certainly its own entity (one akoya_request -> N budget rows). Could also live as JSON on akoya_request for pilot if Connor prefers minimal schema churn.',
+    // RESOLVED 2026-05-14: new wmkf_proposalbudgetline entity, unified cost-share
+    // via wmkf_category enum (WaivedIndirect / WaivedTuition / OtherCostShare added
+    // to Personnel/Equipment/Supplies/Travel/Other Direct/Indirect). Mapper update
+    // blocked on Item 6 (writer for parent aggregates not yet decided).
+    entitySet: 'wmkf_proposalbudgetlines',
+    needsConnor: false,
+    blockedOn: 'item-6',
+    note: 'See docs/BUDGET_FORM_SPEC.md v3 + docs/INTAKE_PORTAL_SCHEMA_CHANGES.md 2026-05-14.',
   },
   milestones: {
     entitySet: 'TODO_ASK_CONNOR_milestones',

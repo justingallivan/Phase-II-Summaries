@@ -6,7 +6,9 @@
 - [Red CI gates are P0 blockers, not side-notes](feedback_red_gates_are_p0.md) — a red `check:*` gate on main means the ground-truth rubric is being violated *right now*. Fix before any data-layer commits, regardless of who broke it.
 - [Surface every finding from external reviewers, don't filter](feedback_surface_full_review_findings.md) — when Codex / code-reviewer / similar raises issues, list ALL findings using the reviewer's own labels. My recommendations come after the full set, not instead of it.
 - [Thoroughness is the default, not optional](feedback_thoroughness_default.md) — skimming saves session time but costs the user Codex tokens + review attention. Banner-only edits, description-only memory edits, and same-frame re-reads are unacceptable shortcuts. Surface incompleteness explicitly when it exists.
+- [Codex output is verbatim, always](feedback_codex_verbatim_output.md) — every Codex round-trip in a session must paste stdout exactly as returned, no paraphrase or summary. My commentary goes after the verbatim block, never instead of it.
 - [Dataverse schema-deploy gotchas](project_dataverse_schema_deploy_gotchas.md) — 429 throttling between metadata writes (wrap in 30s-backoff retry), `@odata.bind` keys are PascalCase nav-properties, queryAllRecords caps at 5000.
+- [Human-legibility schema principle](feedback_human_legibility_schema_principle.md) — prefer expanding enums on existing entities over proliferating obscure child tables; non-technical staff browse Dataverse, fewer tables wins.
 
 ## Collaboration Notes
 - [Concepts vs Phase I are different grant stages](feedback_concepts_vs_phase_i.md) — hard-exclude `/concept/i` files from Phase I prompt pipelines
