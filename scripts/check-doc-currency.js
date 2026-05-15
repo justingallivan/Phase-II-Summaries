@@ -90,7 +90,8 @@ const DRIFT_PATTERNS = [
     needle: /\bpublications\b[^.\n]{0,80}\b(load-bearing|currently active|currently live|primary table)\b/gi,
     reason:
       'Atlas marks Postgres `publications` as 0 rows / dead. Docs describing it as load-bearing are stale.',
-    allow: ['DOC_TRIAGE_2026-05-07.md', 'check-doc-currency.js'],
+    // AUDIT_S154_MEMORY_CODEX.md quotes the stale "still load-bearing" memory claim verbatim in order to mark it STALE — historical audit record, not an assertion.
+    allow: ['DOC_TRIAGE_2026-05-07.md', 'check-doc-currency.js', 'AUDIT_S154_MEMORY_CODEX.md'],
   },
   {
     id: 'liveness-search_cache-as-live',
