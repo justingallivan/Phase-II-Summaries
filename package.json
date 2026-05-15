@@ -18,7 +18,8 @@
     "check:atlas": "node scripts/check-application-state-atlas.js",
     "check:atlas:self-test": "node scripts/check-coverage-self-test.js",
     "check:doc-currency": "node scripts/check-doc-currency.js",
-    "check:doc-currency:self-test": "node scripts/check-doc-currency-self-test.js"
+    "check:doc-currency:self-test": "node scripts/check-doc-currency-self-test.js",
+    "check:memory-drift": "node scripts/check-memory-drift.js"
   },
   "dependencies": {
     "@vercel/analytics": "^1.6.1",

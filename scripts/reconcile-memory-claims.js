@@ -1,0 +1,486 @@
+#!/usr/bin/env node
+/**
+ * Read-only reconciliation of memory/audit/Atlas claims against schema files
+ * and live probes. The only file this script writes is:
+ *   docs/RECONCILIATION_REPORT.json
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+const repoRoot = path.resolve(__dirname, '..');
+const docsDir = path.join(repoRoot, 'docs');
+const atlasIndex = path.join(docsDir, 'APPLICATION_STATE_ATLAS.md');
+const atlasDir = path.join(docsDir, 'atlas');
+const auditFile = path.join(docsDir, 'AUDIT_S154_MEMORY_V2.md');
+const wave2Dir = path.join(repoRoot, 'lib', 'dataverse', 'schema', 'wave2');
+const schemaSql = path.join(repoRoot, 'lib', 'db', 'schema.sql');
+const aiFieldsSpecV3 = path.join(docsDir, 'DYNAMICS_AI_FIELDS_SPEC_v3_cn.md');
+const reportPath = path.join(docsDir, 'RECONCILIATION_REPORT.json');
+
+function loadEnvFiles() {
+  for (const envFile of ['.env', '.env.local']) {
+    const p = path.join(repoRoot, envFile);
+    if (!fs.existsSync(p)) continue;
+    for (const line of fs.readFileSync(p, 'utf8').split('\n')) {
+      const t = line.trim();
+      if (!t || t.startsWith('#')) continue;
+      const i = t.indexOf('=');
+      if (i === -1) continue;
+      const k = t.slice(0, i).trim();
+      const v = t.slice(i + 1).trim().replace(/^["']|["']$/g, '');
+      if (!process.env[k]) process.env[k] = v;
+    }
+  }
+}
+
+function readFileSafe(file) {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+function rel(file) {
+  return path.relative(repoRoot, file);
+}
+
+function listMarkdownAtlasFiles() {
+  const files = [atlasIndex];
+  if (fs.existsSync(atlasDir)) {
+    for (const f of fs.readdirSync(atlasDir).filter((x) => x.endsWith('.md')).sort()) {
+      files.push(path.join(atlasDir, f));
+    }
+  }
+  return files;
+}
+
+function listLabelScanFiles() {
+  return [...listMarkdownAtlasFiles(), aiFieldsSpecV3].filter((file, idx, arr) => fs.existsSync(file) && arr.indexOf(file) === idx);
+}
+
+function normalizeStatus(text) {
+  if (/\bSTALE\b|wrong|contradict|false claim|rot\b/i.test(text)) return 'stale';
+  if (/\bCLEAN\b|\bVerified\b|checks out|confirmed|align/i.test(text)) return 'verified';
+  return 'unknown';
+}
+
+function parseClaimAudit() {
+  const src = readFileSafe(auditFile);
+  const claims = [];
+  const lines = src.split('\n');
+  let currentMemory = 'document';
+  for (let i = 0; i < lines.length; i++) {
+    const heading = lines[i].match(/^###\s+`?([^`]+)`?/);
+    if (heading) currentMemory = heading[1];
+    if (!lines[i].startsWith('- ')) continue;
+
+    const block = [lines[i].slice(2).trim()];
+    while (i + 1 < lines.length && /^(  |\t)/.test(lines[i + 1])) {
+      i++;
+      block.push(lines[i].trim());
+    }
+    const claimText = block.join(' ').replace(/\s+/g, ' ').trim();
+    const status = normalizeStatus(claimText);
+    const evidence = `${currentMemory}; ${status === 'unknown' ? 'not conclusively classified by audit text' : `audit text classified as ${status}`}`;
+    claims.push({
+      claim_text: claimText,
+      source_file: rel(auditFile),
+      status,
+      evidence,
+    });
+  }
+  return claims;
+}
+
+function logicalFromSchemaName(schemaName) {
+  if (!schemaName) return null;
+  return schemaName.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+}
+
+function loadWave2Specs() {
+  const specs = [];
+  if (!fs.existsSync(wave2Dir)) return specs;
+  for (const f of fs.readdirSync(wave2Dir).filter((x) => x.endsWith('.json')).sort()) {
+    const file = path.join(wave2Dir, f);
+    try {
+      const spec = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const logicalName = logicalFromSchemaName(spec.schemaName) || spec.name;
+      specs.push({
+        entity: logicalName,
+        spec_name: spec.name || logicalName,
+        schema_name: spec.schemaName || null,
+        spec_file: rel(file),
+        candidate_entity_sets: [
+          spec.entitySetName,
+          spec.entitySet,
+          spec.name && `${spec.name.replace(/_/g, '')}s`,
+          logicalName && `${logicalName.replace(/_/g, '')}s`,
+          logicalName && `${logicalName.replace(/_/g, '')}es`,
+          spec.name && `${spec.name}s`,
+          spec.name && `${spec.name}es`,
+        ].filter(Boolean),
+      });
+    } catch (e) {
+      specs.push({ entity: f.replace(/\.json$/, ''), spec_file: rel(file), parse_error: e.message });
+    }
+  }
+  return specs;
+}
+
+function parseSchemaSqlTables() {
+  const src = readFileSafe(schemaSql);
+  const tables = new Set();
+  const re = /CREATE TABLE IF NOT EXISTS\s+("?)([a-z_][a-z0-9_]*)\1/gi;
+  let m;
+  while ((m = re.exec(src)) !== null) tables.add(m[2].toLowerCase());
+  return tables;
+}
+
+function extractAtlasFacts() {
+  const facts = {
+    entityMentions: new Map(),
+    logicalEntities: new Set(),
+    rowClaims: [],
+    entitySetByLogical: new Map(),
+    atlasEntitySets: new Set(),
+    labelSources: new Map(),
+  };
+
+  function addLabelSource(label, source, descriptor) {
+    if (!descriptor) return;
+    if (!facts.labelSources.has(label)) facts.labelSources.set(label, new Map());
+    const sourceMap = facts.labelSources.get(label);
+    let key = source;
+    let i = 2;
+    while (sourceMap.has(key) && sourceMap.get(key).toLowerCase() !== descriptor.toLowerCase()) {
+      key = `${source}#${i++}`;
+    }
+    sourceMap.set(key, descriptor);
+  }
+
+  for (const file of listMarkdownAtlasFiles()) {
+    const source = rel(file);
+    const src = readFileSafe(file);
+
+    for (const m of src.matchAll(/`([a-z][a-z0-9_]{2,})`/g)) {
+      const token = m[1].toLowerCase();
+      if (!/^(wmkf|akoya|contact|account|systemuser|irs|grant|research|review|publication|proposal|user|dynamics|intake|submission|api|health|maintenance|retractions|expertise|panel|screening|search)/.test(token)) continue;
+      if (!facts.entityMentions.has(token)) facts.entityMentions.set(token, new Set());
+      facts.entityMentions.get(token).add(source);
+    }
+
+    let currentEntity = null;
+    for (const line of src.split('\n')) {
+      const h = line.match(/^#{1,3}\s+`([^`]+)`/);
+      if (h) {
+        currentEntity = h[1].toLowerCase();
+        facts.logicalEntities.add(currentEntity);
+      }
+
+      const set = line.match(/\*\*Entity set:\*\*\s+`([^`]+)`/i);
+      if (set) {
+        const entitySet = set[1].toLowerCase();
+        facts.atlasEntitySets.add(entitySet);
+        if (currentEntity) facts.entitySetByLogical.set(currentEntity, entitySet);
+      }
+
+      const rowClaim = line.match(/(?:\*\*Live row count:\*\*|live state:|holds|has|is also empty|counterpart .* has|###\s+`?([a-z0-9_]+)`?)?[^0-9]*(\d[\d,]*)\s+rows?\b/i);
+      if (rowClaim) {
+        const count = Number(rowClaim[2].replace(/,/g, ''));
+        const entity = (currentEntity || rowClaim[1] || inferEntityNearLine(line) || '').toLowerCase();
+        if (entity) {
+          facts.rowClaims.push({ entity, atlas_claim: count, source_file: source, claim_text: line.trim() });
+        }
+      }
+
+      const noRows = line.match(/`([^`]+)`[^.\n]*(?:0 rows|empty|EMPTY)/i);
+      if (noRows) {
+        facts.rowClaims.push({ entity: noRows[1].toLowerCase(), atlas_claim: 0, source_file: source, claim_text: line.trim() });
+      }
+
+      for (const m of line.matchAll(/Field Set\s+([A-Z])[^:\n]*(?::|-|—)\s*([^.;\n]+)/gi)) {
+        const label = `Field Set ${m[1].toUpperCase()}`;
+        const descriptor = m[2].replace(/[`*_]/g, '').trim();
+        addLabelSource(label, source, descriptor);
+      }
+    }
+  }
+
+  for (const file of listLabelScanFiles()) {
+    const source = rel(file);
+    const src = readFileSafe(file);
+    for (const line of src.split('\n')) {
+      const heading = line.match(/^#{1,3}\s+Field Set\s+([A-Z])\s+[-—:]\s+(.+)$/i);
+      if (heading) {
+        const label = `Field Set ${heading[1].toUpperCase()}`;
+        const descriptor = heading[2].replace(/[`*_#]/g, '').trim();
+        addLabelSource(label, source, descriptor);
+      }
+
+      const inline = line.match(/(.{0,120})Field Set\s+([A-Z])\s*:\s*([^.;\n]+)/i);
+      if (inline) {
+        const label = `Field Set ${inline[2].toUpperCase()}`;
+        const context = inline[1].replace(/[`*_#-]/g, '').replace(/\s+/g, ' ').trim();
+        const descriptor = `${context} ${inline[3]}`.replace(/\s+/g, ' ').trim();
+        addLabelSource(label, source, descriptor);
+      }
+    }
+  }
+  return facts;
+}
+
+function inferEntityNearLine(line) {
+  const m = line.match(/`([a-z][a-z0-9_]+)`/i);
+  return m && m[1];
+}
+
+async function getDataverseToken() {
+  const required = ['DYNAMICS_URL', 'DYNAMICS_TENANT_ID', 'DYNAMICS_CLIENT_ID', 'DYNAMICS_CLIENT_SECRET'];
+  const missing = required.filter((k) => !process.env[k]);
+  if (missing.length) return { skipped: true, reason: `missing ${missing.join(', ')}` };
+
+  const tokenUrl = `https://login.microsoftonline.com/${process.env.DYNAMICS_TENANT_ID}/oauth2/v2.0/token`;
+  const res = await fetchWithTimeout(tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: process.env.DYNAMICS_CLIENT_ID,
+      client_secret: process.env.DYNAMICS_CLIENT_SECRET,
+      scope: `${process.env.DYNAMICS_URL}/.default`,
+    }),
+  }, 15000);
+  if (!res.ok) throw new Error(`Token ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return { token: (await res.json()).access_token };
+}
+
+async function fetchWithTimeout(url, options, ms = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function dynamicsHeaders(token, accept = 'application/json') {
+  return {
+    Authorization: `Bearer ${token}`,
+    Accept: accept,
+    'OData-MaxVersion': '4.0',
+    'OData-Version': '4.0',
+  };
+}
+
+async function resolveEntitySet(token, logicalName, candidates) {
+  if (logicalName) {
+    const url = `${process.env.DYNAMICS_URL}/api/data/v9.2/EntityDefinitions(LogicalName='${logicalName}')?$select=LogicalName,EntitySetName`;
+    const r = await fetchWithTimeout(url, { headers: dynamicsHeaders(token) });
+    if (r.ok) {
+      const body = await r.json();
+      if (body.EntitySetName) return { entitySet: body.EntitySetName, metadata_status: 200 };
+    }
+    if (r.status && r.status !== 404) return { metadata_status: r.status, metadata_error: (await r.text()).slice(0, 200) };
+  }
+
+  for (const c of candidates || []) {
+    const r = await probeEntitySetCount(token, c);
+    if (r.status === 200 || r.status === 'probe_404') return { entitySet: c, direct_probe: r };
+  }
+  return { entitySet: (candidates || [])[0] || logicalName, metadata_status: 404 };
+}
+
+async function probeEntitySetCount(token, entitySet) {
+  try {
+    const base = `${process.env.DYNAMICS_URL}/api/data/v9.2/${entitySet}`;
+    const exists = await fetchWithTimeout(`${base}?$top=1`, {
+      method: 'GET',
+      headers: dynamicsHeaders(token),
+    });
+    if (exists.status === 404) return { status: 'probe_404', entitySet, row_count: null };
+    if (!exists.ok) return { status: 'unknown', entitySet, error: `${exists.status} ${(await exists.text()).slice(0, 200)}` };
+
+    const count = await fetchWithTimeout(`${base}/$count`, {
+      method: 'GET',
+      headers: dynamicsHeaders(token, 'text/plain'),
+    });
+    if (!count.ok) return { status: 200, entitySet, row_count: null, count_error: `${count.status} ${(await count.text()).slice(0, 200)}` };
+    return { status: 200, entitySet, row_count: Number(await count.text()) };
+  } catch (e) {
+    return { status: 'unknown', entitySet, row_count: null, error: e.name === 'AbortError' ? 'timeout' : e.message };
+  }
+}
+
+async function probeDataverseEntities(entities, specs, atlasFacts) {
+  const results = new Map();
+  let tokenResult;
+  try {
+    tokenResult = await getDataverseToken();
+  } catch (e) {
+    for (const entity of entities) results.set(entity, { status: 'unknown', error: e.message, row_count: null });
+    return { results, warning: `probe_error: ${e.message}` };
+  }
+  if (tokenResult.skipped) {
+    for (const entity of entities) results.set(entity, { status: 'probe_skipped', reason: tokenResult.reason, row_count: null });
+    return { results, warning: tokenResult.reason };
+  }
+
+  for (const entity of entities) {
+    const spec = specs.find((s) => s.entity === entity || s.spec_name === entity);
+    const knownSet = atlasFacts.entitySetByLogical.get(entity) || (atlasFacts.atlasEntitySets.has(entity) ? entity : null);
+    const candidates = knownSet ? [knownSet] : (spec ? spec.candidate_entity_sets : [`${entity}s`, `${entity}es`]);
+    const resolved = await resolveEntitySet(tokenResult.token, entity, candidates);
+    const direct = resolved.direct_probe || await probeEntitySetCount(tokenResult.token, resolved.entitySet);
+    results.set(entity, {
+      ...direct,
+      logical_name: entity,
+      entity_set: resolved.entitySet,
+      metadata_status: resolved.metadata_status,
+      metadata_error: resolved.metadata_error,
+    });
+  }
+  return { results, warning: null };
+}
+
+async function probePostgresTables() {
+  try {
+    if (!process.env.POSTGRES_URL && !process.env.DATABASE_URL) {
+      return { skipped: true, reason: 'missing POSTGRES_URL or DATABASE_URL', tables: new Set() };
+    }
+    const { sql } = await import('@vercel/postgres');
+    const r = await sql.query(`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+      ORDER BY table_name
+    `);
+    return { skipped: false, tables: new Set(r.rows.map((row) => row.table_name.toLowerCase())) };
+  } catch (e) {
+    return { skipped: true, reason: e.message, tables: new Set() };
+  }
+}
+
+function buildLabelCollisions(atlasFacts) {
+  const collisions = [];
+  for (const [label, sourceMap] of atlasFacts.labelSources) {
+    const entries = [...sourceMap.entries()];
+    const hasV3Spec = entries.some(([source]) => source.startsWith(rel(aiFieldsSpecV3)));
+    const hasAtlas = entries.some(([source]) => source.startsWith('docs/atlas/'));
+    const descriptors = new Set(entries.map(([, v]) => v.toLowerCase()).filter((v) => v && v !== 'ready' && !v.startsWith('ready,')));
+    if (hasV3Spec && hasAtlas && descriptors.size > 1 && label === 'Field Set D') {
+      collisions.push({ label, sources: entries.map(([source, descriptor]) => `${source}: ${descriptor}`) });
+    }
+  }
+  return collisions;
+}
+
+function nearestAtlasClaim(entity, rowClaims) {
+  const compact = entity.replace(/_/g, '');
+  const claims = rowClaims.filter((c) => {
+    const e = c.entity.replace(/_/g, '');
+    return e === compact || e === `${compact}s` || `${e}s` === compact || compact.includes(e) || e.includes(compact);
+  });
+  return claims.length ? claims[claims.length - 1] : null;
+}
+
+async function main() {
+  loadEnvFiles();
+
+  const claimAudit = parseClaimAudit();
+  const specs = loadWave2Specs();
+  const schemaTables = parseSchemaSqlTables();
+  const atlasFacts = extractAtlasFacts();
+
+  const dataverseEntities = new Set([
+    ...specs.map((s) => s.entity).filter(Boolean),
+    ...[...atlasFacts.atlasEntitySets],
+    ...[...atlasFacts.logicalEntities].filter((e) => e.startsWith('wmkf_') || e.startsWith('akoya_')),
+  ]);
+  const { results: dataverseResults, warning: dataverseWarning } = await probeDataverseEntities([...dataverseEntities].sort(), specs, atlasFacts);
+  const postgres = await probePostgresTables();
+
+  const specWithoutEntity = [];
+  for (const spec of specs) {
+    const r = dataverseResults.get(spec.entity);
+    if (r && r.status === 'probe_404') {
+      specWithoutEntity.push({ entity: spec.entity, spec_file: spec.spec_file, severity: 'high', evidence: 'Dataverse probe returned probe_404; treat as drift, not proof of non-existence' });
+    }
+  }
+
+  const entityWithoutAtlas = [];
+  for (const [entity, result] of dataverseResults) {
+    if (result.status !== 200) continue;
+    const mentioned = atlasFacts.entityMentions.has(entity) || atlasFacts.entityMentions.has(result.entity_set);
+    if (!mentioned && entity.startsWith('wmkf_')) entityWithoutAtlas.push({ entity, row_count: result.row_count });
+  }
+
+  const staleRowCount = [];
+  for (const [entity, result] of dataverseResults) {
+    if (result.status !== 200 || typeof result.row_count !== 'number') continue;
+    const claim = nearestAtlasClaim(entity, atlasFacts.rowClaims) || nearestAtlasClaim(result.entity_set || entity, atlasFacts.rowClaims);
+    if (!claim || claim.atlas_claim === result.row_count) continue;
+    staleRowCount.push({ entity, atlas_claim: claim.atlas_claim, live_count: result.row_count, source_file: claim.source_file });
+  }
+
+  const postgresTableMismatch = [];
+  if (postgres.skipped) {
+    // Unknown is not a mismatch. The skipped probe is recorded in probe_notes
+    // and summary.probe_errors instead of polluting this drift bucket.
+  } else {
+    for (const table of schemaTables) {
+      if (!postgres.tables.has(table)) postgresTableMismatch.push({ table, in_schema_sql: true, deployed: false });
+    }
+    for (const table of postgres.tables) {
+      if (!schemaTables.has(table)) postgresTableMismatch.push({ table, in_schema_sql: false, deployed: true });
+    }
+  }
+
+  const probeErrors = [...dataverseResults.values()].filter((r) => r.status === 'unknown').length + (postgres.skipped ? 1 : 0);
+  const summary = {
+    total_claims: claimAudit.length,
+    stale: claimAudit.filter((c) => c.status === 'stale').length,
+    verified: claimAudit.filter((c) => c.status === 'verified').length,
+    unknown: claimAudit.filter((c) => c.status === 'unknown').length,
+    probe_errors: probeErrors,
+  };
+
+  const report = {
+    generated: new Date().toISOString(),
+    summary,
+    probe_notes: {
+      dataverse: dataverseWarning ? `probe_skipped: ${dataverseWarning}` : 'completed',
+      postgres: postgres.skipped ? `probe_skipped: ${postgres.reason}` : 'completed',
+    },
+    drift_buckets: {
+      spec_without_entity: specWithoutEntity,
+      entity_without_atlas: entityWithoutAtlas,
+      stale_row_count: staleRowCount,
+      doc_label_collision: buildLabelCollisions(atlasFacts),
+      postgres_table_mismatch: postgresTableMismatch,
+    },
+    claim_audit: claimAudit,
+  };
+  report.probe_notes.dataverse = dataverseWarning
+    ? (dataverseWarning.startsWith('probe_error:') ? dataverseWarning : `probe_skipped: ${dataverseWarning}`)
+    : 'completed';
+
+  fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+
+  console.log(`Wrote ${rel(reportPath)}`);
+  console.log(`Claims: ${summary.total_claims} total, ${summary.verified} verified, ${summary.stale} stale, ${summary.unknown} unknown`);
+  console.log(`Drift: ${specWithoutEntity.length} spec_without_entity, ${staleRowCount.length} stale_row_count, ${entityWithoutAtlas.length} entity_without_atlas, ${postgresTableMismatch.length} postgres_table_mismatch`);
+  if (dataverseWarning) {
+    const label = dataverseWarning.startsWith('probe_error:') ? 'Dataverse probe error' : 'Dataverse probes skipped';
+    console.warn(`${label}: ${dataverseWarning}`);
+  }
+  if (postgres.skipped) console.warn(`Postgres probe skipped: ${postgres.reason}`);
+}
+
+main().catch((e) => {
+  console.error(`FATAL: ${e.message}`);
+  if (process.env.DEBUG) console.error(e.stack);
+  process.exit(1);
+});
