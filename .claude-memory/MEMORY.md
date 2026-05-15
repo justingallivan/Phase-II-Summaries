@@ -32,7 +32,7 @@
 ## Strategic Direction
 - [Strategy direction + key decisions](project_strategy_direction.md) — AkoyaGO posture (minimize, not replace), Dynamics as ground truth, backend triggers, Connor collaboration. See `docs/STRATEGY.md` for full doc.
 - [Backend Automation Vision](project_backend_automation.md) — PowerAutomate-triggered processing, configurable prompts, Dynamics write-back
-- [Interim grant report auto-evaluation](project_interim_report_automation.md) — backend job to evaluate yearly interim reports + write to Dynamics. Blocked on Dynamics write access.
+- [Interim grant report auto-evaluation](project_interim_report_automation.md) — backend job to evaluate yearly interim reports + write to Dynamics. Unblocked; field/prompt/process design still needed.
 - [Staged Review Pipeline](project_staged_review_pipeline.md) — 3-stage automated triage (fit screen → intelligence brief → virtual panel) for new cycle's higher volume
 - [Proposal Context Extraction](project_proposal_context_extraction.md) — pre-extract structured fields so downstream calls use curated ~1.5K-token extracts instead of full ~7K-token proposals. Full plan at `docs/PROPOSAL_CONTEXT_EXTRACTION_PLAN.md`
 - [Phase I summary app winddown](project_phase_i_summary_app_winddown.md) — strategic deprioritization, NOT a freeze. `/phase-i-dynamics` still actively iterated as a prompt-tuning surface.

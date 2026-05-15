@@ -15,4 +15,4 @@ The reviewer-recruitment lifecycle today has several semi-manual tracking points
 - **Automated reminders** are out of scope for the direct-send work, but worth designing soon — the logic is straightforward (cron query + threshold) but the cadence + content needs Justin's input. Likely a PA flow eventually, with the same prompt-row pattern Connor builds for other backend automation.
 - **Response-received** is the only remaining hard-manual step. Two paths: (a) staff click "mark received" in UI when they get the email/upload, or (b) Dynamics Server-Side Sync ingests reply emails and we cron-sync them — feasible since `regardingobjectid` will link replies back to the original.
 
-Keep this in mind when shaping `wmkf_app_reviewer_suggestion` (Wave 2). Don't add new manual-state fields without thinking about how an automated job would query them.
+Keep this in mind when shaping `wmkf_appreviewersuggestion` (Wave 2). Don't add new manual-state fields without thinking about how an automated job would query them.

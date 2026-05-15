@@ -27,7 +27,7 @@ metadata:
 
 **This app never writes to Dynamics for IRS verification.** PA owns the writeback to the `account` row. The endpoint is purely read-only against the Postgres reference data; what PA does with the response is its own contract.
 
-**Bulk extract stays in Postgres, not Dataverse.** Wave 2 reframing: Postgres's durable role is reference data (researchers, retractions, IRS); the staging/system-of-record role is what Wave 1/2 drained. The IRS extract is a textbook reference-data fit.
+**Bulk extract stays in Postgres, not Dataverse.** Wave 2 reframing: Postgres's durable role is reference data (retractions, IRS); the staging/system-of-record role is what Wave 1/2 drained. The IRS extract is a textbook reference-data fit.
 
 ## Open items + gotchas (carry these into future sessions)
 

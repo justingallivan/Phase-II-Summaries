@@ -42,7 +42,7 @@ Reviewer lifecycle has 8 stages. Current state: discovery is well-automated (Rev
 
 **Timeline/deadline model:**
 - Grant cycles define default deadlines (already have `review_deadline` in `grant_cycles`)
-- Per-reviewer extensions needed → `reviewer_suggestions` should have its own `review_due_date` (defaults to cycle deadline, overridable)
+- Per-reviewer extensions needed → `wmkf_appreviewersuggestion` should have its own `review_due_date` (defaults to cycle deadline, overridable)
 - Grant cycle calendar is pre-defined (Science programs + SoCal program)
 
 **Staff roles and access model:**
@@ -69,7 +69,7 @@ Reviewer lifecycle has 8 stages. Current state: discovery is well-automated (Rev
 
 **Conversational workflow triggers:**
 - Dynamics Explorer (or purpose-built chatbot) could gain reviewer-lifecycle tools
-- Natural language queries: "Are all reviews in for 1002266?" → query reviewer_suggestions
+- Natural language queries: "Are all reviews in for 1002266?" → query `wmkf_appreviewersuggestion`
 - Action triggers: "Send a reminder to Dr. Smith" → invoke CRM send
 - Existing agentic tool-use pattern in chat.js supports this — just add new tools
 - Another reason CRM send must be in a shared, stateless helper (callable from UI or chatbot)
