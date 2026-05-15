@@ -47,7 +47,7 @@ WMKF AI writeback fields (canonical: `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md` —
 - `wmkf_ai_summary` (Memo) — Phase I summary text. **Field Set A: ready, live writeback active.**
 - `wmkf_ai_dataextract` (Memo, JSON) — domain tags / structured extract. **Field Set A: ready.**
 - `wmkf_ai_complianceissues` (Memo, JSON), `wmkf_ai_compliancesummary` (Memo). **Field Set C: ready.** (v3 also reuses existing `akoya_submissionaccepted`.) Note: live probe shows a numeric `wmkf_ai_compliancecheck` field on the entity; per the v3 spec this is part of an earlier draft that Connor is reconciling — do not write to `compliancecheck`, write to `complianceissues` + `compliancesummary`.
-- `wmkf_ai_fitassessment` (Picklist) + `wmkf_ai_fitrationale` (Memo) — **Field Set D: ready.**
+- `wmkf_ai_fitassessment` (Picklist) + `wmkf_ai_fitrationale` (Memo) — **Field Set D: ready.** *(⚠️ Label collision pending Connor confirmation: `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md:107` says Field Set D is PD Assignment and writes to existing `wmkf_programdirector` with no new fields. Both fit-assessment fields are deployed and populated live — the deployment isn't in doubt, the label is. Resolve before writing code that targets "Field Set D" by name.)*
 
 **Workflow-chaining fields (S139, deployed `b536121`)** — cached extractions so downstream prompts don't re-parse the narrative:
 - `wmkf_ai_keywords` (Memo, JSON array, 4000), `wmkf_ai_methodologies` (Memo, JSON array, 4000), `wmkf_ai_riskflags` (Memo, JSON array, 4000)

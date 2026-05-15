@@ -1,11 +1,11 @@
 # Atlas: `grant_cycles` (Postgres)
 
-**Last verified:** 2026-05-07 via `scripts/audit-postgres-state.js`
-**Live row count:** 13
+**Last verified:** 2026-05-14 via `scripts/audit-postgres-state.js` + `scripts/audit-dataverse-state.js`
+**Live row count:** 13 (Postgres, drain-only)
 
 ## Source of truth
 
-**Postgres-only, load-bearing.** Dataverse counterpart `wmkf_appgrantcycle` IS deployed (10 custom attrs verified live 2026-05-07, see [dataverse-wmkf-apppublication-and-appgrantcycle.md](dataverse-wmkf-apppublication-and-appgrantcycle.md)) but holds **0 rows** and is missing 3 columns (`short_code`, `program_name`, `custom_fields`) — so all live reads still go to Postgres.
+**Dataverse-primary post-W3 cutover 2026-05-12.** `pages/api/reviewer-finder/grant-cycles.js:9` is "Dataverse-only" — reads + writes go through `lib/services/grant-cycles-dataverse.js` to `wmkf_appgrantcycles`. Live audit 2026-05-14 shows **10 rows** in `wmkf_appgrantcycles` (not 0 as previously documented). The Postgres `grant_cycles` table is drain-only: 13 rows retained as historical snapshot, no active writers, scheduled for deletion alongside other reviewer drain-only tables per `project_w6_table_drop_pending.md`. The 3 columns formerly flagged as missing from Dataverse (`short_code`, `program_name`, `custom_fields`) may still be a deployment gap — re-verify via `scripts/dynamics-schema-diff.js wmkf_appgrantcycle` before deleting Postgres data.
 
 ## Schema (live, 13 columns)
 

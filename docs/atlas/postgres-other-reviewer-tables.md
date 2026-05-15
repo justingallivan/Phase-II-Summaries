@@ -22,7 +22,7 @@ Schema: 20 columns including `proposal_title`, `proposal_hash`, `claude_suggesti
 
 **Read/write paths:** No live application readers/writers. `pages/api/reviewer-finder/extract-summary.js` was retired entirely 2026-05-12 (W5 step 5); `lib/services/maintenance-service.js` dropped the `proposal_searches` blob scan in W5 step 6. Remaining touches: `scripts/{clear-all-database,assign-orphan-records,import-user-assignments}.js` (admin scripts).
 
-**Load-bearing JOIN site (verified 2026-05-07):** `pages/api/reviewer-finder/grant-cycles.js` lines 60-72 does `LEFT JOIN proposal_searches ps ON ps.grant_cycle_id = gc.id` to compute proposal counts in the cycle UI. The JOIN returns 0 (table is empty) but **dropping the table without removing the JOIN breaks the cycle picker.** Sequence: rewrite/remove the JOIN first, then drop.
+**JOIN retired 2026-05-12 (W3 cutover):** Previously `pages/api/reviewer-finder/grant-cycles.js` did `LEFT JOIN proposal_searches`. That route is now Dataverse-only (verified 2026-05-14 — header says "W3 cutover (2026-05-12) — Dataverse-only"; no `proposal_searches` reference in source). The JOIN site is gone. `proposal_searches` Postgres table has no remaining application-code readers — drop is unblocked.
 
 **Dataverse counterpart:** `wmkf_appproposalsearch` schema-as-code exists at `lib/dataverse/schema/wave2/wmkf_app_proposal_search.json` but **the entity is NOT deployed** (404 on entity set query 2026-05-07). Codex round-3 finding confirmed.
 
