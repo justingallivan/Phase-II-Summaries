@@ -37,4 +37,4 @@ External ID auth foundation for the applicant intake portal is live in code as o
 - The old "Run user flow" smoke test inside the External ID portal requires an attached app — applicant sign-up via `/apply` is the better real test.
 - Microsoft's External ID portal renames things constantly. "User flows" → "Self-service sign-up" → possibly something else next quarter; navigate by concept, not by label.
 
-**Reference:** `docs/INTAKE_PORTAL_DESIGN.md`, `docs/IT_ENTRA_EXTERNAL_TENANT_REQUEST_2026-05-04.md`. Foundation commit: `68e4c59`.
+**Reference:** `docs/INTAKE_PORTAL_DESIGN.md`, `docs/archive/IT_ENTRA_EXTERNAL_TENANT_REQUEST_2026-05-04.md`. Foundation commit: `68e4c59`.

@@ -1,9 +1,11 @@
 ---
 name: Intake portal pilot — Track 1 decisions 2026-05-13
-description: Sarah+Connor sync Track 1 closed all four agenda items. Two notable deltas from 2026-05-06: 1C reversed to PA-built packet, 1D narrowed to two entities. Track 2 (Sarah field inventory) ran out of clock.
+description: Sarah+Connor sync Track 1 closed all four agenda items. Two notable deltas from 2026-05-06: 1C reversed to PA-built packet, 1D narrowed to two entities. **SUPERSEDED in part by 2026-05-14 schema review** — see top-of-file banner.
 type: project
 originSessionId: 3c35888d-8da4-46e3-83ac-31a25bbdc4e4
 ---
+> **⚠️ SUPERSEDED IN PART BY 2026-05-14 SCHEMA REVIEW.** Item 1D's "two child entities (budget + roster)" framing was refined the next day: budget is a new `wmkf_proposalbudgetline` entity (with cost-share unified into its `wmkf_category` enum), but **roster is NOT a new entity** — it extends the existing `wmkf_apprequestperson` junction via 3 nullable fields + 3 new role enum values. The `wmkf_proposalroster` name is withdrawn. Authoritative: `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md:38-40`, `docs/INTAKE_PORTAL_DESIGN.md:587-588`. The `lib/dataverse/schema/intake/` path mentioned in this memory does not exist; the budget spec landed at `docs/BUDGET_FORM_SPEC.md` instead.
+
 Sarah+Connor sync 2026-05-13. Track 1 (Connor-side decisions, 4 items) ran to completion. Track 2 (Sarah's Phase II Research field inventory) was not reached — carry to next Sarah session.
 
 **Why this matters**: Two items reverse or narrow 2026-05-06 decisions. Future sessions should treat 2026-05-13 as ground truth for items 1C and 1D; the older memory's resolutions on those rows are superseded.

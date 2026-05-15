@@ -55,9 +55,9 @@ Note: "compliance" task label was renamed to **Check-in** in v3.
 
 Custom lookup navigation properties are **case-sensitive** and are NOT the same as the attribute logical name. For `wmkf_ai_run.wmkf_ai_request`, the nav prop is **`wmkf_ai_Request`** (capital R). Always discover via `EntityDefinitions(LogicalName='X')?$expand=ManyToOneRelationships($select=ReferencingEntityNavigationPropertyName)` before guessing. See `DynamicsService.logAiRun` for the canonical binding.
 
-## Dynamics Explorer TODO
+## Dynamics Explorer — `wmkf_ai_run` exclusion DONE
 
-Justin owes: exclude `wmkf_ai_run` from search results and schema suggestions in the Dynamics Explorer chat tool. It's an operational log, not business data — shouldn't surface in natural-language queries about grants.
+Verified 2026-05-14: `wmkf_ai_run` is not in `TABLE_ANNOTATIONS` (the `entitySet:` enumeration) in `shared/config/prompts/dynamics-explorer.js`. The chat tool's schema-suggestion path no longer surfaces it. Operational logs are out of the natural-language query surface.
 
 ## Writeback TODOs
 

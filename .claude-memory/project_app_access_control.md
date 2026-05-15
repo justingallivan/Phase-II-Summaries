@@ -8,7 +8,7 @@ metadata:
 ---
 
 - **Dataverse `wmkf_appuserappaccesses`** — per-user app grants; Postgres `user_app_access` retired 2026-05-12 (Wave 1 closeout)
-- **`shared/config/appRegistry.js`** — single source of truth for all 15 app definitions (keys, names, icons, categories, descriptions); used by Layout nav, home page, admin dashboard, and access control
+- **`shared/config/appRegistry.js`** — single source of truth for all 16 app definitions (keys, names, icons, categories, descriptions); used by Layout nav, home page, admin dashboard, and access control
 - **`shared/context/AppAccessContext.js`** — React context; fetches `/api/app-access` on mount, exposes `hasAccess(appKey)` and `isSuperuser`
 - New users get only `dynamics-explorer` by default (configured in `DEFAULT_APP_GRANTS` in `appRegistry.js`)
-- **API-level enforcement active** — `requireAppAccess(req, res, ...appKeys)` on all ~30 app endpoints
+- **API-level enforcement active** — `requireAppAccess(req, res, ...appKeys)` on ~48 app endpoints (verified 2026-05-14 via `grep -rln "requireAppAccess" pages/api/`)

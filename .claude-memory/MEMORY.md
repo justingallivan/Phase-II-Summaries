@@ -71,7 +71,7 @@
 - [Reviewer lifecycle automation plan](project_reviewer_lifecycle.md) — phased plan (A-D); Phase A (CRM send) is foundation
 - [Lifecycle tracking → automation goal](project_reviewer_lifecycle_automation.md) — schema's manual timestamp/status fields designed for cron-driven reminders + state machine in Wave 2
 - [Accept/decline magic links](project_reviewer_accept_decline_links.md) — HMAC primitive shipped; build atop existing token, don't add new secret
-- [Reviewer Finder Dataverse-native entry path](project_reviewer_finder_dataverse_entry_path.md) — per-proposal picker + save-candidates SHIPPED; Postgres reviewer tables still load-bearing until migration ships
+- [Reviewer Finder Dataverse-native entry path](project_reviewer_finder_dataverse_entry_path.md) — fully Dataverse-native (W3–W6 cutovers complete 2026-05-12); Postgres reviewer tables are drain-only, scheduled for deletion ≥ 2026-07-01 per W6 plan
 - [Contact promotion verified working](project_contact_promotion_permission.md) — AppendTo on Contact (BU) granted 2026-05-01; send-emails fully links potentialreviewer → contact
 - [External reviewer file access architecture](project_external_reviewer_file_access.md) — SHIPPED 2026-05-03. Token primitive, /external/* endpoints, SharePoint upload, event-driven token expiry all live.
 - [Reviewer count invariant](project_reviewer_count_invariant.md) — need 3 confirmed reviewers per proposal; 5 wmkf_potentialreviewer slots are over-invite buffer

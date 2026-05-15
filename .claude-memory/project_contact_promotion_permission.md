@@ -10,4 +10,4 @@ The Reviewer Finder / Review Manager send-emails flow promotes recipients to CRM
 
 **How to apply:**
 - Promotion runs inline in `pages/api/review-manager/send-emails.js` (~line 247) only for the rows actually emailed in a given send and only when `_wmkf_contact_value` is null. Existing orphan rows from the pre-grant period will get linked the next time they're sent to (find-by-email reuses the orphan contact — no duplicates).
-- Tracked in `docs/PENDING_ADMIN_REQUESTS.md` Section 4 (now marked Done).
+- Tracked in `docs/archive/PENDING_ADMIN_REQUESTS.md` Section 4 (marked Done; doc archived).

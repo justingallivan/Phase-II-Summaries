@@ -14,7 +14,7 @@ Documents attached to requests are stored in **SharePoint**, not Dynamics.
 - Folder pattern: `{RequestNumber}_{GUIDNoHyphensUppercase}` (e.g., `1001289_EEC6F39CE7D4EF118EE96045BD082F70`)
 - `sharepointdocument` virtual entity does **NOT** work via Web API
 - **`lib/services/graph-service.js`** — Graph API service with SharePoint file listing/download, separate token cache from Dynamics
-- IT security response: `docs/IT_SECURITY_RESPONSE.md`
+- IT security response: `docs/archive/IT_SECURITY_RESPONSE.md`
 
 ## Permissions
 

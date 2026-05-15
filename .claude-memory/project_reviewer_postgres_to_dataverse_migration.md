@@ -19,7 +19,7 @@ Significant migration was already shipped before S136. Live in Dataverse:
 
 1. **1:1 model is correct, not a compromise.** Researchers are cycle-bounded transient candidate scratch (~25/proposal). Permanent reviewer identity lives in `contact` via promotion. No researcher pool table — Wave 1 doc's pool design is superseded.
 2. **No new role-tracking child entity.** Engaged `wmkf_potentialreviewer` rows ARE the per-contact reviewer history. The cleanup cron is what turns the table from "scratch" into "history."
-3. **Cleanup cron** runs weekly; only acts twice a year. Drops slots where `wmkf_meetingdate < today - 30 days` AND none of (`wmkf_contact`, `wmkf_emailsentat`, `wmkf_responsetype`, selected suggestion) populated. Cascade-drops 1:1 sidecar.
+3. **Cleanup cron deferred per Codex recommendation 2026-05-12.** Originally specified as a weekly cron acting twice a year on stale slot rows. Replaced with one-shot DELETE matching Wave 1 precedent — see `project_w6_table_drop_pending.md`. No cron exists or is planned; `lib/services/maintenance-service.js` contains no reviewer cleanup. Cascade-drop logic moves into the one-shot script when fired.
 4. **Postgres tables drain, mostly don't migrate.** Real numbers (verified 2026-05-06 via `scripts/db-row-counts.js`): publications=0 (dead writer), proposal_searches=0, researchers=331, researcher_keywords=1028, reviewer_suggestions=337, grant_cycles=13. All <12 months old. Only `grant_cycles` migrates (→ new `wmkf_appgrantcycle`); rest drain via cleanup cron + cycle close.
 5. **Naming follows live convention** `wmkf_app<name>` (no underscore), NOT the Wave 1 doc's proposed `wmkf_app_<name>`.
 
@@ -30,7 +30,7 @@ The visible payoff of finishing the migration. Not optional UX polish — it's t
 - **Match-on-discovery** (not just match-on-promote): during Reviewer Finder discovery, after enrichment, look up each candidate against `contact.emailaddress1` then `contact.wmkf_orcid`. Skip name+affiliation fuzzy at discovery time.
 - **History lookup** for matched candidates: reviewer history (`wmkf_potentialreviewer` filtered by `wmkf_contact eq <id>` AND engagement) + PI/co-PI history (`akoya_request._wmkf_projectleader_value` OR `_wmkf_copi1_value..5`).
 - **Badges on each candidate card**: 🔁 reviewed (recency-colored), 🚫 declined (separate signal), 💰 funded PI. Click → modal with full history.
-- **Batched lookup**: new endpoint `/api/reviewer-finder/contact-history` POST `{ contactIds }`. 25 candidates × 2 queries = use `$batch` or pre-fetch via `in (...)`.
+- **Lookup**: endpoint `/api/reviewer-finder/contact-history` shipped as **GET single-contact** (not POST batched as originally planned — see `pages/api/reviewer-finder/contact-history.js:4`). POST-batched shape was deferred to post-pilot per `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md:557`. UI currently calls once per candidate; batch-`$batch` enhancement is post-pilot work.
 - Justin's framing (S136): *"We don't want to wear out our welcome."* PD sees recency at a glance, decides whether to invite.
 
 ## Codex stress-test addressed (S136 evening)
@@ -63,7 +63,9 @@ Both nested under junction implementation:
 
 - UI cleanup pass on Reviewer Finder + Review Manager (stale `.eml` references, etc.) — its own session, not migration scope.
 
-## Live Postgres state probed S136 (`scripts/audit-postgres-state.js`)
+## Live Postgres state probed S136 (`scripts/audit-postgres-state.js`) — HISTORICAL SNAPSHOT
+
+**Note (2026-05-14):** the row counts and population stats below are S136 snapshot, pre-W3/W4/W5/W6 cutovers. Subsequent migrations (grant-cycle cutover W3, reviewer-suggestion reader cutover W4, `extract-summary` retirement W5, `researchers.js` retirement W6) changed live state significantly. Atlas `docs/atlas/postgres-grant-cycles.md` previously said Dataverse counterpart had 0 rows; current probe shows **10 rows in `wmkf_appgrantcycles`** with live reads via the W3 cutover path. Re-run `scripts/audit-postgres-state.js` before any further migration work.
 
 Plan was updated against live data, not assumptions. Key findings:
 

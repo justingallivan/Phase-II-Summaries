@@ -29,11 +29,11 @@ Session 109 (2026-04-24) reconciled six design docs + Wave 1 reality + Connor's 
 
 ### Phased delivery plan
 
-**Phase 0 — by May 1 2026 (Vercel-only, shared Dynamics core):**
-- Connor: add system_prompt Memo + Lookup on run → prompt (in progress)
-- Justin: author `phase-i.summary` row; build `executePrompt()` Vercel service function; refactor `summarize-v2.js` to ~30 lines
-- No PA flows. No context blocks. No cross-prompt cache alignment.
-- A few hundred proposals arrive 2026-05-01; Vercel path handles them with real wmkf_ai_run writes
+**Phase 0 — SHIPPED (historical, kept for context):**
+- Connor added `wmkf_ai_systemprompt` Memo + Lookup `wmkf_ai_prompt` on `wmkf_ai_run` (verified live).
+- `phase-i.summary` prompt row authored; `lib/services/execute-prompt.js` is the canonical Executor implementation; `pages/api/phase-i-dynamics/summarize-v2.js` imports it.
+- `wmkf_ai_prompts` has 11 rows live (audit 2026-05-14); `wmkf_ai_runs` has 329 rows.
+- No PA flows yet, no context blocks yet, no cross-prompt cache alignment yet — those are Phase 1/2.
 
 **Phase 1 — post-cycle:** Connor builds PA `ExecutePrompt` child flow + first parent flow. Same prompt rows. `prior_output` source kind. Echo-prompt test oracle verifies byte-identical output from both callers.
 
