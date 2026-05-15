@@ -79,6 +79,8 @@ Open Finder → iCloud Drive and find the project folder. Files still downloadin
 cd ~/Library/Mobile\ Documents/com\~apple\~CloudDocs/Programming/WMKF_Apps/Phase-II-Summaries
 ```
 
+**Note on iCloud paths:** On some Macs (especially with iCloud "Desktop & Documents" enabled), Finder surfaces iCloud Drive content under `~/Documents/...` instead of the `~/Library/Mobile Documents/com~apple~CloudDocs/...` form. If the `Mobile Documents` path doesn't exist, look in `~/Documents/Programming/...` — it's the same iCloud-synced content via a different mountpoint. Either path works; just be consistent about which one you `cd` into, since the project slug derived from `pwd` depends on it.
+
 ### Step 3: Reinstall dependencies
 
 iCloud syncs symlinks unreliably — `node_modules.nosync` may not have transferred cleanly. Do a fresh install:

@@ -17,7 +17,7 @@ Enabled on the CRM instance (77K+ docs, 154MB index).
 - Highlights use `{crmhit}` / `{/crmhit}` tags
 - Query auto-expansion: "fungi" → `(fungus* | fungi)^2 OR (fungi~1)`
 - Entity filter format: `entities: [{ name: 'akoya_request' }]`
-- **`wmkf_abstract`** field exists on `akoya_request` — full proposal abstract text
+- **`wmkf_abstract`** field exists on `akoya_request` — full proposal abstract text, not in original schema but now added
 
 ## Performance Optimizations Applied
 
