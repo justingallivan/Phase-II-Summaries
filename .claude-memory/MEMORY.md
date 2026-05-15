@@ -48,6 +48,7 @@
 - [Pilot Track 1 decisions 2026-05-13](project_intake_portal_pilot_decisions_2026-05-13.md) — 4 Track-1 items closed (1A membership Option A, 1B PA flows origin-agnostic, 1C reversed to PA-built packet, 1D narrowed to budget+roster)
 - [Reviewer migration plan locked S136](project_reviewer_postgres_to_dataverse_migration.md) — 1:1 model; most Postgres tables drain not migrate; auth doc `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`
 - [Dataverse creator privileges delegated](project_dataverse_creator_privileges.md) — Connor 2026-05-06 OK'd direct entity creation for pilot scope; maintain `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` audit catalog
+- [Slice-0 wmkf_role pre-deploy probe](project_slice0_role_probe.md) — use `scripts/probe-apprequestperson-role-data.js` NOT `dynamics-schema-diff.js`; CLEAR 2026-05-15 (5,561 rows, none in 100000002–4); re-run at deploy time
 
 ## Dynamics Explorer
 - [Multi-library + subfolder document listing shipped](project_dynamics_explorer_archive_libs.md) — `list_documents` and `search_documents` walk archives + nested folders via `lib/utils/sharepoint-buckets.js`
