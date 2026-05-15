@@ -45,7 +45,7 @@ Codex review found three top concerns + many smaller gaps. Plan rewritten end-to
 
 | Q | Resolution |
 |---|---|
-| Cleanup cron predicate | Locked as-is (8 signals across slot + suggestion: contact, emailsentat, responsetype, selected, ExternalTokenIssued, ProposalFirstAccessed, ReviewSharePointFolder, any review-form picklist) |
+| Cleanup predicate (S136-locked; cron later deferred — see item 3, now a one-shot DELETE) | 8 signals across slot + suggestion: contact, emailsentat, responsetype, selected, ExternalTokenIssued, ProposalFirstAccessed, ReviewSharePointFolder, any review-form picklist. The predicate logic is still authoritative; only the delivery mechanism changed (cron → one-shot DELETE in `project_w6_table_drop_pending.md`). |
 | Grace period | **14 days** (matches Wave 1 stability-clock pattern) |
 | `researchers.js` | **Retire**. Database tab loses meaning under 1:1 model. Replaced by net-new "Add candidate by hand" feature in My Candidates tab |
 | New suggestion fields | Add `wmkf_DeclineReason` (text) + `wmkf_ResponseReceivedAt` (datetime). Late/on-time + response-latency derive |
@@ -73,7 +73,7 @@ Plan was updated against live data, not assumptions. Key findings:
 - **`researchers` bibliometric data is 0% populated** for h_index, i10_index, total_citations. Infrastructure exists, was never wired up. Match-on-discovery history badges should not promise rich bibliometrics — we don't capture them. Engagement history (invited, accepted, reviewed) IS captured and IS the right basis.
 - **`grant_cycles` is sparser than schema suggests**: only 5 of 13 columns populated. JSON columns (`additional_attachments`, `custom_fields`), `review_deadline`, `review_template_blob_url`, `review_template_filename` all 0%. Migration spec simplified accordingly.
 - **`maintenance-service.js` blob-scanner concern partially evaporates** — only `reviewer_suggestions.summary_blob_url` (55%) is a real source today. Still rewrite for cutover, lower urgency.
-- **Cleanup cron is forward-looking only** — every existing `reviewer_suggestions` row has `selected=true`. The "transient unselected scratch" pattern doesn't appear in live data; cron's value is future code paths.
+- **Cleanup is forward-looking only** — every existing `reviewer_suggestions` row has `selected=true`. The "transient unselected scratch" pattern doesn't appear in live data; the cleanup predicate's value is future code paths (and it now runs as the deferred one-shot DELETE per item 3, not a cron).
 - All data 2026-01-03 → 2026-04-30; matches "<12 months old" claim.
 
 ## How to apply
