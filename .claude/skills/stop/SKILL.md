@@ -43,7 +43,15 @@ If there are uncommitted changes:
    - New scripts were added
    - Configuration or conventions changed
 
-4. **Update DEVELOPMENT_LOG.md** if needed - Append session notes if significant work was done
+4. **Update DEVELOPMENT_LOG.md** ONLY at a milestone — not every session. The dev log is a milestone log, not a session log. Add an entry only if this session shipped something a future Justin would search for: a production cutover, a new architecture, a strategic pivot, an incident, a deprecated capability removed. Most sessions are prep/exploration/refactor and DO NOT get an entry — those live in commit messages and SESSION_PROMPT.md.
+
+   When you do add an entry, follow the format already at the top of DEVELOPMENT_LOG.md:
+   - Header: `## <Month Year> — <Headline> (Session N)`
+   - Body sections: **Milestone:**, **Sessions:**, **Ship state:** (3-5 bullets), **Why it matters:**, **Pointers:** (docs + commit hashes)
+   - Target ~8-12 lines total. Tight.
+   - New entries go at the TOP (chronologically newest first), above the "Legacy chronological session log" divider.
+
+   If unsure whether something is milestone-worthy, default to NOT writing an entry. Skipping is the right answer most weeks.
 
 ## Step 4: Commit Documentation Updates
 

@@ -1,7 +1,7 @@
 ---
 name: start
 description: Start a new session by reviewing SESSION_PROMPT.md and CLAUDE.md
-allowed-tools: Read, Bash(git status, git fetch:*, git pull:*, git rev-parse:*, git log:*, npm run check:*)
+allowed-tools: Read, Bash(git status, git fetch:*, git pull:*, git rev-parse:*, git log:*, npm run check\:*)
 ---
 
 # Session Start
@@ -34,16 +34,20 @@ Before reading any files, ensure the repository is in sync:
    - These may be leftover from a previous session
    - Ask if they should be committed, stashed, or discarded
 
-## Step 2: Run CI Gates
+## Step 2: Run rubric-enforcement gates
 
-Run both CI gates before loading context:
+Before reading any session context, run the project's CI gates to surface rubric violations *before* doing other work. A red gate is a violation of the ground-truth rule (`docs/CLAUDE_REMEDIATION_PLAN.md` + CLAUDE.md "Ground-truth requirement"), regardless of which session caused it.
 
+If the project has these scripts (check `package.json`), run them:
 ```bash
-npm run check:atlas
-npm run check:api-routes
+npm run check:atlas             # Application State Atlas coverage
+npm run check:atlas:self-test   # Coverage-tool self-test
+npm run check:api-routes        # API route security matrix coverage
 ```
 
-If either is red, report it as the **first item** in the session summary — before git status, before the prior-session recap. A red gate means the ground-truth rubric is being violated right now and is a P0 blocker for any data-layer commits this session.
+Skip silently if any of those scripts isn't defined — not every project has them. Do not skip when they are defined.
+
+**If any gate is red:** report it as the FIRST thing in the Step 4 summary, before recapping the previous session. A red gate is a P0 blocker for any new feature work in the affected area (data layer for `check:atlas`, API routes for `check:api-routes`). Treat fixing it as a candidate first task, not a side-note.
 
 ## Step 3: Load Context
 
@@ -55,9 +59,20 @@ Read the following files to get context for this session:
 ## Step 4: Present Summary
 
 After completing the above:
-- Report any red CI gates (P0 — list first if applicable)
+- **First, report any red CI gate from Step 2** as a P0 blocker — name the gate, what it's complaining about, and propose fixing it before other work.
 - Report git sync status (up to date, pulled N commits, or any issues)
 - Summarize what was accomplished in the previous session
 - List the potential next steps from SESSION_PROMPT.md
 - Note any uncommitted changes that need attention
 - Ask what the user would like to work on this session
+
+## Step 5: Treat destructive carryover items as unverified
+
+When summarizing "next steps" or "pivot to" sections from SESSION_PROMPT.md, flag any item that says **drop**, **remove**, **retire**, **archive**, **delete**, or **deprecate** infrastructure as **unverified-until-checked**, NOT as a green-lit task. These items have inherited from prior sessions and may have gone stale.
+
+If the user asks to act on one, do a pre-flight verification first:
+1. Grep for live callers of the thing being removed.
+2. Read the most likely callers to confirm they're not load-bearing.
+3. If anything looks live, stop and report back before touching anything.
+
+This rule exists because on 2026-05-03 a "drop dormant Postgres reviewer tables" carryover item was about to be acted on; the tables were actually load-bearing for the live Reviewer Finder app. The rule does NOT apply to additive work.
