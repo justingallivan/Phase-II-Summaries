@@ -1,9 +1,9 @@
 # Atlas: `wmkf_apprequestperson` (Dataverse, WMKF junction entity)
 
-**Last verified:** 2026-05-08 via S139 deploy (`c8cbfe1`) + backfill (`8b9b287`)
-**Live row count:** 5,561 (4,488 PI + 1,073 Co-PI as of S139 backfill)
+**Last verified:** 2026-05-15 (S155) — live `wmkf_role` data re-probed (`scripts/probe-apprequestperson-role-data.js`); base entity 2026-05-08 via S139 deploy (`c8cbfe1`) + backfill (`8b9b287`)
+**Live row count:** 5,561 (4,488 PI + 1,073 Co-PI; re-confirmed 2026-05-15 — zero rows in `100000002`–`100000004`)
 **Entity set:** `wmkf_apprequestpersons`
-**Schema spec:** `lib/dataverse/schema/wave2/wmkf_app_request_person.json`
+**Schema spec:** `lib/dataverse/schema/wave2/wmkf_app_request_person.json`; slice-0 roster-field additions `lib/dataverse/schema/wave4-existing/wmkf_apprequestperson-roster-fields.json`; `wmkf_role` enum expansion `scripts/extend-apprequestperson-role-picklist.mjs` (NOT a wave spec — apply-dataverse-schema.js is creation-only, see `[[project_slice0_role_probe]]`)
 
 ## Source of truth
 
@@ -22,8 +22,13 @@ Lookups (PascalCase nav-property names — `@odata.bind` requires PascalCase, pl
 - `wmkf_Contact` / `_wmkf_contact_value` → `contact` (ApplicationRequired)
 
 Role + provenance:
-- `wmkf_role` (Picklist, ApplicationRequired): `100000000=PI`, `100000001=Co-PI`. Slice 0 (intake portal pilot) expands to 5 values — `100000002=Senior Personnel`, `100000003=Key Personnel`, `100000004=Other` reserved S150, not yet deployed. AO/Liaison are account-level (intake portal pilot scope) and not in this junction; reviewers stay on `wmkf_potentialreviewer`. **Source-filter invariant:** reviewer / co-PI consumers MUST filter `wmkf_role IN (100000000, 100000001)` at the OData level so the slice 0 expansion is non-breaking; intake-portal-roster consumers can read the full set.
+- `wmkf_role` (Picklist, ApplicationRequired): `100000000=PI`, `100000001=Co-PI`. Slice 0 (intake portal pilot) expands to 5 values — `100000002=Senior Personnel`, `100000003=Key Personnel`, `100000004=Other` (integers reserved S150; **spec'd S155 as `scripts/extend-apprequestperson-role-picklist.mjs`, NOT yet deployed** — target 2026-05-19). Live-data probe 2026-05-15 confirmed slots `100000002`–`100000004` unoccupied (point-in-time; re-run the probe at deploy). AO/Liaison are account-level (intake portal pilot scope) and not in this junction; reviewers stay on `wmkf_potentialreviewer`. **Source-filter invariant:** reviewer / co-PI consumers MUST filter `wmkf_role IN (100000000, 100000001)` at the OData level so the slice 0 expansion is non-breaking; intake-portal-roster consumers can read the full set.
 - `wmkf_authorposition` (Integer 0..5): provenance from legacy slot fields — `0` for PI (from `_wmkf_projectleader_value`), `1..5` for co-PI (from `_wmkf_copi1..5_value`). Optional; PA-flow-created rows may leave this null.
+
+Slice-0 roster fields (spec `lib/dataverse/schema/wave4-existing/wmkf_apprequestperson-roster-fields.json`; **spec'd S155, NOT yet deployed** — target 2026-05-19; all nullable):
+- `wmkf_effortpct` (Integer 0..100) — percent effort for this person on this request.
+- `wmkf_biosketchurl` (String 500) — reference URL to this person's biosketch attachment.
+- `wmkf_lineorder` (Integer 0..100000) — display order within the request's personnel list.
 
 Alternate key:
 - `wmkf_request_contact_role` covers `(wmkf_request, wmkf_contact, wmkf_role)` — authoritative dedupe; same person can hold both PI and Co-PI rows on the same request (rare but legal — distinct rows since role is part of the key).

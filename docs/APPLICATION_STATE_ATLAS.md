@@ -163,7 +163,14 @@ Useful summary of how Postgres ↔ Dataverse currently join (or will join post-c
 - **Vendor `contact` and `account` extension fields** not enumerated yet — needed for intake portal pilot work (AO/Liaison fields per `project_intake_portal_pilot_decisions_2026-05-06.md`).
 - **`wmkf_ai_prompt` and `wmkf_ai_run`**: per-entity page at [`atlas/dataverse-wmkf-ai-run-and-prompt.md`](atlas/dataverse-wmkf-ai-run-and-prompt.md). Both schemas now documented from live code (verified 2026-05-07 via `execute-prompt.js:193-200,535-553`).
 - **`wmkf_apprequestperson` junction** — DEPLOYED S139 (`c8cbfe1`); 5,561 rows backfilled (`8b9b287`). Atlas page: [`atlas/dataverse-wmkf-apprequestperson.md`](atlas/dataverse-wmkf-apprequestperson.md). Steady-state still pending Connor's PA dual-write flows.
-- **Intake portal entities** not yet created (per pilot scope) — `wmkf_portal_membership`, `wmkf_budgetline`, `wmkf_personnel`, `wmkf_priorsupport`, `wmkf_milestone`, plus `account` / `wmkf_potentialreviewer` extensions. Catalog goes in `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md`; once entities exist, link from this Atlas.
+- **Intake portal slice-0 entities** — **spec'd S155 (2026-05-15), NOT yet deployed** (deploy target 2026-05-19; gated on Connor's Item 6 maker-portal Tests 1+2). 2026-05-13 working names superseded by the 2026-05-14 schema review:
+  - `wmkf_proposalbudgetline` (was `wmkf_budgetline`; absorbs cost-share — `wmkf_proposalcostshare` withdrawn) — spec `lib/dataverse/schema/wave4/wmkf_proposalbudgetline.json`, page [`atlas/dataverse-wmkf-proposalbudgetline.md`](atlas/dataverse-wmkf-proposalbudgetline.md).
+  - `wmkf_portal_membership` — spec `lib/dataverse/schema/wave4/wmkf_portal_membership.json`, page [`atlas/dataverse-wmkf-portal-membership.md`](atlas/dataverse-wmkf-portal-membership.md).
+  - Roster (`wmkf_personnel`) **withdrawn** — folded into `wmkf_apprequestperson` (3 nullable fields + `wmkf_role` enum 2→5, spec'd S155).
+  - `akoya_request.wmkf_totalothersources` (Money) — spec `lib/dataverse/schema/wave4-existing/akoya_request-intake-aggregates.json`.
+  - `wmkf_priorsupport` / `wmkf_milestone` — deferred post-pilot (narrative/PDF for pilot).
+  - **Doc-vs-catalog gap (unresolved):** `contact.wmkf_portal_oid` + `akoya_request.wmkf_phaseiisubmittedat/by` appear in `INTAKE_PORTAL_DESIGN.md:621` next-steps but are absent from the authoritative 2026-05-14 catalog — needs Connor/owner reconciliation; not pulled into slice 0.
+  Authoritative catalog: `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` 2026-05-14 entry.
 
 ## Probe re-run
 

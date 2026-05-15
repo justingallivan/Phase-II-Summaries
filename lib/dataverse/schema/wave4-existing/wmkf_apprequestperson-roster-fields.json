@@ -1,0 +1,31 @@
+{
+  "name": "wmkf_apprequestperson-roster-fields",
+  "kind": "extensions-on-existing",
+  "entityLogicalName": "wmkf_apprequestperson",
+  "_comment": "Intake-portal slice 0. Roster lives in the existing wmkf_apprequestperson junction (S139, 5,561 rows) — the 2026-05-13 wmkf_proposalroster entity plan was WITHDRAWN (docs/INTAKE_PORTAL_SCHEMA_CHANGES.md:38-44). This spec adds ONLY the 3 new nullable fields. The wmkf_role enum 2->5 expansion is NOT here: schema-apply.js is creation-only (ensureAttribute short-circuits on existing attrs), so option-adds to an existing picklist are a silent no-op via a wave spec. That expansion ships as the standalone idempotent InsertOptionValue script scripts/extend-apprequestperson-role-picklist.mjs (mirrors scripts/extend-responsetype-picklist.mjs). Live-data probe 2026-05-15 confirmed slots 100000002-100000004 are unoccupied (re-run at deploy).",
+  "attributes": [
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_EffortPct",
+      "displayName": "Effort %",
+      "description": "Roster: percent effort for this person on this request. Whole-number 0-100. Nullable.",
+      "minValue": 0,
+      "maxValue": 100
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_BiosketchUrl",
+      "displayName": "Biosketch URL",
+      "description": "Roster: reference URL to this person's biosketch attachment. Nullable.",
+      "maxLength": 500
+    },
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_LineOrder",
+      "displayName": "Line Order",
+      "description": "Roster: display order of this person within the request's personnel list. Nullable.",
+      "minValue": 0,
+      "maxValue": 100000
+    }
+  ]
+}

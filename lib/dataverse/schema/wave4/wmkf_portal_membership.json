@@ -1,0 +1,129 @@
+{
+  "name": "wmkf_portal_membership",
+  "kind": "new-entity",
+  "schemaName": "wmkf_Portal_Membership",
+  "_comment": "Intake-portal slice 0. The ONE new pilot entity (contact <-> account join with approval state). NAMING: logical name is wmkf_portal_membership WITH internal underscores — a deliberate deviation from sibling wmkf_App* entities (wmkf_apprequestperson etc. have none). The underscore form is hardcoded across docs/INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN.md (incl. targetEntity:'wmkf_portal_membership' line 264) + design + reserved integers; deviating would break the build-plan contract. Connor reviews this one entity's shape before creation (project_dataverse_creator_privileges, summary-after). Shape locked: docs/INTAKE_PORTAL_DESIGN.md:98-117. ATLAS must record exact @odata.bind keys at deploy (wmkf_Contact / wmkf_Account / wmkf_RequestedBy / wmkf_ApprovedBy) per build plan line 80-85.",
+  "displayName": "Portal Membership",
+  "displayCollectionName": "Portal Memberships",
+  "description": "Applicant-portal institution-claim membership: a contact's claimed association with an account (institution), with self-service request + staff approval state. Alt key (contact, account) — one row per (person, institution) pair regardless of approval state; re-applying after rejection updates the existing row. Pending vs. revoked vs. rejected are distinct (wmkf_approvalstatus carries the distinction; statecode alone cannot). Admin approve/reject surface is a SEPARATE downstream slice (docs/INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN.md) — only the entity is slice 0.",
+  "ownershipType": "OrganizationOwned",
+  "primaryNameAttribute": {
+    "schemaName": "wmkf_Name",
+    "displayName": "Name",
+    "description": "Synthesized label: {contact} @ {account} ({role}). Picker/grid display only.",
+    "maxLength": 200,
+    "requiredLevel": "ApplicationRequired"
+  },
+  "attributes": [
+    {
+      "type": "Picklist",
+      "schemaName": "wmkf_Role",
+      "displayName": "Role",
+      "description": "Submitter grants institution-wide submit authority; contributor is read/assist. Request-level allowed-submitters is a Phase 1 follow-up, not pilot.",
+      "requiredLevel": "ApplicationRequired",
+      "options": [
+        { "value": 100000000, "label": "Submitter" },
+        { "value": 100000001, "label": "Contributor" }
+      ]
+    },
+    {
+      "type": "Boolean",
+      "schemaName": "wmkf_IsPrimary",
+      "displayName": "Is Primary",
+      "description": "Flags the official-communications contact for this (contact, account) pair.",
+      "default": false,
+      "trueLabel": "Yes",
+      "falseLabel": "No"
+    },
+    {
+      "type": "Picklist",
+      "schemaName": "wmkf_ApprovalStatus",
+      "displayName": "Approval Status",
+      "description": "Lifecycle: requested -> approved | rejected | revoked. approved + statecode active = live. Drives the admin queue (waiting-on-approval vs. cut-off).",
+      "requiredLevel": "ApplicationRequired",
+      "options": [
+        { "value": 100000000, "label": "Requested" },
+        { "value": 100000001, "label": "Approved" },
+        { "value": 100000002, "label": "Rejected" },
+        { "value": 100000003, "label": "Revoked" }
+      ]
+    },
+    {
+      "type": "Picklist",
+      "schemaName": "wmkf_PriorDecisionStatus",
+      "displayName": "Prior Decision Status",
+      "description": "Slice-0 addition (docs/INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN.md s2). Nullable — absence means no prior decision (no 4th value). On re-application the applicant slice copies the current wmkf_approvalstatus terminal value here before flipping back to requested; admin GET reads it for priorDecision.status. Integer values reserved 2026-05-14 (S150) — DO NOT renumber.",
+      "options": [
+        { "value": 100000000, "label": "Rejected" },
+        { "value": 100000001, "label": "Revoked" },
+        { "value": 100000002, "label": "Approved" }
+      ]
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_RequestedAt",
+      "displayName": "Requested At",
+      "description": "When the membership was requested (self-service or staff-initiated).",
+      "format": "DateAndTime"
+    },
+    {
+      "type": "DateTime",
+      "schemaName": "wmkf_ApprovedAt",
+      "displayName": "Approved At",
+      "description": "When staff approved. Null until approved.",
+      "format": "DateAndTime"
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_RejectionReason",
+      "displayName": "Rejection Reason",
+      "description": "Optional staff note, surfaced to the applicant on rejection.",
+      "maxLength": 850
+    }
+  ],
+  "relationships": [
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_portal_membership_contact",
+      "referencedEntity": "contact",
+      "lookupSchemaName": "wmkf_Contact",
+      "lookupDisplayName": "Contact",
+      "lookupDescription": "The person claiming the institution association.",
+      "required": "ApplicationRequired"
+    },
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_portal_membership_account",
+      "referencedEntity": "account",
+      "lookupSchemaName": "wmkf_Account",
+      "lookupDisplayName": "Account",
+      "lookupDescription": "The institution (account) being claimed.",
+      "required": "ApplicationRequired"
+    },
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_portal_membership_requestedby",
+      "referencedEntity": "contact",
+      "lookupSchemaName": "wmkf_RequestedBy",
+      "lookupDisplayName": "Requested By",
+      "lookupDescription": "Contact who initiated the request (self-service applicant, or staff acting on their behalf). Optional.",
+      "required": "None"
+    },
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_portal_membership_approvedby",
+      "referencedEntity": "systemuser",
+      "lookupSchemaName": "wmkf_ApprovedBy",
+      "lookupDisplayName": "Approved By",
+      "lookupDescription": "Staff systemuser who approved/rejected. Null until a decision is made.",
+      "required": "None"
+    }
+  ],
+  "alternateKeys": [
+    {
+      "schemaName": "wmkf_contact_account",
+      "displayName": "Contact + Account",
+      "keyAttributes": ["wmkf_contact", "wmkf_account"]
+    }
+  ]
+}

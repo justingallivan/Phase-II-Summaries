@@ -1,0 +1,110 @@
+{
+  "name": "wmkf_proposalbudgetline",
+  "kind": "new-entity",
+  "schemaName": "wmkf_ProposalBudgetLine",
+  "displayName": "Proposal Budget Line",
+  "displayCollectionName": "Proposal Budget Lines",
+  "description": "Intake-portal slice 0. Per-year, per-category budget rows drained from the applicant intake portal, child of akoya_request (parental, cascade delete). Cost-share rows live here too via wmkf_category 100000006-100000008 — WMKF-spend aggregate queries must filter wmkf_category NOT IN (100000006,100000007,100000008). Working name (wmkf_proposalbudgetline vs wmkf_budgetline) pending Connor naming review per docs/INTAKE_PORTAL_SCHEMA_CHANGES.md. Authoritative spec: docs/BUDGET_FORM_SPEC.md v3 + docs/INTAKE_PORTAL_SCHEMA_CHANGES.md 2026-05-14 entry.",
+  "ownershipType": "OrganizationOwned",
+  "primaryNameAttribute": {
+    "schemaName": "wmkf_Name",
+    "displayName": "Name",
+    "description": "Synthesized display string: Y{year} — {category}: {description}. PA cover-doc builder may regenerate its own grouping strings; this is the picker/grid label.",
+    "maxLength": 160,
+    "requiredLevel": "ApplicationRequired"
+  },
+  "attributes": [
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_Year",
+      "displayName": "Year",
+      "description": "Program year this line belongs to (1-based). Integer not Choice — forward-compatible across program lengths.",
+      "requiredLevel": "ApplicationRequired",
+      "minValue": 1,
+      "maxValue": 10
+    },
+    {
+      "type": "Picklist",
+      "schemaName": "wmkf_Category",
+      "displayName": "Category",
+      "description": "Budget category. 100000000-100000005 are WMKF-spend (Indirect reserved, always $0). 100000006-100000008 are cost-share — excluded from the WMKF-requested aggregate, summed into akoya_request.wmkf_totalothersources. Integer values reserved 2026-05-14 (S150); DO NOT renumber after deploy — Connor PAs / drain guards / packet builder hardcode these.",
+      "requiredLevel": "ApplicationRequired",
+      "options": [
+        { "value": 100000000, "label": "Personnel" },
+        { "value": 100000001, "label": "Equipment" },
+        { "value": 100000002, "label": "Supplies" },
+        { "value": 100000003, "label": "Travel" },
+        { "value": 100000004, "label": "Other Direct" },
+        { "value": 100000005, "label": "Indirect" },
+        { "value": 100000006, "label": "Waived Indirect" },
+        { "value": 100000007, "label": "Waived Tuition" },
+        { "value": 100000008, "label": "Other Cost Share" }
+      ]
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_Description",
+      "displayName": "Description",
+      "description": "Free-text line-item description.",
+      "maxLength": 500
+    },
+    {
+      "type": "Money",
+      "schemaName": "wmkf_Amount",
+      "displayName": "Amount",
+      "description": "USD amount for this line. One value per row (the row IS one year). Negative values rejected by the drain server-side before createRecord — Dataverse Money MinValue is set to 0 here but the drain is the authoritative guard (docs/INTAKE_PORTAL_SCHEMA_CHANGES.md 2026-05-14 'Drain server-side validation').",
+      "minValue": 0,
+      "maxValue": 1000000000
+    },
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_LineOrder",
+      "displayName": "Line Order",
+      "description": "Display order within (request, year, category).",
+      "minValue": 0,
+      "maxValue": 100000
+    },
+    {
+      "type": "String",
+      "schemaName": "wmkf_RoleCode",
+      "displayName": "Role Code",
+      "description": "Fixed-row discriminator for catalog rows only (principal-investigators, consumable-supplies, facilities-overhead); null for dynamic rows.",
+      "maxLength": 60
+    },
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_Headcount",
+      "displayName": "Headcount",
+      "description": "Personnel-only (wmkf_category = 100000000 Personnel); null otherwise.",
+      "minValue": 0,
+      "maxValue": 100000
+    },
+    {
+      "type": "Integer",
+      "schemaName": "wmkf_EffortPct",
+      "displayName": "Effort %",
+      "description": "Personnel-only (wmkf_category = 100000000 Personnel); null otherwise. Whole-number percent 0-100.",
+      "minValue": 0,
+      "maxValue": 100
+    }
+  ],
+  "relationships": [
+    {
+      "kind": "N:1",
+      "schemaName": "wmkf_proposalbudgetline_request",
+      "referencedEntity": "akoya_request",
+      "lookupSchemaName": "wmkf_Request",
+      "lookupDisplayName": "Request",
+      "lookupDescription": "The proposal this budget line belongs to. Parental: deleting the request cascades delete to its budget lines.",
+      "required": "ApplicationRequired",
+      "cascade": {
+        "Assign": "NoCascade",
+        "Delete": "Cascade",
+        "Merge": "NoCascade",
+        "Reparent": "NoCascade",
+        "Share": "NoCascade",
+        "Unshare": "NoCascade"
+      }
+    }
+  ]
+}
