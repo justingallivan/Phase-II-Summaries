@@ -27,7 +27,7 @@
       "type": "Picklist",
       "schemaName": "wmkf_Category",
       "displayName": "Category",
-      "description": "Budget category. 100000000-100000005 are WMKF-spend (Indirect reserved, always $0). 100000006-100000008 are cost-share — excluded from the WMKF-requested aggregate, summed into akoya_request.wmkf_totalothersources. Integer values reserved 2026-05-14 (S150); DO NOT renumber after deploy — Connor PAs / drain guards / packet builder hardcode these.",
+      "description": "Budget category. 100000000-100000005 are WMKF-spend (Indirect reserved, always $0). 100000006-100000008 are cost-share — excluded from the WMKF-requested aggregate, summed into akoya_request.wmkf_totalothersources. Integer values reserved 2026-05-14 (S150); DO NOT renumber after deploy — Connor PAs / drain guards / packet builder hardcode these. LABELS match docs/INTAKE_PORTAL_SCHEMA_CHANGES.md:73-81 verbatim, incl. the cost-share camelCase tokens (WaivedIndirect/WaivedTuition/OtherCostShare) which are inconsistent with the spaced WMKF-spend labels (e.g. 'Other Direct') — that label-form inconsistency is a Connor review item before --execute; the integers are authoritative regardless of label.",
       "requiredLevel": "ApplicationRequired",
       "options": [
         { "value": 100000000, "label": "Personnel" },
@@ -36,9 +36,9 @@
         { "value": 100000003, "label": "Travel" },
         { "value": 100000004, "label": "Other Direct" },
         { "value": 100000005, "label": "Indirect" },
-        { "value": 100000006, "label": "Waived Indirect" },
-        { "value": 100000007, "label": "Waived Tuition" },
-        { "value": 100000008, "label": "Other Cost Share" }
+        { "value": 100000006, "label": "WaivedIndirect" },
+        { "value": 100000007, "label": "WaivedTuition" },
+        { "value": 100000008, "label": "OtherCostShare" }
       ]
     },
     {

@@ -39,20 +39,20 @@
       "type": "Picklist",
       "schemaName": "wmkf_ApprovalStatus",
       "displayName": "Approval Status",
-      "description": "Lifecycle: requested -> approved | rejected | revoked. approved + statecode active = live. Drives the admin queue (waiting-on-approval vs. cut-off).",
+      "description": "Lifecycle: requested -> approved | rejected | revoked. approved + statecode active = live. Drives the admin queue (waiting-on-approval vs. cut-off). INTEGER ALIGNMENT (deliberate, do not 'normalize'): the three terminal states share the SAME integers as wmkf_priordecisionstatus (Rejected=100000000, Revoked=100000001, Approved=100000002) so the build-plan s9 re-application copy (current terminal wmkf_approvalstatus -> wmkf_priordecisionstatus) is correct whether done by label OR by raw integer. Requested=100000003 has no prior-decision equivalent (you only snapshot terminal states) so it takes the leftover slot.",
       "requiredLevel": "ApplicationRequired",
       "options": [
-        { "value": 100000000, "label": "Requested" },
-        { "value": 100000001, "label": "Approved" },
-        { "value": 100000002, "label": "Rejected" },
-        { "value": 100000003, "label": "Revoked" }
+        { "value": 100000000, "label": "Rejected" },
+        { "value": 100000001, "label": "Revoked" },
+        { "value": 100000002, "label": "Approved" },
+        { "value": 100000003, "label": "Requested" }
       ]
     },
     {
       "type": "Picklist",
       "schemaName": "wmkf_PriorDecisionStatus",
       "displayName": "Prior Decision Status",
-      "description": "Slice-0 addition (docs/INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN.md s2). Nullable — absence means no prior decision (no 4th value). On re-application the applicant slice copies the current wmkf_approvalstatus terminal value here before flipping back to requested; admin GET reads it for priorDecision.status. Integer values reserved 2026-05-14 (S150) — DO NOT renumber.",
+      "description": "Slice-0 addition (docs/INTAKE_ADMIN_MEMBERSHIPS_BUILD_PLAN.md s2). Nullable — absence means no prior decision (no 4th value). On re-application the applicant slice copies the current terminal wmkf_approvalstatus value here before flipping back to Requested; admin GET reads it for priorDecision.status. Integer values reserved 2026-05-14 (S150) — DO NOT renumber (third-party consumers hardcode). wmkf_approvalstatus's terminal states are deliberately aligned to these same integers so the copy is correct by integer too — but the safest write is still map-by-label.",
       "options": [
         { "value": 100000000, "label": "Rejected" },
         { "value": 100000001, "label": "Revoked" },

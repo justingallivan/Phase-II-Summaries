@@ -27,7 +27,7 @@ Lookups (PascalCase nav-property for `@odata.bind`; lowercase logical for plain 
 State:
 - `wmkf_role` (Picklist, ApplicationRequired): `100000000=Submitter`, `100000001=Contributor`. Submitter = institution-wide submit authority (request-level allowed-submitters is a Phase 1 follow-up).
 - `wmkf_isprimary` (Boolean, default false) — flags the official-communications contact for the pair.
-- `wmkf_approvalstatus` (Picklist, ApplicationRequired): `100000000=Requested`, `100000001=Approved`, `100000002=Rejected`, `100000003=Revoked`. Approved + `statecode` active = live.
+- `wmkf_approvalstatus` (Picklist, ApplicationRequired): `100000000=Rejected`, `100000001=Revoked`, `100000002=Approved`, `100000003=Requested`. Approved + `statecode` active = live. **Integers deliberately aligned to `wmkf_priordecisionstatus`** (terminal states share the same values) so the build-plan §9 re-application copy is correct by label *or* integer; `Requested` (no prior-decision equivalent) takes the leftover slot. Do not "normalize" the ordering.
 - `wmkf_priordecisionstatus` (Picklist, **nullable** — absence = no prior decision; no 4th value): `100000000=Rejected`, `100000001=Revoked`, `100000002=Approved`. Integers reserved 2026-05-14 (S150), do not renumber. Slice-0 addition per build plan §2 — applicant slice copies the current terminal `wmkf_approvalstatus` here before flipping back to Requested on re-application.
 - `wmkf_requestedat` (DateTime) — when requested.
 - `wmkf_approvedat` (DateTime) — when approved; null until approved.

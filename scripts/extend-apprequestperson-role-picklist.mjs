@@ -65,7 +65,17 @@ for (const o of before) console.log(`  ${o.Value}: ${o.Label?.UserLocalizedLabel
 
 let inserted = 0;
 for (const opt of NEW_OPTIONS) {
-  if (before.find((o) => o.Value === opt.value)) {
+  const existing = before.find((o) => o.Value === opt.value);
+  if (existing) {
+    const existingLabel = existing.Label?.UserLocalizedLabel?.Label;
+    if (existingLabel !== opt.label) {
+      console.error(
+        `\n✗ Option ${opt.value} already exists but with label "${existingLabel}", ` +
+        `expected "${opt.label}". InsertOptionValue cannot fix a label; investigate ` +
+        `(manual maker-portal edit?) before proceeding. Aborting.`,
+      );
+      process.exit(1);
+    }
     console.log(`\nOption ${opt.value} (${opt.label}) already exists. Skip.`);
     continue;
   }
@@ -102,8 +112,19 @@ const after = await currentOptions();
 console.log('\nAfter:');
 for (const o of after) console.log(`  ${o.Value}: ${o.Label?.UserLocalizedLabel?.Label}`);
 
-const allPresent = NEW_OPTIONS.every((opt) => after.find((o) => o.Value === opt.value));
-console.log(allPresent
-  ? `\n✓ All 3 new options present (${inserted} inserted this run; rest pre-existing).`
-  : '\n✗ verify failed — not all expected options present');
-process.exit(allPresent ? 0 : 1);
+// Verify each expected option is present AND carries the exact expected label
+// (a value-only check would pass even if a prior run/manual edit set the wrong label).
+const mismatches = [];
+for (const opt of NEW_OPTIONS) {
+  const found = after.find((o) => o.Value === opt.value);
+  if (!found) {
+    mismatches.push(`missing ${opt.value} (${opt.label})`);
+  } else {
+    const label = found.Label?.UserLocalizedLabel?.Label;
+    if (label !== opt.label) mismatches.push(`${opt.value} label "${label}" != expected "${opt.label}"`);
+  }
+}
+console.log(mismatches.length === 0
+  ? `\n✓ All 3 new options present with correct labels (${inserted} inserted this run; rest pre-existing).`
+  : `\n✗ verify failed — ${mismatches.join('; ')}`);
+process.exit(mismatches.length === 0 ? 0 : 1);
