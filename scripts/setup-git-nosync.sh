@@ -39,7 +39,7 @@ if [ ! -d .git ]; then
     echo "ERROR: No .git directory found."
     echo ""
     echo "If this is a fresh Mac, clone the repo first:"
-    echo "  git clone https://github.com/justingallivan/Phase-II-Summaries.git"
+    echo "  git clone https://github.com/justingallivan/wmkf-research-apps.git"
     echo ""
     echo "Then run this script again."
     exit 1

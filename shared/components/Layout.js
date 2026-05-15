@@ -289,7 +289,7 @@ export default function Layout({
               </Link>
               <span className="text-gray-300">•</span>
               <a
-                href="https://github.com/justingallivan/Phase-II-Summaries"
+                href="https://github.com/justingallivan/wmkf-research-apps"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-gray-500 hover:text-gray-700 transition-colors duration-200"
