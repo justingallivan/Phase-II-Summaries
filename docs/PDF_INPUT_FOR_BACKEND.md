@@ -172,7 +172,6 @@ All measurements above came from these scripts:
 | `scripts/find-2025-phase-i.js` | Discover real Phase I candidates around the May 1, 2025 deadline |
 | `scripts/list-all-pdfs-for-candidates.js` | Enumerate PDFs per candidate to identify true Phase I file naming |
 | `scripts/compare-phase-i-v1-v2.js` | v1 vs v2 prompt comparison harness (8 May 2025 proposals) |
-| `scripts/test-suny-pdf-native.js` | One-shot text-vs-native-PDF cost comparison |
 | `scripts/test-suny-pdf-cache.js` | Two-call PDF caching verification |
 | `scripts/inspect-suny-pdf.js` | Pull a SharePoint PDF locally for inspection |
 
