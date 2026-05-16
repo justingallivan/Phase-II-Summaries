@@ -146,5 +146,40 @@ async function distro(token, field, cohortFilter) {
       console.log(`    undecided rows NOT covered by this value: ${notValNoDec} (of ${natTot - natDecided} undecided) ← want ~0 for a complete predicate`);
     }
   }
+  // Status-CLASS × decisiondate (NATIVE) — computes the terminal-decided-
+  // without-date figure exactly (no subtraction inference) and tests whether
+  // decisiondate behaves like an "approval stamp" (high for approved, low for
+  // declined) or a general decision stamp (high for both).
+  console.log('\n══ akoya_requeststatus CLASS × decisiondate (NATIVE) — exact, no inference ══');
+  const CLASS = [
+    ['PENDING (in-flight)',        /pending/i],
+    ['APPROVED',                   /^approved$|proposal invited/i],
+    ['DECLINED/INELIGIBLE/DENIED', /declin|ineligible|denied|not invited/i],
+    ['CONCEPT DONE',               /concept done/i],
+    ['CLOSED',                     /^closed$/i],
+    ['WITHDRAWN/RESCINDED',        /withdraw|rescind/i],
+    ['ACTIVE (ambiguous)',         /^active$/i],
+  ];
+  const dN = await distro(token, 'akoya_requeststatus', NAT); // string field
+  const classified = new Set();
+  let terminalDecidedNoDate = 0;
+  for (const [label, rx] of CLASS) {
+    const vals = (dN || []).filter(r => r.v != null && rx.test(String(r.v)));
+    let n = 0, withDate = 0;
+    for (const r of vals) {
+      classified.add(r.v);
+      const vc = `<condition attribute="akoya_requeststatus" operator="eq" value="${r.v}"/>`;
+      const tot = await aggCount(token, NAT + vc);
+      const wd = await aggCount(token, `${NAT}${vc}<condition attribute="akoya_decisiondate" operator="not-null"/>`);
+      n += tot; withDate += wd;
+    }
+    if (!n) continue;
+    const noDate = n - withDate;
+    if (/DECLINED|CONCEPT DONE|CLOSED/.test(label)) terminalDecidedNoDate += noDate;
+    console.log(`  ${label.padEnd(28)} n=${String(n).padStart(4)}  withDate ${String(withDate).padStart(4)} (${(withDate / n * 100).toFixed(0)}%)  noDate ${String(noDate).padStart(4)} (${(noDate / n * 100).toFixed(0)}%)`);
+  }
+  console.log(`  → terminal-decided (declined/ineligible/concept-done/closed) WITHOUT a decision date: ${terminalDecidedNoDate} (EXACT, summed — not inferred)`);
+  console.log('  → if APPROVED withDate ≫ DECLINED withDate, decisiondate ≈ "approval stamp"; if both high, it is a general decision stamp.');
+
   console.log('\nDone (read-only status-predicate probe).');
 })().catch(e => { console.error('PROBE ERROR:', e.message); process.exit(1); });
