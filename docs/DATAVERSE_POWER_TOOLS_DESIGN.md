@@ -1,6 +1,6 @@
 # Dataverse Power Tools — Scoping & Design
 
-**Status (2026-05-15, Session 156):** Track A and Track B designs **converged at the scoping level**. This is NOT yet a build plan. Per the project ground-truth rule, implementation is gated on explicit follow-ups recorded under "Gated next steps." This doc has been reconciled against an independent Codex source review (see "Codex review reconciliation"). **Read "Living taxonomy — design invariant" (Track B section) before treating any value/count in this doc as spec — taxonomy snapshots here are dated evidence, not the operating set; Track B reads taxonomies live.**
+**Status (2026-05-15, Session 156):** Track A and Track B designs **converged at the scoping level**. This is NOT yet a build plan. Per the project ground-truth rule, implementation is gated on explicit follow-ups recorded under "Gated next steps." This doc has been reconciled against an independent Codex source review (see "Codex review reconciliation"). **Read the two Track B design invariants — "Living taxonomy" (snapshots are dated evidence, not spec; read taxonomies live) and "Process is program-scoped" (process findings are per-program, predominantly research; never whole-entity) — before treating any value/count or process claim in this doc as general.**
 
 **Origin:** Dynamics Explorer (`pages/api/dynamics-explorer/chat.js`) serves the "most users, simple question" case well. Two gaps it structurally cannot fill remain, currently absorbed by the AkoyaGo model-driven app (functional but poor UX):
 
@@ -100,6 +100,14 @@ The reference taxonomies (`akoya_program`, `wmkf_type`, `akoya_requeststatus`, �
 2. **Three layers, different shelf lives.** *Invariants* (2023-12-03 cutover; `overriddencreatedon` null; `wmkf_type` Lookup ≠ `wmkf_request_type` Picklist; backfill artifact) — durable fact. *Patterns / hazards / methods* (giving-mode classes; duplicate-name → key-by-GUID; era-scoped programs; `$count` caps at 5000; decided-state = status class-map) — durable, and the real intellectual product. *Value/count snapshots* (the 24-program list, exact counts, n=2,988) — **ephemeral, dated evidence only; never spec, never hardcoded.**
 3. **Probe policy.** Run a probe only with a *structural hypothesis* (era-scoped? duplicates? operational buckets? nullable?), not to enumerate a list. Deliverable = the pattern/hazard/invariant. The committed probe is the durable, re-runnable artifact; its captured output is just its last run.
 4. **The durable human artifact is a staff orientation guide, not a lookup table.** Findings are recorded to stop staff (and future sessions) re-discovering the database from scratch — "what is this field called, where does X live, why is Y shaped this way." Synthesis target: a human-readable guide built *after* the puzzle probing, not a programmatic enum.
+
+### Process is program-scoped — design invariant (S157, user-underscored)
+
+**Every program runs its own process** — research, Southern California, discretionary, and the others each have distinct application, review, advancement, documentation, and decline practices. This is not "research + a couple exceptions"; it is the default. Therefore:
+
+1. **Whole-entity analysis of any *process-dependent* attribute is invalid by default** — decline-reason capture, decision flow, documentation practice, phase semantics, requested-amount applicability, etc. all differ by program. A cross-program aggregate silently averages incompatible processes (the "plausible wrong answer").
+2. **Every S157 process finding is program-scoped, predominantly *research*, unless stated otherwise.** Specifically: the decline structured→free-text relocation + stage findings = **research**; the invited/no-requested-amount giving mode (Puzzle 1) = the **discretionary** process; SoCal has its own decline field (`wmkf_socalreasonsfordecline2`) and process. None generalize to the entity.
+3. **Track B must segment process-dependent output by program** (program axis per the discriminator hierarchy: `wmkf_type` coarse → `wmkf_grantprogram`/`akoya_programid` finer), and **fail loud** on a program it has no process annotation for — same discipline as the Living-taxonomy invariant. The semantic layer carries *per-program* process rules, not one global one.
 
 ### Product thesis
 
