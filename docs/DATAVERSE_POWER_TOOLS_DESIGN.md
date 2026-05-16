@@ -1,6 +1,6 @@
 # Dataverse Power Tools — Scoping & Design
 
-**Status (2026-05-15, Session 156):** Track A and Track B designs **converged at the scoping level**. This is NOT yet a build plan. Per the project ground-truth rule, implementation is gated on explicit follow-ups recorded under "Gated next steps." This doc has been reconciled against an independent Codex source review (see "Codex review reconciliation").
+**Status (2026-05-15, Session 156):** Track A and Track B designs **converged at the scoping level**. This is NOT yet a build plan. Per the project ground-truth rule, implementation is gated on explicit follow-ups recorded under "Gated next steps." This doc has been reconciled against an independent Codex source review (see "Codex review reconciliation"). **Read "Living taxonomy — design invariant" (Track B section) before treating any value/count in this doc as spec — taxonomy snapshots here are dated evidence, not the operating set; Track B reads taxonomies live.**
 
 **Origin:** Dynamics Explorer (`pages/api/dynamics-explorer/chat.js`) serves the "most users, simple question" case well. Two gaps it structurally cannot fill remain, currently absorbed by the AkoyaGo model-driven app (functional but poor UX):
 
@@ -91,6 +91,15 @@ Read-only. Lower write-risk, but **higher correctness-risk** than first assumed.
 Users are PhDs / lawyers / MBAs who take ownership of their analyses ("*I* performed this analysis") and have working BS detectors. These are not banking ledgers; nobody expects old records to balance or be complete. **The dominant risk is therefore NOT naïve trust of an obviously-wrong number** (their judgment + ownership culture catch "$2M to Stanford over 20 years"). **It is the *plausible* wrong number that passes the sniff test** — "52 research grants to UW since 2015" when the truth is 57 because 5 were misclassified or used a SoCal naming variant. Nobody gut-checks 52 vs 57.
 
 **Consequence:** concentrate the correctness budget on the error class human judgment *cannot* backstop — **composition / era / classification disclosure** — and *drop* canon-grade defensive armor (sentinel-everywhere paranoia, "spreadsheet becomes truth" hardening). Provenance is reframed from a defensive warning label into a **reproducible methods section** so the accountable analyst can stand behind and reproduce the number.
+
+### Living taxonomy — design invariant (S157, user-agreed)
+
+The reference taxonomies (`akoya_program`, `wmkf_type`, `akoya_requeststatus`, …) are **living** — `akoya_program` grew 14 → 24 over 2.5 years and is still growing; values get added, deactivated, duplicated. Therefore:
+
+1. **Read live, fail loud.** Track B enumerates taxonomies from Dataverse **at query time**, never from a hardcoded list. When it meets a value not in its semantic-annotation map (a new program/status/type), it **surfaces it loudly** ("N rows in program 'X' — unclassified by this tool, included and flagged") — never silently drops or rebuckets. This pushes currency into the runtime, so no documentation cadence or drift-monitor is required (a drift monitor remains a *separate, optional, costed* build, not a default).
+2. **Three layers, different shelf lives.** *Invariants* (2023-12-03 cutover; `overriddencreatedon` null; `wmkf_type` Lookup ≠ `wmkf_request_type` Picklist; backfill artifact) — durable fact. *Patterns / hazards / methods* (giving-mode classes; duplicate-name → key-by-GUID; era-scoped programs; `$count` caps at 5000; decided-state = status class-map) — durable, and the real intellectual product. *Value/count snapshots* (the 24-program list, exact counts, n=2,988) — **ephemeral, dated evidence only; never spec, never hardcoded.**
+3. **Probe policy.** Run a probe only with a *structural hypothesis* (era-scoped? duplicates? operational buckets? nullable?), not to enumerate a list. Deliverable = the pattern/hazard/invariant. The committed probe is the durable, re-runnable artifact; its captured output is just its last run.
+4. **The durable human artifact is a staff orientation guide, not a lookup table.** Findings are recorded to stop staff (and future sessions) re-discovering the database from scratch — "what is this field called, where does X live, why is Y shaped this way." Synthesis target: a human-readable guide built *after* the puzzle probing, not a programmatic enum.
 
 ### Product thesis
 

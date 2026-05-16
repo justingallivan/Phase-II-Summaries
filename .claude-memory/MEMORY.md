@@ -87,6 +87,7 @@
 - [Tone calibration](feedback_review_panel_tone.md) — CSO feedback: don't mimic conservative study sections; balance critique with upside
 - [API Credit Monitoring](project_api_credit_monitoring.md) — admin dashboard widget + low-balance email alerts
 - [Dataverse Power Tools](project_dataverse_power_tools.md) — two separate apps (Find&fix edits + Bulk export) for the gaps Dynamics Explorer can't fill; design converged + Codex-reconciled at `docs/DATAVERSE_POWER_TOOLS_DESIGN.md`; Track B blocked on 3 evidence tasks, Track A write path on 3 policy decisions
+- [Living-taxonomy principle](project_living_taxonomy_principle.md) — taxonomies are living; read-live/fail-loud at runtime, no doc cadence; durable record = invariants/patterns/hazards + a staff orientation guide, NOT hardcoded value lists; probe only with a structural hypothesis
 
 ## Prompt + Execution
 - [Prompt storage strategy + Executor Contract](project_prompt_storage_strategy.md) — Path B (declarative wrappers). Spec: `docs/EXECUTOR_CONTRACT.md`. Table: `wmkf_ai_prompt`. Implementation: `lib/services/execute-prompt.js`.
