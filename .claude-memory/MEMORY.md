@@ -85,6 +85,7 @@
 - [Virtual Review Panel](project_virtual_review_panel.md) — Multi-LLM panel (Claude, GPT, Gemini, Perplexity); app key `virtual-review-panel`; stays Postgres permanently
 - [Tone calibration](feedback_review_panel_tone.md) — CSO feedback: don't mimic conservative study sections; balance critique with upside
 - [API Credit Monitoring](project_api_credit_monitoring.md) — admin dashboard widget + low-balance email alerts
+- [Dataverse Power Tools](project_dataverse_power_tools.md) — two separate apps (Find&fix edits + Bulk export) for the gaps Dynamics Explorer can't fill; design at `docs/DATAVERSE_POWER_TOOLS_DESIGN.md`; grounding probe pending before build plan
 
 ## Prompt + Execution
 - [Prompt storage strategy + Executor Contract](project_prompt_storage_strategy.md) — Path B (declarative wrappers). Spec: `docs/EXECUTOR_CONTRACT.md`. Table: `wmkf_ai_prompt`. Implementation: `lib/services/execute-prompt.js`.
