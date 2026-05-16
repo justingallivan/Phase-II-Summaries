@@ -111,10 +111,10 @@ Gated step #1 substantially executed. Confirms the polymorphism thesis with numb
 - **Era boundary is PRECISE and Dataverse-derived — no external dependency (2026-05-16, `scripts/probe-akoya-createdon-2023.js`).** Day-level drill of the 2023 cohort: **100% of the 22,573 rows were created on a single date, 2023-12-03**, inside one ~43-minute window (`17:42:10Z … 18:25:32Z`). Zero native creates anywhere in 2023; the 2,988 native rows are all 2024+ (1,167 + 1,376 + 445; 22,573 + 2,988 = 25,561 ✓). One clean bulk-import event. **The native-vs-migrated classifier is therefore solo-derivable and exact: `createdon` = 2023-12-03 ⇒ migrated/historical; `createdon` > 2023-12-03 ⇒ Akoya-native (clean, Connor-authoritative).** The Track B semantic-layer "era" artifact is now a fixed predicate against `createdon`, not an externally-supplied parameter.
 - **`overriddencreatedon` DISCONFIRMED as an era marker (2026-05-16 — `scripts/probe-akoya-overriddencreatedon.js`, FetchXML aggregates, never `$count`).** `overriddencreatedon` is **null on 100% of rows (0 / 25,561)** — the import preserved no *system* origin date. The prior "inconclusive" was a `$count`-cap artifact. The era *classifier* is unaffected (it keys off `createdon`, above). **CORRECTION (2026-05-16, supersedes the earlier "true dates irrecoverable" claim in this doc/commit `3c3044d`):** that conclusion over-generalized from `overriddencreatedon` (a *system* field) to all dates and is **wrong**. The true historical date *was* preserved — in the domain field **`akoya_decisiondate`** (see the field-shape bullet below). Deep-history exclusion from Track B v1 is therefore a deliberate **scope** choice, *not* a data-availability limit.
 - **Era field-shape probed — the data model differs substantially by era, but mostly in the *process layer*, not the analytical core (2026-05-16, `scripts/probe-akoya-era-field-shape.js`; n=1,200/cohort, GUID-ordered).** Migrated = `createdon` 2023-12-03 (Blackbaud/"Sky"-origin), native = after (AkoyaGO-born). Findings:
-  - **Core grant facts were ~1:1 migrated and carry true history.** `akoya_decisiondate` is **100% populated in the migrated cohort** with a clean, realistic spread — 1950s:6 · 1980s:1,929 · 2000s:5,249 · 2010s:7,636 · 2020s:3,646, **zero pre-1954** (Keck Foundation founded 1954; first decisions 1955 — internally consistent, so the field is trustworthy as a real historical key). `wmkf_meetingdate` mirrors it (corroboration; 4 future-dated typo rows — minor). **A real "2021 vs 2022 vs 2023" cut is possible today** (decisions: 2021=824, 2022=954, 2023=986) — keyed on `akoya_decisiondate`, never `createdon`. Amount fields (`akoya_grant`, `akoya_request`, `akoya_expenses`, `akoya_originalgrantamount`) are ~95–100% migrated but only ~30–54% native — that is the lifecycle confound (Bucket B), *not* "present in both eras." Full per-column rates: see "Artifact 3 — Field-Availability Boundary" below.
+  - **Core grant facts were ~1:1 migrated and carry true history.** `akoya_decisiondate` is **100% populated in the migrated cohort** with a clean, realistic spread — 1950s:6 · 1980s:1,929 · 2000s:5,249 · 2010s:7,636 · 2020s:3,646, **zero pre-1954** (Keck Foundation founded 1954; first decisions 1955 — internally consistent, so the field is trustworthy as a real historical key). `wmkf_meetingdate` mirrors it (corroboration; 4 future-dated typo rows — minor). **A real "2021 vs 2022 vs 2023" cut is possible today** (decisions: 2021=824, 2022=954, 2023=986) — keyed on `akoya_decisiondate`, never `createdon`. Amount fields split (exact full-cohort rates, see Artifact 3): `akoya_grant`/`akoya_originalgrantamount` 84% mig / ~32% nat = a **confirmed lifecycle confound** (native-decided ≈95%, native-not-decided ≈3%); `akoya_request`/`akoya_expenses` 100% mig / ~46% nat = **NOT lifecycle** (native-decided ≈ native-not-decided ≈46% — a structural/migration gap, cause UNVERIFIED pending Connor). Full per-column rates: see "Artifact 3 — Field-Availability Boundary" below.
   - **Net-new in AkoyaGO (0% migrated by nature, not data loss):** ~28 fields, almost all `wmkf_*` — the online-intake/workflow layer Blackbaud never had: GOapply lookups (`akoya_goapplyapplication/settings/submitter`), review-workflow booleans (`wmkf_readyforreview`, `wmkf_galreadyforreview`, eligibility/completion flags), `akoya_requestsource`, `akoya_submitdatetime`.
   - **Blackbaud lineage carried forward as columns:** `_wmkf_bbstatus_value` (BB Status, mig 100%/nat 8%) and `wmkf_bbstaffid` (BB Staff ID, mig 88%/nat 8%) — explicit provenance fields usable as a **secondary migrated-cohort confirmation** signal alongside the `createdon`=2023-12-03 classifier. `_wmkf_programlevel2_value` is the lone migrated-only taxonomy field (Blackbaud concept abandoned post-migration).
-  - **⚠️ Lifecycle/era confound (interpretation guard for the build):** the large amount/decision-date population gaps (mig ~100% / nat ~30–50%) are **NOT a schema or data-capture change**. Migrated rows are overwhelmingly *completed* grants (decided/awarded/closed); the 2,988 native rows are disproportionately *in-flight* (submitted, under review, not yet decided). Track B must NOT present "30% of post-2024 grants have no amount" as missing data — it is pipeline state. This sharpens the design's "completeness = property of (field × era)" thesis: era is **confounded with lifecycle stage**, and the disclosure layer must say so.
+  - **⚠️ Lifecycle/era confound — FIELD-SPECIFIC, not blanket (corrected after Codex review + stratification probe):** the migrated-high/native-low gap is **lifecycle** for `akoya_grant`/`akoya_originalgrantamount`/`akoya_decisiondate` (native-decided ≈ migrated, native-not-decided ≈ 0 — these are genuinely set only at award; native sparsity = pipeline state, NOT missing data) but is **NOT lifecycle** for `akoya_request`/`akoya_expenses` (decided ≈ not-decided ≈ 46% native vs 100% migrated — a structural/migration/intake-process gap, cause UNVERIFIED, needs Connor). The earlier blanket "NOT a schema or data-capture change" was wrong and is retracted. The disclosure layer must distinguish the two (Artifact 3 disclosure spec §2 vs §3), not present all native amount-sparsity as "not yet decided."
 
 ### Division of labor: tool vs. Excel (+ Claude Excel plugin)
 
@@ -139,75 +139,81 @@ The expert's bottleneck is **not** intent (they hold the predicate fully formed 
 
 1. **Plain-English field dictionary** — business term → physical field(s) + control rendering, **encoding fan-out points** where one term legitimately means several fields and the builder must force a choice.
 2. **Type / era taxonomy + boundary** — the request polymorphism discriminator(s), values, and the Akoya-native vs. migrated boundary date. **Era-boundary sub-part RESOLVED (2026-05-16): the boundary is `createdon` vs. 2023-12-03 (probe-derived constant).** The *type* taxonomy (recent-era authoritative definitions + remap history) still needs Connor.
-3. **Field-availability boundary** — coarse "when did each *important* field become reliably captured." **DELIVERED (2026-05-16) — see "Artifact 3 — Field-Availability Boundary (delivered)" below.** Evidence-derived from `scripts/probe-akoya-era-field-shape.js` (n=1,200/cohort, GUID-ordered). Replaces the earlier shorthand (which wrongly said `akoya_decisiondate` is "100% both eras" — it is **100% migrated / 31% native**, which is the lifecycle confound itself, not always-on).
+3. **Field-availability boundary** — coarse "when did each *important* field become reliably captured." **DELIVERED (2026-05-16), then corrected after Codex review — see "Artifact 3 — Field-Availability Boundary" below.** Rates are now **exact full-cohort FetchXML aggregates** (`scripts/probe-akoya-export-col-rates.js`), superseding the initial `probe-akoya-era-field-shape.js` n=1,200 GUID sample that `probe-akoya-era-robustness.js` proved biased in the migrated cohort. `akoya_decisiondate` is 100% migrated / 31% native (the lifecycle confound, not "100% both eras").
 
 ### Artifact 3 — Field-Availability Boundary (delivered 2026-05-16)
 
-Evidence: `scripts/probe-akoya-era-field-shape.js`, n=1,200/cohort, GUID-ordered (±~3pp, indicative not exhaustive). Migrated = `createdon` 2023-12-03 (Blackbaud/"Sky"); native = after. Columns are the design's "generous columns" set, resolved to **real physical fields** by the probe (not invented).
+Evidence: rates are **EXACT full-cohort FetchXML aggregate counts** (`scripts/probe-akoya-export-col-rates.js`, 2026-05-16) — migrated tot=22,573, native tot=2,988. **These supersede the earlier `probe-akoya-era-field-shape.js` n=1,200 GUID-ordered sample, which the robustness probe (`scripts/probe-akoya-era-robustness.js`) proved was biased in the migrated cohort** (GUID order correlates with population there: `akoya_grant` asc 95% vs desc 61%; `_wmkf_grantprogram_value` asc 58% vs desc 99%). Corrected magnitudes were large (grantprogram 58→80, primary-contact 43→70, grant 95→84). Migrated = `createdon` 2023-12-03 (Blackbaud/"Sky"); native = after.
 
-**Bucket A — always-on 1:1 spine (both eras ≥~90%; reliable in any era, no caveat).**
+**Bucket A — measured ≥97% in *both* cohorts (exact full-cohort; reliable in practice — but "always-on" is an observed-state claim, not a schema guarantee).**
 
 | Export column | Field | Type | mig% | nat% |
 |---|---|---|---|---|
 | Request # | `akoya_requestnum` | String | 100 | 100 |
 | Request type (Akoya) | `akoya_requesttype` | Picklist | 100 | 100 |
-| Request type (WMKF) | `wmkf_request_type` | Picklist | 99 | 99 |
+| Request type (WMKF) | `wmkf_request_type` | Picklist | 97 | 99 |
 | Lifecycle status | `akoya_requeststatus` | String | 100 | 100 |
 | State | `statecode` | State | 100 | 100 |
-| Applicant org | `_akoya_applicantid_value` | Lookup | 100 | 93 |
-| Internal program | `_akoya_programid_value` | Lookup | 99 | 86 |
+| Applicant org | `akoya_applicantid` | Lookup | 100 | 97 |
 | Meeting date | `wmkf_meetingdate` | DateTime | 100 | 100 |
-| Fiscal year | `akoya_fiscalyear` | String | 100 | 100 |
+| Fiscal year | `akoya_fiscalyear` | String | 100 | 99 |
 | Amount paid | `akoya_paid` | Money | 100 | 100 |
 
-(`akoya_requestnum` is the human request number — earlier probe candidates `akoya_name`/`wmkf_requestnumber` were wrong; the 1:1 list surfaced the real field. `akoya_paid` is a rollup: always *present*, but a present value can legitimately be 0 — presence ≠ "was paid".)
+(`akoya_requestnum` = the human Request # — `scripts/probe-akoya-export-col-rates.js` resolves and confirms it directly, closing the earlier probe/doc field-name mismatch. `statecode` is platform-mandatory (never null), not evidence of mapping fidelity. `akoya_paid` is a rollup: always *present*, value can legitimately be 0 — presence ≠ "was paid". `akoya_programid` (Internal Program) is 99% mig / **80% nat** — strong but not ≥97 both, so it sits just below Bucket A.)
 
-**Bucket B — lifecycle-confounded (high mig / low nat; populated only once a request is decided/awarded — native sparsity is in-flight pipeline state, NOT data loss).**
+**Bucket B-lifecycle — confound CONFIRMED by stratification (`scripts/probe-akoya-era-robustness.js` block c): native sparsity is in-flight pipeline state, NOT data loss.**
+
+| Export column | Field | Type | mig% | nat% | Stratified test (native) |
+|---|---|---|---|---|---|
+| Decision date | `akoya_decisiondate` | DateTime | 100 | 31 | (defines decided) |
+| Grant (awarded) amount | `akoya_grant` | Money | 84 | 32 | decided 95% · not-decided 3% ⇒ lifecycle |
+| Original grant amount | `akoya_originalgrantamount` | Money | 84 | 33 | parallels grant |
+
+(Migrated `akoya_grant` is **84%, not 100%** — declined requests are decided but never awarded, so they correctly carry no grant amount. This is internally consistent with the lifecycle reading.)
+
+**Bucket B-structural — gap is NOT lifecycle (refuted by the same stratification): migrated 100% but native ~46% *regardless of decision state*. Cause UNVERIFIED — migration mapping and/or an intake-process change; needs Connor remap history.**
+
+| Export column | Field | Type | mig% | nat% | Stratified test (native) |
+|---|---|---|---|---|---|
+| Requested amount | `akoya_request` | Money | 100 | 48 | decided 44% · not-decided 50% ⇒ NOT lifecycle |
+| Total project budget | `akoya_expenses` | Money | 100 | 45 | decided 42% · not-decided 46% ⇒ NOT lifecycle |
+
+**Bucket C — substantively present in BOTH eras with a native edge (the earlier "Blackbaud didn't capture this" framing is RETRACTED — exact rates are far higher migrated than the biased sample showed; cause of the gap is not isolated).**
 
 | Export column | Field | Type | mig% | nat% |
 |---|---|---|---|---|
-| Decision date | `akoya_decisiondate` | DateTime | 100 | 31 |
-| Requested amount | `akoya_request` | Money | 100 | 54 |
-| Total project budget | `akoya_expenses` | Money | 100 | 46 |
-| Grant (awarded) amount | `akoya_grant` | Money | 95 | 30 |
-| Original grant amount | `akoya_originalgrantamount` | Money | 95 | 31 |
+| Grant program | `wmkf_grantprogram` | Lookup | 80 | 99 |
+| Primary contact | `akoya_primarycontactid` | Lookup | 70 | 77 |
+| Title | `akoya_title` | String | 46 | 65 |
 
-**Bucket C — native-enriched (low mig / higher nat; newer structured-intake fields — migrated sparsity = "Blackbaud didn't capture this," not absence).**
+(`wmkf_grantprogram` mig **80%** (not 58) — the ~20% migrated gap is the S156 4,634-null-program hole and the staff `wmkf_grantprogram` 92× correction signal. The migrated shortfall could be mapping loss, a not-captured-then field, or post-migration data-cleanup still in progress — **not established**, pending Connor.)
 
-| Export column | Field | Type | mig% | nat% |
-|---|---|---|---|---|
-| Grant program | `_wmkf_grantprogram_value` | Lookup | 58 | 99 |
-| Primary contact | `_akoya_primarycontactid_value` | Lookup | 43 | 79 |
-| Title | `akoya_title` | String | 41 | 71 |
-| Project leader / PI | `_wmkf_projectleader_value` | Lookup | 3 | 40 |
-
-(`_wmkf_grantprogram_value` mig 58% ties directly to the S156 4,634-null-program data-quality hole and the staff `wmkf_grantprogram` 92× correction signal.)
-
-**Bucket D — sparse in BOTH eras; do NOT use as a primary export column or time key.**
+**Bucket D — sparse in BOTH eras; exclude from the default column set / never a time key.**
 
 | Field | Type | mig% | nat% | Note |
 |---|---|---|---|---|
-| `akoya_begindate` | DateTime | 23 | 43 | also the bogus-1921 outlier field |
-| `akoya_enddate` | DateTime | 23 | 42 | |
-| `akoya_datereceived` | DateTime | 4 | 19 | |
+| `akoya_begindate` | DateTime | 35 | 39 | date-hunt min has pre-1954 outliers — unreliable |
+| `akoya_enddate` | DateTime | 35 | 38 | |
+| `wmkf_projectleader` | Lookup | 16 | 32 | (was mis-bucketed C off the biased sample) |
+| `akoya_datereceived` | DateTime | 7 | 22 | |
 
 **Bucket E — provenance / era columns (MUST be baked into the file per the "Division of labor" hard requirement).**
 
-- **Era** — derived: `createdon` = 2023-12-03 ⇒ `migrated/Blackbaud (pre-2023-12-03)`; else `Akoya-native`.
-- **BB lineage** — `_wmkf_bbstatus_value` (mig 100/nat 8), `wmkf_bbstaffid` (mig 88/nat 8): secondary migrated-cohort confirmation alongside the `createdon` classifier.
-- **Type discriminator (composite)** — `wmkf_request_type` × `_wmkf_grantprogram_value` × `akoya_requesttype` (S156 discriminator probe).
+- **Era** — derived: `createdon` = 2023-12-03 ⇒ `migrated/Blackbaud (pre-2023-12-03)`; else `Akoya-native`. Robust under post-import re-touch: migrated rows show `modifiedon` in 2026 with `createdon` still 2023-12-03 (Dataverse `createdon` is system-owned / not PATCH-updatable; `overriddencreatedon`=0 ⇒ no create-time backdating) — `scripts/probe-akoya-era-robustness.js` block b.
+- **BB lineage** — `wmkf_bbstatus` (mig 100/nat 9), `wmkf_bbstaffid` (mig 90/nat 10): secondary migrated-cohort confirmation alongside the `createdon` classifier.
+- **Type discriminator (composite)** — `wmkf_request_type` × `wmkf_grantprogram` × `akoya_requesttype` (S156 discriminator probe).
 
-**Historical-year key:** for time-slicing the migrated cohort use **`akoya_decisiondate`** (semantically "when decided"; 100% migrated; clean 1955→2023, zero pre-1954) or its mirror **`wmkf_meetingdate`** (100% both eras). **Never** `createdon` (collapsed to 2023-12-03), `akoya_datereceived` (Bucket D), or `akoya_begindate` (1921 outliers).
+**Historical-year key:** for time-slicing the migrated cohort use **`akoya_decisiondate`** (100% migrated; reproducible decade spread 1950s:6 · 1980s:1,929 · 2000s:5,249 · 2010s:7,636 · 2020s:3,646, **zero pre-1954** — `scripts/probe-akoya-era-robustness.js` block d) or its mirror **`wmkf_meetingdate`** (mirrors it; 4 future-dated typo rows). **Never** `createdon` (collapsed to 2023-12-03), `akoya_datereceived` / `akoya_begindate` (Bucket D; begindate has pre-1954 min outliers).
 
-**Disclosure-layer spec — what the export artifact must ENCODE (not merely show in the UI at export time):**
+**Disclosure-layer spec — what the export artifact must ENCODE (not merely show in the UI). Sentinel wording is PROVISIONAL: it presumes a defined decided-state predicate, which v1 must specify (working proxy = `akoya_decisiondate` present, itself imperfect).**
 
 1. **Era column on every row** + a methods/provenance sheet stating the 2023-12-03 cutover, the per-bucket rules, and probe provenance.
-2. **Bucket-B nulls render as a caption, never a bare blank.** Non-decided row ⇒ sentinel `NOT YET DECIDED`; decided row with a genuinely-absent value ⇒ `UNKNOWN — not captured`. A bare blank reads as `$0` / "no amount" — the exact plausible-wrong-answer the threat model targets.
-3. **Bucket-C nulls in migrated rows** render as `NOT CAPTURED (pre-2023 / Blackbaud)` — separates "Blackbaud didn't track it" from "absent now."
+2. **Bucket-B-lifecycle nulls render as a caption, never a bare blank.** Not-decided row ⇒ `NOT YET DECIDED`; decided but absent ⇒ `UNKNOWN — not captured`. A bare blank reads as `$0` — the plausible-wrong-answer the threat model targets.
+3. **Bucket-B-structural nulls** render as `UNKNOWN — capture differs by era (see methods)` — do NOT label these "not yet decided" (the stratification refuted that) and do NOT assert a Blackbaud cause until Connor confirms remap history.
 4. **Bucket-D fields excluded from the default column set;** opt-in only, flagged "sparse in all eras — not reliable."
 5. **Composition line mandatory even in expert mode:** `N rows: X migrated (Blackbaud, pre-2023-12-03) · Y Akoya-native; of native, Z not yet decided`.
 
-**Residual (Connor/AkoyaGo, not solo):** confirm the export-column *set* against the AkoyaGo trusted-view operational filters (gated step 2) — this table is the evidence-derived candidate, not the final authoritative export contract.
+**Residuals (not solo):** (i) confirm the export-column *set* against the AkoyaGo trusted-view operational filters (gated step 2); (ii) Connor must explain the Bucket-B-structural migrated-100%/native-~46% drop (mapping vs intake-process); (iii) status-stratify the *migrated* cohort too (only native was stratified). This table is the evidence-derived candidate, not the final authoritative export contract.
 
 ### Track B engineering requirements (Codex-informed)
 
@@ -235,10 +241,20 @@ Two entries in `shared/config/appRegistry.js`, admin-assignable to their own gro
 
 **Review 2 (audit probe) folded in:** softened "bulk audit conclusively impossible" → only the one-shot aggregate query is ruled out (single-`objectid` shape untested); reframed the per-record 200 as a single demonstration, not a generalized capability; recorded the automation-vs-human conflation, privilege fragility, era-sampling bias, dedupe, and throttle caveats; downgraded change-frequency from a clean Track A input to a weak, gated, post-v1 signal; added gated step 5. Probe-script docstring corrected (token acquisition is a POST, not "strictly GET").
 
+## Codex review reconciliation (S157 — era / field-shape work)
+
+Review of the era probes + Artifact 3. Findings were not just softened — four of five were tested by a follow-up robustness probe (`scripts/probe-akoya-era-robustness.js`) and a fresh exact-rate probe (`scripts/probe-akoya-export-col-rates.js`), which **overturned several claims**:
+
+- **(a) Sampling — substantiated the critique.** GUID-ordered n=1,200 was proven biased in the migrated cohort (`akoya_grant` asc 95% / desc 61%; `grantprogram` asc 58% / desc 99%). All Artifact 3 rates replaced with **exact full-cohort FetchXML aggregates**; the sampled probe is demoted to a field-discovery tool.
+- **(b) createdon immutability — substantiated the claim.** Migrated rows show `modifiedon` in 2026 with `createdon` unchanged at 2023-12-03; plus the Dataverse platform invariant + `overriddencreatedon`=0. Classifier robust under re-touch. Timezone concern is moot: the raw min/max `createdon` (`17:42:10Z…18:25:32Z`) are absolute instants, independent of `dategrouping` TZ.
+- **(c) Lifecycle confound — partially refuted.** Stratification confirmed it for `akoya_grant`/`akoya_originalgrantamount` but **refuted it for `akoya_request`/`akoya_expenses`** (decided ≈ not-decided ≈ 46% native). Split into Bucket B-lifecycle vs B-structural; blanket "NOT a schema change" retracted.
+- **(d) Historical key — substantiated + made reproducible.** The decade distribution is now a committed probe (`probe-akoya-era-robustness.js` block d), not a one-off.
+- **(e) Artifact 3 over-claims — corrected.** Bucket A reworded to "measured ≥97% both cohorts (observed-state, not schema guarantee)"; Bucket C "Blackbaud didn't capture this" **retracted** (exact rates far higher migrated than the biased sample); disclosure sentinels marked provisional pending a defined decided-state predicate; Request#/`akoya_requestnum` mismatch closed by `probe-akoya-export-col-rates.js`. Doc contradiction (decisiondate vs "AkoyaGo only source of true dates") fixed.
+
 ## Gated next steps (evidence before build plan — probe-before-plan)
 
 1. **Claude → Dataverse probe — DONE & era boundary fully resolved (discriminator/volumes 2026-05-15 `scripts/probe-akoya-request-discriminators.js`; `overriddencreatedon` 2026-05-16 `scripts/probe-akoya-overriddencreatedon.js`; createdon-2023 day drill 2026-05-16 `scripts/probe-akoya-createdon-2023.js`).** Composite discriminator + per-type volumes + ~25,561 true count + `$count`-caps-at-5000 captured (Track B "Evidence" + Atlas). **The migration cutover is now a precise, Dataverse-derived constant: 2023-12-03** (single ~43-min import of all 22,573 historical rows; native = `createdon` > 2023-12-03). **No solo Dataverse residual remains, and step 1 no longer hands the era boundary downstream** — it is resolved here. `overriddencreatedon` is null everywhere, so migrated rows' *true* historical dates are unrecoverable from Dataverse (deep-history, out of v1 scope).
-2. **User → AkoyaGo excavation:** the *operational filters* of the trusted views/reports (executable definitions, not prose). ~~+ the Akoya-native migration cutover date~~ — **cutover date now resolved by probe (2023-12-03); AkoyaGo is a cross-check + the only source of migrated rows' true historical dates, not a blocker.**
+2. **User → AkoyaGo excavation:** the *operational filters* of the trusted views/reports (executable definitions, not prose). ~~+ the Akoya-native migration cutover date~~ — **cutover date resolved by probe (2023-12-03); not a blocker.** (Contradiction fix: an earlier revision called AkoyaGo "the only source of migrated rows' true historical dates" — that is wrong. `akoya_decisiondate` is a Dataverse-resident true historical date for the migrated cohort, 1955→2023. AkoyaGo is needed only for the *type taxonomy / remap history* and the Bucket-B-structural cause, not for the historical date.)
 3. **Connor → recent-era taxonomy + remap history:** authoritative clean-era definitions + what is known about prior-system field remapping.
 4. **(Done, this doc)** consolidated design + memory.
 5. **Audit/change-history analysis — DONE for `akoya_request` (S156).** Akoya-native sampled analysis executed with the canonical method (systemuser-metadata classification + explicit vendor exclusion); raw-frequency disconfirmed, staff-attributed content signal + staff roster produced (see Track A "Executed (S156)"). **Residual (only if pursued further):** repeat for `contact`; confirm the `RetrieveRecordChangeHistory` privilege is durably granted (not incidental) before any feature depends on it; the lifecycle-vs-corrective split is semantic, not a hard flag. Not required for v1.
