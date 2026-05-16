@@ -50,6 +50,7 @@
 - [Dataverse creator privileges delegated](project_dataverse_creator_privileges.md) — Connor 2026-05-06 OK'd direct entity creation for pilot scope; maintain `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` audit catalog
 - [Slice-0 wmkf_role pre-deploy probe](project_slice0_role_probe.md) — use `scripts/probe-apprequestperson-role-data.js` NOT `dynamics-schema-diff.js`; CLEAR 2026-05-15 (5,561 rows, none in 100000002–4); re-run at deploy time
 - [Slice-0 scope is 4 items not 3](project_slice0_scope.md) — carryover C dropped `wmkf_portal_membership`; trust the 2026-05-14 SCHEMA_CHANGES catalog, wave dir = wave4
+- [Slice-0 timeline posture](project_slice0_timeline_posture.md) — 2026-05-19/05-15 dates are SOFT with deliberate slack; Connor in good-faith progress on Item 6; report gating factually, NO "overdue/at-risk" urgency, no aggressive chasing
 
 ## Dynamics Explorer
 - [Multi-library + subfolder document listing shipped](project_dynamics_explorer_archive_libs.md) — `list_documents` and `search_documents` walk archives + nested folders via `lib/utils/sharepoint-buckets.js`
