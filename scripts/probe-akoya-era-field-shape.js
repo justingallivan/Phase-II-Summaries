@@ -187,13 +187,52 @@ function rateMap(records) {
   dump('NATIVE-ONLY fields (AkoyaGO concepts with no Blackbaud source)', natOnly);
   dump(`LARGE-DELTA fields (>=${BIG_DELTA * 100}% population gap; partial remap?)`, bigDelta);
 
-  // Sanity: how many fields are 1:1-ish (both substantively populated, small gap)
-  let shared = 0;
+  // ~1:1-mapped fields (both substantively populated, small gap) — listed,
+  // not just counted, so the artifact-3 table can be built from real numbers.
+  const shared = [];
   for (const k of allKeys) {
     const m = mR[k] || 0, n = nR[k] || 0;
-    if (m >= NEAR_FULL && n >= NEAR_FULL && Math.abs(m - n) < BIG_DELTA) shared += 1;
+    if (m >= NEAR_FULL && n >= NEAR_FULL && Math.abs(m - n) < BIG_DELTA) shared.push([k, m, n]);
   }
-  console.log(`── ~1:1-mapped fields (both >=${NEAR_FULL * 100}% populated, gap <${BIG_DELTA * 100}%): ${shared} ──\n`);
+  dump(`~1:1-MAPPED fields (both >=${NEAR_FULL * 100}% populated, gap <${BIG_DELTA * 100}%)`, shared);
+
+  // Artifact-3 export-column availability table. Concepts are the "generous
+  // columns" the design requires (grant facts + discriminator + era + amounts);
+  // each lists candidate logical names — the first one present in the sample
+  // wins, so we report real fields, not guesses.
+  const EXPORT_COLS = [
+    ['Request #',            ['akoya_name', 'wmkf_requestnumber', 'akoya_requestnumber']],
+    ['Title',                ['akoya_title']],
+    ['Applicant org',        ['_akoya_applicantid_value', '_wmkf_organization_value']],
+    ['Primary contact',      ['_akoya_primarycontactid_value']],
+    ['Project leader / PI',  ['_wmkf_projectleader_value']],
+    ['Grant program',        ['_wmkf_grantprogram_value']],
+    ['Request type (WMKF)',  ['wmkf_request_type']],
+    ['Request type (Akoya)', ['akoya_requesttype']],
+    ['Lifecycle status',     ['akoya_requeststatus']],
+    ['State',                ['statecode']],
+    ['Requested amount',     ['akoya_request']],
+    ['Grant (awarded) amt',  ['akoya_grant']],
+    ['Original grant amt',   ['akoya_originalgrantamount']],
+    ['Total project budget', ['akoya_expenses']],
+    ['Amount paid',          ['akoya_paid']],
+    ['Decision date',        ['akoya_decisiondate']],
+    ['Meeting date',         ['wmkf_meetingdate']],
+    ['Begin date',           ['akoya_begindate']],
+    ['End date',             ['akoya_enddate']],
+    ['Request received',     ['akoya_datereceived']],
+    ['Era classifier',       ['createdon']],
+    ['BB lineage: status',   ['_wmkf_bbstatus_value']],
+    ['BB lineage: staff id', ['wmkf_bbstaffid']],
+  ];
+  console.log('── ARTIFACT-3 EXPORT-COLUMN AVAILABILITY (mig% / nat%) ──');
+  for (const [concept, cands] of EXPORT_COLS) {
+    const k = cands.find(c => c in mR || c in nR);
+    if (!k) { console.log(`   ${concept.padEnd(22)}  (no candidate present: ${cands.join(', ')})`); continue; }
+    const m = mR[k] || 0, n = nR[k] || 0;
+    console.log(`   ${concept.padEnd(22)}  mig ${pct(m)}  nat ${pct(n)}  ${k}  —  ${lblOf(k)}`);
+  }
+  console.log();
 
   // (2) Business-date hunt: DateTime attrs whose migrated values reach BEFORE
   //     2023 => a real historical date the migration preserved.
