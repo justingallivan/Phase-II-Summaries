@@ -130,6 +130,16 @@ async function statusDistro(token, scope) {
     `<condition attribute="akoya_paid" operator="gt" value="0"/>`);
   console.log(`\n  of the ${neitherN} no-ask rows: akoya_grant present ${neitherGrant} (${(neitherGrant / neitherN * 100).toFixed(0)}%) · akoya_paid>0 ${neitherPaid} (${(neitherPaid / neitherN * 100).toFixed(0)}%)`);
   console.log('  ⇒ if grant/paid ≈ high, these are AWARDED-without-a-stated-request (invited/discretionary): requested-amount is N/A by design, not missing data.');
+
+  // Per-status × award/paid breakdown of the no-ask set — characterizes the
+  // small non-Approved tail (the "5 unaccounted for") exactly, not by inference.
+  console.log('\n  no-ask set, per status × award/paid (exact):');
+  for (const row of await statusDistro(token, neitherScope)) {
+    const sc = `${neitherScope}<condition attribute="akoya_requeststatus" operator="eq" value="${row.v}"/>`;
+    const g = await aggCount(token, `${sc}<condition attribute="akoya_grant" operator="not-null"/>`);
+    const p = await aggCount(token, `${sc}<condition attribute="akoya_paid" operator="gt" value="0"/>`);
+    console.log(`    ${String(row.c).padStart(4)}  ${String(row.v == null ? '(null)' : row.v).padEnd(14)} akoya_grant ${g}/${row.c} · paid>0 ${p}/${row.c}`);
+  }
   console.log('\n(read: if NEITHER is small and concentrated in Pending/early statuses,');
   console.log(' the residual is in-flight not-yet-entered, and Puzzle 1 fully closes.)');
   console.log('\nDone (read-only native-Request amount probe).');
