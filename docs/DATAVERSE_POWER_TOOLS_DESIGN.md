@@ -1,88 +1,166 @@
 # Dataverse Power Tools — Scoping & Design
 
-**Status:** Scoping converged (2026-05-15, Session 156). Not yet a build plan — a grounding probe is mandatory before any implementation plan per the project ground-truth rule.
+**Status (2026-05-15, Session 156):** Track A and Track B designs **converged at the scoping level**. This is NOT yet a build plan. Per the project ground-truth rule, implementation is gated on explicit follow-ups recorded under "Gated next steps." This doc has been reconciled against an independent Codex source review (see "Codex review reconciliation").
 
-**Origin:** Dynamics Explorer serves the "most users, simple question" case well. Two gaps remain that it structurally cannot fill, currently absorbed by the Akoya Go model-driven app (functional but poor UX):
+**Origin:** Dynamics Explorer (`pages/api/dynamics-explorer/chat.js`) serves the "most users, simple question" case well. Two gaps it structurally cannot fill remain, currently absorbed by the AkoyaGo model-driven app (functional but poor UX):
 
 1. Staff who must keep the database current need to **find a specific record and edit a field**.
-2. Users (incl. non-technical ones — the triggering example was a CSO-level request for ~5000 requests as a downloadable Excel) need **filtered data at a volume Dynamics Explorer cannot return**.
+2. Users — including non-technical ones; the triggering example was a CSO-level ask for ~5,000 requests as a downloadable Excel — need **filtered data at a volume Dynamics Explorer cannot return**.
 
-These are two different tools with different risk profiles and **will be built as two separate apps**. Keeping them separate means neither compromises for the other (Track A never pages tens of thousands of rows; Track B never touches a write path) and fits the existing "skinny scope, leverage existing infra" philosophy (`.claude-memory/project_intake_portal_skinny_scope.md`). They plausibly sit on the long-game GOapply/Akoya-replacement arc rather than being a side quest.
+**Two separate apps, different risk profiles.** Track A is a write tool over targeted single records; Track B is a read-only bulk export. Keeping them apart means neither compromises for the other and fits the existing "skinny scope, leverage existing infra" philosophy (`.claude-memory/project_intake_portal_skinny_scope.md`). They are siblings on the long-game GOapply/Akoya-replacement arc and share an architectural spine (see "Shared spine"), not a side quest.
 
 ---
 
-## Why Dynamics Explorer can't do this
+## Existing infrastructure (verified against `lib/services/dynamics-service.js`, S156)
 
-`pages/api/dynamics-explorer/chat.js` is a single agentic endpoint. Its query tool, `dynamics-service.queryRecords()`, is **[VERIFIED via grep]** hard-capped at `$top` 100 and requires either a `$filter` or `$top <= 25`. That cap is deliberate — it keeps the LLM from blowing its context window. It is the structurally wrong tool for "return 5000 rows as a spreadsheet," and no prompting fixes that.
+This is largely an assembly + UX job over existing primitives, not new infrastructure. Claims below were read from source and independently re-checked by Codex (file:line cited where load-bearing).
 
-The plumbing for the real answer already partly exists:
+- **`queryRecords()`** — agentic Explorer query tool, hard-capped at `$top` 100, requires `$filter` or `$top<=25` (deliberate LLM context guard). Structurally wrong for bulk export. Calls `checkRestriction` (dynamics-service.js:445-447).
+- **`queryAllRecords()`** — paginates via `@odata.nextLink` (`EXPORT_PAGE_SIZE=500` via `Prefer: odata.maxpagesize`), requires a `$filter` (no unfiltered dumps), returns `{ records, totalCount, capped }`, `$count=true`. `MAX_EXPORT_RECORDS=5000` is an **arbitrary guardrail** (bare constant, no rationale, hard `break`+truncate). **Correction (Codex):** truncation is NOT silent at the helper level — `capped`/`totalCount` are returned (dynamics-service.js:661-672) and the existing Explorer export path already sends `recordCount`/`totalCount`/`capped` to the client (chat.js:1727-1734). The real defect is arbitrary cap + the *UI not surfacing* the signal, not a silent helper. Per-page `API_TIMEOUT=30_000` (30s). **No 429/throttling/retry/`Retry-After` handling**; `fetchWithTimeout` only aborts on timeout (dynamics-service.js:1324-1337); `queryAllRecords` throws on first non-200 (dynamics-service.js:647-651). Accumulates all rows in memory before returning.
+- **`searchRecords()`** — Dataverse Search API, relevance-ranked, entity-spanning via an `entities` string array, optional OData `filter`, `returntotalrecordcount`. **Correction (Codex):** `top` is `Math.min(top||20,100)` — upper-bounded at 100, **no lower bound** (dynamics-service.js:700-703); earlier "clamped 1–100" was inaccurate. Only Dataverse-Search-indexed tables are covered.
+- **`getEntityAttributes()`** — returns `{ logicalName, displayName(localized), type, description, isRequired }`, filtered to `IsValidForRead`. **Confirmed (Codex):** the request `$select` includes `IsValidForCreate,IsValidForUpdate` (dynamics-service.js:364) but the returned object **drops both** (dynamics-service.js:377-383). It also selects none of `SourceType`/`AttributeOf`/`IsPrimaryId` — so it cannot distinguish calculated/rollup/formula/logical fields.
+- **`getRecord()` → `processAnnotations()`** — emits `${field}_formatted` / `${field}_entity` and preserves `_etag` for If-Match. **Correction (Codex):** these annotations appear **only when Dataverse returns them** (field in `$select` and the field actually has a formatted value / lookup) — not universally on every field.
+- **`getEntityRelationships()`** — returns `manyToOne.referencedEntity` (lookup targets, phase-2). **Correction (Codex):** unlike `getEntityAttributes`, it does **not** call `checkRestriction` (dynamics-service.js:392-414 vs 353-354) — a metadata-leak gap for phase-2 lookup editing.
+- **`updateRecord()`** — PATCH. **Critical (Codex):** does **not** call `checkRestriction` before writing (dynamics-service.js:814-826), unlike the read paths. A Track A write endpoint built naïvely on it bypasses the restriction model.
+- **`_withCallerId()` / `_writeFetch()`** — **Critical (Codex):** `MSCRMCallerID` is only added when `DYNAMICS_IMPERSONATION_ENABLED==='true'` (dynamics-service.js:166-170); `_writeFetch` retries a 403 *without* the caller id (dynamics-service.js:188-201); the identity doc documents the fallback as "attribution falls back to the service principal" (`docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md:84-90`). User attribution is **not guaranteed** by the runtime.
+- **`exceljs`** — already a dependency, already used in `chat.js` (which has a 3 MB XLSX trim guard, chat.js:1603/1711-1723).
 
-- `dynamics-service.queryAllRecords()` **[VERIFIED — code read S156]** paginates via `@odata.nextLink` (`EXPORT_PAGE_SIZE = 500` through `Prefer: odata.maxpagesize`), requires a `$filter` (no unfiltered dumps), and returns `{ records, totalCount, capped }`. The `MAX_EXPORT_RECORDS = 5000` cap is an **arbitrary guardrail, not a documented limit** — bare constant, no rationale comment, hard `break` + truncate `allRecords.length = 5000`. It already knows the *true* `totalCount` (`$count=true`) and already signals truncation via `capped`. Per-page `API_TIMEOUT = 30_000` (30s).
-- `dynamics-service.searchRecords()` **[VERIFIED — code read S156]** — Dataverse Search API (`/api/search/v1.0/query`), relevance-ranked, entity-spanning via an `entities` string array (e.g. `['akoya_request','contact','account']`), `top` clamped 1–100 (default 20), optional OData `filter`, `returntotalrecordcount`. Results normalized to `{ entity, objectId, score, highlights, attributes }`. Caveat: only Dataverse-Search-indexed tables are covered; `top` ≤ 100 means "locate the record" relies on relevance + optional filter, not browsing — consistent with the Track A design.
-- `getEntityAttributes()` **[VERIFIED — code read S156]** returns per attribute `{ logicalName, displayName (localized, falls back to logicalName), type (AttributeType), description, isRequired }`, filtered to `IsValidForRead`. **Two material gaps for Track A:** (a) it *fetches* `IsValidForCreate`/`IsValidForUpdate` but **drops them in the `.map()`** — the editor needs `IsValidForUpdate` to decide editable vs read-only, so this method needs a small extension; (b) it returns **no optionset option-labels and no lookup target-entity** — those come from *different* sources (see Track A typed-field note). `getRecord()` runs every record through `processAnnotations()`, which **[VERIFIED]** emits `${field}_formatted` (human-readable optionset/lookup display values) and `${field}_entity` (lookup target logical name) and preserves `_etag` as `_etag` for If-Match optimistic concurrency.
-- `exceljs` **[VERIFIED]** is already a dependency and already used inside `chat.js`.
+---
 
-So this is largely an assembly + UX job over existing primitives, not new infrastructure.
+## Shared spine (both tracks)
+
+Same discipline, mirrored: **AI (where used) proposes; deterministic code performs the privileged operation; a human-confirmation gate sits between.** Track A: *which field do I edit?* Track B: *what exactly am I asking for?* Compiler, not interpreter — the opposite of Dynamics Explorer, which interprets intent and acts. This is the invariant that keeps either tool from regressing into "Explorer 2": **the AI never executes, never paginates data, never sees the result set; it only emits a reviewable structured spec.**
 
 ---
 
 ## Track A — "Find & fix" (maintenance staff)
 
-The real product is **not "edit a field"** — the edit is trivial. The hard part is **field discovery**: the database has WMKF custom fields, commonly-used Akoya Go fields, and a very large tail of fields nobody uses. A staffer knows the *data* they want to change but typically does not remember the Dynamics logical field name. Per user (S156): the **vast majority of maintenance work is on already-populated fields**, surgical, in relatively few fields.
+The real product is **not "edit a field"** — the edit is trivial. The hard part is **field discovery** across a huge field tail (WMKF custom + AkoyaGo + a large unused remainder). Per user: the vast majority of maintenance is surgical edits to already-populated fields in relatively few fields.
 
-### Find
-One search box backed by Dataverse Search (`searchRecords()`). Entry point varies in practice — sometimes a request number, sometimes an institution name, sometimes an email, sometimes a PI name — and full-text entity-spanning search funnels all of those through one box → ranked candidate records → user picks the right one. Deliberately **not** a filter builder; this is "locate the one record," small result count. (This is the only overlap with Track B, and it is shallow: relevance lookup vs. deterministic bulk filter.)
+**Find.** One search box backed by `searchRecords()`. Entry varies (request # / institution / email / PI name); full-text entity-spanning search funnels all of them → ranked candidates → user picks one. Not a filter builder. (Shallow overlap with Track B: relevance lookup vs. deterministic bulk filter.)
 
-### Fix (primary primitive)
-Open the record → fetch it whole (`getRecord` without `$select` returns all fields) → render **only the fields that actually have a value**, each with its **human display label** (not `wmkf_obscurething`) and current value → inline edit. A record with hundreds of possible fields typically has ~30–50 populated; the thousands of empty/unused fields never render. This directly answers "obscure data lives in Dynamics but I don't remember the field" for the common case (field already has a value).
+**Fix (primary primitive).** Open the record → `getRecord` without `$select` → render **only populated fields, with human display labels** → inline edit. Hundreds of possible fields collapse to the ~30–50 actually populated. Directly answers "obscure data I can't name" for the common (already-populated) case. The read/display path is well-supported by existing code.
 
-### Fix (secondary, for currently-empty fields)
-Label/description search over the entity's attribute metadata (`getEntityAttributes`) — "program officer" surfaces matching logical fields by display name even when blank on this record. This is the one place in Track A where an LLM legitimately earns its keep (semantic "which field is that?"); the **write itself stays deterministic, confirmed, and audited**.
+**Fix (secondary, empty fields).** Label/description search over `getEntityAttributes` metadata. The one place an LLM legitimately helps ("which field is that?"); the write stays deterministic + confirmed.
 
-### Typed-field handling (the real engineering meat)
-Editing typed Dataverse fields is not text boxes. The editor must be type-aware: optionsets need option-label metadata, lookups need target-entity + GUID-free resolution, two-options / money / datetime each differ. **v1 scope line:** handle the safe scalar types (text / number / date / yes-no) cleanly; render optionsets and lookups **read-only** with a phase-2 follow. Editing those wrong silently corrupts data.
+**Typed-field handling (the engineering meat).** Type-aware editor. **v1 scope line:** safe scalar types (text/number/date/yes-no) editable; optionsets and lookups **read-only** (phase 2). Composes three sources: (1) `getEntityAttributes` extended to surface `IsValidForUpdate`; (2) `getRecord`→`processAnnotations` for `_formatted`/`_entity` display values; (3) `getEntityRelationships()` for lookup targets (phase 2). `_etag` is preserved on every `getRecord`, so an If-Match guarded write is cheap.
 
-**Probe finding (S156) — the editor must compose three sources, not one:** `getEntityAttributes` alone is insufficient. (1) editability flags: `getEntityAttributes` must be extended to surface `IsValidForUpdate` (currently fetched-but-dropped); (2) human-readable current values for optionsets/lookups: come free from `getRecord` → `processAnnotations` as `${field}_formatted` / `${field}_entity`; (3) lookup *target entity* (for phase-2 editing): `getEntityRelationships()` (exists, returns `manyToOne.referencedEntity`). Track A's read/display path is well-supported by existing code; the only required service change for v1 is surfacing `IsValidForUpdate`. **Concurrency bonus:** `_etag` is already preserved on every `getRecord`, so a safe If-Match guarded write (reject if the record changed under the editor) is cheap to implement.
+### Track A — blocking write-policy decisions (Codex; required before a v1 build plan)
 
-### Write contract (non-negotiable, not a design choice)
-Writes attributed to the acting staffer via the existing `MSCRMCallerID` impersonation contract (`docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md`) + audited.
+The read/display path has **no blocking unknowns**. The **write** path does — three explicit decisions, not assumptions:
 
-### Track A edit mode (v1)
-Single-record find → edit. No bulk-write surface in v1. (Small selected-set and spreadsheet-round-trip bulk edit are deliberate later phases, sequenced after single-edit is proven.)
+1. **Attribution enforcement.** `MSCRMCallerID` is not guaranteed (env-gated; 403 retries without it; falls back to service principal). The v1 write endpoint must **fail closed or surface a hard warning** when attribution would fall back — it cannot claim "attributed to the acting staffer" as a given.
+2. **Restriction enforcement.** `updateRecord` does not call `checkRestriction`. The Track A write path must explicitly enforce table+field restriction **before** calling it, or it silently bypasses the existing model.
+3. **Dangerous-scalar exclusion.** `IsValidForUpdate=true` is not sufficient — calculated/rollup/formula/logical fields can be "updatable" yet error or silently discard the write. The metadata fetch must additionally select/inspect `SourceType`/`AttributeOf`/`IsPrimaryId` (etc.) and exclude those, even within "safe scalar" types.
+
+**Track A edit mode (v1):** single-record find → edit; no bulk write. (Selected-set / spreadsheet round-trip are deliberate later phases.)
+
+### Audit / change-history capability (S156 probe — `scripts/probe-dataverse-audit-capability.js`)
+
+User hypothesis: fields with multiple audit versions reveal what staff actually edit; use that to prioritize the editor. Probed read-only against prod. Findings, with Codex review folded in — **stated conservatively; this is weaker than the hypothesis hoped:**
+
+- **Auditing is on and broad.** Org `isauditenabled=true`; `akoya_request` 407/577 attrs audited, `contact` 267/411. The data exists.
+- **Single-query dataset-wide aggregate is unavailable** — the app service principal lacks `ReadAuditSummary` (403), *and* Dataverse audit `RetrieveMultiple` requires exactly one top-level `objectid` condition. **Not over-claimed as "categorically impossible":** only the one-shot aggregate query is ruled out; iterated per-record (or batched per-`objectid`) remains. The probe tested the `objecttypecode` shape, not the single-`objectid` shape, so the precise privilege/shape boundary is only partially mapped.
+- **Per-record `RetrieveRecordChangeHistory` returned 200 — on ONE `akoya_request` only.** This is a demonstration, **not a generalized capability** (Codex Critical). Untested across other entities (`contact`), eras (legacy/migrated/pre-audit-enablement records), and record states (inactive); any could return empty, partial, or a different privilege error.
+
+**Caveats that materially weaken the hypothesis (do not treat change-frequency as a clean signal):**
+
+1. **Change frequency conflates automation with human edits.** Power-Automate / workflow / rollup / status writes dominate high-frequency fields — which are often *exactly* the fields staff must NOT edit. Frequency is a biased proxy for "fields maintenance staff edit," not a direct measure.
+2. **Privilege fragility as a feature dependency.** `RetrieveRecordChangeHistory` rides an independently-scoped audit privilege that can be revoked/re-scoped without affecting normal record read — a feature built on it can break invisibly.
+3. **Sampling encodes era/migration bias.** A sample of currently-retrievable records overrepresents Akoya-native (full history) and underrepresents legacy migrated records — which may be the *primary* maintenance-edit targets. A naïve sample would overfit the wrong population.
+4. **Dedupe is non-trivial.** Any frequency tally must drop annotation twins (`@…FormattedValue`, `@odata.type`) and metadata-confirmed currency `_base` shadows (mirror `dynamics-service.js:1228-1255`), not naïve underscore-stripping, or it double-counts / hides real fields.
+5. **Throttle exposure.** A 300–500 per-record sampling job inherits the no-429/no-backoff gap (`dynamics-service.js:1324-1337`; `queryAllRecords` throws on first non-OK) — it can fail or silently produce a partial sample.
+
+**Net position:** per-record change history surfaced *inline at point-of-edit* ("this field last changed by X on Y") is a **candidate Track A enhancement, not a v1 dependency.** The sampled-aggregation "which fields to prioritize" idea is **downgraded to a weak signal** — usable only after human-vs-automation disambiguation and era stratification, and only if the privilege is confirmed stable. Not a clean input; do not build v1 prioritization on it.
 
 ---
 
-## Track B — "Bulk export" (volume users)
+## Track B — "Bulk export" (volume users) — converged design
 
-Separate app. Read-only, deterministic filter → paged pull → Excel download. Lower risk; mostly assembly over `queryAllRecords()` + `exceljs`. The literal blocker is the `MAX_EXPORT_RECORDS = 5000` cap and the Explorer's `$top` 100 agentic cap.
+Read-only. Lower write-risk, but **higher correctness-risk** than first assumed. The naïve framing ("filter → page → Excel") is wrong because the data model and the user population both push back.
 
-### Open questions (NOT yet decided with the user)
-- **Volume ceiling / execution model.** Realistic top end unknown — "~10k" (single synchronous request is plausible within Vercel's 300s timeout at 500/page) vs. "entire request history, tens of thousands" (needs a background-job execution model). Decides sync-vs-async.
-- **Query construction UX.** Saved parameterized reports authored in code (matches forms-as-code / skinny-scope philosophy; serves non-technical users like the triggering CSO request directly) vs. a generic guided filter builder vs. both (templates + a raw-query escape hatch gated to a smaller power group). Not pinned.
+### Threat model recalibration
+
+Users are PhDs / lawyers / MBAs who take ownership of their analyses ("*I* performed this analysis") and have working BS detectors. These are not banking ledgers; nobody expects old records to balance or be complete. **The dominant risk is therefore NOT naïve trust of an obviously-wrong number** (their judgment + ownership culture catch "$2M to Stanford over 20 years"). **It is the *plausible* wrong number that passes the sniff test** — "52 research grants to UW since 2015" when the truth is 57 because 5 were misclassified or used a SoCal naming variant. Nobody gut-checks 52 vs 57.
+
+**Consequence:** concentrate the correctness budget on the error class human judgment *cannot* backstop — **composition / era / classification disclosure** — and *drop* canon-grade defensive armor (sentinel-everywhere paranoia, "spreadsheet becomes truth" hardening). Provenance is reframed from a defensive warning label into a **reproducible methods section** so the accountable analyst can stand behind and reproduce the number.
+
+### Product thesis
+
+> The tool's core value is forcing the latent ambiguities — **which type** (polymorphism), **which era** (boundary), **what does "2021" mean** (date-basis), **which "budget"** (amount fan-out), **which "Stanford"** (institution record) — into **explicit, plain-English choices**, then producing a **reproducible, honestly-characterized chunk** the accountable expert refines in Excel.
+
+### Why this is hard: the data model fights back
+
+- **`request` is polymorphic; "grant" is a *view* over it, not the entity.** `akoya_request` is the base entity (docs/payments hang off it). It holds: research grants (status pending/awarded/…), **research concepts** (feedback-only, no money), **SoCal program** requests (separate process, possibly different field naming/values), **discretionary awards** (small $, very high volume — staff-directed giving), and **other projects** ($100M building-type awards). Not every request is a grant. A naïve "all grants to UW" against the polymorph silently mis-counts. The semantic layer's core artifact is a **type taxonomy + discriminator field(s)** — derived from data, not invented.
+- **Temporal polymorphism.** 70-year-old foundation: file cabinets → prior system → AkoyaGo, with field remapping. Recent Akoya-native data is mostly clean and Connor-authoritative; pre-Akoya migrated data is approximate and some knowledge is gone. "Ever" in the triggering query is **rhetorical** — real bulk searches go back ~20 years at most, mostly recent. **Deep-history is out of Track B v1 by design**: a "find the 1986 Stanford building award" need is a Track A / Explorer *find-one* pattern, not bulk aggregation, and must not contaminate Track B's semantic layer.
+- **Completeness is a property of (field × era), not the dataset.** A correctly-classified 1993 grant can still have an empty/illegible co-PI (scanned form, never transcribed). The silent failure in a new costume: blank → `""` in Excel reads as "no co-PI" when the truth is "never captured." The tool must distinguish **null-because-absent** from **null-because-never-captured** and must NOT attempt historical recovery (no OCR heroics) — only refuse to misrepresent sparsity. Expectations are already calibrated; this is cheap honesty, not archaeology.
+
+### Division of labor: tool vs. Excel (+ Claude Excel plugin)
+
+The in-app query does **not** need to be surgical. Export a **generous, trust-bounded, well-characterized chunk**; last-mile row whittling ("find the physics grants") happens in Excel where the user already lives. The tool owns only what Excel **cannot detect or recover**:
+
+- record-level inclusion correctness (polymorphism, era boundary),
+- institution disambiguation (the "Stanford"/"UW" name-variant rollup),
+- composition + era/classification + completeness disclosure,
+- **generous columns** — *including* the type discriminator, era/confidence flag, resolved-institution column, and an explicit `UNKNOWN — not captured` sentinel (never a bare blank).
+
+**Hard requirement:** refinement in Excel is only valid if those classification/provenance columns are in the file. Once the spreadsheet leaves the app the honesty machinery is gone, so it must be **baked into the artifact** (a methods/provenance sheet + explicit sentinels), not merely shown in the UI at export time.
+
+### UX resolution: expression, not intent
+
+The expert's bottleneck is **not** intent (they hold the predicate fully formed — "research grants, awarded, 2021–2025, budget > $1.5M") — it is **expression**: AkoyaGo fails them on (1) discoverability ("where do I click") and (2) the vocabulary gap (business terms vs. `akoya_*` logical names / optionset integers).
+
+- **v1 core = a plain-English structured filter builder** — discoverable, business-vocabulary fields, with **fan-out choices made explicit**. "Budget > $1.5M" hides a fan-out: *which* budget — Awarded / Requested / Total project? The builder must force that choice exactly like the date-basis choice.
+- **AI = phase-2 on-ramp**, not the centerpiece: NL → a proposed structured filter *rendered back into the same builder for confirmation*, for the non-expert (the boss). Plus optional disambiguation help.
+- **Two doors, one engine.** Reductive (expert builds the predicate) and guided (AI proposes it) converge on the same query-spec, compiler, confirmation gate, and composition disclosure. **Composition disclosure is mandatory even in expert mode** — a tight expert filter can still be wrong about polymorphism/era.
+
+### The three semantic-layer artifacts (the real work; mostly evidence-derived)
+
+1. **Plain-English field dictionary** — business term → physical field(s) + control rendering, **encoding fan-out points** where one term legitimately means several fields and the builder must force a choice.
+2. **Type / era taxonomy + boundary** — the request polymorphism discriminator(s), values, and the Akoya-native vs. migrated boundary date.
+3. **Field-availability boundary** — coarse "when did each *important* field become reliably captured" (amount: always; co-PI: post-Akoya; narrative: scans pre-~2010). Bounded to the ~10–15 columns that appear in real exports — not all ~800 fields.
+
+### Track B engineering requirements (Codex-informed)
+
+- **Backoff-hardened paging is v1, not later.** The robustness floor is "the big query must *succeed*." Today `queryAllRecords` throws on the first non-200 and there is no 429/`Retry-After` handling — the exact broad query the tool exists to serve fails hardest. v1 must add retry/backoff.
+- **Concrete sync budget + buffer-vs-stream decision.** Worst case 20 pages × 30s = 600s > Vercel's 300s; rows buffered fully in memory. Realistic *filtered* slices are modest (hundreds), so synchronous export is fine for real cases; an async/background-job model is needed **only if** genuine needs exceed what hardened-sync can safely deliver. Parameterize the arbitrary 5000 cap and surface `capped`/`totalCount` **in the UI** (the helper already returns them).
+- **Loud, actionable truncation.** Not a footnote — show the true total prominently and offer the narrowing dimensions ("8,213 match; narrow by program / year / status / institution").
 
 ---
 
-## Packaging & access (proposed, not finalized)
+## Packaging & access (Codex-corrected)
 
-Two entries in `shared/config/appRegistry.js`, each app-key gated and admin-assignable to its own group (Find&fix → maintenance staff; Bulk export → volume users), mirroring the Virtual Review Panel admin-assign model. Superuser-only is likely too narrow (maintenance staff / the CSO are probably not superusers). One combined "Data Admin" app is the fallback if registry/nav surface is a concern, but it bundles a read tool and a write tool under one grant — coarser permissioning.
+Two entries in `shared/config/appRegistry.js`, admin-assignable to their own groups (Find&fix → maintenance staff; Bulk export → volume users), mirroring the Virtual Review Panel model. **Correction (Codex):** the registry is nav/config only — this also requires Dataverse `wmkf_appuserappaccesses` grants and a `requireAppAccess` route gate on **every** new endpoint (lib/utils/auth.js:245-312; app-access-service.js:33-40). Superuser-only is too narrow. A combined "Data Admin" app is a fallback but bundles a read tool and a write tool under one coarse grant.
 
 ---
 
-## Grounding probe — DONE (Session 156, source-contract read)
+## Status of unknowns
 
-All three targets resolved against `lib/services/dynamics-service.js` (no prod Dataverse calls needed). Findings folded into the verified bullets and the Track A typed-field note above. Net:
+- **Track A — read/display: unblocked.** **Write: blocked** on the three write-policy decisions above (attribution enforcement, restriction enforcement, dangerous-scalar exclusion). The earlier "no blocking unknowns for Track A v1" was premature and is retracted.
+- **Track A — audit/change-history: NOT a v1 input.** Per-record history is demonstrated (n=1) but not generalized; the field-prioritization use is a downgraded weak signal (automation-vs-human conflation, era bias, privilege fragility). Treat as a possible later enhancement, gated on the stratified verification in step 5 below — do not build v1 on it.
+- **Track B — design converged; blocked on the three evidence tasks below** before a build plan (the three semantic-layer artifacts must be evidence-derived, not invented — probe-before-plan).
 
-1. **`getEntityAttributes`** — exposes labels/type/description/required, filtered to readable. One required v1 service change: surface the already-fetched `IsValidForUpdate`. Optionset/lookup display handled by the existing `processAnnotations` path, not this method.
-2. **`searchRecords`** — confirmed the right Track A "find" primitive (relevance-ranked, entity-array scoping, `top` ≤ 100). Caveat: entity must be Dataverse-Search-indexed.
-3. **`MAX_EXPORT_RECORDS = 5000`** — arbitrary guardrail, not a documented limit. The triggering ~5000-request export sits *exactly at the cap* and would silently truncate to 5000 with `capped:true` while `totalCount` shows the real number. Track B's first concrete change: parameterize the ceiling + surface `capped`/`totalCount`, then decide sync (bounded by 30s/page + Vercel timeout) vs. async job for higher ceilings.
+## Codex review reconciliation (S156)
 
-**No blocking unknowns remain for a Track A v1 implementation plan.** Track B still needs the two user decisions (volume ceiling, query UX) before its plan.
+**Review 1 (design doc) folded in:** retracted "silent truncate" (helper already signals `capped`/`totalCount`; defect is the arbitrary cap + UI not surfacing it); softened "non-negotiable attribution" → explicit Track A decision #1; added `updateRecord` missing `checkRestriction` → decision #2; added dangerous-scalar (calculated/rollup/formula) exclusion → decision #3; fixed `searchRecords` to "upper-bounded at 100, no lower bound"; noted `getEntityRelationships` lacks `checkRestriction`; narrowed the `processAnnotations` claim (annotations only when Dataverse returns them); corrected packaging to include Dataverse app-access grants + per-route gates; promoted 429/backoff to Track B v1; added the concrete sync timeout/memory budget; retracted the premature "no blocking unknowns" conclusion.
+
+**Review 2 (audit probe) folded in:** softened "bulk audit conclusively impossible" → only the one-shot aggregate query is ruled out (single-`objectid` shape untested); reframed the per-record 200 as a single demonstration, not a generalized capability; recorded the automation-vs-human conflation, privilege fragility, era-sampling bias, dedupe, and throttle caveats; downgraded change-frequency from a clean Track A input to a weak, gated, post-v1 signal; added gated step 5. Probe-script docstring corrected (token acquisition is a POST, not "strictly GET").
+
+## Gated next steps (evidence before build plan — probe-before-plan)
+
+1. **Claude → Dataverse probe:** discriminator field(s) + distinct values + per-type volumes + era distribution for `akoya_request`. Start from `docs/atlas/dataverse-akoya-request.md`; re-run `scripts/audit-dataverse-state.js` if stale.
+2. **User → AkoyaGo excavation:** the *operational filters* of the trusted views/reports (executable definitions, not prose) + the Akoya-native migration cutover date.
+3. **Connor → recent-era taxonomy + remap history:** authoritative clean-era definitions + what is known about prior-system field remapping.
+4. **(Done, this doc)** consolidated design + memory.
+5. **(Conditional — only if change-history is pursued) stratified audit-capability verification:** `RetrieveRecordChangeHistory` across multiple entities (incl. `contact`), eras (Akoya-native vs. legacy/migrated vs. pre-audit-enablement), and record states; confirm the audit privilege is stable (not incidentally granted); design metadata-confirmed dedupe; and a human-vs-automation (Power Automate / workflow / rollup) disambiguation method before any prioritization signal is trusted. Not started; not required for v1.
 
 ---
 
 ## Decisions converged with user (Session 156)
 
-- Two separate apps, not one. (User instinct, confirmed.)
-- Track A: vast majority of work is populated-fields-only, labels, inline edit. Record identification varies (request # / institution / email / PI name) → single Dataverse Search box.
-- Track A v1: single-record edit only; safe scalar types only; optionset/lookup read-only until phase 2.
-- Track B kept as the lower-priority, less-defined track for now; Track A is higher-pain and higher-clarity.
+- Two separate apps, shared spine (AI proposes / deterministic acts / human-confirm gate), not one tool.
+- Track A: populated-fields-only inline edit, single Dataverse Search box for find; v1 single-record, safe scalars only, optionset/lookup read-only; **write path gated on 3 explicit policy decisions**.
+- Track B: not a generic builder and not fixed templates — a **plain-English structured filter builder + mandatory composition/era disclosure**, generous trust-bounded export, refine-in-Excel; AI is a phase-2 on-ramp, not the core.
+- Threat model: optimize against the *plausible* wrong answer that passes the sniff test; provenance = reproducible methods, not defensive armor.
+- "Ever" is rhetorical; deep-history is out of Track B v1 by design and routes to the Track A / Explorer find-one pattern.
+- The real Track B work is three evidence-derived semantic-layer artifacts; design is blocked on the three evidence tasks.
