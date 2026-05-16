@@ -1,7 +1,7 @@
 # Atlas: `akoya_request` (Dataverse, vendor entity + WMKF extensions)
 
-**Last verified:** 2026-05-07 via `scripts/audit-dataverse-state.js`
-**Live row count:** 5,000+ (probe capped at default page; total higher)
+**Last verified:** 2026-05-07 via `scripts/audit-dataverse-state.js`; discriminator/era distributions 2026-05-15 via `scripts/probe-akoya-request-discriminators.js`
+**Live row count:** **~25,561** (FetchXML aggregate, 2026-05-15). ⚠️ OData `/$count` returns **5,000** — Dataverse caps `$count` at 5,000; the "5,000" figure is the cap, not the total. Use FetchXML aggregate / RetrieveTotalRecordCount for the true count.
 **Entity set:** `akoya_requests`
 
 ## Source of truth
@@ -109,11 +109,23 @@ All user-driven writes use `MSCRMCallerID` (impersonation contract per `docs/DYN
 | `proposal_searches.request_number` | same | (table empty) |
 | `grant_cycles.short_code` | derives from `akoya_request.wmkf_meetingdate` via `cycle-code.js` | not stored on request |
 
+## Polymorphism & era distribution (live-probed 2026-05-15)
+
+`akoya_request` is **polymorphic** — "grant" is a *view* over it, not the entity. No single discriminator; it is a **composite** of `wmkf_request_type` × `wmkf_grantprogram` × `akoya_requesttype`. Counts via FetchXML aggregate (within the 50k aggregate reliable range):
+
+- `akoya_requesttype` (Picklist): `Grant` 25,473 · `Scholarship` 88 · (`Interfund`/`Program Expense` defined but unused). Too coarse to use alone.
+- `wmkf_request_type` (Picklist): `Request` 16,227 · `Concept` 3,273 · `Office Visit` 2,826 · `Site Visit` 1,528 · `Phone Call` 914 · *null* 706 · `Individual` 87. **`Concept` = feedback-only, not a funding ask. Office/Site Visit + Phone Call (~5,268) are interaction logs, not grants.**
+- `wmkf_grantprogram` (lookup): `Research` 8,500 · `Discretionary` 5,345 · *null* **4,634** · `Southern California` 4,489 · `Undergraduate Education` 2,017 · `Young Scholars` 326 · `Honorarium` 87 · `Law` 62 · `Strategic Fund` 47 · `Other` 43 · `Emeritus` 7 · `Memorial` 4. **SoCal is its own large separate-process program; Discretionary is high-volume staff-directed giving; ~4,634 rows have NO program (data-quality hole for "all grants to X").**
+- `akoya_requeststatus` (String): 24 live values — `Closed` 7,479 · `Phase I Declined` 5,905 · `Concept Done` 3,047 · `Office Visit` 2,826 · `Site Visit` 1,528 · `Phone Call` 914 · `Approved` 766 · `Phase II Declined` 707 · … (interaction types also appear here as status — overlapping/messy). Note the 2026-05-07 "Key fields" line listing `Accepted` is stale — no live `Accepted`; closest is `Approved`.
+- `statecode`: 0 (active) 25,518 · 1 (inactive) 43.
+
+**Era:** `createdon` by year — **2023: 22,573** · 2024: 1,167 · 2025: 1,376 · 2026: 445. ~88% stamped 2023 ⇒ a **bulk migration/import event ~2023** collapsed true historical creation dates. `createdon` is migration-dominated and is **NOT** a reliable Akoya-native-vs-legacy signal; the cutover is ~2023 (confirm exact date with Connor / AkoyaGo). `overriddencreatedon` (the proper migrated-origin marker) probed **inconclusive** — groupby all-null and a `$count` filter 400'd; not exposed or wrong query shape, flagged not concluded.
+
 ## Migration disposition
 
 Stays as the system of record. WMKF AI fields and lifecycle additions are merged into the vendor entity, not extracted.
 
 ## Open questions / gotchas
 
-- 5,000+ rows; many vendor-only fields not in our scope. Don't accidentally touch fields outside the WMKF-owned set.
+- **~25,561 rows** (not "5,000" — that is the OData `$count` cap; see header). Many vendor-only fields not in our scope. Don't accidentally touch fields outside the WMKF-owned set.
 - The 5-slot `wmkf_copi1..5` and `wmkf_potentialreviewer1..5` patterns are vendor-conceived but feel artificial — they're being phased out via child entities (`wmkf_apprequestperson` extended per 2026-05-14 schema review for roster, `wmkf_appreviewersuggestion` for reviewer state). Code that reads slots directly should be flagged for migration.

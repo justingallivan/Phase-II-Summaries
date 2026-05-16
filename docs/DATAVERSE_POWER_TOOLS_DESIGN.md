@@ -95,6 +95,14 @@ Users are PhDs / lawyers / MBAs who take ownership of their analyses ("*I* perfo
 - **Temporal polymorphism.** 70-year-old foundation: file cabinets → prior system → AkoyaGo, with field remapping. Recent Akoya-native data is mostly clean and Connor-authoritative; pre-Akoya migrated data is approximate and some knowledge is gone. "Ever" in the triggering query is **rhetorical** — real bulk searches go back ~20 years at most, mostly recent. **Deep-history is out of Track B v1 by design**: a "find the 1986 Stanford building award" need is a Track A / Explorer *find-one* pattern, not bulk aggregation, and must not contaminate Track B's semantic layer.
 - **Completeness is a property of (field × era), not the dataset.** A correctly-classified 1993 grant can still have an empty/illegible co-PI (scanned form, never transcribed). The silent failure in a new costume: blank → `""` in Excel reads as "no co-PI" when the truth is "never captured." The tool must distinguish **null-because-absent** from **null-because-never-captured** and must NOT attempt historical recovery (no OCR heroics) — only refuse to misrepresent sparsity. Expectations are already calibrated; this is cheap honesty, not archaeology.
 
+### Evidence (live probe 2026-05-15 — `scripts/probe-akoya-request-discriminators.js`)
+
+Gated step #1 substantially executed. Confirms the polymorphism thesis with numbers (full distributions + caveats in `docs/atlas/dataverse-akoya-request.md`):
+
+- **The discriminator is a composite, empirically:** `wmkf_request_type` (Request 16,227 · Concept 3,273 · Office/Site Visit + Phone Call ~5,268 interaction logs · null 706) × `wmkf_grantprogram` (Research 8,500 · Discretionary 5,345 · **null 4,634** · Southern California 4,489 · Undergraduate Education 2,017 · …) × `akoya_requesttype` (Grant 25,473 · Scholarship 88). No single field works. Every user-described slice is confirmed with volume; the **4,634 null-program** rows are a real data-quality hole for "all grants to X."
+- **🔴 Hard Track B engineering requirement (promote): never use OData `$count`.** Live `/akoya_requests/$count` returned **5,000**; true total via FetchXML aggregate is **~25,561**. Dataverse caps `$count` at 5,000 — a silent ~80% undercount that *looks exactly like* the triggering "~5,000 requests." The honest-total path MUST be FetchXML aggregate / RetrieveTotalRecordCount, not `$count`. This is no longer just a UI concern — it is a correctness invariant of the export engine.
+- **Era boundary quantified:** `createdon` is **2023-dominated (22,573 of ~25,561)** — a bulk migration import collapsed true historical dates onto ~2023. So `createdon` is **not** a usable Akoya-native-vs-legacy signal; the cutover is ~2023 (exact date → Connor / AkoyaGo, gated step 3). `overriddencreatedon` (the proper origin marker) probed **inconclusive** (not concluded off a malformed query) — a residual on step 1.
+
 ### Division of labor: tool vs. Excel (+ Claude Excel plugin)
 
 The in-app query does **not** need to be surgical. Export a **generous, trust-bounded, well-characterized chunk**; last-mile row whittling ("find the physics grants") happens in Excel where the user already lives. The tool owns only what Excel **cannot detect or recover**:
@@ -148,7 +156,7 @@ Two entries in `shared/config/appRegistry.js`, admin-assignable to their own gro
 
 ## Gated next steps (evidence before build plan — probe-before-plan)
 
-1. **Claude → Dataverse probe:** discriminator field(s) + distinct values + per-type volumes + era distribution for `akoya_request`. Start from `docs/atlas/dataverse-akoya-request.md`; re-run `scripts/audit-dataverse-state.js` if stale.
+1. **Claude → Dataverse probe — SUBSTANTIALLY DONE (2026-05-15, `scripts/probe-akoya-request-discriminators.js`).** Composite discriminator + per-type volumes + ~25,561 true count + `$count`-caps-at-5000 + ~2023 migration spike all captured (see Track B "Evidence" + Atlas page). **Residual:** `overriddencreatedon` true-origin marker inconclusive — needs a corrected query or Connor's exact cutover date (folds into step 3).
 2. **User → AkoyaGo excavation:** the *operational filters* of the trusted views/reports (executable definitions, not prose) + the Akoya-native migration cutover date.
 3. **Connor → recent-era taxonomy + remap history:** authoritative clean-era definitions + what is known about prior-system field remapping.
 4. **(Done, this doc)** consolidated design + memory.
