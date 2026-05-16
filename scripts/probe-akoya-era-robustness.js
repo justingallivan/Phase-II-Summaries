@@ -156,7 +156,7 @@ const pct = x => (x * 100).toFixed(0).padStart(3) + '%';
       `<filter type="and">${scopeConds}<condition attribute="${targetField}" operator="not-null"/></filter>`);
     return tot ? { tot, hit, r: hit / tot } : { tot: 0, hit: 0, r: 0 };
   }
-  for (const tf of ['akoya_grant', 'akoya_request', 'akoya_expenses']) {
+  for (const tf of ['akoya_grant', 'akoya_originalgrantamount', 'akoya_request', 'akoya_expenses']) {
     const nd = await rate(natF + decided, tf);
     const nn = await rate(natF + notDecided, tf);
     const mg = await rate(migF, tf);
@@ -186,10 +186,15 @@ const pct = x => (x * 100).toFixed(0).padStart(3) + '%';
     console.log(`  ${f}:`);
     if (!rr.ok) { console.log(`    [${rr.status}]`); continue; }
     const rows = (rr.body.value || []).map(x => ({ y: Number(x['y.year'] ?? x.y), c: Number(x.c) || 0 }));
-    const dec = {}; let tot = 0, pre1954 = 0;
-    for (const x of rows) { const d = Math.floor(x.y / 10) * 10; dec[d] = (dec[d] || 0) + x.c; tot += x.c; if (x.y < 1954) pre1954 += x.c; }
+    const thisYear = new Date().getUTCFullYear();
+    const dec = {}; let tot = 0, pre1954 = 0, future = 0;
+    for (const x of rows) {
+      const d = Math.floor(x.y / 10) * 10; dec[d] = (dec[d] || 0) + x.c; tot += x.c;
+      if (x.y < 1954) pre1954 += x.c;
+      if (x.y > thisYear) future += x.c;
+    }
     for (const d of Object.keys(dec).sort()) console.log(`    ${d}s: ${dec[d]}`);
-    console.log(`    [total non-null=${tot}; pre-1954(suspect)=${pre1954}]`);
+    console.log(`    [total non-null=${tot}; pre-1954(suspect)=${pre1954}; future(>${thisYear}, typo)=${future}]`);
   }
 
   console.log('\nDone (read-only robustness probe).');

@@ -59,25 +59,30 @@ async function aggCount(token, fxFilter) {
 
 // Physical field per export concept (resolved earlier; akoya_requestnum is the
 // human Request #). Lookups use the bare logical name in FetchXML not-null.
+// Bucket labels match the corrected Artifact 3 classification (design doc):
+// A=measured≥97% both · Bl=B-lifecycle · Bs=B-structural · C=both-eras ·
+// D=sparse-both · E=provenance. statecode is platform-mandatory (never null)
+// but is measured here so the doc's 100/100 row is probe-backed, not asserted.
 const COLS = [
   ['Request #',            'akoya_requestnum',            'A'],
   ['Request type (Akoya)', 'akoya_requesttype',           'A'],
   ['Request type (WMKF)',  'wmkf_request_type',           'A'],
   ['Lifecycle status',     'akoya_requeststatus',         'A'],
+  ['State',                'statecode',                   'A'],
   ['Applicant org',        'akoya_applicantid',           'A'],
   ['Internal program',     'akoya_programid',             'A'],
   ['Meeting date',         'wmkf_meetingdate',            'A'],
   ['Fiscal year',          'akoya_fiscalyear',            'A'],
   ['Amount paid',          'akoya_paid',                  'A'],
-  ['Decision date',        'akoya_decisiondate',          'B'],
-  ['Requested amount',     'akoya_request',               'B?'],
-  ['Total project budget', 'akoya_expenses',              'B?'],
-  ['Grant (awarded) amt',  'akoya_grant',                 'B'],
-  ['Original grant amt',   'akoya_originalgrantamount',   'B'],
+  ['Decision date',        'akoya_decisiondate',          'Bl'],
+  ['Grant (awarded) amt',  'akoya_grant',                 'Bl'],
+  ['Original grant amt',   'akoya_originalgrantamount',   'Bl'],
+  ['Requested amount',     'akoya_request',               'Bs'],
+  ['Total project budget', 'akoya_expenses',              'Bs'],
   ['Grant program',        'wmkf_grantprogram',           'C'],
   ['Primary contact',      'akoya_primarycontactid',      'C'],
   ['Title',                'akoya_title',                 'C'],
-  ['Project leader / PI',  'wmkf_projectleader',          'C'],
+  ['Project leader / PI',  'wmkf_projectleader',          'D'],
   ['Begin date',           'akoya_begindate',             'D'],
   ['End date',             'akoya_enddate',               'D'],
   ['Request received',     'akoya_datereceived',          'D'],
