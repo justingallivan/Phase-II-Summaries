@@ -1,0 +1,72 @@
+Verify wmkf_type="Miscellaneous" — 2026-05-17T02:20:05.228Z (read-only)
+
+wmkf_type entity: set=wmkf_types  id=wmkf_typeid  name=wmkf_name
+"Miscellaneous" type record(s): 296a895e-f9c4-ee11-9079-000d3a32ccef
+
+══ TOTAL wmkf_type="Miscellaneous": 52 rows ══
+  user said ~50 → CONFIRMED (≈50, exact 52)
+  with grant>0: 52   paid>0: 51   migrated/native split: 40/12
+  total grant $: 3,354,121.01
+  by status:
+     23  Active
+     15  Approved
+     14  Closed
+  by wmkf_request_type:
+     45  Request
+      7  (null)
+
+══ All 52 rows (real-grant sniff test) ══
+#1002800  Approved          grant=      2500  paid=      2500  California Community Foundation :: Grant to California Community Foundation 
+#1002799  Approved          grant=      2500  paid=      2500  California Community Foundation :: Grant to California Community Foundation 
+#1002626  Approved          grant=      5000  paid=         0  Candid :: Grant to Candid 
+#1002625  Closed            grant=     11000  paid=     11000  Southern California Grantmakers :: Grant to Southern California Grantmakers 
+#1001681  Active            grant=     75000  paid=     75000  Science Philanthropy Alliance :: 2025 Annual Contribution
+#1001399  Approved          grant=      2500  paid=      2500  California Community Foundation :: Grant to California Community Foundation 
+#1001398  Approved          grant=      3000  paid=      3000  California Community Foundation :: Grant to California Community Foundation 
+#1000721  Active            grant=     11000  paid=     11000  Southern California Grantmakers :: Grant to Southern California Grantmakers 
+#997172  Active            grant=     50000  paid=     50000  AAUW-CA Special Projects Fund :: Torrance Branch Tech Trek Program
+#997171  Approved          grant=    200000  paid=    200000  Connecticut College :: For summer research for undergraduates in the
+#997127  Approved          grant=   1000000  paid=   1000000  The UCLA Foundation :: Pulmonary research in honor of Robert A. Day.
+#997378  Active            grant=      5000  paid=      5000  Candid :: Toward annual contribution.
+#996408  Active            grant=     10000  paid=     10000  Health Research Alliance :: HRA dues for FY 2023
+#996413  Active            grant=      5000  paid=      5000  Candid :: Toward annual contribution.
+#996414  Active            grant=     11000  paid=     11000  Southern California Grantmakers :: Toward annual contribution.
+#995840  Active            grant=     75000  paid=     75000  Science Philanthropy Alliance :: 2022 Annual Contribution
+#995841  Active            grant=     75000  paid=     75000  Science Philanthropy Alliance :: 2023 Annual Contribution
+#995842  Active            grant=     75000  paid=     75000  Science Philanthropy Alliance :: 2024 Annual Contribution
+#995811  Active            grant=     10000  paid=     10000  Health Research Alliance :: HRA dues for FY 2022
+#996013  Active            grant=      5000  paid=      5000  Keck Graduate Institute of Applied Life Sciences :: 
+#996239  Active            grant=     11000  paid=     11000  Southern California Grantmakers :: Toward annual contribution.
+#995335  Active            grant=      5000  paid=      5000  Candid :: Toward annual contribution.
+#994924  Active            grant=     11000  paid=     11000  Southern California Grantmakers :: Toward annual contribution.
+#994516  Active            grant=     10000  paid=     10000  University of Southern California :: 2021 Philanthropic Partners Program
+#994517  Active            grant=     10000  paid=     10000  Health Research Alliance :: HRA Annual Membership Dues for CY 2021
+#994487  Active            grant=     11000  paid=     11000  Southern California Grantmakers :: Annual Contribution
+#993576  Active            grant=     10000  paid=     10000  Health Research Alliance :: Calculation of all health-related grants paid
+#993580  Active            grant=     10000  paid=     10000  University of Southern California :: 2020-2021 Philanthropic Partners Program
+#993536  Active            grant=     11000  paid=     11000  Southern California Grantmakers :: Annual Contribution
+#993537  Active            grant=      5000  paid=      5000  Candid :: Annual Contibution
+#992548  Closed            grant=      6250  paid=      6250  Health Research Alliance :: Calculation of all health-related grants paid
+#992550  Closed            grant=     10000  paid=     10000  University of Southern California :: 2019-2020 Philanthropic Partners Program
+#992516  Closed            grant=     11000  paid=     11000  Southern California Grantmakers :: Annual Contribution
+#992472  Closed            grant=      5000  paid=      5000  Candid :: Annual Contibution
+#991568  Closed            grant=   9371.01  paid=   9371.01  Operation Walk :: For the purchase of books in support of Opera
+#991434  Closed            grant=    500000  paid=    500000  BakerRipley :: Toward Hurricane Harvey relief efforts
+#991435  Active            grant=    250000  paid=    250000  St. Martin's Episcopal Church :: Toward Hurricane Harvey relief efforts
+#987759  Approved          grant=    100000  paid=    100000  Greater Houston Community Foundation :: 
+#987760  Approved          grant=    110000  paid=    110000  Occidental College :: 
+#983445  Approved          grant=     50000  paid=     50000  Baylor College of Medicine :: 
+#976577  Approved          grant=    100000  paid=    100000  Kinkaid School Inc. :: 
+#970181  Approved          grant=    100000  paid=    100000  University of Texas at Austin :: 
+#969803  Approved          grant=    100000  paid=    100000  Middletown Community Foundation :: 
+#966768  Approved          grant=    100000  paid=    100000  Bishop Manogue Catholic High School :: 
+#963484  Approved          grant=     25000  paid=     25000  Mental Health America of Los Angeles :: 
+#810488  Closed            grant=      5000  paid=      5000  Southern California Grantmakers :: To renew full voting membership for the W. M.
+#800359  Closed            grant=      5000  paid=      5000  Southern California Grantmakers :: For full membership in Association for calend
+#800360  Closed            grant=     50000  paid=     50000  Southern California Grantmakers :: To be expended for employment of additional s
+#790301  Closed            grant=      5000  paid=      5000  Southern California Grantmakers :: For full membership in calendar year 1981.
+#780257  Closed            grant=      2500  paid=      2500  Southern California Grantmakers :: Representing Donor Membership Grant
+#810487  Closed            grant=     80000  paid=     80000  Southern California Grantmakers :: To support staff expansion and membership dev
+#770238  Closed            grant=      2500  paid=      2500  Southern California Grantmakers :: membership
+
+Done (read-only verification — wmkf_type=Miscellaneous).
