@@ -1,0 +1,52 @@
+Token acquired.
+Probe date: 2026-05-17  (dated evidence — Living-taxonomy policy)
+
+══ decline-metadata field set (akoya_request) ══
+  akoya_denialreason  [Picklist]  "Denial Reason"
+  akoya_denialreasonname  [Virtual]  ""
+  wmkf_denialnotes  [Memo]  "Invite/Decline Notes"
+  wmkf_socalreasonsfordecline2  [Virtual]  "SoCal Reasons for Decline"
+  wmkf_socalreasonsfordecline2name  [Virtual]  ""
+
+  H2 anchor — SoCal-only field "wmkf_socalreasonsfordecline2" present: YES
+
+  measured fields (Virtual *name companions excluded): akoya_denialreason · wmkf_denialnotes · wmkf_socalreasonsfordecline2 · akoya_decisiondate
+
+declined-status values (8): Concept Denied · Concept Ineligible · Denied · Phase I Declined · Phase I Ineligible · Phase II Declined · Proposal Not Invited · Rescinded
+
+══════════════ MIGRATED — declined per program (n=7105) ══════════════
+  program                                 n   reason  notes  socal   ANY   decisiondate
+  Medical Research                        2200   98%    6%    8%  100%  100%
+  Science and Engineering Research        1974   98%    1%    0%  100%  100%
+  Undergraduate Education - Science & En   964  100%    1%    0%  100%  100%
+  Civic & Community                        684   97%    7%    5%  100%  100%
+  Precollegiate Education                  317   97%    8%    6%  100%  100%
+  Undergraduate Education - Liberal Arts   309  100%    1%    0%  100%  100%
+  Health Care                              286   96%    7%    6%  100%  100%
+  Arts & Culture                           256   99%    3%    2%  100%  100%
+  Early Childhood                           73   97%    5%    4%  100%  100%
+  Law and Legal Administration              20  100%    5%    0%  100%  100%
+  (6 program(s) with n<15, pooled)           22   — suppressed (low-n noise)
+  ── reconciliation: Σ per-program n = 7105  vs pooled n = 7105  ✓ exact
+  ── pooled (whole-entity, re-derived): reason  98% · notes   4% · socal   3% · ANY 100% · decisiondate 100%
+
+══════════════ NATIVE — declined per program (n=860) ══════════════
+  program                                 n   reason  notes  socal   ANY   decisiondate
+  Medical Research                         324    7%   45%    0%   52%   10%
+  Science and Engineering Research         315    7%   36%    0%   45%   10%
+  (no program)                              81    0%   36%    0%   36%    0%
+  Civic & Community                         69   17%   80%   68%   87%   17%
+  Precollegiate Education                   29   21%   90%   69%   93%   24%
+  Health Care                               23    9%   87%   78%   87%    9%
+  (3 program(s) with n<15, pooled)           19   — suppressed (low-n noise)
+  ── reconciliation: Σ per-program n = 860  vs pooled n = 860  ✓ exact
+  ── pooled (whole-entity, re-derived): reason   8% · notes  47% · socal  11% · ANY  53% · decisiondate  10%
+
+Read: (H1) wide spread of ANY% across top programs ⇒ pooled Puzzle 2/2b
+  number is a fiction; per-program segmentation is mandatory for any
+  Track B decline output. (H2) SoCal program high on socal%, ~0 on
+  reason/notes, non-SoCal ~0 on socal% ⇒ existing two-field probe
+  structurally under-counts SoCal declines. (H3) compare which program
+  drives the pooled native reason/notes split.
+
+Done (read-only per-program decline-segmentation probe).
