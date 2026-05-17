@@ -8,9 +8,10 @@
  *   H-a NOT-A-GAP (field choice): do they have the authoritative
  *       `akoya_programid` ("Internal Program") populated anyway? program
  *       known, just in the other axis ⇒ not lost.
- *   H-b NO-PROGRAM-EXPECTED: are they non-grant types (wmkf_type Site/Office
- *       Visit; wmkf_request_type Concept/interaction)? a program wouldn't
- *       apply ⇒ not a gap.
+ *   H-b NO-PROGRAM-EXPECTED: ⚠️ BROKEN (Codex S157 #8) — filters a Picklist
+ *       (`akoya_requesttype`) with `ne value="Grant"` (optionset-int vs string);
+ *       output is unreliable, retained for provenance only, NOT part of the
+ *       Puzzle-3 conclusion. Conclusion rests on H-a + H-c (both sound).
  *   H-c GENUINE NULL (both program fields null) → decade of akoya_decisiondate
  *       tells never-captured (old-concentrated) vs mapping-loss (uniform).
  *
@@ -64,11 +65,18 @@ async function aggCount(token, filter) {
   console.log(`H-a NOT-A-GAP: of ${nullGp} null-grantprogram, akoya_programid PRESENT = ${haveProgId} (${(haveProgId / nullGp * 100).toFixed(0)}%) ⇒ program known via the authoritative axis, not lost`);
 
   // H-b: of the remainder (null grantprogram AND null programid), non-grant types?
+  // ⚠️ BROKEN TEST — DO NOT TRUST THE `concept` NUMBER (Codex S157 holistic review #8):
+  // `akoya_requesttype` is a Picklist; FetchXML `operator="ne" value="Grant"` compares an
+  // optionset integer to the string "Grant", which does not evaluate as intended (the prior
+  // discriminator probe read this field via FormattedValue, not a string-equality filter).
+  // The H-b output is therefore unreliable and is RETAINED ONLY for provenance — it is NOT
+  // part of the Puzzle-3 conclusion. The "111 genuinely both-null, volume-proportional" finding
+  // rests entirely on H-a (akoya_programid present 98%) + H-c (decade distribution), which are
+  // sound. A correct H-b would group by `akoya_requesttype`'s FormattedValue, not filter by `ne`.
   const bothNull = nullGp - haveProgId;
   const concept = await aggCount(token, MIG + NULLGP + `<condition attribute="akoya_programid" operator="null"/><condition attribute="akoya_requesttype" operator="ne" value="Grant"/>`);
-  // wmkf_type non-Program (operational) within both-null
   console.log(`\nboth program fields NULL = ${bothNull}`);
-  console.log(`  of those, akoya_requesttype != 'Grant' (scholarship/interfund/etc.) = ${concept}`);
+  console.log(`  [H-b BROKEN — Picklist ne-string, do not trust] akoya_requesttype != 'Grant' raw = ${concept}`);
 
   // H-c: decade of akoya_decisiondate among genuine-null (both program fields null)
   const GENUINE = MIG + NULLGP + `<condition attribute="akoya_programid" operator="null"/>`;
