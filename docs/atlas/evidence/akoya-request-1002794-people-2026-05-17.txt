@@ -1,0 +1,23 @@
+Token acquired.
+Probe date: 2026-05-17 (dated evidence)  ·  request #1002794
+
+#1002794  "Clocking quantum tunneling with molecular shake-up Abstract:"
+  status=Phase I Pending · type=Program · program=Science and Engineering Research · native
+  decisiondate=— · grant=—
+
+  ── people / role fields ──
+  akoya_applicantid        Wayne State University  [account]
+  akoya_payee              Wayne State University  [account]
+  akoya_primarycontactid   Susan Miller  [contact]
+  wmkf_projectleader       Wen Li  [contact]
+  wmkf_researchleader      Ezemenari Obasi  [contact]
+  wmkf_liaison             —
+  wmkf_copi1               —
+  wmkf_copi2               —
+  wmkf_copi3               —
+  wmkf_ceo                 Richard Bierschbach  [contact]
+  wmkf_authorizedofficial  —
+  wmkf_grantwriter         —
+  wmkf_paymentcontact      —
+
+Done (read-only request-people spot-check).
