@@ -1,0 +1,57 @@
+Recognition-pass sizing — 2026-05-17T17:58:34.527Z
+Probe: scripts/probe-akoya-recognition-sizing.js (READ-ONLY)
+
+══ Unknown 1+3 — RDL decode (ALL 116 reports, was 20/116) ══
+
+request-bound RDLs: 36 (of 116 total reports)  · no-bodytext: 0 · fetch-errors: 0
+
+column union (analyst cols, excl. _base/currency/id plumbing): 152
+  ✓ in candidate set:        23
+  ⚠ UNDER-inclusion review:  129 union-only  →  5 high-freq (≥6 RDLs) MUST-review · 124 low-freq likely-noise
+  ⚠ candidate cols no RDL binds (over-inclusion / niche): 1  [akoya_requesttype]
+
+  ── high-frequency UNDER-inclusion candidates (the real Unknown-1 work) ──
+      8/36  akoya_purpose  ("Purpose")
+      6/36  akoya_payee  ("Payee")
+      6/36  address1_stateorprovince
+      6/36  address1_city
+      6/36  akoya_primarycontactid  ("Primary Contact")
+
+  ── low-freq union-only (skim/likely-prune, akoya_purpose-class): 124 ──
+    akoya_folio:5 · akoya_amount:5 · akoya_requestpaymentid:5 · akoya_paymentnum:5 · akoya_reviewresponsesid:5 · akoya_responseid:5 · akoya_score:5 · NetAmount:4 · akoya_netamount:4 · akoya_requestcontact:4 · akoya_noncash:4 · akoya_noncashvaluation:4 · akoya_noncashdescription:4 · akoya_taxregion:4 · address1_country:4 · akoya_response:4 · akoya_conflictofinterest:4 · akoya_question:4 · akoya_reviewer:4 · akoya_originalgrantamount:4 · RequestID:3 · PaymentContact:3 · akoya_taxid:3 · akoya_postingdate:3 · akoya_begindate:3 · akoya_weight:3 · akoya_program:3 · akoya_highschool:3 · akoya_college:3 · akoya_major:3 · akoya_hsgpa:3 · PaymentOrg_akoya_taxregion:2 · PaymentOrg_akoya_taxid:2 · PaymentOrg_akoya_guidestarirsbmfsubsection:2 · PaymentPayee:2 · akoya_disbursementtype:2 · akoya_guidestarirsbmfsubsection:2 · RequestContact_address1_country:2 · RequestContact_akoya_taxregion:2 · akoya_institutiontype:2 …
+
+  ── Unknown 3 — filter-complexity class over 36 request-RDLs ──
+     28  prefilter-only (no de-nest)
+      4  embedded-NESTED (AND/OR — hard de-nest)
+      4  embedded-flat (single AND)
+  → de-nesting work = 4 RDL(s) need boolean reconstruction; the rest are prefilter/flat.
+
+══ Unknown 2 — akoya_request public views ══
+  139 public views · 121 DISTINCT column-set shapes · 135 carry a hardcoded filter
+
+  ── name families (recognition groups, top 18) ──
+     23  Research
+      6  Discretionary Request
+      5  Research Concepts
+      5  All Pending
+      5  Discretionary Grants
+      4  Discretionary Pending
+      4  SoCal Concepts
+      4  Research Phase
+      3  xDeprecated
+      3  Discretionary Payment
+      3  Phase I
+      3  SoCal Applications
+      2  Pending Request
+      2  Requests to
+      2  Pending Requests
+      2  SoCal Pending
+      2  All Awards
+      2  Research All
+
+  → "139 unknown views" → 121 distinct shapes to recognize, grouped into the families above.
+
+Read: this SIZES the human ask (columns / views / filters to look at).
+It does NOT decide "what analysts expect" — that residual still needs a human.
+
+Done (read-only recognition-pass sizing probe).
