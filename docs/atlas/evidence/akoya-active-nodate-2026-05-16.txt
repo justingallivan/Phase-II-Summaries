@@ -1,0 +1,54 @@
+Native "Active" with NO decision date — 2026-05-17T01:31:37.611Z (instance pull)
+
+native Active total=109  with decision date=102  NO decision date=7
+(point-in-time; the committed Puzzle-4 aggregate was n=109 / ~94% dated — expect drift, this is an instance read)
+
+══ The no-decision-date "Active" rows (7) ══
+
+#1001681  "2025 Annual Contribution"
+   applicant : Science Philanthropy Alliance
+   program   : Miscellaneous   type=Miscellaneous   reqtype=Request
+   grant=75000  paid=75000  decisiondate=NULL  meetingdate=2025-06-12
+   createdon=2025-05-21T22:43:34Z  state=Active
+
+#1001341  "Celiac Disease Center at Columbia University"
+   applicant : Trustees of Columbia University In The City Of New York
+   program   : Medical Research   type=Special Grants   reqtype=Request
+   grant=1500000  paid=1500000  decisiondate=NULL  meetingdate=2025-06-12
+   createdon=2025-01-31T19:16:58Z  state=Active
+
+#1001249  "Expansion of Music Education Programming Within South Los Angeles"
+   applicant : The Harmony Project
+   program   : Arts & Culture   type=Program   reqtype=Request
+   grant=300000  paid=300000  decisiondate=NULL  meetingdate=2025-06-12
+   createdon=2025-01-07T00:01:23Z  state=Active
+
+#1001205  "Rise to the Challenge"
+   applicant : Project Angel Food
+   program   : Civic & Community   type=Program   reqtype=Request
+   grant=500000  paid=500000  decisiondate=NULL  meetingdate=2025-06-12
+   createdon=2024-12-18T18:04:33Z  state=Active
+
+#1000864  "Compton Community Health Professions Partnership"
+   applicant : Compton Community College District
+   program   : Undergraduate Education - Science & Engineering   type=Special Grants   reqtype=Request
+   grant=1000000  paid=1000000  decisiondate=NULL  meetingdate=2024-12-12
+   createdon=2024-10-24T22:16:20Z  state=Active
+
+#1000855  "Colburn Center at The Colburn School"
+   applicant : The Colburn School
+   program   : Arts & Culture   type=Special Grants   reqtype=Request
+   grant=2000000  paid=2000000  decisiondate=NULL  meetingdate=2024-12-12
+   createdon=2024-10-23T15:33:28Z  state=Active
+
+#1000721  "Grant to Southern California Grantmakers "
+   applicant : Southern California Grantmakers
+   program   : Miscellaneous   type=Miscellaneous   reqtype=Request
+   grant=11000  paid=11000  decisiondate=NULL  meetingdate=2024-12-12
+   createdon=2024-09-16T17:00:56Z  state=Active
+
+── for the Connor label check ──
+  no-date Active WITH a grant amount: 7  → "awarded grant, decision-date just not stamped" (data-entry gap on a real grant)
+  no-date Active WITHOUT a grant amount: 0  → the genuinely odd ones (Active but no money + no decision) — ask Connor what 'Active' means here
+
+Done (read-only instance pull — residual (ii) "Active" label).
