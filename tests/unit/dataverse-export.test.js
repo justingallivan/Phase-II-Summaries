@@ -100,9 +100,30 @@ describe('QuerySpec validation (§2.1) — fails closed and legibly', () => {
     + '(§2.1 point 4 — the two mechanisms are distinct)', () => {
     const s = validSpec();
     s.filters = [{ axis: 'status', op: 'eq', value: 'A Brand New Status' }];
-    // status is identity-kind, eq is legal — a not-in-taxonomy literal is a
+    // status is enum-kind, eq is legal — a not-in-taxonomy literal is a
     // PREVIEW warning, never a 422, never the post-query UNCLASSIFIED sentinel.
     expect(validateQuerySpec(s)).toEqual({ valid: true });
+  });
+
+  test('status is enum-kind: `contains` is illegal (Codex S160 P1)', () => {
+    const s = validSpec();
+    s.filters = [{ axis: 'status', op: 'contains', value: 'Pend' }];
+    const codes = validateQuerySpec(s).body.violations.map(v => v.code);
+    expect(codes).toContain('OP_ILLEGAL');
+  });
+
+  test('requestType targets EITHER wmkf_request_type OR akoya_requesttype; '
+    + 'a field outside the §2.1 pair is rejected', () => {
+    const ok = validSpec();
+    ok.filters = [{ axis: 'requestType', field: 'akoya_requesttype', op: 'eq',
+      value: 100000000 }];
+    expect(validateQuerySpec(ok)).toEqual({ valid: true });
+    expect(compile(ok).fetchXml).toContain('attribute="akoya_requesttype"');
+
+    const bad = validSpec();
+    bad.filters = [{ axis: 'requestType', field: 'akoya_nonsense', op: 'eq', value: 1 }];
+    expect(validateQuerySpec(bad).body.violations.map(v => v.code))
+      .toContain('AXIS_UNKNOWN');
   });
 });
 
@@ -148,11 +169,26 @@ describe('compile() — every §3b invariant, bound not re-derived', () => {
     expect(appliedRules.join(' ')).toMatch(/CREATION-PROVENANCE/);
   });
 
-  test('test-record exclusion = applicant Foundation ∧ native (precise predicate)', () => {
-    const { fetchXml } = compile(validSpec());
+  test('test-record exclusion = applicant Foundation ∧ native (precise '
+    + 'predicate); count fetch carries the SAME link (Codex S160 P1) + a '
+    + 'null-applicant keep branch (Codex S160 P2)', () => {
+    const { fetchXml, countFetchXml } = compile(validSpec());
     expect(fetchXml).toContain('link-entity name="account"');
     expect(fetchXml).toContain('W. M. Keck Foundation');
-    expect(fetchXml).toContain('<filter type="or">'); // keep if ≠Foundation OR migrated
+    expect(fetchXml).toContain('<filter type="or">');
+    // null-applicant keep branch
+    expect(fetchXml).toContain('entityname="appl" attribute="name" operator="null"');
+    // the aggregate count fetch MUST also carry the appl link, else the
+    // entityname="appl" predicate makes it invalid FetchXML at runtime.
+    expect(countFetchXml).toContain('aggregate="true"');
+    expect(countFetchXml).toContain('link-entity name="account"');
+    expect(countFetchXml).toContain('entityname="appl"');
+  });
+
+  test('the Honorarium sharpest reviewer-exclusion is actually applied', () => {
+    const resolver = { resolve: (field, label) => `${field}:${label}` };
+    const { fetchXml } = compile(validSpec(), { resolver });
+    expect(fetchXml).toContain('wmkf_grantprogram:Honorarium');
   });
 
   test('operational exclusion: no resolver ⇒ DEFERRED + requiresResolver, '
@@ -177,6 +213,68 @@ describe('Normalize() — the EXACT deterministic institution algorithm (§3c)',
     expect(normalizeInstitution('Univ of Texas')).toBe('university of texas');
     expect(normalizeInstitution('Université de Montréal')).toBe('universite de montreal');
     expect(normalizeInstitution('  Acme   Co. ')).toBe('acme');
+  });
+
+  test('dotted legal suffixes l.l.c. / inc. collapse + strip (Codex S160 P1)', () => {
+    expect(normalizeInstitution('Foo, L.L.C.')).toBe('foo');
+    expect(normalizeInstitution('Bar Inc.')).toBe('bar');
+    expect(normalizeInstitution('Baz L.L.C')).toBe('baz');
+  });
+});
+
+describe('Folded Codex S160 findings — fail-loud restored', () => {
+  test('a status absent from the authoritative map ⇒ UNCLASSIFIED, NOT '
+    + 'suffix-reclassified (the suffix fallback was removed)', () => {
+    const { rows, summary } = annotate([{
+      akoya_requestnum: 'U-1', createdon: '2024-01-01T00:00:00Z',
+      akoya_requeststatus: 'Phase III Declined', // plausible but NOT in the map
+      _akoya_programid_value: 'g', _akoya_programid_value_formatted: 'Medical Research',
+    }]);
+    expect(rows[0].__statusClass).toBe('UNCLASSIFIED');
+    expect(rows[0]['UNCLASSIFIED — status']).toBe('UNCLASSIFIED — status=Phase III Declined');
+    expect(summary.unclassifiedSets.join(' ')).toMatch(/Phase III Declined/);
+  });
+
+  test('Withdrawn lifecycle null ⇒ path-agnostic WITHDRAWN sentinel, not '
+    + '"UNKNOWN — not captured" (no actor attributed)', () => {
+    const { rows } = annotate([{
+      akoya_requestnum: 'W-1', createdon: '2024-02-01T00:00:00Z',
+      akoya_requeststatus: 'Withdrawn',
+      _akoya_programid_value: 'g', _akoya_programid_value_formatted: 'Medical Research',
+    }]);
+    expect(rows[0].akoya_grant__sentinel).toBe(SENTINEL.WITHDRAWN_NO_AWARD);
+    expect(SENTINEL.WITHDRAWN_NO_AWARD).not.toMatch(/applicant|staff|administrative/i);
+  });
+
+  test('unannotated program on a declined row ⇒ its OWN UNCLASSIFIED-PROCESS '
+    + 'decline bucket, not folded into reason-missing', () => {
+    const { rows } = annotate([{
+      akoya_requestnum: 'D-1', createdon: '2024-03-01T00:00:00Z',
+      akoya_requeststatus: 'Phase I Declined',
+      _akoya_programid_value: 'g-x', _akoya_programid_value_formatted: 'Mystery Program',
+    }]);
+    expect(rows[0].__decline.bucket).toBe(DECLINE_BUCKET.UNCLASSIFIED_PROCESS);
+    expect(rows[0].__decline.bucket).not.toBe(DECLINE_BUCKET.REASON_MISSING);
+  });
+
+  test('institution collision counts DISTINCT raw names, not rows: 3 rows '
+    + 'from the SAME account stay "resolved"; 2 distinct names ⇒ ambiguous', () => {
+    const same = annotate(Array.from({ length: 3 }, (_, i) => ({
+      akoya_requestnum: `S-${i}`, createdon: '2024-01-01T00:00:00Z',
+      akoya_requeststatus: 'Approved',
+      _akoya_programid_value: 'g', _akoya_programid_value_formatted: 'Medical Research',
+      __applicant: { name: 'Stanford University' },
+    })));
+    expect(same.rows.every(r => r.institution_resolution === INST_RESOLUTION.RESOLVED))
+      .toBe(true);
+
+    const variants = annotate([
+      { akoya_requestnum: 'V-1', createdon: '2024-01-01T00:00:00Z',
+        akoya_requeststatus: 'Approved', __applicant: { name: 'Stanford University' } },
+      { akoya_requestnum: 'V-2', createdon: '2024-01-01T00:00:00Z',
+        akoya_requeststatus: 'Approved', __applicant: { name: 'Stanford Univ.' } },
+    ]);
+    expect(variants.rows[0].institution_resolution).toMatch(/^ambiguous — 2 variants/);
   });
 });
 
@@ -471,5 +569,51 @@ describe('fetch-client — backoff-hardened FetchXML primitive', () => {
     }));
     await expect(fetchXmlAggregateCount('akoya_requests',
       '<fetch aggregate="true"></fetch>', 'cnt')).rejects.toThrow(/refusing to guess/);
+  });
+
+  test('morerecords=true with NO paging cookie ⇒ fail LOUD, never a '
+    + 'silently-short result (Codex S160 P1)', async () => {
+    jest.spyOn(DynamicsService, 'getAccessToken').mockResolvedValue('tok');
+    global.fetch = jest.fn(async () => ({
+      ok: true, status: 200,
+      json: async () => ({
+        value: [{ akoya_requestid: '1' }],
+        '@Microsoft.Dynamics.CRM.morerecords': true,
+        // NO @Microsoft.Dynamics.CRM.fetchxmlpagingcookie
+      }),
+    }));
+    await expect(fetchXmlAll('akoya_requests',
+      '<fetch><entity name="akoya_request"><all-attributes /></entity></fetch>'))
+      .rejects.toThrow(/no paging cookie/);
+  });
+
+  test('hardBudgetMs exceeded ⇒ truncatedByBudget, rows-so-far, no hang', async () => {
+    jest.spyOn(DynamicsService, 'getAccessToken').mockResolvedValue('tok');
+    global.fetch = jest.fn(async () => ({
+      ok: true, status: 200,
+      json: async () => ({
+        value: [{ akoya_requestid: 'a' }],
+        '@Microsoft.Dynamics.CRM.morerecords': true,
+        '@Microsoft.Dynamics.CRM.fetchxmlpagingcookie': '<c/>',
+      }),
+    }));
+    const r = await fetchXmlAll('akoya_requests',
+      '<fetch><entity name="akoya_request"><all-attributes /></entity></fetch>',
+      { hardBudgetMs: 0 });
+    expect(r.truncatedByBudget).toBe(true);
+    expect(r.fetched).toBeGreaterThanOrEqual(1);
+  });
+
+  test('aggregate-count over Dataverse 50k limit ⇒ loud actionable error, '
+    + 'never a silent partial count', async () => {
+    jest.spyOn(DynamicsService, 'getAccessToken').mockResolvedValue('tok');
+    global.fetch = jest.fn(async () => ({
+      ok: false, status: 400, headers: { get: () => null },
+      text: async () => 'AggregateQueryRecordLimit exceeded. Cannot perform '
+        + 'aggregate on more than 50000 rows.',
+    }));
+    await expect(fetchXmlAggregateCount('akoya_requests',
+      '<fetch aggregate="true"></fetch>', 'cnt'))
+      .rejects.toThrow(/50,000 aggregate-count limit/);
   });
 });
