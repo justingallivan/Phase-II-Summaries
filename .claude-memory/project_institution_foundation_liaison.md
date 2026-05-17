@@ -1,0 +1,11 @@
+---
+name: project_institution_foundation_liaison
+description: WMKF domain fact (user-attested S159) — akoya_request.akoya_primarycontactid is the institution's foundation-liaison/grant-steward (or President's office for large gifts), NOT the PI/scientific lead
+metadata:
+  type: project
+---
+**User-attested (S159, WMKF authority — best current understanding, not probe-proven semantics).** Grantee institutions assign a **dedicated liaison to the Foundation who stewards research grants**; that person — not the principal investigator — is what `akoya_request.akoya_primarycontactid` (lookup → `contact`, label "Primary Contact") holds. **For large gifts, the contact routes through the institution's President's office.** Probe-substantiated *behavioral signature* corroborates the user's *semantic*: one liaison recurs across many unrelated grants for an institution (Hossein @ USC, Nelly @ Caltech — ~8 and ~18 unrelated science topics respectively), and the institution President appears on big/institutional gifts (USC's Carol Folt, Caltech's Thomas Rosenbaum). Evidence: `docs/atlas/evidence/akoya-usc-primarycontact-2026-05-17.txt`, `akoya-caltech-primarycontact-2026-05-17.txt`, `akoya-underinclusion-4-2026-05-17.txt`.
+
+**Why:** a populated, real-looking person-name column labeled "Primary Contact" is the *plausible-wrong-answer* trap — an analyst will assume it's the researcher and mis-attribute (e.g. a genomics grant to a university President or a grants officer). The field is the institution's contact-of-record, a relationship/stewardship role, not scientific authorship.
+
+**How to apply:** any surface exposing `akoya_primarycontactid` (Power Tools bulk export [[project_dataverse_power_tools]], Grant Reporting auto-fill, contact enrichment, Reviewer Finder COI) must label/disclose it as the foundation liaison / grant steward (President's office for large gifts), **never as the PI**. Fill is 70%/77% mig/nat globally but **migrated-era fill is institution-variable (~41–79% observed)** — render null as the not-captured sentinel, never blank. Distinct from the reviewer-identity fragmentation problem ([[project_reviewer_identity_fragmentation]]) and contact promotion ([[project_contact_promotion_permission]]), though all three concern the dirty/auto-created `contact` surface.

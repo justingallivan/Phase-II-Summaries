@@ -79,6 +79,7 @@
 - [Accept/decline magic links](project_reviewer_accept_decline_links.md) — HMAC primitive shipped; build atop existing token, don't add new secret
 - [Reviewer Finder Dataverse-native entry path](project_reviewer_finder_dataverse_entry_path.md) — fully Dataverse-native (W3–W6 cutovers complete 2026-05-12); Postgres reviewer tables are drain-only, scheduled for deletion ≥ 2026-07-01 per W6 plan
 - [Contact promotion verified working](project_contact_promotion_permission.md) — AppendTo on Contact (BU) granted 2026-05-01; send-emails fully links potentialreviewer → contact
+- [Institution foundation liaison](project_institution_foundation_liaison.md) — WMKF domain fact (user-attested S159): `akoya_request.akoya_primarycontactid` = the institution's foundation liaison / research-grant steward (President's office for large gifts), NOT the PI; disclose accordingly anywhere it surfaces
 - [External reviewer file access architecture](project_external_reviewer_file_access.md) — SHIPPED 2026-05-03. Token primitive, /external/* endpoints, SharePoint upload, event-driven token expiry all live.
 - [Reviewer count invariant](project_reviewer_count_invariant.md) — need 3 confirmed reviewers per proposal; 5 wmkf_potentialreviewer slots are over-invite buffer
 - [Reviewer history data quality](project_reviewer_history_data_quality.md) — pre-J26 proposals have no Postgres rows; zeros are "unknown", not "0 invited"
@@ -89,7 +90,7 @@
 - [Virtual Review Panel](project_virtual_review_panel.md) — Multi-LLM panel (Claude, GPT, Gemini, Perplexity); app key `virtual-review-panel`; stays Postgres permanently
 - [Tone calibration](feedback_review_panel_tone.md) — CSO feedback: don't mimic conservative study sections; balance critique with upside
 - [API Credit Monitoring](project_api_credit_monitoring.md) — admin dashboard widget + low-balance email alerts
-- [Dataverse Power Tools](project_dataverse_power_tools.md) — two separate apps (Find&fix edits + Bulk export) for the gaps Dynamics Explorer can't fill; design at `docs/DATAVERSE_POWER_TOOLS_DESIGN.md` (its "Residuals — AUTHORITATIVE LIST" is the single source of truth). S158: residual (i) substantially advanced, (ii) user-authority-closed (mixed provenance), (iii) artifact-backed closed; per-program decline segmentation still an open gating item; Track A write path on 3 policy decisions
+- [Dataverse Power Tools](project_dataverse_power_tools.md) — two separate apps (Find&fix edits + Bulk export) for the gaps Dynamics Explorer can't fill; design at `docs/DATAVERSE_POWER_TOOLS_DESIGN.md` (its "Residuals — AUTHORITATIVE LIST" is the single source of truth). S159: v1-core data/semantic gates CLOSED — residual (i) default column contract closed & user-confirmed (open: non-v1-core 121-view preset library + 4-RDL de-nest), (ii) user-authority-closed (mixed provenance), (iii) artifact-backed closed, per-program decline segmentation probe-resolved; Track A write path still on 3 policy decisions; Puzzle 2c doc-rationale dimension still open
 - [Living-taxonomy principle](project_living_taxonomy_principle.md) — taxonomies are living; read-live/fail-loud at runtime, no doc cadence; durable record = invariants/patterns/hazards + a staff orientation guide, NOT hardcoded value lists; probe only with a structural hypothesis
 
 ## Prompt + Execution
