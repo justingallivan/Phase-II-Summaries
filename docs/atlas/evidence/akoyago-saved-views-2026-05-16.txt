@@ -1,0 +1,2120 @@
+AkoyaGO export-surface enumeration — 2026-05-17T01:01:51.198Z
+Probe: scripts/probe-akoya-saved-views.js (READ-ONLY)
+
+akoya_request attribute label map: 391 fields
+
+══ savedquery — akoya_request (144) ══
+   querytype histogram: Public view=139, Offline Filters=1, Lookup view=1, Advanced Find / user=1, Quick Find=1, Associated view=1
+   ▸ Public view (querytype 0) = the trusted-export candidates; lookup/quickfind/associated = noise.
+
+  ── PUBLIC VIEWS — trusted-export candidates (139) ──
+
+  [1] Active Requests
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=988b4030-0ef6-4014-830e-cd7bcbabd0fb
+      COLUMNS (9, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_requeststatus ("Request Status") | wmkf_wmkfprojectdescription ("WMKF Project Description") | wmkf_projectleader ("Project Leader") | akoya_grant ("Grant Amount") | wmkf_type ("Type") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program")
+      FILTERS (1):
+        - statecode eq "0"
+
+  [2] All Active Research Awards
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=62bb01f8-50d4-ef11-8eea-00224803a64e
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | a_48a92307c63b45519e2534b55634b93e.akoya_aka | akoya_programid ("Internal Program") | akoya_grant ("Grant Amount") | wmkf_projectleader ("Project Leader") | wmkf_wmkfprojectdescription ("WMKF Project Description") | akoya_enddate ("End Date") | wmkf_nocostextensionthroughdate ("No Cost Extension Through Date") | wmkf_programdirector ("Program Director")
+      JOINS: account (a_48a92307c63b45519e2534b55634b93e) on accountid=akoya_applicantid
+      FILTERS (7):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Active"
+        - wmkf_type ne "{fbac6d51-f9c4-ee11-9079-000d3a310f67}"
+        - wmkf_type ne "{296a895e-f9c4-ee11-9079-000d3a32ccef}"
+        - wmkf_type ne "{67467457-f9c4-ee11-9079-000d3a310f67}"
+        - wmkf_type ne "{5c7d6bb8-479d-ef11-8a6a-000d3a344c0f}"
+        - wmkf_type ne "{972c2d0c-a9f6-ee11-a1fd-000d3a3621c7}"
+
+  [3] All Awards and Requests
+      kind=savedquery  type=Public view  default=true  owner=org (system)  id=4992658b-547e-e311-ae1c-0050569d0000
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_requeststatus ("Request Status") | a_afef657c5b03428cbd6a47281fef5bc2.akoya_aka | wmkf_wmkfprojectdescription ("WMKF Project Description") | akoya_grant ("Grant Amount") | wmkf_type ("Type") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program") | wmkf_projectleader ("Project Leader")
+      JOINS: account (a_afef657c5b03428cbd6a47281fef5bc2) on accountid=akoya_applicantid
+      FILTERS: (none — unfiltered / all rows)
+
+  [4] All Awards and Requests- Parent and Child
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=abb715ee-1010-ec11-b6e6-0022480a582d
+      COLUMNS (11, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_title ("Title") | akoya_requeststatus ("Request Status") | akoya_begindate ("Begin Date") | akoya_programid ("Internal Program") | akoya_primarycontactid ("Primary Contact") | akoya_decisiondate ("Decision Date") | akoya_finished ("Done/Closed") | akoya_grant ("Grant Amount") | akoya_purpose ("Purpose")
+      FILTERS: (none — unfiltered / all rows)
+
+  [5] All GOfund Requests
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=ce02c483-8c45-ed11-bba1-000d3a343b81
+      COLUMNS (11, from layoutxml): akoya_requestnum ("Request #") | akoya_requeststatus ("Request Status") | akoya_applicantid ("Applicant") | akoya_primarycontactid ("Primary Contact") | akoya_request ("Requested Amount") | akoya_purpose ("Purpose") | akoya_gofundrecommender ("Grant Recommender") | akoya_grantrecommenderemail ("Grant Recommender Email") | akoya_fund ("Fund") | a_06701c613a5a44cbba89c5e8610c17c8.akoya_formalfundname | createdon ("Created On")
+      JOINS: akoya_fund (a_06701c613a5a44cbba89c5e8610c17c8) on akoya_fundid=akoya_fund
+      FILTERS (2):
+        - akoya_gofundrecommender not-null
+        - akoya_grantrecommendercertification eq "1"
+
+  [6] All Pending Phase I MR Applications
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=c2e486c0-f2ff-ee11-a1fd-000d3a32c1ae
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | akoya_submissionaccepted ("Submission Accepted") | a_c7b45beacc8f46268f12fb495c48037e.akoya_aka | akoya_title ("Title") | wmkf_projectleader ("Project Leader") | akoya_request ("Requested Amount") | akoya_expenses ("Total Project Budget") | wmkf_programdirector ("Program Director") | akoya_programid ("Internal Program") | wmkf_programareaserved_research ("Program Area Served_Research")
+      JOINS: account (a_c7b45beacc8f46268f12fb495c48037e) on accountid=akoya_applicantid
+      FILTERS (5):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_programid eq "{94cab30b-958f-ee11-8179-000d3a341e8f}"
+        - statecode eq "0"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_requeststatus eq "Proposal Invited"
+
+  [7] All Pending Phase I Research Applications Not Scored
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=401fc485-f3ff-ee11-a1fd-000d3a32c1ae
+      COLUMNS (15, from layoutxml): akoya_requestnum ("Request #") | akoya_submissionaccepted ("Submission Accepted") | wmkf_type ("Type") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program") | akoya_applicantid ("Applicant") | wmkf_ceo ("Organization Leader") | akoya_primarycontactid ("Primary Contact") | wmkf_projectleader ("Project Leader") | akoya_request ("Requested Amount") | wmkf_programdirector ("Program Director") | a_f325d5ea08fd468896420b59fd6bbdbe.akoya_taxstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftb | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftbstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_organizationisgovernmententity
+      JOINS: account (a_f325d5ea08fd468896420b59fd6bbdbe) on accountid=akoya_applicantid
+      FILTERS (4):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_meetingdate eq "2024-12-12T00:00:00"
+        - akoya_requeststatus eq "Phase I Pending"
+        - wmkf_phaseistatus eq "100000005"
+
+  [8] All Pending Phase I Research Applications Scored
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=5584556f-f3ff-ee11-a1fd-00224802b03a
+      COLUMNS (16, from layoutxml): akoya_requestnum ("Request #") | wmkf_type ("Type") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program") | akoya_applicantid ("Applicant") | akoya_request ("Requested Amount") | akoya_recommendedamount ("Recommended Grant") | wmkf_invitedamount ("Invited Amount") | wmkf_ceo ("Organization Leader") | akoya_primarycontactid ("Primary Contact") | wmkf_projectleader ("Project Leader") | wmkf_programdirector ("Program Director") | a_f325d5ea08fd468896420b59fd6bbdbe.akoya_taxstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftb | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftbstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_organizationisgovernmententity
+      JOINS: account (a_f325d5ea08fd468896420b59fd6bbdbe) on accountid=akoya_applicantid
+      FILTERS (4):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_meetingdate eq "2024-12-12T00:00:00"
+        - akoya_requeststatus eq "Phase I Pending"
+        - wmkf_phaseistatus eq "100000004"
+
+  [9] All Pending Phase I SE Applications
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=9964d4a6-ae00-ef11-a1fd-000d3a3621c7
+      COLUMNS (16, from layoutxml): akoya_requestnum ("Request #") | wmkf_phaseistatus ("Phase I Status") | akoya_submissionaccepted ("Submission Accepted") | wmkf_type ("Type") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program") | akoya_applicantid ("Applicant") | wmkf_ceo ("Organization Leader") | akoya_primarycontactid ("Primary Contact") | wmkf_projectleader ("Project Leader") | akoya_request ("Requested Amount") | wmkf_programdirector ("Program Director") | a_f325d5ea08fd468896420b59fd6bbdbe.akoya_taxstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftb | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftbstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_organizationisgovernmententity
+      JOINS: account (a_f325d5ea08fd468896420b59fd6bbdbe) on accountid=akoya_applicantid
+      FILTERS (3):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+
+  [10] All Pending Phase I SE Applications II
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=38cdac20-ff08-ef11-9f89-000d3a32c1ae
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | akoya_submissionaccepted ("Submission Accepted") | a_c7b45beacc8f46268f12fb495c48037e.akoya_aka | akoya_title ("Title") | wmkf_projectleader ("Project Leader") | akoya_request ("Requested Amount") | akoya_expenses ("Total Project Budget") | wmkf_programdirector ("Program Director") | akoya_programid ("Internal Program") | wmkf_programareaserved_research ("Program Area Served_Research")
+      JOINS: account (a_c7b45beacc8f46268f12fb495c48037e) on accountid=akoya_applicantid
+      FILTERS (4):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_requeststatus eq "Proposal Invited"
+
+  [11] Applications To Be Assigned To a Reviewer Group
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=981872f8-2a1f-ed11-b83e-6045bd009a2f
+      COLUMNS (12, from layoutxml): akoya_requestnum ("Request #") | a_7c228a8bc6984409a88618f884149cff.akoya_applicationname | a_ff40f588a8fc42f2beb391fb59acba19.akoya_phasename | akoya_requeststatus ("Request Status") | akoya_requesttype ("Request Type") | akoya_applicantid ("Applicant") | akoya_primarycontactid ("Primary Contact") | akoya_request ("Requested Amount") | akoya_decisiondate ("Decision Date") | akoya_title ("Title") | akoya_goapplyapplication ("GOapply Opportunity") | akoya_goapplyphase ("GOapply Phase")
+      JOINS: akoya_akoyaapply (a_7c228a8bc6984409a88618f884149cff) on akoya_akoyaapplyid=akoya_goapplyapplication ; akoya_phase (a_ff40f588a8fc42f2beb391fb59acba19) on akoya_phaseid=akoya_goapplyphase ; akoya_reviewgroupapplications (ab) on akoya_request=akoya_requestid
+      FILTERS (4):
+        - akoya_requeststatus eq "Pending"
+        - akoya_goapplyapplication not-null
+        - statecode eq "0"
+        - ab.akoya_request null
+
+  [12] Awards and Requests - Fiscal Year to Date
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=3948713f-80fc-e311-931a-0050569d0000
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_requeststatus ("Request Status") | akoya_begindate ("Begin Date") | akoya_programid ("Internal Program") | akoya_title ("Title") | akoya_primarycontactid ("Primary Contact") | akoya_decisiondate ("Decision Date") | akoya_grant ("Grant Amount") | akoya_purpose ("Purpose")
+      FILTERS (2):
+        - akoya_decisiondate this-fiscal-year
+        - statecode eq "0"
+
+  [13] Awards by Program
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=82c463bf-4c81-e311-9be1-0050569d0000
+      COLUMNS (6, from layoutxml): akoya_requestnum ("Request #") | akoya_programid ("Internal Program") | akoya_applicantid ("Applicant") | akoya_title ("Title") | akoya_decisiondate ("Decision Date") | akoya_grant ("Grant Amount")
+      FILTERS (2):
+        - akoya_grant gt "0"
+        - statecode eq "0"
+
+  [14] Awards to be notified
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=b1b24ca5-4d81-e311-9be1-0050569d0000
+      COLUMNS (12, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | a_ac073c0be5efe21194f40050569d0000.address1_line1 | a_ac073c0be5efe21194f40050569d0000.address1_line2 | a_ac073c0be5efe21194f40050569d0000.address1_city | a_ac073c0be5efe21194f40050569d0000.address1_stateorprovince | a_ac073c0be5efe21194f40050569d0000.address1_postalcode | akoya_decisiondate ("Decision Date") | akoya_grant ("Grant Amount") | akoya_primarycontactid ("Primary Contact") | akoya_title ("Title") | akoya_programid ("Internal Program")
+      JOINS: account (a_ac073c0be5efe21194f40050569d0000) on accountid=akoya_applicantid
+      FILTERS (2):
+        - akoya_grant gt "0"
+        - akoya_datenotified null
+
+  [15] Board Meeting List with Recommended Amounts
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=fbf7821d-4e81-e311-9be1-0050569d0000
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_programid ("Internal Program") | akoya_title ("Title") | akoya_decisiondate ("Decision Date") | akoya_grant ("Grant Amount") | akoya_recommendedamount ("Recommended Grant") | akoya_comments ("Comments") | akoya_request ("Requested Amount") | akoya_sitevisitnotes ("Site Visit Notes")
+      FILTERS (3):
+        - akoya_grant null
+        - akoya_decisiondate this-month
+        - statecode eq "0"
+
+  [16] Candid eReporting - Simplified
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=838e2dd4-28d9-eb11-bacb-000d3a59220f
+      COLUMNS (16, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | a_ac58762ef23b4a738189653c5e52faba.akoya_taxid | a_ac58762ef23b4a738189653c5e52faba.address1_line1 | a_ac58762ef23b4a738189653c5e52faba.address1_city | a_ac58762ef23b4a738189653c5e52faba.address1_stateorprovince | a_ac58762ef23b4a738189653c5e52faba.address1_country | a_ac58762ef23b4a738189653c5e52faba.address1_postalcode | transactioncurrencyid ("Currency") | akoya_grant ("Grant Amount") | akoya_paid ("Paid") | akoya_decisiondate ("Decision Date") | akoya_projectdescription ("Project Description") | akoya_projectarea ("Project Area") | akoya_begindate ("Begin Date") | akoya_enddate ("End Date")
+      JOINS: account (a_ac58762ef23b4a738189653c5e52faba) on accountid=akoya_applicantid
+      FILTERS (1):
+        - statecode eq "0"
+
+  [17] Denied Requests
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=c92f9184-4e81-e311-9be1-0050569d0000
+      COLUMNS (7, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_title ("Title") | akoya_decisiondate ("Decision Date") | akoya_request ("Requested Amount") | akoya_denialreason ("Denial Reason") | a_b7789e25e5efe21194f40050569d0000.emailaddress1
+      JOINS: contact (a_b7789e25e5efe21194f40050569d0000) on contactid=akoya_primarycontactid
+      FILTERS (1):
+        - akoya_grant eq "0"
+
+  [18] Denied to be Notified
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=c528daa7-2da2-ed11-aad1-000d3a343ab0
+      COLUMNS (9, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_title ("Title") | a_0fd7769f314f409c90215e805a3178d2.address1_line1 | a_0fd7769f314f409c90215e805a3178d2.address1_line2 | a_0fd7769f314f409c90215e805a3178d2.address1_city | a_0fd7769f314f409c90215e805a3178d2.address1_stateorprovince | a_0fd7769f314f409c90215e805a3178d2.address1_postalcode | akoya_request ("Requested Amount")
+      JOINS: account (a_0fd7769f314f409c90215e805a3178d2) on accountid=akoya_applicantid
+      FILTERS (2):
+        - akoya_datenotified null
+        - akoya_grant eq "0"
+
+  [19] Discretionary Approvals To Send Email
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=43db974f-6a02-ef11-a1fd-000d3a32c1ae
+      COLUMNS (4, from layoutxml): akoya_requestnum ("Request #") | wmkf_directorofoperationsapproved ("Director of Operations Approved") | wmkf_meetingdate ("Meeting Date") | akoya_applicantid ("Applicant")
+      FILTERS (2):
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_directorofoperationsapproved not-null
+
+  [20] Discretionary Grant Approval Emails To Generate
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=8cd4373e-ae13-ef11-9f89-000d3a32c1ae
+      COLUMNS (4, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_applicantid ("Applicant") | akoya_recommendedamount ("Recommended Grant")
+      FILTERS (3):
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_directorofoperationsapproved not-null
+        - wmkf_paymentoption ne "100000002"
+
+  [21] Discretionary Grants Approved
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=fcff63ab-07eb-ee11-a203-000d3a3621c7
+      COLUMNS (15, from layoutxml): akoya_requestnum ("Request #") | akoya_submissionaccepted ("Submission Accepted") | akoya_requeststatus ("Request Status") | akoya_applicantid ("Applicant") | wmkf_paymentcontact ("Payment Contact") | wmkf_meetingdate ("Meeting Date") | akoya_request ("Requested Amount") | wmkf_paymentoption ("Payment Option") | akoya_payee ("Payee") | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_billcomvendorid | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_taxid | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_dexempt | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_taxstatus | akoya_paid ("Paid") | akoya_balance ("Balance")
+      JOINS: account (a_fed2bba8c8c6432e97b56a4551b1db27) on accountid=akoya_payee
+      FILTERS (3):
+        - akoya_requeststatus eq "Approved"
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_submissionaccepted eq "1"
+
+  [22] Discretionary Grants Need ED Approval
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=076a0602-f401-ef11-a1fd-000d3a33ff0b
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | akoya_requeststatus ("Request Status") | wmkf_directorofoperationsapproved ("Director of Operations Approved") | akoya_applicantid ("Applicant") | wmkf_donorname ("Donor Name") | akoya_programid ("Internal Program") | akoya_recommendedamount ("Recommended Grant") | akoya_payee ("Payee") | wmkf_paymentoption ("Payment Option") | wmkf_paymentcontact ("Payment Contact")
+      FILTERS (3):
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_directorofoperationsapproved not-null
+        - wmkf_executivedirectorapproval null
+
+  [23] Discretionary Grants Needing Controller Approval
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=31f9face-07f8-ee11-a1fd-000d3a3621c7
+      COLUMNS (19, from layoutxml): akoya_requestnum ("Request #") | wmkf_controllerapproved ("Controller Approved") | a_cd90a18374d142088c0021f4c6448d60.wmkf_dateapprovedbycontroller | wmkf_dateapprovedbycontroller ("Date Approved by Controller") | akoya_submissionaccepted ("Submission Accepted") | akoya_requeststatus ("Request Status") | akoya_payee ("Payee") | wmkf_meetingdate ("Meeting Date") | akoya_request ("Requested Amount") | wmkf_organizationisgovernmententity ("Organization is Government Entity") | wmkf_groupexempt ("Group Exempt") | wmkf_paymentoption ("Payment Option") | akoya_applicantid ("Applicant") | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_taxid | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_dexempt | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmffoundationcode | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmfsubsectiondescription | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmf509 | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_guidestarirsbmfsubsection
+      JOINS: account (a_fed2bba8c8c6432e97b56a4551b1db27) on accountid=akoya_payee ; account (a_cd90a18374d142088c0021f4c6448d60) on accountid=akoya_applicantid
+      FILTERS (9):
+        - akoya_requeststatus eq "Pending"
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_pcgoverifycomplete eq "100000002"
+        - statecode eq "0"
+        - wmkf_controllerapproved ne "100000000"
+        - wmkf_controllerapproved ne "707510001"
+        - wmkf_dateapprovedbycontroller olderthan-x-months "12"
+        - wmkf_controllerapproved eq "100000000"
+        - wmkf_controllerapproved eq "707510001"
+
+  [24] Discretionary Grants Needing Controller Approval (original)
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=0917a5da-e66a-ef11-bfe3-0022480abf3c
+      COLUMNS (19, from layoutxml): akoya_requestnum ("Request #") | wmkf_controllerapproved ("Controller Approved") | a_cd90a18374d142088c0021f4c6448d60.wmkf_dateapprovedbycontroller | wmkf_dateapprovedbycontroller ("Date Approved by Controller") | akoya_submissionaccepted ("Submission Accepted") | akoya_requeststatus ("Request Status") | akoya_applicantid ("Applicant") | wmkf_meetingdate ("Meeting Date") | akoya_request ("Requested Amount") | wmkf_organizationisgovernmententity ("Organization is Government Entity") | wmkf_groupexempt ("Group Exempt") | wmkf_paymentoption ("Payment Option") | akoya_payee ("Payee") | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_taxid | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_dexempt | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmffoundationcode | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmfsubsectiondescription | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmf509 | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_guidestarirsbmfsubsection
+      JOINS: account (a_fed2bba8c8c6432e97b56a4551b1db27) on accountid=akoya_payee ; account (a_cd90a18374d142088c0021f4c6448d60) on accountid=akoya_applicantid
+      FILTERS (7):
+        - akoya_requeststatus eq "Pending"
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_submissionaccepted eq "0"
+        - wmkf_dateapprovedbycontroller null
+        - wmkf_organizationisgovernmententity eq "1"
+        - wmkf_groupexempt eq "1"
+        - wmkf_pcgoverifycomplete eq "100000002"
+
+  [25] Discretionary Grants Ready To Run Award Letters
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=795c0c71-8d02-ef11-a1fd-000d3a32c1ae
+      COLUMNS (5, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | wmkf_ceo ("Organization Leader") | akoya_primarycontactid ("Primary Contact") | akoya_grant ("Grant Amount")
+      FILTERS (3):
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_executivedirectorapproval not-null
+        - akoya_datenotified null
+
+  [26] Discretionary Payee GOverify Check
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=87461809-05eb-ee11-a204-000d3a341325
+      COLUMNS (19, from layoutxml): akoya_requestnum ("Request #") | akoya_submissionaccepted ("Submission Accepted") | akoya_requeststatus ("Request Status") | akoya_applicantid ("Applicant") | wmkf_meetingdate ("Meeting Date") | akoya_request ("Requested Amount") | wmkf_organizationisgovernmententity ("Organization is Government Entity") | wmkf_groupexempt ("Group Exempt") | wmkf_paymentoption ("Payment Option") | akoya_payee ("Payee") | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_billcomvendorid | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_taxid | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_dexempt | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_taxstatus | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_goverifyexception | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmffoundationcode | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmfsubsectiondescription | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmf509 | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_guidestarirsbmfsubsection
+      JOINS: account (a_fed2bba8c8c6432e97b56a4551b1db27) on accountid=akoya_payee ; account (aa) on accountid=akoya_applicantid
+      FILTERS (6):
+        - akoya_requeststatus eq "Pending"
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_pcgoverifycomplete ne "100000001"
+        - statecode eq "0"
+        - wmkf_controllerapproved ne "100000000"
+        - wmkf_dateapprovedbycontroller olderthan-x-months "3"
+
+  [27] Discretionary Payment Contact Follow Up Email
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=ef48a8a3-0d08-ef11-9f89-000d3a32c1ae
+      COLUMNS (6, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | wmkf_paymentcontact ("Payment Contact") | wmkf_donorname ("Donor Name") | akoya_recommendedamount ("Recommended Grant") | wmkf_directorofoperationsapproved ("Director of Operations Approved")
+      FILTERS (5):
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Pending"
+        - wmkf_paymentoption eq "100000000"
+        - wmkf_paymentconfirmationemailsent not-null
+        - wmkf_paymentcontactconfirmed eq "100000001"
+
+  [28] Discretionary Payment Contact No Response Received
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=3c926db6-10f8-ee11-a1fd-000d3a341fd9
+      COLUMNS (7, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_primarycontactid ("Primary Contact") | wmkf_paymentcontactconfirmed ("Payment Contact Confirmed") | wmkf_paymentconfirmationemailsent ("Payment Confirmation Email Sent") | wmkf_followupemailsent ("Follow Up Email Sent") | wmkf_paymentcontact ("Payment Contact")
+      FILTERS (4):
+        - akoya_requeststatus eq "Pending"
+        - wmkf_paymentcontactconfirmed eq "100000001"
+        - wmkf_paymentconfirmationemailsent not-null
+        - wmkf_followupemailsent not-null
+
+  [29] Discretionary Payment Contact to Confirm
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=16378277-0d08-ef11-9f89-6045bd06623c
+      COLUMNS (7, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | wmkf_paymentcontact ("Payment Contact") | wmkf_paymentcontactrequestsent ("Payment Contact Request Sent") | wmkf_paymentcontactconfirmed ("Payment Contact Confirmed") | wmkf_donorname ("Donor Name") | akoya_recommendedamount ("Recommended Grant")
+      FILTERS (6):
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Pending"
+        - wmkf_paymentoption eq "100000000"
+        - statecode eq "0"
+        - wmkf_paymentcontactconfirmed eq "100000001"
+        - wmkf_paymentcontactconfirmed null
+
+  [30] Discretionary Pending ACH & Check Requests
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=43e740f2-04eb-ee11-a204-000d3a340055
+      COLUMNS (21, from layoutxml): akoya_requestnum ("Request #") | akoya_submissionaccepted ("Submission Accepted") | akoya_submitdatetime ("Submit DateTime") | wmkf_applicationemailsent ("Application Email Sent") | wmkf_donorname ("Donor Name") | akoya_applicantid ("Applicant") | akoya_programid ("Internal Program") | akoya_recommendedamount ("Recommended Grant") | wmkf_paymentoption ("Payment Option") | wmkf_paymentcontact ("Payment Contact") | wmkf_grantpurposenotes ("Grant Purpose Notes") | wmkf_recognitionstatement ("Recognition Statement") | wmkf_meetingdate ("Meeting Date") | akoya_payee ("Payee") | a_fd1db82205e94d78975848a424c6c834.wmkf_billcomvendorid | wmkf_exisitngbillcomaccount ("Exisitng Bill.com Account") | wmkf_organizationnameonbillcomaccount ("Organization Name on Bill.com Account") | wmkf_emailoffinancialcontact ("Email of Financial Contact") | wmkf_paymentnetworkidpni ("Payment Network ID (PNI)") | wmkf_emailaddressonbillcomaccount ("Email Address on Bill.com Account") | a_451b4c19f51d419e9d437135edb53ecc.wmkf_billcomvendorid
+      JOINS: account (a_451b4c19f51d419e9d437135edb53ecc) on accountid=akoya_applicantid ; account (a_fd1db82205e94d78975848a424c6c834) on accountid=akoya_payee
+      FILTERS (5):
+        - akoya_requeststatus eq "Pending"
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - statecode eq "0"
+        - wmkf_paymentoption eq "100000000"
+        - wmkf_paymentoption eq "100000003"
+
+  [31] Discretionary Pending Applications Received
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=76c3744e-9cec-ee11-a203-000d3a341fd9
+      COLUMNS (18, from layoutxml): akoya_requestnum ("Request #") | akoya_requeststatus ("Request Status") | akoya_applicantid ("Applicant") | wmkf_paymentcontact ("Payment Contact") | wmkf_meetingdate ("Meeting Date") | akoya_request ("Requested Amount") | akoya_programid ("Internal Program") | wmkf_paymentoption ("Payment Option") | akoya_payee ("Payee") | a_9ba8ed8a961449bc97b70e8e8d00439f.wmkf_billcomvendorid | a_9ba8ed8a961449bc97b70e8e8d00439f.akoya_taxid | a_9ba8ed8a961449bc97b70e8e8d00439f.akoya_dexempt | a_9ba8ed8a961449bc97b70e8e8d00439f.akoya_taxstatus | a_9ba8ed8a961449bc97b70e8e8d00439f.akoya_goverifyexception | a_9ba8ed8a961449bc97b70e8e8d00439f.wmkf_bmffoundationcode | a_9ba8ed8a961449bc97b70e8e8d00439f.wmkf_bmfsubsectiondescription | a_9ba8ed8a961449bc97b70e8e8d00439f.wmkf_bmf509 | a_9ba8ed8a961449bc97b70e8e8d00439f.akoya_guidestarirsbmfsubsection
+      JOINS: account (a_9ba8ed8a961449bc97b70e8e8d00439f) on accountid=akoya_payee
+      FILTERS (9):
+        - akoya_requeststatus eq "Pending"
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_paymentcontactconfirmed eq "100000000"
+        - akoya_submissionaccepted eq "0"
+        - akoya_submitdate not-null
+        - akoya_datereceived not-null
+        - akoya_goapplyapplication eq "{06fdca08-f7be-ee11-9079-000d3a341e8f}"
+        - akoya_goapplyphase eq "{77cc3517-f7be-ee11-9079-000d3a341e8f}"
+        - statecode eq "0"
+
+  [32] Discretionary Pending CC Requests
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=bf1ed79b-f25f-ef11-bfe3-6045bd06fb97
+      COLUMNS (9, from layoutxml): akoya_requestnum ("Request #") | wmkf_directorofoperationsapproved ("Director of Operations Approved") | wmkf_donorname ("Donor Name") | akoya_applicantid ("Applicant") | akoya_programid ("Internal Program") | akoya_recommendedamount ("Recommended Grant") | wmkf_paymentoption ("Payment Option") | wmkf_meetingdate ("Meeting Date") | akoya_payee ("Payee")
+      FILTERS (4):
+        - akoya_requeststatus eq "Pending"
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_paymentoption eq "100000002"
+        - statecode eq "0"
+
+  [33] Discretionary Pending Request - ACH
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=4a757ea8-1308-ef11-9f89-6045bd06623c
+      COLUMNS (18, from layoutxml): akoya_requestnum ("Request #") | akoya_requeststatus ("Request Status") | akoya_applicantid ("Applicant") | wmkf_grantpurposenotes ("Grant Purpose Notes") | wmkf_meetingdate ("Meeting Date") | akoya_recommendedamount ("Recommended Grant") | akoya_programid ("Internal Program") | wmkf_recognitionstatement ("Recognition Statement") | wmkf_paymentoption ("Payment Option") | akoya_payee ("Payee") | wmkf_paymentcontact ("Payment Contact") | wmkf_exisitngbillcomaccount ("Exisitng Bill.com Account") | a_4f5f2165453d4f6ebb9fb680d2178395.wmkf_billcomvendorid | wmkf_organizationnameonbillcomaccount ("Organization Name on Bill.com Account") | wmkf_emailoffinancialcontact ("Email of Financial Contact") | wmkf_paymentnetworkidpni ("Payment Network ID (PNI)") | wmkf_emailaddressonbillcomaccount ("Email Address on Bill.com Account") | a_451b4c19f51d419e9d437135edb53ecc.wmkf_billcomvendorid
+      JOINS: account (a_451b4c19f51d419e9d437135edb53ecc) on accountid=akoya_applicantid ; account (a_4f5f2165453d4f6ebb9fb680d2178395) on accountid=akoya_payee
+      FILTERS (4):
+        - akoya_requeststatus eq "Pending"
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_submissionaccepted eq "0"
+        - wmkf_paymentoption eq "100000000"
+
+  [34] Discretionary Request Need Approval
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=0f0bdbd4-f301-ef11-a1fd-000d3a3621c7
+      COLUMNS (19, from layoutxml): akoya_requestnum ("Request #") | akoya_requeststatus ("Request Status") | wmkf_directorofoperationsapproved ("Director of Operations Approved") | akoya_applicantid ("Applicant") | wmkf_donorname ("Donor Name") | akoya_recommendedamount ("Recommended Grant") | akoya_payee ("Payee") | wmkf_paymentoption ("Payment Option") | wmkf_paymentcontact ("Payment Contact") | a_3e8a3688175746b7baf73871f0a4afb8.wmkf_billcomvendorid | a_3e8a3688175746b7baf73871f0a4afb8.akoya_taxid | a_3e8a3688175746b7baf73871f0a4afb8.akoya_taxstatus | a_3e8a3688175746b7baf73871f0a4afb8.wmkf_organizationisgovernmententity | a_3e8a3688175746b7baf73871f0a4afb8.wmkf_groupexempt | a_3e8a3688175746b7baf73871f0a4afb8.akoya_goverifyexception | a_3e8a3688175746b7baf73871f0a4afb8.wmkf_bmffoundationcode | a_3e8a3688175746b7baf73871f0a4afb8.wmkf_bmfsubsectiondescription | a_3e8a3688175746b7baf73871f0a4afb8.wmkf_bmf509 | a_3e8a3688175746b7baf73871f0a4afb8.akoya_guidestarirsbmfsubsection
+      JOINS: account (a_3e8a3688175746b7baf73871f0a4afb8) on accountid=akoya_payee
+      FILTERS (5):
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Pending"
+        - akoya_submissionaccepted eq "1"
+        - akoya_recommendedamount not-null
+        - akoya_grant null
+
+  [35] Discretionary Request Pending Director of Ops Approval - ACH
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=b08e7ee4-0e08-ef11-9f89-000d3a33ff0b
+      COLUMNS (14, from layoutxml): akoya_requestnum ("Request #") | akoya_requeststatus ("Request Status") | a_5dab4cc224ff40d0800641897985cc3b.akoya_aka | wmkf_directorofoperationsapproved ("Director of Operations Approved") | wmkf_donorname ("Donor Name") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program") | akoya_recommendedamount ("Recommended Grant") | wmkf_paymentoption ("Payment Option") | akoya_primarycontactid ("Primary Contact") | wmkf_recognitionstatement ("Recognition Statement") | wmkf_meetingdate ("Meeting Date") | wmkf_vendorverified ("Vendor Verified") | akoya_submissionaccepted ("Submission Accepted")
+      JOINS: account (a_5dab4cc224ff40d0800641897985cc3b) on accountid=akoya_applicantid
+      FILTERS (8):
+        - akoya_requeststatus eq "Pending"
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_submissionaccepted eq "1"
+        - wmkf_directorofoperationsapproved null
+        - wmkf_vendorverified eq "100000000"
+        - statecode eq "0"
+        - wmkf_paymentoption eq "100000000"
+        - wmkf_paymentoption eq "100000003"
+
+  [36] Discretionary Request Pending Director of Ops Approval - Credit Card
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=590de6dd-27f8-ee11-a1fd-6045bd02d5dc
+      COLUMNS (11, from layoutxml): akoya_requestnum ("Request #") | akoya_requeststatus ("Request Status") | wmkf_directorofoperationsapproved ("Director of Operations Approved") | wmkf_donorname ("Donor Name") | a_c73282049807402f8ae4092d787b1215.akoya_aka | akoya_programid ("Internal Program") | akoya_recommendedamount ("Recommended Grant") | wmkf_paymentoption ("Payment Option") | akoya_primarycontactid ("Primary Contact") | wmkf_recognitionstatement ("Recognition Statement") | wmkf_meetingdate ("Meeting Date")
+      JOINS: account (a_c73282049807402f8ae4092d787b1215) on accountid=akoya_applicantid
+      FILTERS (6):
+        - akoya_requeststatus eq "Pending"
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_directorofoperationsapproved null
+        - wmkf_paymentoption eq "100000002"
+        - wmkf_pcgoverifycomplete eq "100000001"
+        - statecode eq "0"
+
+  [37] Discretionary Request Pending ED Approval
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=26528e4c-28f8-ee11-a1fd-6045bd02d5dc
+      COLUMNS (10, from layoutxml): wmkf_type ("Type") | akoya_programid ("Internal Program") | wmkf_donorname ("Donor Name") | akoya_applicantid ("Applicant") | akoya_internaldeipriorities ("Internal DEI Priorities") | wmkf_grantpurposenotes ("Grant Purpose Notes") | wmkf_recognitionstatement ("Recognition Statement") | akoya_grant ("Grant Amount") | wmkf_directorofoperationsapproved ("Director of Operations Approved") | akoya_requestnum ("Request #")
+      FILTERS (5):
+        - akoya_requeststatus eq "Approved"
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_submissionaccepted eq "1"
+        - wmkf_directorofoperationsapproved not-null
+        - wmkf_executivedirectorapproval null
+
+  [38] Discretionary Request Pending Vendor Verification
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=0920291c-9b0d-ef11-9f89-6045bd06623c
+      COLUMNS (14, from layoutxml): akoya_requestnum ("Request #") | akoya_requeststatus ("Request Status") | akoya_submissionaccepted ("Submission Accepted") | wmkf_vendorverified ("Vendor Verified") | wmkf_donorname ("Donor Name") | akoya_recommendedamount ("Recommended Grant") | wmkf_paymentoption ("Payment Option") | akoya_payee ("Payee") | a_cd4d9f655a5545baa32aabbad3ea04b1.akoya_billvendorid | akoya_applicantid ("Applicant") | wmkf_recognitionstatement ("Recognition Statement") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program") | wmkf_meetingdate ("Meeting Date")
+      JOINS: account (a_cd4d9f655a5545baa32aabbad3ea04b1) on accountid=akoya_payee
+      FILTERS (7):
+        - akoya_requeststatus eq "Pending"
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_submissionaccepted eq "1"
+        - akoya_datereceived not-null
+        - wmkf_paymentoption eq "100000000"
+        - wmkf_vendorverified null
+        - wmkf_vendorverified eq "100000001"
+
+  [39] Discretionary Request Reversals
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=fc63150c-a282-f011-b4cc-6045bd0510d4
+      COLUMNS (7, from layoutxml): akoya_requestnum ("Request #") | akoya_requeststatus ("Request Status") | wmkf_executivedirectorapproval ("Executive Director Approval") | wmkf_directorofoperationsapproved ("Director of Operations Approved") | a_2d957bf50c1f4ea482dbeb103c87deea.akoya_aka | akoya_grant ("Grant Amount") | akoya_programid ("Internal Program")
+      JOINS: account (a_2d957bf50c1f4ea482dbeb103c87deea) on accountid=akoya_applicantid
+      FILTERS (9):
+        - wmkf_type eq "{67467457-f9c4-ee11-9079-000d3a310f67}"
+        - statecode eq "0"
+        - akoya_requeststatus eq "Pending"
+        - akoya_requeststatus eq "Approved"
+        - wmkf_directorofoperationsapproved next-x-months "2"
+        - wmkf_directorofoperationsapproved last-x-months "3"
+        - wmkf_directorofoperationsapproved null
+        - wmkf_meetingdate next-x-months "7"
+        - wmkf_meetingdate last-x-months "2"
+
+  [40] Discretionary Vendors To Verify
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=b5227fb4-765a-ef11-a317-6045bd0a120d
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | wmkf_vendorverified ("Vendor Verified") | akoya_payee ("Payee") | akoya_recommendedamount ("Recommended Grant") | a_ded9384f3a914cdcb6edf4d3c642e3aa.wmkf_vendorid | a_ded9384f3a914cdcb6edf4d3c642e3aa.wmkf_billcomvendorid | wmkf_exisitngbillcomaccount ("Exisitng Bill.com Account") | a_ded9384f3a914cdcb6edf4d3c642e3aa.wmkf_paymentcontact | wmkf_organizationnameonbillcomaccount ("Organization Name on Bill.com Account") | wmkf_emailaddressonbillcomaccount ("Email Address on Bill.com Account")
+      JOINS: account (a_ded9384f3a914cdcb6edf4d3c642e3aa) on accountid=akoya_payee
+      FILTERS (6):
+        - wmkf_vendorverified eq "100000001"
+        - akoya_submissionaccepted eq "1"
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - statecode eq "0"
+        - wmkf_paymentoption eq "100000000"
+        - wmkf_paymentoption eq "100000003"
+
+  [41] Finished Awards
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=04438c4c-4f81-e311-9be1-0050569d0000
+      COLUMNS (11, from layoutxml): akoya_requestnum ("Request #") | akoya_requesttype ("Request Type") | akoya_begindate ("Begin Date") | akoya_applicantid ("Applicant") | akoya_title ("Title") | akoya_grant ("Grant Amount") | akoya_request ("Requested Amount") | akoya_programid ("Internal Program") | akoya_datenotified ("Date Notified") | akoya_datereceived ("Request Received") | akoya_decisiondate ("Decision Date")
+      FILTERS (2):
+        - akoya_grant gt "0"
+        - akoya_finished not-null
+
+  [42] GALs
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=4fa52c24-4da8-ef11-8a69-6045bd00230d
+      COLUMNS (22, from layoutxml): akoya_requestnum ("Request #") | wmkf_programcoordinator ("Program Coordinator") | wmkf_lettertype ("Letter Type") | wmkf_phaseiistatus ("Phase II Status") | akoya_recommendedamount_base ("Recommended Amount (Base)") | a_f325d5ea08fd468896420b59fd6bbdbe.akoya_aka | akoya_applicantid ("Applicant") | wmkf_paymentgoingtodifferentorganization ("Payment Going To Different Organization") | a_eb9d223df34a4bcd98ca5cb6873c9bd8.name | wmkf_ceo ("Organization Leader") | akoya_primarycontactid ("Primary Contact") | wmkf_paymentcontact ("Payment Contact") | wmkf_paymentcontactconfirmed ("Payment Contact Confirmed") | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_vendorid | wmkf_exisitngbillcomaccount ("Exisitng Bill.com Account") | wmkf_organizationnameonbillcomaccount ("Organization Name on Bill.com Account") | wmkf_emailaddressonbillcomaccount ("Email Address on Bill.com Account") | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_billcomvendorid | akoya_comments ("Comments") | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_organizationisgovernmententity | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_groupexempt | wmkf_meetingdate ("Meeting Date")
+      JOINS: account (a_f325d5ea08fd468896420b59fd6bbdbe) on accountid=akoya_applicantid ; account (a_eb9d223df34a4bcd98ca5cb6873c9bd8) on accountid=akoya_payee
+      FILTERS (8):
+        - statecode eq "0"
+        - akoya_applicantid ne "{537e3b60-c18f-ee11-8179-000d3a341e8f}"
+        - akoya_requestnum eq "985674"
+        - akoya_requestnum eq "992506"
+        - wmkf_contingencystatus eq "682090001"
+        - akoya_requestid eq "{3829054a-135c-ef11-a317-6045bd0a120d}"
+        - wmkf_phaseiistatus eq "100000004"
+        - wmkf_phaseiistatus eq "100000005"
+
+  [43] GM Upcoming Reports
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=b9c2e087-037e-f011-b4cc-6045bd003e28
+      COLUMNS (9, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | a_282376e260f14499955cb9ac53ffd2d5.akoya_aka | akoya_nextrequirementdue ("Next Requirement Due") | akoya_enddate ("End Date") | wmkf_nocostextensionthroughdate ("No Cost Extension Through Date") | wmkf_type ("Type") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program")
+      JOINS: akoya_requestpayment (aa) on akoya_requestlookup=akoya_requestid ; account (a_282376e260f14499955cb9ac53ffd2d5) on accountid=akoya_applicantid
+      FILTERS (2):
+        - akoya_requirementdue next-x-months "3"
+        - akoya_requirementdue last-x-months "1"
+
+  [44] GOapply Reviewer - Grant History
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=a0ea6447-60f3-ef11-be21-6045bd0513ce
+      COLUMNS (5, from layoutxml): akoya_requestnum ("Request #") | akoya_decisiondate ("Decision Date") | akoya_requeststatus ("Request Status") | akoya_programid ("Internal Program") | akoya_grant ("Grant Amount")
+      FILTERS: (none — unfiltered / all rows)
+
+  [45] GOapply Reviewer - Grant History
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=88647c25-61f3-ef11-be21-6045bd09da9c
+      COLUMNS (5, from layoutxml): akoya_requestnum ("Request #") | akoya_decisiondate ("Decision Date") | akoya_requeststatus ("Request Status") | akoya_programid ("Internal Program") | akoya_grant ("Grant Amount")
+      FILTERS: (none — unfiltered / all rows)
+
+  [46] Grant Awards and Requests
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=bd588d81-bac2-ea11-a812-000d3a37ef43
+      COLUMNS (12, from layoutxml): akoya_requestnum ("Request #") | akoya_requesttype ("Request Type") | akoya_applicantid ("Applicant") | akoya_title ("Title") | akoya_requeststatus ("Request Status") | akoya_begindate ("Begin Date") | akoya_programid ("Internal Program") | akoya_primarycontactid ("Primary Contact") | akoya_decisiondate ("Decision Date") | akoya_finished ("Done/Closed") | akoya_grant ("Grant Amount") | akoya_purpose ("Purpose")
+      FILTERS (2):
+        - akoya_requesttype eq "100000000"
+        - statecode eq "0"
+
+  [47] Grants Awarded by Budget Item
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=c6067bbd-a242-e511-80d1-00155dce442a
+      COLUMNS (9, from layoutxml): akoya_requestnum ("Request #") | akoya_grant ("Grant Amount") | akoya_title ("Title") | akoya_applicantid ("Applicant") | akoya_paid ("Paid") | akoya_nextpaymentdue ("Next Payment Due") | akoya_decisiondate ("Decision Date") | akoya_applicationid ("Application ID") | akoya_budgetlineitem ("Budget Line Item")
+      FILTERS (1):
+        - akoya_grant gt "0"
+
+  [48] Honorarium Reviewer Contacts This Cycle
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=b6af9f97-4313-f111-8406-7ced8d6e65a4
+      COLUMNS (17, from layoutxml): akoya_primarycontactid ("Primary Contact") | a_52762e43931040f28e3615641b8d787f.address1_line1 | a_52762e43931040f28e3615641b8d787f.address1_line2 | a_52762e43931040f28e3615641b8d787f.address1_city | a_52762e43931040f28e3615641b8d787f.address1_stateorprovince | a_52762e43931040f28e3615641b8d787f.address1_postalcode | a_52762e43931040f28e3615641b8d787f.address1_country | a_52762e43931040f28e3615641b8d787f.telephone1 | wmkf_paymentnetworkidpni ("Payment Network ID (PNI)") | wmkf_emailaddressonbillcomaccount ("Email Address on Bill.com Account") | wmkf_billcomstreet1 ("Bill.com Street 1") | wmkf_billcomstreet2 ("Bill.com Street 2") | wmkf_billcomcity ("Bill.com City") | wmkf_billcomstate ("Bill.com State") | wmkf_billcomzipcode ("Bill.Com Zip Code") | wmkf_billcomcountry ("Bill.com Country") | a_52762e43931040f28e3615641b8d787f.wmkf_vendorid
+      JOINS: contact (ab) on contactid=akoya_primarycontactid ; contact (a_52762e43931040f28e3615641b8d787f) on contactid=akoya_primarycontactid
+      FILTERS (6):
+        - statecode eq "0"
+        - wmkf_meetingdate next-x-months "5"
+        - wmkf_type eq "{4bab15c9-38eb-f011-8543-6045bd02b4cc}"
+        - wmkf_grantprogram eq "{60ef7626-38eb-f011-8543-6045bd02b4cc}"
+        - wmkf_request_type eq "682090001"
+        - statecode eq "0"
+
+  [49] Inactive Requests
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=08336c1e-4019-4642-8d5d-20790fcacac3
+      COLUMNS (8, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_title ("Title") | akoya_budgetfy ("Budget FY") | akoya_grant ("Grant Amount") | akoya_programid ("Internal Program") | akoya_balance ("Balance") | createdon ("Created On")
+      FILTERS (1):
+        - statecode eq "1"
+
+  [50] Ineligible Requests
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=955c9ea3-4f81-e311-9be1-0050569d0000
+      COLUMNS (8, from layoutxml): akoya_requestnum ("Request #") | akoya_requesttype ("Request Type") | akoya_applicantid ("Applicant") | akoya_title ("Title") | akoya_datereceived ("Request Received") | akoya_programid ("Internal Program") | akoya_denialreason ("Denial Reason") | akoya_request ("Requested Amount")
+      FILTERS (4):
+        - statecode eq "0"
+        - akoya_specialrequeststatus eq "100000003"
+        - akoya_grant null
+        - akoya_grant eq "0"
+
+  [51] Interfund Grants
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=90f5774b-bac2-ea11-a812-000d3a37ef43
+      COLUMNS (11, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_title ("Title") | akoya_requeststatus ("Request Status") | akoya_begindate ("Begin Date") | akoya_programid ("Internal Program") | akoya_primarycontactid ("Primary Contact") | akoya_decisiondate ("Decision Date") | akoya_finished ("Done/Closed") | akoya_grant ("Grant Amount") | akoya_purpose ("Purpose")
+      FILTERS (1):
+        - akoya_requesttype eq "100000002"
+
+  [52] New Submissions
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=c9d32ad2-4f81-e311-9be1-0050569d0000
+      COLUMNS (4, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_request ("Requested Amount") | akoya_title ("Title")
+      FILTERS (3):
+        - akoya_grant null
+        - akoya_submissionaccepted eq "0"
+        - statecode eq "0"
+
+  [53] Outstanding Contracts
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=91a62e98-5081-e311-9be1-0050569d0000
+      COLUMNS (6, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_title ("Title") | akoya_datenotified ("Date Notified") | akoya_decisiondate ("Decision Date") | akoya_grant ("Grant Amount")
+      FILTERS (2):
+        - akoya_datecontractreceived null
+        - akoya_grant gt "0"
+
+  [54] Pending Fund Disbursements
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=c6c5dd92-aed7-ed11-a7c7-000d3a343ab0
+      COLUMNS (7, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_gofundrecommender ("Grant Recommender") | akoya_recommendedpaymentdate ("Recommended Payment Date") | akoya_recommendedamount ("Recommended Grant") | akoya_title ("Title") | akoya_requeststatus ("Request Status")
+      FILTERS (3):
+        - akoya_fund not-null
+        - statecode eq "0"
+        - akoya_originalgrantamount null
+
+  [55] Pending Grant Requests
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=e99aeeee-15de-ee11-904c-000d3a350b79
+      COLUMNS (12, from layoutxml): akoya_requestnum ("Request #") | akoya_requesttype ("Request Type") | akoya_specialrequeststatus ("Special Request Status") | akoya_applicantid ("Applicant") | a_643d03d4fa31493294ce9a8ba63ba3b2.akoya_taxstatus | a_643d03d4fa31493294ce9a8ba63ba3b2.akoya_goverifyexempt | akoya_title ("Title") | akoya_primarycontactid ("Primary Contact") | akoya_request ("Requested Amount") | akoya_decisiondate ("Decision Date") | akoya_programid ("Internal Program") | akoya_purpose ("Purpose")
+      JOINS: account (a_643d03d4fa31493294ce9a8ba63ba3b2) on accountid=akoya_applicantid
+      FILTERS (3):
+        - akoya_grant null
+        - akoya_requesttype eq "100000000"
+        - statecode eq "0"
+
+  [56] Pending LOIs
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=5191fb3b-5281-e311-9be1-0050569d0000
+      COLUMNS (5, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_title ("Title") | akoya_loidecisiondate ("Phase I Decision Date") | akoya_loireceived ("Phase 1 Received")
+      FILTERS (3):
+        - akoya_loireceived not-null
+        - akoya_loidecisiondate null
+        - statecode eq "0"
+
+  [57] Pending Phase II GM
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=2da5f000-85a0-ef11-8a6a-0022480aa879
+      COLUMNS (13, from layoutxml): akoya_requestnum ("Request #") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program") | wmkf_phaseiistatus ("Phase II Status") | akoya_applicantid ("Applicant") | a_f325d5ea08fd468896420b59fd6bbdbe.akoya_aka | a_eb9d223df34a4bcd98ca5cb6873c9bd8.name | akoya_recommendedamount_base ("Recommended Amount (Base)") | akoya_primarycontactid ("Primary Contact") | wmkf_ceo ("Organization Leader") | wmkf_paymentgoingtodifferentorganization ("Payment Going To Different Organization") | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_organizationisgovernmententity | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_groupexempt
+      JOINS: account (a_f325d5ea08fd468896420b59fd6bbdbe) on accountid=akoya_applicantid ; account (a_eb9d223df34a4bcd98ca5cb6873c9bd8) on accountid=akoya_payee
+      FILTERS (1):
+        - akoya_requeststatus eq "Phase II Pending"
+
+  [58] Pending Recommended Requests
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=45857684-8b45-ed11-bba1-000d3a343ab0
+      COLUMNS (11, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_purpose ("Purpose") | akoya_gofundrecommender ("Grant Recommender") | akoya_recommendedamount ("Recommended Grant") | a_df4cb934bc6a462c80f1927688b20911.akoya_gofundspendable | akoya_fund ("Fund") | akoya_requestsource ("Request Source") | a_df4cb934bc6a462c80f1927688b20911.akoya_formalfundname | a_df4cb934bc6a462c80f1927688b20911.akoya_fundtype | createdon ("Created On")
+      JOINS: akoya_fund (a_df4cb934bc6a462c80f1927688b20911) on akoya_fundid=akoya_fund
+      FILTERS (3):
+        - akoya_gofundrecommender not-null
+        - akoya_originalgrantamount null
+        - statecode eq "0"
+
+  [59] Pending Request No Bill.com
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=90414b7c-f001-ef11-a1fd-000d3a33ff0b
+      COLUMNS (6, from layoutxml): akoya_requestnum ("Request #") | akoya_payee ("Payee") | a_00c0580525484770a4237e6b93a6fd02.wmkf_billcomvendorid | wmkf_exisitngbillcomaccount ("Exisitng Bill.com Account") | wmkf_paymentcontact ("Payment Contact") | a_e20487a013af470a8cced2ba9aac7e33.emailaddress1
+      JOINS: contact (a_e20487a013af470a8cced2ba9aac7e33) on contactid=wmkf_paymentcontact ; account (a_00c0580525484770a4237e6b93a6fd02) on accountid=akoya_applicantid
+      FILTERS (3):
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Pending"
+        - wmkf_exisitngbillcomaccount eq "100000001"
+
+  [60] Pending Request With Bill.com
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=22bff78e-f001-ef11-a1fd-000d3a32c1ae
+      COLUMNS (5, from layoutxml): akoya_requestnum ("Request #") | akoya_payee ("Payee") | wmkf_exisitngbillcomaccount ("Exisitng Bill.com Account") | wmkf_paymentcontact ("Payment Contact") | a_e20487a013af470a8cced2ba9aac7e33.emailaddress1
+      JOINS: contact (a_e20487a013af470a8cced2ba9aac7e33) on contactid=wmkf_paymentcontact
+      FILTERS (3):
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Pending"
+        - wmkf_exisitngbillcomaccount eq "100000000"
+
+  [61] Pending Requests
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=91108a8b-5281-e311-9be1-0050569d0000
+      COLUMNS (13, from layoutxml): akoya_applicantid ("Applicant") | a_c0396b78434b4ddc8a44a215a28820b5.wmkf_code | a_755ab27c118840cf8441ee738f117a72.wmkf_code | akoya_requeststatus ("Request Status") | wmkf_phaseistatus ("Phase I Status") | wmkf_phaseiistatus ("Phase II Status") | akoya_fiscalyear ("Fiscal Year") | akoya_request ("Requested Amount") | akoya_primarycontactid ("Primary Contact") | akoya_requestnum ("Request #") | a_808048963d5a4f5794f9eb7393877a9b.akoya_guidestarirsbmfsubsection | a_808048963d5a4f5794f9eb7393877a9b.wmkf_bmf509 | a_808048963d5a4f5794f9eb7393877a9b.wmkf_bmffoundationcode
+      JOINS: wmkf_grantprogram (a_c0396b78434b4ddc8a44a215a28820b5) on wmkf_grantprogramid=wmkf_grantprogram ; akoya_program (a_755ab27c118840cf8441ee738f117a72) on akoya_programid=akoya_programid ; account (a_808048963d5a4f5794f9eb7393877a9b) on accountid=akoya_payee
+      FILTERS (8):
+        - statecode eq "0"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_requeststatus eq "Proposal Invited"
+        - akoya_requeststatus eq "Phase II Pending"
+        - akoya_requeststatus eq "Phase II Deferred"
+        - akoya_requeststatus eq "Concept Pending"
+        - wmkf_type eq "{c8ac6d51-f9c4-ee11-9079-000d3a310f67}"
+        - wmkf_type eq "{29a65bb3-6786-ef11-ac21-000d3a344c0f}"
+
+  [62] Pending Requests with Submission Status
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=9f8c1715-4043-ed11-bba1-000d3a343b81
+      COLUMNS (12, from layoutxml): akoya_requestnum ("Request #") | akoya_requesttype ("Request Type") | akoya_submissionaccepted ("Submission Accepted") | akoya_applicantid ("Applicant") | akoya_primarycontactid ("Primary Contact") | akoya_request ("Requested Amount") | akoya_title ("Title") | akoya_programid ("Internal Program") | a_fb4245028da24498803484138b5d5495.akoya_applicationname | a_043dd42aac154b3f9cd3e23dbe53607a.akoya_phasename | akoya_goapplysubmitter ("GOapply Submitter") | akoya_submitdate ("Submit Date (Dep.)")
+      JOINS: akoya_akoyaapply (a_fb4245028da24498803484138b5d5495) on akoya_akoyaapplyid=akoya_goapplyapplication ; akoya_phase (a_043dd42aac154b3f9cd3e23dbe53607a) on akoya_phaseid=akoya_goapplyphase
+      FILTERS (2):
+        - akoya_requeststatus eq "Pending"
+        - statecode eq "0"
+
+  [63] Pending Scholarship Requests
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=4d12942c-16de-ee11-904d-000d3a343ab0
+      COLUMNS (8, from layoutxml): akoya_requestnum ("Request #") | akoya_specialrequeststatus ("Special Request Status") | akoya_title ("Title") | akoya_primarycontactid ("Primary Contact") | akoya_request ("Requested Amount") | akoya_decisiondate ("Decision Date") | akoya_programid ("Internal Program") | akoya_purpose ("Purpose")
+      FILTERS (3):
+        - akoya_originalgrantamount null
+        - akoya_requesttype eq "100000001"
+        - statecode eq "0"
+
+  [64] Pending SoCal Concepts
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=42de8370-1c01-ef11-a1fd-000d3a3621c7
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_programid ("Internal Program") | akoya_applicantid ("Applicant") | akoya_request ("Requested Amount") | akoya_expenses ("Total Project Budget") | wmkf_invitedamount ("Invited Amount") | akoya_recommendedamount ("Recommended Grant") | wmkf_concepttitle ("Concept Title") | wmkf_wmkfprojectdescription ("WMKF Project Description")
+      JOINS: akoya_goapplystatustracking (aa) on akoya_request=akoya_requestid
+      FILTERS (4):
+        - akoya_requestnum like "0%"
+        - wmkf_grantprogram eq "{8cf9c61d-a7cb-ee11-9079-000d3a341fd9}"
+        - akoya_goapplyapplication eq "{463ea61c-60b5-ee11-a569-000d3a341e8f}"
+        - akoya_currentphasestatus eq "100000000"
+
+  [65] Phase I Applications Recieved
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=b1d0a472-3b0e-ef11-9f89-00224805fbb2
+      COLUMNS (9, from layoutxml): akoya_requestnum ("Request #") | akoya_requeststatus ("Request Status") | akoya_programid ("Internal Program") | a_85df1cd820a4442cb05ba22c84d5c9f8.akoya_aka | a_85df1cd820a4442cb05ba22c84d5c9f8.address1_city | a_85df1cd820a4442cb05ba22c84d5c9f8.address1_stateorprovince | akoya_title ("Title") | akoya_expenses ("Total Project Budget") | akoya_request ("Requested Amount")
+      JOINS: account (a_85df1cd820a4442cb05ba22c84d5c9f8) on accountid=akoya_applicantid
+      FILTERS (2):
+        - akoya_requeststatus like "%Phase I%"
+        - akoya_programid eq "{94cab30b-958f-ee11-8179-000d3a341e8f}"
+
+  [66] Phase I Decision to Send
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=6c445b2f-29fd-ee11-a1fe-000d3a341fd9
+      COLUMNS (8, from layoutxml): akoya_requestnum ("Request #") | wmkf_phaseidecisionsent ("Phase I Decision Sent") | wmkf_phaseistatus ("Phase I Status") | wmkf_meetingdate ("Meeting Date") | akoya_applicantid ("Applicant") | wmkf_ceo ("Organization Leader") | akoya_primarycontactid ("Primary Contact") | wmkf_projectleader ("Project Leader")
+      FILTERS (3):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_loireceived not-null
+        - wmkf_phaseidecisionsent null
+
+  [67] Phase I Research (SE) Decision to Send
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=afabae30-5eff-ee11-a1fd-000d3a3621c7
+      COLUMNS (8, from layoutxml): akoya_requestnum ("Request #") | wmkf_phaseidecisionsent ("Phase I Decision Sent") | wmkf_phaseistatus ("Phase I Status") | wmkf_meetingdate ("Meeting Date") | akoya_applicantid ("Applicant") | wmkf_ceo ("Organization Leader") | akoya_primarycontactid ("Primary Contact") | wmkf_projectleader ("Project Leader")
+      FILTERS (4):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_loireceived not-null
+        - wmkf_phaseidecisionsent null
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+
+  [68] Program Expenses
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=b3ca961b-bac2-ea11-a812-000d3a37ef43
+      COLUMNS (11, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_title ("Title") | akoya_requeststatus ("Request Status") | akoya_begindate ("Begin Date") | akoya_programid ("Internal Program") | akoya_primarycontactid ("Primary Contact") | akoya_decisiondate ("Decision Date") | akoya_finished ("Done/Closed") | akoya_grant ("Grant Amount") | akoya_purpose ("Purpose")
+      FILTERS (1):
+        - akoya_requesttype eq "100000003"
+
+  [69] Program Vendors To Verify
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=937e1477-6ba0-ef11-8a6a-000d3a344c0f
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | wmkf_vendorverified ("Vendor Verified") | akoya_payee ("Payee") | akoya_recommendedamount ("Recommended Grant") | a_ded9384f3a914cdcb6edf4d3c642e3aa.wmkf_vendorid | a_ded9384f3a914cdcb6edf4d3c642e3aa.wmkf_billcomvendorid | wmkf_exisitngbillcomaccount ("Exisitng Bill.com Account") | wmkf_paymentcontact ("Payment Contact") | wmkf_organizationnameonbillcomaccount ("Organization Name on Bill.com Account") | wmkf_emailaddressonbillcomaccount ("Email Address on Bill.com Account")
+      JOINS: account (a_ded9384f3a914cdcb6edf4d3c642e3aa) on accountid=akoya_payee
+      FILTERS (7):
+        - wmkf_vendorverified eq "100000001"
+        - akoya_submissionaccepted eq "1"
+        - wmkf_grantprogram ne "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_grantpurposenotes null
+        - statecode eq "0"
+        - wmkf_phaseiistatus eq "100000004"
+        - wmkf_phaseiistatus eq "100000003"
+
+  [70] Rationale & Summary To Complete
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=d1f52df8-27fd-ee11-a1fe-6045bd02d5dc
+      COLUMNS (5, from layoutxml): akoya_requestnum ("Request #") | wmkf_rationalesummarycompleted ("Rationale & Summary Completed") | akoya_applicantid ("Applicant") | akoya_request ("Requested Amount") | akoya_title ("Title")
+      FILTERS (3):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_rationalesummarycompleted eq "0"
+        - wmkf_meetingdate eq "2024-12-12T00:00:00"
+
+  [71] Recent GOfund Grant Recommendations
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=4ff35166-848d-f011-b4cc-6045bd05926f
+      COLUMNS (6, from layoutxml): akoya_requestnum ("Request #") | akoya_gofundrecommender ("Grant Recommender") | akoya_applicantid ("Applicant") | akoya_recommendedamount ("Recommended Grant") | akoya_requeststatus ("Request Status") | createdon ("Created On")
+      FILTERS (2):
+        - createdon last-x-days "30"
+        - akoya_requestsource eq "100000002"
+
+  [72] Request History by Applicant
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=c308db7b-9f20-e411-80c3-00155dcfdc61
+      COLUMNS (5, from layoutxml): akoya_requestnum ("Request #") | akoya_decisiondate ("Decision Date") | akoya_requeststatus ("Request Status") | akoya_programid ("Internal Program") | akoya_grant ("Grant Amount")
+      FILTERS (1):
+        - statecode eq "0"
+
+  [73] Request That Need Controller Approval
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=9f208b23-0df9-ee11-a1fd-6045bd02d5dc
+      COLUMNS (22, from layoutxml): wmkf_controllerapproved ("Controller Approved") | wmkf_dateapprovedbycontroller ("Date Approved by Controller") | akoya_applicantid ("Applicant") | akoya_submissionaccepted ("Submission Accepted") | wmkf_grantprogram ("Grant Program") | akoya_requeststatus ("Request Status") | wmkf_meetingdate ("Meeting Date") | akoya_request ("Requested Amount") | wmkf_organizationisgovernmententity ("Organization is Government Entity") | wmkf_groupexempt ("Group Exempt") | wmkf_paymentoption ("Payment Option") | akoya_payee ("Payee") | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_taxid | a_3bac30f05fdb4147a066c481634587c0.wmkf_dateapprovedbycontroller | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_dexempt | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_taxstatus | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_goverifyexception | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmffoundationcode | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmfsubsectiondescription | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmf509 | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_guidestarirsbmfsubsection | akoya_requestnum ("Request #")
+      JOINS: account (a_fed2bba8c8c6432e97b56a4551b1db27) on accountid=akoya_payee ; account (a_3bac30f05fdb4147a066c481634587c0) on accountid=akoya_applicantid
+      FILTERS (4):
+        - akoya_requeststatus like "%Pending%"
+        - wmkf_dateapprovedbycontroller null
+        - wmkf_organizationisgovernmententity eq "1"
+        - wmkf_groupexempt eq "1"
+
+  [74] Requests by Budget Item
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=a26cdbaa-a242-e511-80d1-00155dce442a
+      COLUMNS (8, from layoutxml): akoya_requestnum ("Request #") | akoya_request ("Requested Amount") | akoya_title ("Title") | akoya_applicantid ("Applicant") | akoya_requeststatus ("Request Status") | akoya_decisiondate ("Decision Date") | akoya_applicationid ("Application ID") | akoya_budgetlineitem ("Budget Line Item")
+      FILTERS (1):
+        - statecode eq "0"
+
+  [75] Requests to Advance to Final Reporting Phase
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=dba70d53-4f43-ed11-bba1-000d3a343ab0
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | akoya_decisiondate ("Decision Date") | akoya_applicantid ("Applicant") | akoya_primarycontactid ("Primary Contact") | akoya_grant ("Grant Amount") | akoya_title ("Title") | a_e554e917eadb419d97d424cbbf15524f.akoya_phasename | akoya_goapplyapplication ("GOapply Opportunity") | akoya_goapplyphase ("GOapply Phase") | akoya_nextrequirementdue ("Next Requirement Due")
+      JOINS: akoya_phase (aa) on akoya_phaseid=akoya_goapplyphase ; akoya_phase (a_e554e917eadb419d97d424cbbf15524f) on akoya_phaseid=akoya_goapplyphase
+      FILTERS (1):
+        - akoya_phasetype eq "100000002"
+
+  [76] Requests to Advance to Interim Reporting Phase
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=435d48d3-4f43-ed11-bba1-000d3a343ab0
+      COLUMNS (9, from layoutxml): akoya_requestnum ("Request #") | akoya_decisiondate ("Decision Date") | akoya_applicantid ("Applicant") | akoya_primarycontactid ("Primary Contact") | akoya_grant ("Grant Amount") | a_3ce1754a9e084060a60e1707ba465f49.akoya_phasename | akoya_goapplyapplication ("GOapply Opportunity") | akoya_goapplyphase ("GOapply Phase") | akoya_nextrequirementdue ("Next Requirement Due")
+      JOINS: akoya_phase (aa) on akoya_phaseid=akoya_goapplyphase ; akoya_phase (a_3ce1754a9e084060a60e1707ba465f49) on akoya_phaseid=akoya_goapplyphase
+      FILTERS (2):
+        - akoya_requeststatus eq "Approved"
+        - akoya_phasetype eq "100000001"
+
+  [77] Requests with Recent Activity
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=71224111-5381-e311-9be1-0050569d0000
+      COLUMNS (8, from layoutxml): akoya_fiscalyear ("Fiscal Year") | akoya_requestnum ("Request #") | akoya_programid ("Internal Program") | akoya_applicantid ("Applicant") | akoya_title ("Title") | akoya_decisiondate ("Decision Date") | modifiedonbehalfby ("Modified By (Delegate)") | modifiedon ("Modified On")
+      FILTERS (2):
+        - modifiedon last-x-months "1"
+        - statecode eq "0"
+
+  [78] Research (MR) Applications Checked In
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=aa38d144-eaff-ee11-a1fd-000d3a3621c7
+      COLUMNS (19, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_submissionaccepted ("Submission Accepted") | wmkf_type ("Type") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program") | akoya_applicantid ("Applicant") | wmkf_ceo ("Organization Leader") | akoya_primarycontactid ("Primary Contact") | wmkf_projectleader ("Project Leader") | akoya_request ("Requested Amount") | wmkf_programdirector ("Program Director") | wmkf_pcgoverifycomplete ("PC GOverify Complete") | wmkf_goverifyreviewedby ("GOverify Reviewed By") | a_f325d5ea08fd468896420b59fd6bbdbe.akoya_taxstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftb | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftbstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_organizationisgovernmententity | wmkf_organizationisgovernmententity ("Organization is Government Entity")
+      JOINS: account (a_f325d5ea08fd468896420b59fd6bbdbe) on accountid=akoya_applicantid
+      FILTERS (4):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_submissionaccepted eq "1"
+        - akoya_programid eq "{94cab30b-958f-ee11-8179-000d3a341e8f}"
+
+  [79] Research (MR) Applications Checked-In & Assigned
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=5904b4b2-edff-ee11-a1fd-000d3a3621c7
+      COLUMNS (19, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_submissionaccepted ("Submission Accepted") | wmkf_type ("Type") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program") | akoya_applicantid ("Applicant") | wmkf_ceo ("Organization Leader") | akoya_primarycontactid ("Primary Contact") | wmkf_projectleader ("Project Leader") | akoya_request ("Requested Amount") | wmkf_programdirector ("Program Director") | wmkf_pcgoverifycomplete ("PC GOverify Complete") | wmkf_goverifyreviewedby ("GOverify Reviewed By") | a_f325d5ea08fd468896420b59fd6bbdbe.akoya_taxstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftb | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftbstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_organizationisgovernmententity | wmkf_organizationisgovernmententity ("Organization is Government Entity")
+      JOINS: account (a_f325d5ea08fd468896420b59fd6bbdbe) on accountid=akoya_applicantid
+      FILTERS (5):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_submissionaccepted eq "1"
+        - akoya_programid eq "{94cab30b-958f-ee11-8179-000d3a341e8f}"
+        - wmkf_programdirector not-null
+
+  [80] Research (MR) Invited
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=49f12748-9b40-ef11-8409-000d3a31a7f3
+      COLUMNS (6, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | wmkf_grantprogram ("Grant Program") | akoya_applicantid ("Applicant") | akoya_title ("Title") | wmkf_phaseistatus ("Phase I Status")
+      FILTERS (6):
+        - akoya_requeststatus eq "Phase I Pending"
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_programid eq "{94cab30b-958f-ee11-8179-000d3a341e8f}"
+        - wmkf_phaseistatus eq "100000004"
+        - wmkf_phaseistatus eq "100000005"
+        - wmkf_phaseistatus null
+
+  [81] Research (MR) Payee GOverify Check
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=7c913c33-83fd-ee11-a1fe-6045bd02d5dc
+      COLUMNS (14, from layoutxml): akoya_requestnum ("Request #") | wmkf_pcgoverifycomplete ("PC GOverify Complete") | wmkf_goverifyreviewedby ("GOverify Reviewed By") | wmkf_controllerapproved ("Controller Approved") | a_36ac35628b83481383ebcf203cefc767.akoya_aka | akoya_applicantid ("Applicant") | wmkf_paymentgoingtodifferentorganization ("Payment Going To Different Organization") | akoya_payee ("Payee") | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_taxid | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_guidestarirsbmfsubsection | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmf509 | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmffoundationcode | wmkf_organizationisgovernmententity ("Organization is Government Entity") | wmkf_groupexempt ("Group Exempt")
+      JOINS: account (a_fed2bba8c8c6432e97b56a4551b1db27) on accountid=akoya_payee ; account (a_36ac35628b83481383ebcf203cefc767) on accountid=akoya_applicantid
+      FILTERS (4):
+        - akoya_requeststatus eq "Phase I Pending"
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_loireceived not-null
+        - akoya_programid eq "{94cab30b-958f-ee11-8179-000d3a341e8f}"
+
+  [82] Research (MR) Phase I Checked In
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=60b7c242-fc08-ef11-9f89-000d3a33ff0b
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | a_6a9c1fa12c4244728313b8c56513c988.akoya_aka | akoya_title ("Title") | wmkf_projectleader ("Project Leader") | akoya_request ("Requested Amount") | akoya_expenses ("Total Project Budget") | wmkf_programdirector ("Program Director") | a_6a9c1fa12c4244728313b8c56513c988.wmkf_eastwest | akoya_programid ("Internal Program") | wmkf_phaseistatus ("Phase I Status")
+      JOINS: account (a_6a9c1fa12c4244728313b8c56513c988) on accountid=akoya_applicantid
+      FILTERS (5):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_submissionaccepted eq "1"
+        - akoya_programid eq "{94cab30b-958f-ee11-8179-000d3a341e8f}"
+        - statecode eq "0"
+
+  [83] Research (MR) Phase I PC
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=da3a5465-24fd-ee11-a1fe-000d3a3621c7
+      COLUMNS (19, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_submissionaccepted ("Submission Accepted") | akoya_programid ("Internal Program") | a_f325d5ea08fd468896420b59fd6bbdbe.akoya_aka | akoya_applicantid ("Applicant") | wmkf_ceo ("Organization Leader") | akoya_primarycontactid ("Primary Contact") | a_ace80ac01be44a8294be1105d858f290.akoya_firstname | a_ace80ac01be44a8294be1105d858f290.akoya_lastname | akoya_request ("Requested Amount") | akoya_submitdate ("Submit Date (Dep.)") | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_bmfsubsectiondescription | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_bmf509 | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_bmffoundationcode | wmkf_paymentgoingtodifferentorganization ("Payment Going To Different Organization") | a_eb9d223df34a4bcd98ca5cb6873c9bd8.name | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_organizationisgovernmententity | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_groupexempt
+      JOINS: account (a_f325d5ea08fd468896420b59fd6bbdbe) on accountid=akoya_applicantid ; account (a_eb9d223df34a4bcd98ca5cb6873c9bd8) on accountid=akoya_payee ; akoya_akoyaapplycontact (a_ace80ac01be44a8294be1105d858f290) on akoya_akoyaapplycontactid=akoya_goapplysubmitter
+      FILTERS (5):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_programid eq "{94cab30b-958f-ee11-8179-000d3a341e8f}"
+        - statecode eq "0"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_requeststatus eq "Proposal Invited"
+
+  [84] Research (MR) Phase I To Be Checked In
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=fcc6bf29-6809-ef11-9f89-000d3a33ff0b
+      COLUMNS (18, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_programid ("Internal Program") | a_f325d5ea08fd468896420b59fd6bbdbe.akoya_aka | akoya_applicantid ("Applicant") | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_organizationleader | akoya_primarycontactid ("Primary Contact") | a_ace80ac01be44a8294be1105d858f290.akoya_firstname | a_ace80ac01be44a8294be1105d858f290.akoya_lastname | akoya_request ("Requested Amount") | akoya_submitdate ("Submit Date (Dep.)") | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_bmfsubsectiondescription | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_bmf509 | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_bmffoundationcode | wmkf_paymentgoingtodifferentorganization ("Payment Going To Different Organization") | a_eb9d223df34a4bcd98ca5cb6873c9bd8.name | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_organizationisgovernmententity | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_groupexempt
+      JOINS: account (a_f325d5ea08fd468896420b59fd6bbdbe) on accountid=akoya_applicantid ; account (a_eb9d223df34a4bcd98ca5cb6873c9bd8) on accountid=akoya_payee ; akoya_akoyaapplycontact (a_ace80ac01be44a8294be1105d858f290) on akoya_akoyaapplycontactid=akoya_goapplysubmitter
+      FILTERS (5):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_programid eq "{94cab30b-958f-ee11-8179-000d3a341e8f}"
+        - akoya_submissionaccepted eq "0"
+        - statecode eq "0"
+
+  [85] Research (MR) Phase II Checked-In
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=3e875fcc-775a-ef11-bfe2-6045bd06fb97
+      COLUMNS (9, from layoutxml): akoya_requestnum ("Request #") | wmkf_phaseiistatus ("Phase II Status") | a_07bccb1a46414017ac5c21a362870ae3.akoya_aka | akoya_title ("Title") | wmkf_projectleader ("Project Leader") | wmkf_invitedamount ("Invited Amount") | akoya_expenses ("Total Project Budget") | wmkf_programdirector ("Program Director") | a_07bccb1a46414017ac5c21a362870ae3.wmkf_eastwest
+      JOINS: account (a_07bccb1a46414017ac5c21a362870ae3) on accountid=akoya_applicantid
+      FILTERS (11):
+        - akoya_programid eq "{94cab30b-958f-ee11-8179-000d3a341e8f}"
+        - statecode eq "0"
+        - wmkf_phaseiicheckincomplete eq "100000001"
+        - wmkf_phaseiistatus eq "100000002"
+        - wmkf_phaseiistatus eq "100000004"
+        - wmkf_phaseiistatus eq "100000005"
+        - wmkf_phaseiistatus eq "100000003"
+        - wmkf_phaseiistatus eq "100000001"
+        - akoya_requeststatus eq "Phase II Pending Committee Review"
+        - wmkf_meetingdate last-x-months "1"
+        - wmkf_meetingdate next-x-months "4"
+
+  [86] Research (MR) Phase II Invited and Received
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=37805d8b-745a-ef11-bfe2-6045bd06fb97
+      COLUMNS (11, from layoutxml): akoya_requestnum ("Request #") | wmkf_phaseiicheckincomplete ("Phase II Check In Complete") | wmkf_phaseiistatus ("Phase II Status") | a_07bccb1a46414017ac5c21a362870ae3.akoya_aka | akoya_title ("Title") | wmkf_projectleader ("Project Leader") | wmkf_invitedamount ("Invited Amount") | akoya_expenses ("Total Project Budget") | wmkf_programdirector ("Program Director") | a_07bccb1a46414017ac5c21a362870ae3.wmkf_eastwest | akoya_submitdatetime ("Submit DateTime")
+      JOINS: account (a_07bccb1a46414017ac5c21a362870ae3) on accountid=akoya_applicantid
+      FILTERS (11):
+        - akoya_programid eq "{94cab30b-958f-ee11-8179-000d3a341e8f}"
+        - statecode eq "0"
+        - wmkf_phaseiistatus eq "100000002"
+        - wmkf_phaseiistatus eq "100000004"
+        - wmkf_phaseiistatus eq "100000005"
+        - wmkf_phaseiistatus eq "100000003"
+        - wmkf_phaseiistatus eq "100000001"
+        - akoya_requeststatus eq "Phase II Pending Committee Review"
+        - akoya_requeststatus eq "Proposal Invited"
+        - wmkf_meetingdate last-x-months "1"
+        - wmkf_meetingdate next-x-months "5"
+
+  [87] Research (MR) Proposals To be Checked In
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=11bc80db-b100-ef11-a1fd-000d3a3621c7
+      COLUMNS (16, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_submissionaccepted ("Submission Accepted") | wmkf_type ("Type") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program") | akoya_applicantid ("Applicant") | wmkf_ceo ("Organization Leader") | akoya_primarycontactid ("Primary Contact") | wmkf_projectleader ("Project Leader") | akoya_request ("Requested Amount") | wmkf_programdirector ("Program Director") | a_f325d5ea08fd468896420b59fd6bbdbe.akoya_taxstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftb | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftbstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_organizationisgovernmententity
+      JOINS: account (a_f325d5ea08fd468896420b59fd6bbdbe) on accountid=akoya_applicantid
+      FILTERS (4):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase II Pending Committee Review"
+        - wmkf_phaseiicheckincomplete eq "100000000"
+        - akoya_programid eq "{94cab30b-958f-ee11-8179-000d3a341e8f}"
+
+  [88] Research (MR) Scored/Not Scored
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=36cc31f2-e3ff-ee11-a1fd-000d3a32c1ae
+      COLUMNS (6, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_programid ("Internal Program") | wmkf_phaseistatus ("Phase I Status") | a_9d5f5e5629d94a12ba50a52a8d2571d4.akoya_aka | akoya_title ("Title")
+      JOINS: account (a_9d5f5e5629d94a12ba50a52a8d2571d4) on accountid=akoya_applicantid
+      FILTERS (8):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_programid eq "{94cab30b-958f-ee11-8179-000d3a341e8f}"
+        - wmkf_phaseiistatus null
+        - wmkf_phaseistatus eq "100000004"
+        - wmkf_phaseistatus eq "100000005"
+        - wmkf_phaseistatus eq "100000003"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_requeststatus eq "Proposal Invited"
+
+  [89] Research (SE) Applications Checked-In & Assigned
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=1e5e091a-eeff-ee11-a1fd-000d3a32c1ae
+      COLUMNS (18, from layoutxml): akoya_requestnum ("Request #") | akoya_submissionaccepted ("Submission Accepted") | wmkf_type ("Type") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program") | akoya_applicantid ("Applicant") | wmkf_ceo ("Organization Leader") | akoya_primarycontactid ("Primary Contact") | wmkf_projectleader ("Project Leader") | akoya_request ("Requested Amount") | wmkf_programdirector ("Program Director") | wmkf_pcgoverifycomplete ("PC GOverify Complete") | wmkf_goverifyreviewedby ("GOverify Reviewed By") | a_f325d5ea08fd468896420b59fd6bbdbe.akoya_taxstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftb | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftbstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_organizationisgovernmententity | wmkf_organizationisgovernmententity ("Organization is Government Entity")
+      JOINS: account (a_f325d5ea08fd468896420b59fd6bbdbe) on accountid=akoya_applicantid
+      FILTERS (5):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_submissionaccepted eq "1"
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+        - wmkf_programdirector not-null
+
+  [90] Research (SE) Applications To be Checked In
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=36d41e46-5cff-ee11-a1fd-000d3a3621c7
+      COLUMNS (16, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_submissionaccepted ("Submission Accepted") | wmkf_type ("Type") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program") | akoya_applicantid ("Applicant") | wmkf_ceo ("Organization Leader") | akoya_primarycontactid ("Primary Contact") | wmkf_projectleader ("Project Leader") | akoya_request ("Requested Amount") | wmkf_programdirector ("Program Director") | a_f325d5ea08fd468896420b59fd6bbdbe.akoya_taxstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftb | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftbstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_organizationisgovernmententity
+      JOINS: account (a_f325d5ea08fd468896420b59fd6bbdbe) on accountid=akoya_applicantid
+      FILTERS (4):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_submissionaccepted eq "0"
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+
+  [91] Research (SE) Payee GOverify Check
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=5a292c76-5dff-ee11-a1fd-000d3a3621c7
+      COLUMNS (22, from layoutxml): akoya_requestnum ("Request #") | akoya_submissionaccepted ("Submission Accepted") | wmkf_pcgoverifycomplete ("PC GOverify Complete") | wmkf_goverifyreviewedby ("GOverify Reviewed By") | akoya_requeststatus ("Request Status") | akoya_applicantid ("Applicant") | wmkf_meetingdate ("Meeting Date") | akoya_request ("Requested Amount") | wmkf_paymentoption ("Payment Option") | akoya_payee ("Payee") | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_taxid | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_dexempt | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_taxstatus | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_goverifyexception | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmffoundationcode | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmfsubsectiondescription | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmf509 | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_guidestarirsbmfsubsection | wmkf_organizationisgovernmententity ("Organization is Government Entity") | wmkf_groupexempt ("Group Exempt") | wmkf_controllerapproved ("Controller Approved") | wmkf_dateapprovedbycontroller ("Date Approved by Controller")
+      JOINS: account (a_fed2bba8c8c6432e97b56a4551b1db27) on accountid=akoya_payee
+      FILTERS (4):
+        - akoya_requeststatus eq "Phase I Pending"
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_loireceived not-null
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+
+  [92] Research (SE) Payee GOverify Check II
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=dca2d243-0709-ef11-9f89-000d3a32c1ae
+      COLUMNS (14, from layoutxml): akoya_requestnum ("Request #") | wmkf_pcgoverifycomplete ("PC GOverify Complete") | wmkf_goverifyreviewedby ("GOverify Reviewed By") | wmkf_controllerapproved ("Controller Approved") | a_36ac35628b83481383ebcf203cefc767.akoya_aka | akoya_applicantid ("Applicant") | wmkf_paymentgoingtodifferentorganization ("Payment Going To Different Organization") | akoya_payee ("Payee") | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_taxid | a_fed2bba8c8c6432e97b56a4551b1db27.akoya_guidestarirsbmfsubsection | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmf509 | a_fed2bba8c8c6432e97b56a4551b1db27.wmkf_bmffoundationcode | wmkf_organizationisgovernmententity ("Organization is Government Entity") | wmkf_groupexempt ("Group Exempt")
+      JOINS: account (a_fed2bba8c8c6432e97b56a4551b1db27) on accountid=akoya_payee ; account (a_36ac35628b83481383ebcf203cefc767) on accountid=akoya_applicantid
+      FILTERS (4):
+        - akoya_requeststatus eq "Phase I Pending"
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_loireceived not-null
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+
+  [93] Research (SE) Phase I Checked In
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=f5e711f2-eaff-ee11-a1fd-000d3a32c1ae
+      COLUMNS (8, from layoutxml): akoya_requestnum ("Request #") | a_6a9c1fa12c4244728313b8c56513c988.akoya_aka | akoya_title ("Title") | wmkf_projectleader ("Project Leader") | akoya_request ("Requested Amount") | akoya_expenses ("Total Project Budget") | a_6a9c1fa12c4244728313b8c56513c988.wmkf_eastwest | akoya_programid ("Internal Program")
+      JOINS: account (a_6a9c1fa12c4244728313b8c56513c988) on accountid=akoya_applicantid
+      FILTERS (6):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_submissionaccepted eq "1"
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+        - wmkf_programdirector null
+        - statecode eq "0"
+
+  [94] Research (SE) Phase I Checked In & Assigned
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=01d568c5-ff08-ef11-9f89-6045bd06623c
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | a_6a9c1fa12c4244728313b8c56513c988.akoya_aka | akoya_title ("Title") | wmkf_projectleader ("Project Leader") | akoya_request ("Requested Amount") | akoya_expenses ("Total Project Budget") | wmkf_programdirector ("Program Director") | a_6a9c1fa12c4244728313b8c56513c988.wmkf_eastwest | akoya_programid ("Internal Program") | wmkf_programareaserved_research ("Program Area Served_Research")
+      JOINS: account (a_6a9c1fa12c4244728313b8c56513c988) on accountid=akoya_applicantid
+      FILTERS (5):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_submissionaccepted eq "1"
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+        - wmkf_programdirector not-null
+
+  [95] Research (SE) Phase I Email Ack To Be Sent
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=80439ccb-5dff-ee11-a1fd-00224802b03a
+      COLUMNS (7, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_loiacknowledged ("Phase I Acknowledged") | akoya_applicantid ("Applicant") | wmkf_ceo ("Organization Leader") | akoya_primarycontactid ("Primary Contact") | wmkf_projectleader ("Project Leader")
+      FILTERS (4):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_loireceived not-null
+        - akoya_loiacknowledged null
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+
+  [96] Research (SE) Phase I To be Checked In
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=384cec87-0409-ef11-9f89-000d3a33ff0b
+      COLUMNS (17, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_programid ("Internal Program") | a_f325d5ea08fd468896420b59fd6bbdbe.akoya_aka | akoya_applicantid ("Applicant") | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_organizationleader | akoya_primarycontactid ("Primary Contact") | a_21929ac9f1ac4c96a70d1618d2598cdc.akoya_firstname | a_21929ac9f1ac4c96a70d1618d2598cdc.akoya_lastname | akoya_request ("Requested Amount") | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_bmfsubsectiondescription | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_bmf509 | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_bmffoundationcode | wmkf_paymentgoingtodifferentorganization ("Payment Going To Different Organization") | a_eb9d223df34a4bcd98ca5cb6873c9bd8.name | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_organizationisgovernmententity | a_eb9d223df34a4bcd98ca5cb6873c9bd8.wmkf_groupexempt
+      JOINS: account (a_f325d5ea08fd468896420b59fd6bbdbe) on accountid=akoya_applicantid ; account (a_eb9d223df34a4bcd98ca5cb6873c9bd8) on accountid=akoya_payee ; akoya_akoyaapplycontact (a_21929ac9f1ac4c96a70d1618d2598cdc) on akoya_akoyaapplycontactid=akoya_goapplysubmitter
+      FILTERS (5):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_submissionaccepted eq "0"
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+        - statecode eq "0"
+
+  [97] Research (SE) Phase II Checked-In
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=39ccc263-775a-ef11-a317-0022480abf3c
+      COLUMNS (9, from layoutxml): akoya_requestnum ("Request #") | wmkf_phaseiistatus ("Phase II Status") | a_07bccb1a46414017ac5c21a362870ae3.akoya_aka | akoya_title ("Title") | wmkf_projectleader ("Project Leader") | wmkf_invitedamount ("Invited Amount") | akoya_expenses ("Total Project Budget") | wmkf_programdirector ("Program Director") | a_07bccb1a46414017ac5c21a362870ae3.wmkf_eastwest
+      JOINS: account (a_07bccb1a46414017ac5c21a362870ae3) on accountid=akoya_applicantid
+      FILTERS (11):
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+        - statecode eq "0"
+        - wmkf_phaseiicheckincomplete eq "100000001"
+        - wmkf_phaseiistatus eq "100000002"
+        - wmkf_phaseiistatus eq "100000004"
+        - wmkf_phaseiistatus eq "100000005"
+        - wmkf_phaseiistatus eq "100000003"
+        - wmkf_phaseiistatus eq "100000001"
+        - akoya_requeststatus eq "Phase II Pending Committee Review"
+        - wmkf_meetingdate last-x-months "1"
+        - wmkf_meetingdate next-x-months "4"
+
+  [98] Research (SE) Phase II Invited and Received
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=682809f4-775a-ef11-a317-000d3a31a7f3
+      COLUMNS (11, from layoutxml): akoya_requestnum ("Request #") | wmkf_phaseiicheckincomplete ("Phase II Check In Complete") | wmkf_phaseiistatus ("Phase II Status") | a_07bccb1a46414017ac5c21a362870ae3.akoya_aka | akoya_title ("Title") | wmkf_projectleader ("Project Leader") | wmkf_invitedamount ("Invited Amount") | akoya_expenses ("Total Project Budget") | wmkf_programdirector ("Program Director") | a_07bccb1a46414017ac5c21a362870ae3.wmkf_eastwest | akoya_submitdatetime ("Submit DateTime")
+      JOINS: account (a_07bccb1a46414017ac5c21a362870ae3) on accountid=akoya_applicantid
+      FILTERS (11):
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+        - statecode eq "0"
+        - wmkf_phaseiistatus eq "100000002"
+        - wmkf_phaseiistatus eq "100000004"
+        - wmkf_phaseiistatus eq "100000005"
+        - wmkf_phaseiistatus eq "100000003"
+        - wmkf_phaseiistatus eq "100000001"
+        - akoya_requeststatus eq "Phase II Pending Committee Review"
+        - akoya_requeststatus eq "Proposal Invited"
+        - wmkf_meetingdate last-x-months "1"
+        - wmkf_meetingdate next-x-months "5"
+
+  [99] Research (SE) Proposals To be Checked In
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=82d95520-b200-ef11-a1fd-00224802b03a
+      COLUMNS (16, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_submissionaccepted ("Submission Accepted") | wmkf_type ("Type") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program") | akoya_applicantid ("Applicant") | wmkf_ceo ("Organization Leader") | akoya_primarycontactid ("Primary Contact") | wmkf_projectleader ("Project Leader") | akoya_request ("Requested Amount") | wmkf_programdirector ("Program Director") | a_f325d5ea08fd468896420b59fd6bbdbe.akoya_taxstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftb | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_caftbstatus | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_organizationisgovernmententity
+      JOINS: account (a_f325d5ea08fd468896420b59fd6bbdbe) on accountid=akoya_applicantid
+      FILTERS (5):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase II Pending Committee Review"
+        - wmkf_phaseiicheckincomplete eq "100000000"
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+        - createdon on-or-after "2024-04-21"
+
+  [100] Research (SE) Scored/Not Scored
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=e06ad1bc-e7ff-ee11-a1fd-000d3a3621c7
+      COLUMNS (6, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_programid ("Internal Program") | wmkf_phaseistatus ("Phase I Status") | a_7377e4c362334e10a303003df9d64d6a.akoya_aka | akoya_title ("Title")
+      JOINS: account (a_7377e4c362334e10a303003df9d64d6a) on accountid=akoya_applicantid
+      FILTERS (8):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+        - wmkf_phaseiistatus null
+        - wmkf_phaseistatus eq "100000004"
+        - wmkf_phaseistatus eq "100000005"
+        - wmkf_phaseistatus eq "100000003"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_requeststatus eq "Proposal Invited"
+
+  [101] Research All Phase I Pending
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=e77a40fc-0009-ef11-9f89-6045bd06623c
+      COLUMNS (11, from layoutxml): akoya_requestnum ("Request #") | akoya_submissionaccepted ("Submission Accepted") | wmkf_phaseistatus ("Phase I Status") | a_c7b45beacc8f46268f12fb495c48037e.akoya_aka | akoya_title ("Title") | wmkf_projectleader ("Project Leader") | akoya_request ("Requested Amount") | akoya_expenses ("Total Project Budget") | wmkf_programdirector ("Program Director") | wmkf_programdirector2 ("Program Director 2") | a_e9c3b90327f44fc49508283b4f17e90d.wmkf_code
+      JOINS: account (a_c7b45beacc8f46268f12fb495c48037e) on accountid=akoya_applicantid ; akoya_program (a_e9c3b90327f44fc49508283b4f17e90d) on akoya_programid=akoya_programid
+      FILTERS (3):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase I Pending"
+        - statecode eq "0"
+
+  [102] Research All Phase II Pending
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=3009ff0b-33bb-f011-bbd3-6045bd0510d4
+      COLUMNS (9, from layoutxml): akoya_requestnum ("Request #") | wmkf_phaseiistatus ("Phase II Status") | a_c7b45beacc8f46268f12fb495c48037e.akoya_aka | akoya_title ("Title") | wmkf_projectleader ("Project Leader") | wmkf_invitedamount ("Invited Amount") | akoya_expenses ("Total Project Budget") | wmkf_programdirector ("Program Director") | a_e9c3b90327f44fc49508283b4f17e90d.wmkf_code
+      JOINS: account (a_c7b45beacc8f46268f12fb495c48037e) on accountid=akoya_applicantid ; akoya_program (a_e9c3b90327f44fc49508283b4f17e90d) on akoya_programid=akoya_programid
+      FILTERS (3):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase II Pending"
+        - statecode eq "0"
+
+  [103] Research Concepts Assigned to Me
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=01bb5f4f-9f34-ef11-840a-000d3a32c1ae
+      COLUMNS (8, from layoutxml): a_517c1c9fd78843d6996a99ca8610c183.akoya_aka | wmkf_numberofmrconcepts ("Number of MR Concepts") | wmkf_numberofseconcepts ("Number of SE Concepts") | wmkf_researchconceptstatus ("Research Concept Status") | wmkf_conceptcalldate ("Concept Call Date") | wmkf_programdirector ("Program Director") | wmkf_programdirector2 ("Program Director 2") | wmkf_programcoordinator ("Program Coordinator")
+      JOINS: account (a_517c1c9fd78843d6996a99ca8610c183) on accountid=akoya_applicantid
+      FILTERS (9):
+        - wmkf_request_type eq "100000000"
+        - akoya_finished null
+        - akoya_submitdatetime on-or-after "2024-04-30"
+        - statecode eq "0"
+        - wmkf_researchconceptstatus ne "100000002"
+        - wmkf_conceptcalldate next-x-months "3"
+        - wmkf_conceptcalldate null
+        - wmkf_programdirector eq-userid
+        - wmkf_programdirector2 eq-userid
+
+  [104] Research Concepts PC Assigned to Me
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=396c9a1b-b434-ef11-8409-00224809c8d8
+      COLUMNS (9, from layoutxml): wmkf_researchconceptstatus ("Research Concept Status") | wmkf_conceptcalldate ("Concept Call Date") | a_299191296646456c9e292a18505a714a.akoya_aka | akoya_primarycontactid ("Primary Contact") | wmkf_programdirector ("Program Director") | wmkf_programdirector2 ("Program Director 2") | wmkf_numberofseconcepts ("Number of SE Concepts") | wmkf_numberofmrconcepts ("Number of MR Concepts") | akoya_requestnum ("Request #")
+      JOINS: account (a_299191296646456c9e292a18505a714a) on accountid=akoya_applicantid
+      FILTERS (5):
+        - wmkf_request_type eq "100000000"
+        - akoya_submitdatetime on-or-after "2024-04-30"
+        - wmkf_programcoordinator eq-userid
+        - akoya_submitdate last-x-months "3"
+        - akoya_submitdatetime last-x-months "3"
+
+  [105] Research Concepts PC Received
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=6c06bcc9-3550-ef11-a317-000d3a31a7f3
+      COLUMNS (12, from layoutxml): a_9a6b72d6223a49d58b2a3c50138f84f1.akoya_aka | akoya_applicantid ("Applicant") | wmkf_paymentgoingtodifferentorganization ("Payment Going To Different Organization") | akoya_payee ("Payee") | a_ccce47913cfd4375b166828bfc270bca.akoya_guidestarirsbmfsubsection | a_ccce47913cfd4375b166828bfc270bca.wmkf_bmf509 | a_ccce47913cfd4375b166828bfc270bca.wmkf_bmffoundationcode | a_9a6b72d6223a49d58b2a3c50138f84f1.primarycontactid | akoya_primarycontactid ("Primary Contact") | a_710863b5f2a245d1a046a74dd88d441c.akoya_applicantemail | wmkf_programcoordinator ("Program Coordinator") | akoya_requestnum ("Request #")
+      JOINS: account (a_9a6b72d6223a49d58b2a3c50138f84f1) on accountid=akoya_applicantid ; account (a_ccce47913cfd4375b166828bfc270bca) on accountid=akoya_payee ; akoya_akoyaapplycontact (a_710863b5f2a245d1a046a74dd88d441c) on akoya_akoyaapplycontactid=akoya_goapplysubmitter
+      FILTERS (7):
+        - wmkf_request_type eq "100000000"
+        - statecode eq "0"
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_researchconceptstatus ne "100000003"
+        - wmkf_researchconceptstatus ne "707510001"
+        - akoya_submitdate last-x-months "3"
+        - akoya_submitdatetime last-x-months "3"
+
+  [106] Research Concepts PD Received
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=2b2b2b84-7f2e-ef11-840a-6045bd0a120d
+      COLUMNS (9, from layoutxml): a_9a6b72d6223a49d58b2a3c50138f84f1.akoya_aka | wmkf_numberofmrconcepts ("Number of MR Concepts") | wmkf_numberofseconcepts ("Number of SE Concepts") | wmkf_conceptcalldate ("Concept Call Date") | wmkf_programdirector ("Program Director") | wmkf_programdirector2 ("Program Director 2") | wmkf_programcoordinator ("Program Coordinator") | wmkf_researchconceptstatus ("Research Concept Status") | akoya_requestnum ("Request #")
+      JOINS: account (a_9a6b72d6223a49d58b2a3c50138f84f1) on accountid=akoya_applicantid
+      FILTERS (7):
+        - wmkf_request_type eq "100000000"
+        - statecode eq "0"
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_researchconceptstatus ne "707510001"
+        - wmkf_researchconceptstatus ne "100000003"
+        - akoya_submitdate last-x-months "3"
+        - akoya_submitdatetime last-x-months "3"
+
+  [107] Research Concepts to be Assigned
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=a229e45b-9f34-ef11-840a-000d3a32c1ae
+      COLUMNS (8, from layoutxml): a_517c1c9fd78843d6996a99ca8610c183.akoya_aka | wmkf_numberofmrconcepts ("Number of MR Concepts") | wmkf_numberofseconcepts ("Number of SE Concepts") | a_517c1c9fd78843d6996a99ca8610c183.name | wmkf_programdirector ("Program Director") | wmkf_programdirector2 ("Program Director 2") | wmkf_programcoordinator ("Program Coordinator") | akoya_requestnum ("Request #")
+      JOINS: account (a_517c1c9fd78843d6996a99ca8610c183) on accountid=akoya_applicantid
+      FILTERS (9):
+        - wmkf_request_type eq "100000000"
+        - akoya_finished null
+        - akoya_submitdatetime on-or-after "2024-04-30"
+        - wmkf_programcoordinator null
+        - statecode eq "0"
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_researchconceptstatus ne "100000003"
+        - wmkf_researchconceptstatus ne "707510001"
+        - wmkf_researchconceptstatus ne "682090001"
+
+  [108] Research Not (Scored/Not Scored)
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=f6d462c6-bf22-ef11-840a-000d3a32c1ae
+      COLUMNS (6, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | wmkf_grantprogram ("Grant Program") | akoya_applicantid ("Applicant") | akoya_title ("Title") | wmkf_phaseistatus ("Phase I Status")
+      FILTERS (4):
+        - akoya_requeststatus eq "Phase I Pending"
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+        - wmkf_phaseistatus null
+
+  [109] Research Phase I Assigned To Me
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=87bbcb8a-e8ff-ee11-a1fd-00224802b03a
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | a_f325d5ea08fd468896420b59fd6bbdbe.akoya_aka | akoya_title ("Title") | wmkf_projectleader ("Project Leader") | akoya_request ("Requested Amount") | akoya_expenses ("Total Project Budget") | wmkf_programdirector ("Program Director") | wmkf_programareaserved_research ("Program Area Served_Research") | a_f325d5ea08fd468896420b59fd6bbdbe.wmkf_eastwest | akoya_programid ("Internal Program")
+      JOINS: account (a_f325d5ea08fd468896420b59fd6bbdbe) on accountid=akoya_applicantid
+      FILTERS (4):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase I Pending"
+        - akoya_submissionaccepted eq "1"
+        - wmkf_programdirector eq-userid
+
+  [110] Research Phase I Declined
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=d9dba962-a9d9-ef11-8ee9-6045bd00230d
+      COLUMNS (9, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_programid ("Internal Program") | wmkf_phaseistatus ("Phase I Status") | a_e2e8ca3cae9849f5a611fda0fa7a0d3a.akoya_aka | akoya_applicantid ("Applicant") | a_e2e8ca3cae9849f5a611fda0fa7a0d3a.primarycontactid | wmkf_projectleader ("Project Leader") | akoya_title ("Title")
+      JOINS: account (a_e2e8ca3cae9849f5a611fda0fa7a0d3a) on accountid=akoya_applicantid
+      FILTERS (3):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_requeststatus eq "Phase I Declined"
+        - wmkf_meetingdate next-x-months "6"
+
+  [111] Research Phase I Email Ack To Be Sent
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=2b952ff0-26fd-ee11-a1fe-000d3a3621c7
+      COLUMNS (6, from layoutxml): akoya_requestnum ("Request #") | akoya_loiacknowledged ("Phase I Acknowledged") | akoya_applicantid ("Applicant") | wmkf_ceo ("Organization Leader") | akoya_primarycontactid ("Primary Contact") | wmkf_projectleader ("Project Leader")
+      FILTERS (3):
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - akoya_loireceived not-null
+        - akoya_loiacknowledged null
+
+  [112] Research Phase I Scoring
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=4403459d-5b23-ef11-840a-000d3a5954b0
+      COLUMNS (8, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_programid ("Internal Program") | wmkf_phaseistatus ("Phase I Status") | a_8306180711c04b64af777dae94ce8cd6.akoya_aka | akoya_title ("Title") | wmkf_programdirector ("Program Director") | a_8306180711c04b64af777dae94ce8cd6.wmkf_eastwest
+      JOINS: account (a_8306180711c04b64af777dae94ce8cd6) on accountid=akoya_applicantid
+      FILTERS (2):
+        - akoya_requeststatus eq "Phase I Pending"
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+
+  [113] Research Requests
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=faa44fd8-de7e-f011-b4cc-6045bd0510d4
+      COLUMNS (6, from layoutxml): akoya_applicantid ("Applicant") | akoya_requeststatus ("Request Status") | akoya_requestnum ("Request #") | akoya_fiscalyear ("Fiscal Year") | akoya_programid ("Internal Program") | wmkf_programdirector ("Program Director")
+      FILTERS (14):
+        - statecode eq "0"
+        - wmkf_grantprogram eq "{c247b11a-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_request_type eq "100000001"
+        - wmkf_typename like "%Program%"
+        - wmkf_phaseistatus eq "100000000"
+        - wmkf_phaseistatus eq "100000004"
+        - wmkf_phaseistatus eq "100000005"
+        - wmkf_phaseistatus eq "707510005"
+        - wmkf_phaseistatus eq "707510006"
+        - wmkf_phaseistatus eq "100000003"
+        - wmkf_phaseiistatus null
+        - wmkf_phaseiistatus eq "100000002"
+        - wmkf_phaseiistatus eq "100000005"
+        - wmkf_phaseiistatus eq "100000004"
+
+  [114] Scholarships
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=70a205dc-f87d-e811-80fc-00155dcfc160
+      COLUMNS (6, from layoutxml): akoya_requestnum ("Request #") | akoya_primarycontactid ("Primary Contact") | akoya_requeststatus ("Request Status") | akoya_decisiondate ("Decision Date") | akoya_grant ("Grant Amount") | akoya_title ("Title")
+      FILTERS (1):
+        - akoya_requesttype eq "100000001"
+
+  [115] Site Visits Scheduled
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=314c036a-5381-e311-9be1-0050569d0000
+      COLUMNS (6, from layoutxml): akoya_requestnum ("Request #") | akoya_sitevisitdate ("Site Visit Date") | akoya_applicantid ("Applicant") | akoya_title ("Title") | akoya_fiscalyear ("Fiscal Year") | akoya_programid ("Internal Program")
+      FILTERS (1):
+        - akoya_sitevisitdate next-x-days "30"
+
+  [116] SoCal Abstracts for Phase II Pending
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=8cb1cb6a-e758-ef11-a317-0022480abf3c
+      COLUMNS (3, from layoutxml): akoya_requestnum ("Request #") | a_bc566b149d364c669a7d194449e8fa39.akoya_aka | wmkf_abstract ("Abstract")
+      JOINS: account (a_bc566b149d364c669a7d194449e8fa39) on accountid=akoya_applicantid
+      FILTERS (2):
+        - wmkf_grantprogram eq "{8cf9c61d-a7cb-ee11-9079-000d3a341fd9}"
+        - wmkf_phaseistatus eq "100000003"
+
+  [117] SoCal Active Grants
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=7d18d777-b4bc-ef11-b8e9-000d3a344c0f
+      COLUMNS (19, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | wmkf_programdirector ("Program Director") | a_07bccb1a46414017ac5c21a362870ae3.akoya_aka | akoya_title ("Title") | wmkf_firsttimegranteeflag ("First Time Grantee Flag") | akoya_requeststatus ("Request Status") | akoya_begindate ("Begin Date") | akoya_enddate ("End Date") | wmkf_nocostextensionthroughdate ("No Cost Extension Through Date") | akoya_nextrequirementdue ("Next Requirement Due") | akoya_finished ("Done/Closed") | wmkf_grantprogram ("Grant Program") | wmkf_type ("Type") | wmkf_phaseiistatus ("Phase II Status") | wmkf_projectleader ("Project Leader") | wmkf_invitedamount ("Invited Amount") | akoya_expenses ("Total Project Budget") | a_07bccb1a46414017ac5c21a362870ae3.wmkf_eastwest
+      JOINS: account (a_07bccb1a46414017ac5c21a362870ae3) on accountid=akoya_applicantid
+      FILTERS (5):
+        - akoya_requeststatus eq "active"
+        - wmkf_grantprogram eq "{8cf9c61d-a7cb-ee11-9079-000d3a341fd9}"
+        - akoya_finished null
+        - wmkf_type eq "{c8ac6d51-f9c4-ee11-9079-000d3a310f67}"
+        - wmkf_type eq "{29a65bb3-6786-ef11-ac21-000d3a344c0f}"
+
+  [118] SoCal Application Log
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=7215d472-4c50-ef11-a317-000d3a31a7f3
+      COLUMNS (14, from layoutxml): a_26fa621d6d7245b695bafd1583e76a01.akoya_aka | wmkf_meetingdate ("Meeting Date") | wmkf_phaseistatus ("Phase I Status") | akoya_programid ("Internal Program") | wmkf_populationserved ("Population Served") | akoya_applicantid ("Applicant") | akoya_request ("Requested Amount") | akoya_expenses ("Total Project Budget") | akoya_recommendedamount ("Recommended Grant") | akoya_title ("Title") | wmkf_wmkfprojectdescription ("WMKF Project Description") | wmkf_programareaserved_socal ("Program Area Served_SoCal") | wmkf_socalprogramorcapital ("SoCal Program Or Capital") | akoya_requestnum ("Request #")
+      JOINS: account (a_26fa621d6d7245b695bafd1583e76a01) on accountid=akoya_applicantid
+      FILTERS (3):
+        - wmkf_grantprogram eq "{8cf9c61d-a7cb-ee11-9079-000d3a341fd9}"
+        - akoya_goapplyapplication eq "{d7641305-d4e2-ee11-904c-000d3a3621c7}"
+        - wmkf_phaseistatus ne "100000001"
+
+  [119] SoCal Applications - Ineligible
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=363a2fd2-db33-ef11-8409-6045bd0a120d
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_programid ("Internal Program") | akoya_applicantid ("Applicant") | akoya_request ("Requested Amount") | akoya_expenses ("Total Project Budget") | akoya_recommendedamount ("Recommended Grant") | akoya_title ("Title") | wmkf_wmkfprojectdescription ("WMKF Project Description") | akoya_requeststatus ("Request Status")
+      FILTERS (4):
+        - wmkf_grantprogram eq "{8cf9c61d-a7cb-ee11-9079-000d3a341fd9}"
+        - akoya_goapplyapplication eq "{d7641305-d4e2-ee11-904c-000d3a3621c7}"
+        - wmkf_phaseistatus eq "100000001"
+        - akoya_submitdatetime last-x-months "4"
+
+  [120] SoCal Applications Submitted Reviewers
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=6e40fe58-f858-ef11-a317-0022480abf3c
+      COLUMNS (22, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | wmkf_potentialreviewer1 ("Potential Reviewer 1") | a_7f949bce1ff948f7b89ca7bb24a5115f.wmkf_title | a_7f949bce1ff948f7b89ca7bb24a5115f.wmkf_organizationname | a_7f949bce1ff948f7b89ca7bb24a5115f.wmkf_emailaddress | a_7f949bce1ff948f7b89ca7bb24a5115f.wmkf_telephone | wmkf_potentialreviewer2 ("Potential Reviewer 2") | a_167f3aeb89a64f6a9c0e2a5ad408506a.wmkf_title | a_167f3aeb89a64f6a9c0e2a5ad408506a.wmkf_organizationname | a_167f3aeb89a64f6a9c0e2a5ad408506a.wmkf_emailaddress | a_167f3aeb89a64f6a9c0e2a5ad408506a.wmkf_telephone | wmkf_potentialreviewer3 ("Potential Reviewer 3") | a_73e94267248b44a9aa6cb7fcc3c82dbc.wmkf_title | a_73e94267248b44a9aa6cb7fcc3c82dbc.wmkf_organizationname | a_73e94267248b44a9aa6cb7fcc3c82dbc.wmkf_emailaddress | a_73e94267248b44a9aa6cb7fcc3c82dbc.wmkf_telephone | wmkf_potentialreviewer4 ("Potential Reviewer 4") | a_9113c98bbb414a8ba5b8b6149d55fdbf.wmkf_title | a_9113c98bbb414a8ba5b8b6149d55fdbf.wmkf_organizationname | a_9113c98bbb414a8ba5b8b6149d55fdbf.wmkf_emailaddress | a_9113c98bbb414a8ba5b8b6149d55fdbf.wmkf_telephone
+      JOINS: wmkf_potentialreviewers (a_7f949bce1ff948f7b89ca7bb24a5115f) on wmkf_potentialreviewersid=wmkf_potentialreviewer1 ; wmkf_potentialreviewers (a_167f3aeb89a64f6a9c0e2a5ad408506a) on wmkf_potentialreviewersid=wmkf_potentialreviewer2 ; wmkf_potentialreviewers (a_73e94267248b44a9aa6cb7fcc3c82dbc) on wmkf_potentialreviewersid=wmkf_potentialreviewer3 ; wmkf_potentialreviewers (a_9113c98bbb414a8ba5b8b6149d55fdbf) on wmkf_potentialreviewersid=wmkf_potentialreviewer4
+      FILTERS (2):
+        - wmkf_phaseiistatus eq "100000002"
+        - wmkf_grantprogram eq "{8cf9c61d-a7cb-ee11-9079-000d3a341fd9}"
+
+  [121] SoCal Applications To Be Checked In
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=aa24d6b6-2701-ef11-a1fd-00224802b03a
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_programid ("Internal Program") | akoya_applicantid ("Applicant") | akoya_request ("Requested Amount") | wmkf_invitedamount ("Invited Amount") | akoya_expenses ("Total Project Budget") | akoya_title ("Title") | wmkf_wmkfprojectdescription ("WMKF Project Description") | akoya_requeststatus ("Request Status")
+      FILTERS (12):
+        - wmkf_grantprogram eq "{8cf9c61d-a7cb-ee11-9079-000d3a341fd9}"
+        - akoya_submissionaccepted eq "0"
+        - wmkf_phaseistatus ne "100000001"
+        - statecode eq "0"
+        - akoya_submissionaccepted eq "0"
+        - wmkf_phaseiicheckincomplete eq "100000000"
+        - akoya_requeststatus eq "Phase II Pending Committee Review"
+        - wmkf_phaseiistatus eq "100000002"
+        - wmkf_phaseistatus eq "100000000"
+        - akoya_submissionaccepted eq "0"
+        - akoya_submissionaccepted eq "1"
+        - wmkf_phaseiicheckincomplete ne "100000001"
+
+  [122] SoCal Closed Grants
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=af136f64-a5da-f011-8544-000d3a30a1aa
+      COLUMNS (19, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | wmkf_programdirector ("Program Director") | a_07bccb1a46414017ac5c21a362870ae3.akoya_aka | akoya_title ("Title") | wmkf_firsttimegranteeflag ("First Time Grantee Flag") | akoya_requeststatus ("Request Status") | akoya_begindate ("Begin Date") | akoya_enddate ("End Date") | wmkf_nocostextensionthroughdate ("No Cost Extension Through Date") | akoya_nextrequirementdue ("Next Requirement Due") | akoya_finished ("Done/Closed") | wmkf_grantprogram ("Grant Program") | wmkf_type ("Type") | wmkf_phaseiistatus ("Phase II Status") | wmkf_projectleader ("Project Leader") | wmkf_invitedamount ("Invited Amount") | akoya_expenses ("Total Project Budget") | a_07bccb1a46414017ac5c21a362870ae3.wmkf_eastwest
+      JOINS: account (a_07bccb1a46414017ac5c21a362870ae3) on accountid=akoya_applicantid
+      FILTERS (4):
+        - akoya_requeststatus eq "closed"
+        - wmkf_grantprogram eq "{8cf9c61d-a7cb-ee11-9079-000d3a341fd9}"
+        - akoya_finished not-null
+        - wmkf_type eq "{c8ac6d51-f9c4-ee11-9079-000d3a310f67}"
+
+  [123] SoCal Concepts - All Eligible
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=12f08574-9990-ef11-ac21-0022480aa879
+      COLUMNS (15, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | wmkf_readyforreview ("Ready for Review") | wmkf_socalconceptstatus ("SoCal Concept Status") | wmkf_conceptcalloutcome ("Concept Call Outcome") | a_36f6a54b5a454f738f7e037498cc71a6.akoya_aka | akoya_applicantid ("Applicant") | wmkf_projecttitle1 ("Project Title 1") | wmkf_projecttitle2 ("Project Title 2") | wmkf_projecttitle3 ("Project Title 3") | akoya_title ("Title") | wmkf_conceptpapernotes ("Concept Paper Notes") | akoya_programid ("Internal Program") | wmkf_programdirector ("Program Director") | wmkf_programdirector2 ("Program Director 2")
+      JOINS: account (a_36f6a54b5a454f738f7e037498cc71a6) on accountid=akoya_applicantid
+      FILTERS (7):
+        - wmkf_grantprogram eq "{8cf9c61d-a7cb-ee11-9079-000d3a341fd9}"
+        - wmkf_request_type eq "100000000"
+        - akoya_submitdatetime last-x-months "4"
+        - wmkf_phaseistatus null
+        - statecode eq "0"
+        - wmkf_socalconceptstatus ne "707510001"
+        - wmkf_socalconceptstatus ne "682090001"
+
+  [124] SoCal Concepts - Ineligible
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=14fc1f82-9a90-ef11-ac21-000d3a344c0f
+      COLUMNS (13, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | wmkf_readyforreview ("Ready for Review") | wmkf_socalconceptstatus ("SoCal Concept Status") | wmkf_conceptcalloutcome ("Concept Call Outcome") | a_36f6a54b5a454f738f7e037498cc71a6.akoya_aka | akoya_applicantid ("Applicant") | wmkf_projecttitle1 ("Project Title 1") | wmkf_projecttitle2 ("Project Title 2") | wmkf_projecttitle3 ("Project Title 3") | akoya_title ("Title") | wmkf_conceptpapernotes ("Concept Paper Notes") | akoya_programid ("Internal Program")
+      JOINS: account (a_36f6a54b5a454f738f7e037498cc71a6) on accountid=akoya_applicantid
+      FILTERS (5):
+        - wmkf_grantprogram eq "{8cf9c61d-a7cb-ee11-9079-000d3a341fd9}"
+        - wmkf_request_type eq "100000000"
+        - akoya_submitdatetime last-x-months "4"
+        - wmkf_phaseistatus null
+        - wmkf_socalconceptstatus eq "682090001"
+
+  [125] SoCal Concepts - Prior Cycle
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=ae3e9b48-9b90-ef11-ac21-000d3a383a3f
+      COLUMNS (13, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | wmkf_readyforreview ("Ready for Review") | wmkf_socalconceptstatus ("SoCal Concept Status") | wmkf_conceptcalloutcome ("Concept Call Outcome") | a_36f6a54b5a454f738f7e037498cc71a6.akoya_aka | akoya_applicantid ("Applicant") | wmkf_projecttitle1 ("Project Title 1") | wmkf_projecttitle2 ("Project Title 2") | wmkf_projecttitle3 ("Project Title 3") | akoya_title ("Title") | wmkf_conceptpapernotes ("Concept Paper Notes") | akoya_programid ("Internal Program")
+      JOINS: account (a_36f6a54b5a454f738f7e037498cc71a6) on accountid=akoya_applicantid
+      FILTERS (6):
+        - wmkf_grantprogram eq "{8cf9c61d-a7cb-ee11-9079-000d3a341fd9}"
+        - wmkf_request_type eq "100000000"
+        - wmkf_socalconceptstatus ne "682090001"
+        - statecode eq "0"
+        - wmkf_meetingdate last-x-months "4"
+        - wmkf_meetingdate next-x-months "2"
+
+  [126] SoCal Concepts To Be Checked In
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=69550499-1e01-ef11-a1fd-00224802b03a
+      COLUMNS (11, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_submitdatetime ("Submit DateTime") | a_36f6a54b5a454f738f7e037498cc71a6.akoya_aka | wmkf_socalconceptstatus ("SoCal Concept Status") | wmkf_conceptcalloutcome ("Concept Call Outcome") | wmkf_projecttitle1 ("Project Title 1") | wmkf_projecttitle2 ("Project Title 2") | wmkf_projecttitle3 ("Project Title 3") | wmkf_conceptpapernotes ("Concept Paper Notes") | akoya_reviewcomplete ("Review Complete")
+      JOINS: account (a_36f6a54b5a454f738f7e037498cc71a6) on accountid=akoya_applicantid
+      FILTERS (3):
+        - akoya_requestnum like "0%"
+        - wmkf_grantprogram eq "{8cf9c61d-a7cb-ee11-9079-000d3a341fd9}"
+        - akoya_goapplyapplication eq "{463ea61c-60b5-ee11-a569-000d3a341e8f}"
+
+  [127] SoCal Pending Applications
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=08bdb706-2701-ef11-a1fd-00224802b03a
+      COLUMNS (16, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_submissionaccepted ("Submission Accepted") | wmkf_phaseistatus ("Phase I Status") | wmkf_socalreasonsfordecline2 ("SoCal Reasons for Decline") | wmkf_denialnotes ("Invite/Decline Notes") | akoya_programid ("Internal Program") | akoya_applicantid ("Applicant") | akoya_request ("Requested Amount") | akoya_expenses ("Total Project Budget") | wmkf_invitedamount ("Invited Amount") | akoya_recommendedamount ("Recommended Grant") | akoya_title ("Title") | wmkf_wmkfprojectdescription ("WMKF Project Description") | akoya_requeststatus ("Request Status") | wmkf_programareaserved_socal ("Program Area Served_SoCal")
+      FILTERS (16):
+        - wmkf_grantprogram eq "{8cf9c61d-a7cb-ee11-9079-000d3a341fd9}"
+        - akoya_goapplyapplication eq "{d7641305-d4e2-ee11-904c-000d3a3621c7}"
+        - wmkf_phaseistatus ne "100000001"
+        - wmkf_phaseiistatus null
+        - statecode eq "0"
+        - akoya_submitdatetime last-x-months "4"
+        - wmkf_phaseistatus eq "682090001"
+        - wmkf_phaseistatus eq "100000004"
+        - wmkf_phaseistatus eq "100000005"
+        - wmkf_phaseistatus eq "707510005"
+        - wmkf_phaseistatus eq "707510006"
+        - akoya_submitdatetime last-x-months "12"
+        - wmkf_phaseistatus eq "100000003"
+        - akoya_submitdatetime last-x-months "11"
+        - wmkf_phaseistatus eq "100000002"
+        - wmkf_meetingdate next-x-months "5"
+
+  [128] SoCal Pending Phase II
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=81ea1109-635e-ef11-bfe3-6045bd0a120d
+      COLUMNS (17, from layoutxml): akoya_requestnum ("Request #") | akoya_programid ("Internal Program") | a_dba6d1bbcdc44a09b4725a0927c50cc9.akoya_aka | wmkf_wmkfprojectdescription ("WMKF Project Description") | wmkf_socalprogramorcapital ("SoCal Program Or Capital") | wmkf_invitedamount ("Invited Amount") | akoya_expenses ("Total Project Budget") | akoya_recommendedamount ("Recommended Grant") | akoya_title ("Title") | akoya_applicantid ("Applicant") | wmkf_programareaserved_socal ("Program Area Served_SoCal") | wmkf_supporttype ("Support Type") | wmkf_populationserved ("Population Served") | akoya_requeststatus ("Request Status") | wmkf_phaseiistatus ("Phase II Status") | wmkf_phaseiicheckincomplete ("Phase II Check In Complete") | wmkf_meetingdate ("Meeting Date")
+      JOINS: account (a_dba6d1bbcdc44a09b4725a0927c50cc9) on accountid=akoya_applicantid
+      FILTERS (11):
+        - statecode eq "0"
+        - akoya_requeststatus eq "Phase II Pending Committee Review"
+        - wmkf_phaseiistatus eq "100000002"
+        - wmkf_phaseiistatus eq "100000004"
+        - wmkf_phaseiistatus eq "100000005"
+        - wmkf_phaseiistatus eq "100000000"
+        - wmkf_phaseiistatus eq "100000003"
+        - wmkf_meetingdate last-x-weeks "6"
+        - wmkf_grantprogram eq "{8cf9c61d-a7cb-ee11-9079-000d3a341fd9}"
+        - wmkf_grantprogram eq "{139321fd-a6cb-ee11-9078-000d3a341e8f}"
+        - wmkf_type eq "{51970456-f9c4-ee11-9079-000d3a341fd9}"
+
+  [129] SoCal Specials Active Grants
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=141883bd-b8bc-ef11-b8e8-6045bd00230d
+      COLUMNS (18, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | wmkf_programdirector ("Program Director") | a_07bccb1a46414017ac5c21a362870ae3.akoya_aka | akoya_title ("Title") | akoya_requeststatus ("Request Status") | akoya_begindate ("Begin Date") | akoya_enddate ("End Date") | wmkf_nocostextensionthroughdate ("No Cost Extension Through Date") | akoya_nextrequirementdue ("Next Requirement Due") | akoya_finished ("Done/Closed") | wmkf_grantprogram ("Grant Program") | wmkf_type ("Type") | wmkf_phaseiistatus ("Phase II Status") | wmkf_projectleader ("Project Leader") | wmkf_invitedamount ("Invited Amount") | akoya_expenses ("Total Project Budget") | a_07bccb1a46414017ac5c21a362870ae3.wmkf_eastwest
+      JOINS: account (a_07bccb1a46414017ac5c21a362870ae3) on accountid=akoya_applicantid
+      FILTERS (5):
+        - akoya_requeststatus eq "active"
+        - wmkf_grantprogram eq "{8cf9c61d-a7cb-ee11-9079-000d3a341fd9}"
+        - akoya_finished null
+        - wmkf_type eq "{51970456-f9c4-ee11-9079-000d3a341fd9}"
+        - wmkf_type eq "{fbac6d51-f9c4-ee11-9079-000d3a310f67}"
+
+  [130] Test Requests
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=e4b1bb47-a894-f011-b4cb-0022480b3c46
+      COLUMNS (8, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | a_cbcf3578f7ee4801a7a12ef33d06261b.wmkf_code | a_d4f20fb1593d4ff9abb0348bc21cf129.wmkf_code | akoya_requeststatus ("Request Status") | wmkf_phaseistatus ("Phase I Status") | wmkf_phaseiistatus ("Phase II Status") | akoya_projectdescription ("Project Description")
+      JOINS: wmkf_grantprogram (a_cbcf3578f7ee4801a7a12ef33d06261b) on wmkf_grantprogramid=wmkf_grantprogram ; akoya_program (a_d4f20fb1593d4ff9abb0348bc21cf129) on akoya_programid=akoya_programid ; account (aa) on accountid=akoya_applicantid
+      FILTERS (2):
+        - statecode eq "0"
+        - name eq "W. M. Keck Foundation"
+
+  [131] UE Active Grants
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=e1344b25-5fa0-ef11-8a6a-0022480aa879
+      COLUMNS (18, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | wmkf_programdirector ("Program Director") | a_07bccb1a46414017ac5c21a362870ae3.akoya_aka | akoya_title ("Title") | akoya_requeststatus ("Request Status") | akoya_begindate ("Begin Date") | akoya_enddate ("End Date") | wmkf_nocostextensionthroughdate ("No Cost Extension Through Date") | akoya_nextrequirementdue ("Next Requirement Due") | akoya_finished ("Done/Closed") | wmkf_grantprogram ("Grant Program") | wmkf_type ("Type") | wmkf_phaseiistatus ("Phase II Status") | wmkf_projectleader ("Project Leader") | wmkf_invitedamount ("Invited Amount") | akoya_expenses ("Total Project Budget") | a_07bccb1a46414017ac5c21a362870ae3.wmkf_eastwest
+      JOINS: account (a_07bccb1a46414017ac5c21a362870ae3) on accountid=akoya_applicantid
+      FILTERS (5):
+        - akoya_requeststatus eq "active"
+        - wmkf_grantprogram eq "{139321fd-a6cb-ee11-9078-000d3a341e8f}"
+        - akoya_finished null
+        - wmkf_type eq "{c8ac6d51-f9c4-ee11-9079-000d3a310f67}"
+        - wmkf_type eq "{29a65bb3-6786-ef11-ac21-000d3a344c0f}"
+
+  [132] UE Specials Active Grants
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=ccee5545-b9bc-ef11-b8e8-6045bd034fed
+      COLUMNS (18, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | wmkf_programdirector ("Program Director") | a_07bccb1a46414017ac5c21a362870ae3.akoya_aka | akoya_title ("Title") | akoya_requeststatus ("Request Status") | akoya_begindate ("Begin Date") | akoya_enddate ("End Date") | wmkf_nocostextensionthroughdate ("No Cost Extension Through Date") | akoya_nextrequirementdue ("Next Requirement Due") | akoya_finished ("Done/Closed") | wmkf_grantprogram ("Grant Program") | wmkf_type ("Type") | wmkf_phaseiistatus ("Phase II Status") | wmkf_projectleader ("Project Leader") | wmkf_invitedamount ("Invited Amount") | akoya_expenses ("Total Project Budget") | a_07bccb1a46414017ac5c21a362870ae3.wmkf_eastwest
+      JOINS: account (a_07bccb1a46414017ac5c21a362870ae3) on accountid=akoya_applicantid
+      FILTERS (5):
+        - akoya_requeststatus eq "active"
+        - wmkf_grantprogram eq "{139321fd-a6cb-ee11-9078-000d3a341e8f}"
+        - akoya_finished null
+        - wmkf_type eq "{51970456-f9c4-ee11-9079-000d3a341fd9}"
+        - wmkf_type eq "{fbac6d51-f9c4-ee11-9079-000d3a310f67}"
+
+  [133] Unfinished Awards
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=116c7ca4-5481-e311-9be1-0050569d0000
+      COLUMNS (10, from layoutxml): akoya_requestnum ("Request #") | akoya_begindate ("Begin Date") | akoya_title ("Title") | akoya_applicantid ("Applicant") | akoya_grant ("Grant Amount") | akoya_request ("Requested Amount") | akoya_programid ("Internal Program") | akoya_datenotified ("Date Notified") | akoya_datereceived ("Request Received") | akoya_decisiondate ("Decision Date")
+      FILTERS (3):
+        - akoya_grant gt "0"
+        - akoya_finished null
+        - statecode eq "0"
+
+  [134] Unreviewed Applications
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=31f31ee0-5481-e311-9be1-0050569d0000
+      COLUMNS (5, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_title ("Title") | akoya_datereceived ("Request Received") | akoya_decisiondate ("Decision Date")
+      FILTERS (2):
+        - akoya_grant null
+        - akoya_reviewcomplete eq "0"
+
+  [135] WMKF Request Grant Writer
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=578a90d7-6f9c-ef11-8a6a-00224803a64e
+      COLUMNS (11, from layoutxml): akoya_requestnum ("Request #") | wmkf_meetingdate ("Meeting Date") | akoya_requeststatus ("Request Status") | wmkf_grantwriter ("Grant Writer") | a_cb526cc3895d45a6865aca3929c6a37b.parentcustomerid | a_cb526cc3895d45a6865aca3929c6a37b.emailaddress1 | akoya_grant ("Grant Amount") | wmkf_type ("Type") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program") | wmkf_projectleader ("Project Leader")
+      JOINS: contact (a_cb526cc3895d45a6865aca3929c6a37b) on contactid=wmkf_grantwriter
+      FILTERS (1):
+        - wmkf_grantwriter not-null
+
+  [136] WMKF_Payee Tax Status
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=c08611ce-2ed4-ee11-9078-000d3a341e8f
+      COLUMNS (18, from layoutxml): akoya_requestnum ("Request #") | akoya_fiscalyear ("Fiscal Year") | akoya_applicantid ("Applicant") | wmkf_type ("Type") | wmkf_grantprogram ("Grant Program") | akoya_programid ("Internal Program") | akoya_payee ("Payee") | a_76934d5c414f44bcb2518f123e9eb696.akoya_taxid | a_76934d5c414f44bcb2518f123e9eb696.wmkf_caftb | a_76934d5c414f44bcb2518f123e9eb696.wmkf_caftbstatus | a_76934d5c414f44bcb2518f123e9eb696.akoya_taxstatus | a_76934d5c414f44bcb2518f123e9eb696.akoya_guidestardescription | a_76934d5c414f44bcb2518f123e9eb696.akoya_guidestarcode | a_76934d5c414f44bcb2518f123e9eb696.wmkf_bmffoundationcode | a_76934d5c414f44bcb2518f123e9eb696.wmkf_bmf509 | a_76934d5c414f44bcb2518f123e9eb696.wmkf_bmfsubsectiondescription | a_76934d5c414f44bcb2518f123e9eb696.akoya_guidestarirsbmfsubsection | a_76934d5c414f44bcb2518f123e9eb696.akoya_goverifyexception
+      JOINS: account (a_76934d5c414f44bcb2518f123e9eb696) on accountid=akoya_payee
+      FILTERS (2):
+        - akoya_requeststatus eq "Pending"
+        - statecode eq "0"
+
+  [137] xDeprecated - eGrant.net submissions yet to be accepted
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=cbe512e6-4e81-e311-9be1-0050569d0000
+      COLUMNS (6, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_submissionaccepted ("Submission Accepted") | akoya_title ("Title") | akoya_datereceived ("Request Received") | akoya_request ("Requested Amount")
+      FILTERS (2):
+        - akoya_submissionaccepted null
+        - akoya_submissionaccepted eq "0"
+
+  [138] xDeprecated - Regression - Approved Requests (with Grant)
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=9287a7a6-d643-f111-88b5-000d3a30679f
+      COLUMNS (4, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | akoya_requeststatus ("Request Status") | akoya_title ("Title")
+      FILTERS (3):
+        - statecode eq "0"
+        - akoya_requeststatus eq "Approved"
+        - akoya_originalgrantamount gt "0"
+
+  [139] xDeprecated - Regression - Pending Requests
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=717c32fc-d543-f111-88b5-000d3a30679f
+      COLUMNS (5, from layoutxml): akoya_requestnum ("Request #") | akoya_applicantid ("Applicant") | createdon ("Created On") | akoya_requeststatus ("Request Status") | akoya_title ("Title")
+      FILTERS (3):
+        - akoya_originalgrantamount null
+        - statecode eq "0"
+        - akoya_requeststatus eq "Pending"
+
+  ── NON-PUBLIC (lookup/quickfind/associated/advanced-find) — names only, 5 (noise unless a recognition surprise) ──
+    · [Offline Filters] My Requests  id=ae92f000-e4ef-e211-94f4-0050569d0000
+    · [Quick Find [quickfind]] Quick Find Active Requests  id=08b51bf9-47c5-4ef5-a1a5-6af4713bca5b
+    · [Advanced Find / user] Request Advanced Find View  id=f442a914-18c8-4b33-add9-59bb889f17ee
+    · [Associated view] Request Associated View  id=146297a6-3ef6-456e-aaf0-ba05fb31f296
+    · [Lookup view] Request Lookup View  id=363b691b-9d79-4db5-a5d7-294f4c77d288
+
+══ savedquery — akoya_program (8) ══
+   querytype histogram: Public view=3, Offline Filters=1, Quick Find=1, Advanced Find / user=1, Lookup view=1, Associated view=1
+   ▸ Public view (querytype 0) = the trusted-export candidates; lookup/quickfind/associated = noise.
+
+  ── PUBLIC VIEWS — trusted-export candidates (3) ──
+
+  [1] Active Programs
+      kind=savedquery  type=Public view  default=true  owner=org (system)  id=be4dd86c-8ec4-4772-b3bc-a5ebd93375ef
+      COLUMNS (4, from layoutxml): akoya_program | wmkf_code | wmkf_parentgrantprogram | createdon
+      FILTERS (1):
+        - statecode eq "0"
+
+  [2] Inactive Programs
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=5120d59a-67fb-4944-99fb-d79047e1bd5c
+      COLUMNS (2, from layoutxml): akoya_program | createdon
+      FILTERS (1):
+        - statecode eq "1"
+
+  [3] Research Internal Programs
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=1c58ee43-05ae-f011-bbd3-6045bd003e28
+      COLUMNS (2, from layoutxml): akoya_program | wmkf_code
+      FILTERS (2):
+        - akoya_programid eq "{94cab30b-958f-ee11-8179-000d3a341e8f}"
+        - akoya_programid eq "{8dcab30b-958f-ee11-8179-000d3a341e8f}"
+
+  ── NON-PUBLIC (lookup/quickfind/associated/advanced-find) — names only, 5 (noise unless a recognition surprise) ──
+    · [Offline Filters] My Programs  id=bf05a122-0170-df11-a259-000c298b18cb
+    · [Advanced Find / user] Program Advanced Find View  id=24c1fcc0-689b-4177-bb17-6009df83ae4a
+    · [Associated view] Program Associated View  id=04b6e2c1-8626-4e7e-8673-ed34421c96bc
+    · [Lookup view] Program Lookup View  id=6309e760-53ff-4dfb-948f-c2ce7921467b
+    · [Quick Find [quickfind]] Quick Find Active Programs  id=b61b1d97-f367-41b9-8652-33bc018ebfec
+
+══ savedquery — account (42) ══
+   querytype histogram: Public view=29, bitmask 32=4, Associated view=3, Saved query (Outlook templates)=2, Advanced Find / user=1, Offline Filters=1, Quick Find=1, Lookup view=1
+   ▸ Public view (querytype 0) = the trusted-export candidates; lookup/quickfind/associated = noise.
+
+  ── PUBLIC VIEWS — trusted-export candidates (29) ──
+
+  [1] Accounts Being Followed
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=61273827-328e-e011-95ae-00155d9cfa03
+      COLUMNS (5, from layoutxml): name | telephone1 | primarycontactid | accountprimarycontactidcontactcontactid.emailaddress1 | statecode
+      JOINS: contact (accountprimarycontactidcontactcontactid) on contactid=primarycontactid ; postfollow (aa) on regardingobjectid=accountid
+      FILTERS: (none — unfiltered / all rows)
+
+  [2] Accounts from Sales Close Agent
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=11ace492-9cdc-4c39-af49-dbf580233bd1
+      COLUMNS (4, from layoutxml): name | telephone1 | address1_city | primarycontactid
+      JOINS: msdyn_dcaengageagentresult (DCAEngageAgentResult) on msdyn_regarding=accountid
+      FILTERS (1):
+        - statuscode in
+
+  [3] Accounts I Follow
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=61273827-328e-e011-95ae-00155d9cfa02
+      COLUMNS (5, from layoutxml): name | telephone1 | primarycontactid | accountprimarycontactidcontactcontactid.emailaddress1 | statecode
+      JOINS: contact (accountprimarycontactidcontactcontactid) on contactid=primarycontactid ; postfollow (aa) on regardingobjectid=accountid
+      FILTERS (1):
+        - ownerid eq-userid
+
+  [4] Accounts: Influenced Deals That We Won
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=15c63745-0a6e-4322-8416-a62c84d90279
+      COLUMNS (5, from layoutxml): name | telephone1 | address1_city | primarycontactid | accountprimarycontactidcontactcontactid.emailaddress1
+      JOINS: contact (accountprimarycontactidcontactcontactid) on contactid=primarycontactid ; connection (DealInfluencer) on record2id=accountid ; opportunity (DealInfluenced) on opportunityid=record1id
+      FILTERS (3):
+        - record2roleid eq "A061872D-07CF-4de7-8ED0-EF79A55F1A94"
+        - statecode eq "1"
+        - actualclosedate last-x-months "12"
+
+  [5] Accounts: No Orders in Last 6 Months
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=c147f1f7-1d78-4d10-85bf-7e03b79f74fa
+      COLUMNS (4, from layoutxml): name | primarycontactid | telephone1 | address1_city
+      FILTERS: (none — unfiltered / all rows)
+
+  [6] Active Constituents with GuideStar fields
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=2889a7b2-b56e-e111-985d-0050569d0000
+      COLUMNS (7, from layoutxml): name | primarycontactid | address1_city | akoya_guidestarcode | akoya_guidestardescription | akoya_guidestarsearch | akoya_guidestarirsbmfsubsection
+      FILTERS (1):
+        - statecode eq "0"
+
+  [7] Active Organizations
+      kind=savedquery  type=Public view  default=true  owner=org (system)  id=00000000-0000-0000-00aa-000010001002
+      COLUMNS (5, from layoutxml): name | primarycontactid | address1_city | akoya_aka | akoya_taxid
+      FILTERS (1):
+        - statecode eq "0"
+
+  [8] All Accounts
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=65ffaf9a-e8c5-432d-860b-32f841b00d87
+      COLUMNS (6, from layoutxml): name | telephone1 | address1_city | primarycontactid | accountprimarycontactidcontactcontactid.emailaddress1 | statecode
+      JOINS: contact (accountprimarycontactidcontactcontactid) on contactid=primarycontactid
+      FILTERS: (none — unfiltered / all rows)
+
+  [9] All Accounts (not available)
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=b18e750a-857b-49c5-8c4e-851ebc857e24
+      COLUMNS (6, from layoutxml): name | telephone1 | address1_city | primarycontactid | accountprimarycontactidcontactcontactid.emailaddress1 | statecode
+      JOINS: contact (accountprimarycontactidcontactcontactid) on contactid=primarycontactid
+      FILTERS: (none — unfiltered / all rows)
+
+  [10] Constituent: No Campaign Activities in Last 3 Months
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=cfbcd7af-aee5-4e45-8ecc-c040d4020581
+      COLUMNS (7, from layoutxml): name | primarycontactid | address1_city | lastusedincampaign | telephone1 | websiteurl | akoya_constituentnum
+      FILTERS (2):
+        - lastusedincampaign olderthan-x-months "3"
+        - lastusedincampaign null
+
+  [11] Constituent: Responded to Campaigns in Last 6 Months
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=49fb9771-09e1-4e70-b193-198752493577
+      COLUMNS (6, from layoutxml): name | primarycontactid | address1_city | telephone1 | websiteurl | akoya_constituentnum
+      JOINS: activityparty on partyid=accountid ; campaignresponse on activityid=activityid
+      FILTERS (2):
+        - receivedon last-x-months "6"
+        - participationtypemask eq "11"
+
+  [12] Excluded Accounts Campaigns
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=7de498c2-508f-49a4-b2e8-d550d5b1b9ee
+      COLUMNS (2, from layoutxml): name | telephone1
+      JOINS: bulkoperationlog (Logs) on regardingobjectid=accountid
+      FILTERS (2):
+        - errornumber ne "0"
+        - errornumber not-null
+
+  [13] GOfund Grant Recommendation Eligible Constituents
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=1977c47a-2115-ee11-8f6e-000d3a354326
+      COLUMNS (4, from layoutxml): name | address1_city | address1_stateorprovince | akoya_taxstatus
+      FILTERS (2):
+        - statecode eq "0"
+        - akoya_taxstatus in
+
+  [14] GOverify - Not Verified
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=20f141ec-63d3-eb11-bacc-00224808289a
+      COLUMNS (10, from layoutxml): name | primarycontactid | address1_city | akoya_taxid | akoya_taxstatus | akoya_dexempt | akoya_guidestarcode | akoya_guidestardescription | akoya_guidestarirsbmfsubsection | akoya_constituentnum
+      FILTERS (3):
+        - statecode eq "0"
+        - akoya_taxstatus null
+        - akoya_taxstatus in
+
+  [15] GOverify - Revoked
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=c7caf118-444a-ed11-bba1-000d3a343ab0
+      COLUMNS (10, from layoutxml): name | primarycontactid | address1_city | akoya_taxid | akoya_taxstatus | akoya_dexempt | akoya_guidestarcode | akoya_guidestardescription | akoya_guidestarirsbmfsubsection | akoya_constituentnum
+      FILTERS (2):
+        - akoya_taxstatus eq "100000004"
+        - statecode eq "0"
+
+  [16] GOverify - Verified
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=8922818b-63d3-eb11-bacc-00224808289a
+      COLUMNS (10, from layoutxml): name | primarycontactid | address1_city | akoya_taxid | akoya_taxstatus | akoya_dexempt | akoya_guidestarcode | akoya_guidestardescription | akoya_guidestarirsbmfsubsection | akoya_constituentnum
+      FILTERS (2):
+        - statecode eq "0"
+        - akoya_taxstatus in
+
+  [17] Inactive Organizations
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=00000000-0000-0000-00aa-000010001031
+      COLUMNS (5, from layoutxml): name | primarycontactid | telephone1 | address1_city | accountprimarycontactidcontactcontactid.emailaddress1
+      JOINS: contact (accountprimarycontactidcontactcontactid) on contactid=primarycontactid
+      FILTERS (1):
+        - statecode eq "1"
+
+  [18] My Active Accounts by Relationship
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=4bfea08c-9a4d-e611-80fc-0024e84720c6
+      COLUMNS (7, from layoutxml): name | primarycontactid | msdyn_accountkpiitem.msdyn_relationshiphealthscorestate | msdyn_accountkpiitem.msdyn_relationshiphealthtrend | msdyn_accountkpiitem.msdyn_timespentbyteam_calculated | msdyn_accountkpiitem.msdyn_timespentbycustomer_calculated | msdyn_accountkpiitem.msdyn_acilastupdatetimestamp
+      JOINS: msdyn_accountkpiitem (msdyn_accountkpiitem) on msdyn_accountkpiitemid=msdyn_accountkpiid
+      FILTERS (2):
+        - ownerid eq-userid
+        - statecode eq "0"
+
+  [19] My Active Organizations
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=00000000-0000-0000-00aa-000010001001
+      COLUMNS (6, from layoutxml): name | primarycontactid | address1_city | telephone1 | websiteurl | akoya_constituentnum
+      FILTERS (2):
+        - ownerid eq-userid
+        - statecode eq "0"
+
+  [20] My Connections
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=d234426e-1f37-4944-9255-50e19b541c4c
+      COLUMNS (5, from layoutxml): name | telephone1 | address1_city | primarycontactid | accountprimarycontactidcontactcontactid.emailaddress1
+      JOINS: contact (accountprimarycontactidcontactcontactid) on contactid=primarycontactid ; connection (MyConnections) on record2id=accountid
+      FILTERS (3):
+        - statecode eq "0"
+        - record1id eq-userid
+        - statecode eq "0"
+
+  [21] Organization with Pending Request w/Bill.com
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=db309580-f101-ef11-a1fd-000d3a32c1ae
+      COLUMNS (5, from layoutxml): name | wmkf_billcomvendorid | akoya_taxid | akoya_dexempt | akoya_taxstatus
+      JOINS: akoya_request (aa) on akoya_applicantid=accountid
+      FILTERS (2):
+        - akoya_requeststatus eq "Pending"
+        - wmkf_exisitngbillcomaccount eq "100000000"
+
+  [22] Organizations Controller Approval Last Month
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=1ee334c1-0cf9-ee11-a1fd-000d3a341fd9
+      COLUMNS (12, from layoutxml): name | akoya_taxid | akoya_taxstatus | wmkf_dateapprovedbycontroller | wmkf_groupexempt | wmkf_organizationisgovernmententity | akoya_dexempt | akoya_goverifyexception | wmkf_bmffoundationcode | wmkf_bmfsubsectiondescription | wmkf_bmf509 | akoya_guidestarirsbmfsubsection
+      JOINS: akoya_request (ab) on akoya_applicantid=accountid
+      FILTERS (2):
+        - wmkf_dateapprovedbycontroller last-month
+        - akoya_requeststatus eq "Pending"
+
+  [23] Organizations Created Last 6 Months
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=c45e94a1-fae5-ee11-904c-000d3a341fd9
+      COLUMNS (6, from layoutxml): name | akoya_aka | akoya_taxid | akoya_guidestarorganizationname | createdon | createdby
+      FILTERS (2):
+        - createdon last-x-months "6"
+        - statecode eq "0"
+
+  [24] Organizations to Send to Bill.com
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=262fdb66-2af8-ee11-a1fd-6045bd02d5dc
+      COLUMNS (7, from layoutxml): name | akoya_taxid | akoya_taxstatus | primarycontactid | address1_city | akoya_aka | websiteurl
+      JOINS: akoya_request (aa) on akoya_payee=accountid
+      FILTERS (3):
+        - statecode eq "0"
+        - akoya_requeststatus eq "Pending"
+        - statecode eq "0"
+
+  [25] Organizations with Pending Requests
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=c51007e0-07f9-ee11-a1fd-6045bd02d5dc
+      COLUMNS (4, from layoutxml): name | akoya_taxid | akoya_billvendorid | wmkf_billcomvendorid
+      JOINS: akoya_request (aa) on akoya_applicantid=accountid
+      FILTERS (1):
+        - akoya_requeststatus eq "Pending"
+
+  [26] Orgs Created This Month
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=f8746d90-e07e-f011-b4cb-000d3a59f927
+      COLUMNS (6, from layoutxml): akoya_aka | name | akoya_taxid | akoya_guidestarorganizationname | primarycontactid | createdon
+      FILTERS (2):
+        - createdon last-x-days "30"
+        - statecode eq "0"
+
+  [27] Orgs Needing Controller Approval
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=5a1b0689-3f02-ef11-a1fd-000d3a33ff0b
+      COLUMNS (13, from layoutxml): name | akoya_taxid | akoya_taxstatus | wmkf_controllerapproved | wmkf_dateapprovedbycontroller | wmkf_groupexempt | wmkf_organizationisgovernmententity | akoya_dexempt | akoya_goverifyexception | wmkf_bmffoundationcode | wmkf_bmfsubsectiondescription | wmkf_bmf509 | akoya_guidestarirsbmfsubsection
+      JOINS: akoya_request (aa) on akoya_payee=accountid
+      FILTERS (8):
+        - statecode eq "0"
+        - wmkf_controllerapproved not-null
+        - wmkf_dateapprovedbycontroller olderthan-x-months "12"
+        - wmkf_controllerapproved null
+        - wmkf_dateapprovedbycontroller null
+        - wmkf_organizationisgovernmententity eq "1"
+        - wmkf_groupexempt eq "1"
+        - wmkf_pcgoverifycomplete eq "100000002"
+
+  [28] Selected Accounts Campaigns
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=d15e48f6-e8fe-e811-8165-000d3af92c6e
+      COLUMNS (2, from layoutxml): name | telephone1
+      JOINS: bulkoperationlog (Logs) on regardingobjectid=accountid
+      FILTERS (2):
+        - errornumber eq "0"
+        - errornumber not-null
+
+  [29] Vendors to Send To Bill.com
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=a259c7d1-2c71-ef11-a671-000d3a31a7f3
+      COLUMNS (1, from layoutxml): name
+      JOINS: akoya_request (aa) on akoya_applicantid=accountid
+      FILTERS (3):
+        - akoya_billvendorid null
+        - wmkf_grantprogram eq "{86e6422b-a7cb-ee11-9078-000d3a341e8f}"
+        - wmkf_vendorverified eq "100000001"
+
+  ── NON-PUBLIC (lookup/quickfind/associated/advanced-find) — names only, 13 (noise unless a recognition surprise) ──
+    · [Associated view] Account BulkOperation View  id=59e57080-0cc2-e211-9b83-00155d89b902
+    · [Saved query (Outlook templates)] Account De-dup lookup display  id=f9e54d49-0c76-4cbd-979b-5fe94b496be0
+    · [Associated view] Account List Member View  id=38a21ffb-4e32-4038-beb9-03172a0dd034
+    · [Saved query (Outlook templates)] Account multi-line lookup display  id=f9e54d49-0c76-4cbd-979b-5fe94b496beb
+    · [bitmask 32] Active Members  id=a424ac61-bec9-48b0-a3e0-4bb903bd186e
+    · [bitmask 32] All Members  id=51de84dd-732f-440f-a506-26123a19ab50
+    · [bitmask 32] Inactive Members  id=d9c57fee-71ad-48e2-a17b-4ebbd01ec328
+    · [Offline Filters] My Accounts  id=31089fd8-596a-47be-9c9c-3ff82c7a8f8c
+    · [Advanced Find / user] Organizations Advanced Find View  id=00000000-0000-0000-00aa-000000666000
+    · [Associated view] Organizations Associated View  id=00000000-0000-0000-00aa-000010001200
+    · [Lookup view] Organizations Lookup View  id=a9af0ab8-861d-4cfa-92a5-c6281fed7fab
+    · [Quick Find [quickfind]] Quick Find Active Organizations  id=2d1187c4-23fe-4bb5-9647-43bb1c6ddbd1
+    · [bitmask 32 [quickfind]] Quick Find Marketing List Members  id=4d149ed9-12f1-4cd3-8427-418674f21bed
+
+══ savedquery — contact (44) ══
+   querytype histogram: Public view=28, Associated view=4, bitmask 32=4, Saved query (Outlook templates)=2, Advanced Find / user=1, bitmask 32768=1, bitmask 131072=1, Lookup view=1, Offline Filters=1, Quick Find=1
+   ▸ Public view (querytype 0) = the trusted-export candidates; lookup/quickfind/associated = noise.
+
+  ── PUBLIC VIEWS — trusted-export candidates (28) ──
+
+  [1] Active Contacts
+      kind=savedquery  type=Public view  default=true  owner=org (system)  id=00000000-0000-0000-00aa-000010001004
+      COLUMNS (6, from layoutxml): fullname | parentcustomerid | jobtitle | emailaddress1 | telephone1 | akoya_contactnum
+      FILTERS (1):
+        - statecode eq "0"
+
+  [2] Active Contacts Subgrid View
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=73bc2d9b-4e0e-424c-8839-ed59d6817e3a
+      COLUMNS (2, from layoutxml): fullname | emailaddress1
+      FILTERS (1):
+        - statecode eq "0"
+
+  [3] Active Contacts- Parent and Child for Constituent
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=5b60d375-1b10-ec11-b6e6-0022480a582d
+      COLUMNS (6, from layoutxml): fullname | parentcustomerid | jobtitle | emailaddress1 | business2 | akoya_contactnum
+      FILTERS (1):
+        - statecode eq "0"
+
+  [4] All Contacts
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=0d5d377b-5e7c-47b5-bab1-a5cb8b4ac105
+      COLUMNS (5, from layoutxml): fullname | emailaddress1 | parentcustomerid | telephone1 | statecode
+      FILTERS: (none — unfiltered / all rows)
+
+  [5] All Contacts (not available)
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=3a3d00e4-ad90-4aa3-b9ab-1e4f82900d29
+      COLUMNS (5, from layoutxml): fullname | emailaddress1 | parentcustomerid | telephone1 | statecode
+      FILTERS: (none — unfiltered / all rows)
+
+  [6] All Contacts Not at Company
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=973e2d26-653a-e911-8185-000d3a070f2c
+      COLUMNS (7, from layoutxml): firstname | lastname | jobtitle | parentcustomerid | modifiedon | createdon | ownerid
+      FILTERS (1):
+        - msdyn_orgchangestatus eq "1"
+
+  [7] Contact Letter Template View
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=70a563a6-0b45-ef11-8409-000d3a37edb1
+      COLUMNS (8, from layoutxml): fullname | address1_line1 | address1_city | address1_stateorprovince | address1_postalcode | firstname | emailaddress1 | jobtitle
+      FILTERS: (none — unfiltered / all rows)
+
+  [8] Contact Mailing List
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=2ae9f259-911c-ec11-b6e6-0022480a4176
+      COLUMNS (23, from layoutxml): lastname | fullname | spousesname | akoya_spousecontact | akoya_sal | a_0a93bd59d3c2ea11a812000d3a37ef43.akoya_sal | parentcustomerid | jobtitle | department | donotpostalmail | address1_line1 | address1_line2 | address1_city | address1_stateorprovince | address1_postalcode | address1_country | address1_county | donotbulkemail | donotemail | emailaddress1 | emailaddress2 | telephone2 | mobilephone
+      JOINS: contact (a_0a93bd59d3c2ea11a812000d3a37ef43) on contactid=akoya_spousecontact
+      FILTERS (1):
+        - statecode eq "0"
+
+  [9] Contacts Being Followed
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=3a282da1-5d90-e011-95ae-00155d9cfa03
+      COLUMNS (5, from layoutxml): fullname | emailaddress1 | parentcustomerid | telephone1 | statecode
+      JOINS: postfollow (aa) on regardingobjectid=contactid
+      FILTERS: (none — unfiltered / all rows)
+
+  [10] Contacts from Sales Close Agent
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=6755fdff-09f9-41e8-8282-c7e404bd360b
+      COLUMNS (4, from layoutxml): fullname | emailaddress1 | parentcustomerid | telephone1
+      JOINS: msdyn_dcaengageagentresult (DCAEngageAgentResult) on msdyn_regarding=contactid
+      FILTERS (1):
+        - statuscode in
+
+  [11] Contacts I Follow
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=3a282da1-5d90-e011-95ae-00155d9cfa02
+      COLUMNS (5, from layoutxml): fullname | emailaddress1 | parentcustomerid | telephone1 | statecode
+      JOINS: postfollow (aa) on regardingobjectid=contactid
+      FILTERS (1):
+        - ownerid eq-userid
+
+  [12] Contacts where "GOdonate Email Confirmed" = Yes
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=7cecde94-cf84-ef11-ac21-000d3a321fc6
+      COLUMNS (4, from layoutxml): fullname | emailaddress1 | createdon | createdby
+      FILTERS (1):
+        - akoya_godonateemailconfirmed eq "1"
+
+  [13] Contacts: Influenced Deals That We Won
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=0a8fa653-4147-4282-bf6b-168cfa839803
+      COLUMNS (4, from layoutxml): fullname | emailaddress1 | parentcustomerid | telephone1
+      JOINS: connection (DealInfluencer) on record2id=contactid ; opportunity (DealInfluenced) on opportunityid=record1id
+      FILTERS (3):
+        - record2roleid eq "A061872D-07CF-4de7-8ED0-EF79A55F1A94"
+        - statecode eq "1"
+        - actualclosedate last-x-months "12"
+
+  [14] Contacts: No Campaign Activities in Last 3 Months
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=927e6cd8-b3ed-4c20-a154-b8bd8a86d172
+      COLUMNS (4, from layoutxml): fullname | lastusedincampaign | telephone1 | address1_city
+      FILTERS (2):
+        - lastusedincampaign olderthan-x-months "3"
+        - lastusedincampaign null
+
+  [15] Contacts: No Orders in Last 6 Months
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=9818766e-7172-4d59-9279-013835c3decd
+      COLUMNS (3, from layoutxml): fullname | parentcustomerid | telephone1
+      FILTERS: (none — unfiltered / all rows)
+
+  [16] Contacts: Responded to Campaigns in Last 6 Months
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=9c241a33-ca0b-4e50-ae92-db780d5b2a12
+      COLUMNS (3, from layoutxml): fullname | telephone1 | address1_city
+      JOINS: activityparty on partyid=contactid ; campaignresponse on activityid=activityid
+      FILTERS (2):
+        - receivedon last-x-months "6"
+        - participationtypemask eq "11"
+
+  [17] Donor Portal Connections
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=2b60a505-935b-ed11-9562-000d3a343ab0
+      COLUMNS (5, from layoutxml): fullname | emailaddress1 | telephone2 | parentcustomerid | akoya_lastgofundsignin
+      JOINS: connection (aa) on record1id=contactid
+      FILTERS (6):
+        - statecode eq "0"
+        - statecode eq "0"
+        - record1roleid eq "{8f319c75-8179-ec11-8d21-000d3a5cfdba}"
+        - record2roleid eq "{8f319c75-8179-ec11-8d21-000d3a5cfdba}"
+        - effectiveend null
+        - effectiveend next-x-years "100"
+
+  [18] Excluded Contacts Campaigns
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=69103b65-f27e-45ce-a69c-eb1a7c805a45
+      COLUMNS (2, from layoutxml): fullname | telephone1
+      JOINS: bulkoperationlog (Logs) on regardingobjectid=contactid
+      FILTERS (2):
+        - errornumber ne "0"
+        - errornumber not-null
+
+  [19] Fund Statement Recipients
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=f07b71dd-c057-ee11-be6f-000d3a343b81
+      COLUMNS (11, from layoutxml): lastname | fullname | akoya_householdsalutation | akoya_sal | address1_line1 | address1_line2 | address1_line3 | address1_city | address1_stateorprovince | address1_postalcode | emailaddress1
+      JOINS: connection (aa) on record1id=contactid
+      FILTERS (2):
+        - statecode eq "0"
+        - record1roleid eq "{9ffe67f0-0f3f-eb11-a813-000d3a3bc2bf}"
+
+  [20] Inactive Contacts
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=00000000-0000-0000-00aa-000010001033
+      COLUMNS (3, from layoutxml): fullname | parentcustomerid | telephone1
+      FILTERS (1):
+        - statecode eq "1"
+
+  [21] Legacy Society Members
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=57298f4b-cb26-e811-80f8-00155dcfc160
+      COLUMNS (12, from layoutxml): fullname | address1_line1 | address1_line2 | address1_city | address1_stateorprovince | address1_postalcode | akoya_legacysociety | akoya_sal | salutation | firstname | lastname | suffix
+      FILTERS (2):
+        - akoya_legacysociety eq "1"
+        - statecode eq "0"
+
+  [22] Letter Template Test
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=9e85b74c-3f29-ef11-840a-6045bd00e574
+      COLUMNS (7, from layoutxml): fullname | emailaddress1 | parentcustomerid | a_d48c3ae337ef43729f1bd33b25a5390c.akoya_constituentnum | a_d48c3ae337ef43729f1bd33b25a5390c.akoya_donor | createdon | akoya_donor
+      JOINS: account (a_d48c3ae337ef43729f1bd33b25a5390c) on accountid=parentcustomerid
+      FILTERS: (none — unfiltered / all rows)
+
+  [23] My Active Contacts
+      kind=savedquery  type=Public view  default=true  owner=org (system)  id=00000000-0000-0000-00aa-000010001003
+      COLUMNS (4, from layoutxml): fullname | emailaddress1 | parentcustomerid | telephone1
+      FILTERS (2):
+        - ownerid eq-userid
+        - statecode eq "0"
+
+  [24] My Active Contacts by Relationship
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=ef26335d-6f4e-e611-80be-0024e8469fb9
+      COLUMNS (8, from layoutxml): fullname | parentcustomerid | msdyn_contactkpiitem.msdyn_relationshiphealthscorestate | msdyn_contactkpiitem.msdyn_relationshiphealthtrend | emailaddress1 | msdyn_contactkpiitem.msdyn_timespentbyteam_calculated | msdyn_contactkpiitem.msdyn_timespentbycustomer_calculated | msdyn_contactkpiitem.msdyn_acilastupdatetimestamp
+      JOINS: msdyn_contactkpiitem (msdyn_contactkpiitem) on msdyn_contactkpiitemid=msdyn_contactkpiid
+      FILTERS (2):
+        - ownerid eq-userid
+        - statecode eq "0"
+
+  [25] My Connections
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=ab582fb0-a846-453e-ad88-77f75ce91264
+      COLUMNS (4, from layoutxml): fullname | emailaddress1 | parentcustomerid | telephone1
+      JOINS: connection (MyConnections) on record2id=contactid
+      FILTERS (3):
+        - statecode eq "0"
+        - record1id eq-userid
+        - statecode eq "0"
+
+  [26] My Contacts Not at Company
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=1d3a0a34-653a-e911-8185-000d3a070f2c
+      COLUMNS (7, from layoutxml): firstname | lastname | jobtitle | parentcustomerid | modifiedon | createdon | ownerid
+      FILTERS (2):
+        - msdyn_orgchangestatus eq "1"
+        - ownerid eq-userid
+
+  [27] Reviewer Contacts last 3 months
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=dd0e2142-4113-f111-8406-000d3a306d45
+      COLUMNS (9, from layoutxml): fullname | address1_line1 | address1_line2 | address1_city | address1_stateorprovince | address1_postalcode | address1_country | telephone1 | emailaddress1
+      JOINS: akoya_request (aa) on akoya_primarycontactid=contactid
+      FILTERS (5):
+        - statecode eq "0"
+        - wmkf_type eq "{4bab15c9-38eb-f011-8543-6045bd02b4cc}"
+        - wmkf_grantprogram eq "{60ef7626-38eb-f011-8543-6045bd02b4cc}"
+        - wmkf_request_type eq "682090001"
+        - wmkf_meetingdate next-x-months "5"
+
+  [28] Selected Contacts Campaigns
+      kind=savedquery  type=Public view  default=false  owner=org (system)  id=38962192-31ff-46fc-9ac3-2db0a7d9dc7c
+      COLUMNS (2, from layoutxml): fullname | telephone1
+      JOINS: bulkoperationlog (Logs) on regardingobjectid=contactid
+      FILTERS (2):
+        - errornumber eq "0"
+        - errornumber not-null
+
+  ── NON-PUBLIC (lookup/quickfind/associated/advanced-find) — names only, 16 (noise unless a recognition surprise) ──
+    · [bitmask 32] Active Members  id=33a05713-9d37-4ce8-b41f-bc515f426271
+    · [bitmask 32] All Members  id=2f0d0ede-d356-4b1e-83bd-e978f10e3eeb
+    · [Associated view] Contact Associated View  id=00000000-0000-0000-00aa-000010001210
+    · [Saved query (Outlook templates)] Contact De-Dup lookup display  id=c14e0638-4996-4720-97cd-c58f0df74220
+    · [Associated view] Contact List Members View  id=58fb20ff-d5be-406f-908e-c777e9dedf5f
+    · [Saved query (Outlook templates)] Contact multi-line lookup display  id=c14e0638-4996-4720-97cd-c58f0df74228
+    · [Advanced Find / user] Contacts Advanced Find View  id=00000000-0000-0000-00aa-000000666400
+    · [Associated view] Contacts BulkOperation View  id=14ea1914-0e2c-4918-8eca-60930324f18f
+    · [Lookup view] Contacts Lookup View  id=a2d479c5-53e3-4c69-addd-802327e67a0d
+    · [bitmask 32768] Contacts Mobile Client Draft View  id=fe7c9f99-efe8-44dc-9191-619492401b0c
+    · [Associated view] Entitlement Contacts  id=eda26f1e-dbcc-40ad-91f2-ff2878d1d8d8
+    · [bitmask 32] Inactive Members  id=09963269-65e7-4f70-963f-a61ee495e705
+    · [Offline Filters] My Contacts  id=65d2cba8-eeda-4419-b03b-d9c2d8272e51
+    · [bitmask 131072] My Outlook Contacts  id=58dc4bee-60b7-4a84-987f-800296b71404
+    · [Quick Find [quickfind]] Quick Find Active Contacts  id=8df19b44-a073-40c3-9d6d-ee1355d8c4ba
+    · [bitmask 32 [quickfind]] Quick Find Marketing List Members  id=afdb8a51-9681-4cc9-aaa4-29449e5bc9e1
+
+══ userquery (personal) — akoya_request (0) ══
+
+══ userquery (personal) — akoya_program (0) ══
+
+══ userquery (personal) — account (0) ══
+
+══ userquery (personal) — contact (0) ══
+
+══ report — ALL (116) ══
+   (RDL dataset/parameter surface lives in report.bodytext — fetched per-report in Step B for the
+    recognition-confirmed request-export reports only, not bulk-dumped here)
+
+  • 990 - Schedule A Part II Section A Line 5  [990ScheduleAPart2SectionALine5.rdl]  owner=# BCO akoyaGO Integration
+  • 990 - Schedule B Parts I II  [990ScheduleBParts12.rdl]  owner=# BCO akoyaGO Integration
+      990 - Schedule B Parts I II
+  • 990 - Schedule F Part II  [990ScheduleFPart2.rdl]  owner=# BCO akoyaGO Integration
+  • 990 - Schedule F Part III  [990ScheduleFPart3.rdl]  owner=# BCO akoyaGO Integration
+  • 990 - Schedule I Part II  [990Schedule1Part2.rdl]  owner=# BCO akoyaGO Integration
+  • 990 - Schedule I Part III  [990Schedule1Part3.rdl]  owner=# BCO akoyaGO Integration
+  • 990 - Schedule M  [990ScheduleM.rdl]  owner=# BCO akoyaGO Integration
+      990 - Schedule M
+  • 990-PF 990-PF Grants and Contributions Approved for Future  [990-PF 990-PF Grants and Contributions Approved for Future.rdl]  owner=# BCO akoyaGO Integration
+      Data needed for IRS Form 990-PF Part XV Line 3b
+  • 990-PF Grants and Contributions Paid During the Year  [990-PF Grants and Contributions Paid During the Year.rdl]  owner=# BCO akoyaGO Integration
+      Data needed for IRS Form 990-PF Part XV Line 3a
+  • Account Distribution  [Account Distribution.rdl]  owner=SYSTEM
+      Identify patterns in top revenue-generating accounts. 
+  • Account Distribution Detail  [Account Distribution Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Account Distribution report. 
+  • Account Overview  [Account Overview.rdl]  owner=SYSTEM
+      View a one-page overview of an account. 
+  • Account Overview Sub-Report  [Account Overview Sub-Report.rdl]  owner=SYSTEM
+      Sub-report required by the Account Overview report. 
+  • Account Summary  [Account Summary.rdl]  owner=SYSTEM
+      View a chronological summary of an account. 
+  • Account Summary Sub-Report  [Account Summary Sub-Report.rdl]  owner=SYSTEM
+      Sub-report required by the Account Summary report.
+  • Activities  [Activities.rdl]  owner=SYSTEM
+      Display a list of activities.
+  • Activities Detail  [ActivitiesDetail.rdl]  owner=SYSTEM
+      Sub-report required by the Activities report.
+  • akoyaGO Validation Report  [akoyaGO Validation Report.rdl]  owner=# BCO akoyaGO Integration
+  • Attendee List  [Attendee List.rdl]  owner=# BCO akoyaGO Integration
+  • Campaign Activity Status  [Campaign Activity Status.rdl]  owner=SYSTEM
+      Track campaign activities. 
+  • Campaign Activity Status Detail  [Campaign Activity Status Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Campaign Activity report. 
+  • Campaign Activity Status Sub-Report  [Campaign Activity Status Sub-Report.rdl]  owner=SYSTEM
+      Sub-report required by the Campaign Activity Status and Campaign Performance reports. 
+  • Campaign Comparison  [Campaign Comparison.rdl]  owner=SYSTEM
+      Compare two campaigns. 
+  • Campaign Gift Range Chart  [Campaign Gift Range Chart.rdl]  owner=# BCO akoyaGO Integration
+  • Campaign Opportunity Estimated Revenue Detail  [Campaign Opportunity Estimated Revenue Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Campaign Performance report. 
+  • Campaign Opportunity Realized Revenue Detail  [Campaign Opportunity Realized Revenue Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Campaign Performance report. 
+  • Campaign Performance  [Campaign Performance.rdl]  owner=SYSTEM
+      Track the progress and status of campaigns. 
+  • Campaign Performance Detail Report  [Campaign Performance Detail Report.rdl]  owner=SYSTEM
+      Sub-report required by the Campaign Performance Sub-Report.
+  • Campaign Performance Sub-Report  [Campaign Performance Sub-Report.rdl]  owner=SYSTEM
+      Sub-report required by the Campaign Performance report.
+  • Campaign Placed Order Detail  [Campaign Placed Order Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Campaign Performance report. 
+  • Campaign Response Detail  [Campaign Response Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Campaign Performance report. 
+  • Campaign Task Detail  [Campaign Task Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Campaign Performance report. 
+  • Candid eReporting Simplified  [Candid eReporting Simplified.rdl]  owner=# BCO akoyaGO Integration
+      Candid eReporting Simplified Report
+  • Case Summary Table  [Case Summary Table.rdl]  owner=SYSTEM
+      View the patterns in cases. 
+  • Case Summary Table Detail  [Case Summary Table Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Case Summary Table report. 
+  • Chart of Accounts  [Chart of Accounts.rdl]  owner=# BCO akoyaGO Integration
+  • Competitor Win Loss  [Competitor Win Loss.rdl]  owner=SYSTEM
+      Compare how your sales team performs against competitors. 
+  • Competitor Win Loss Details  [Competitor Win Loss Details.rdl]  owner=SYSTEM
+      Sub-report required by the Competitor Win Loss report. 
+  • Donor and Gift List by Commitment  [Donor and Gift List by Commitment.rdl]  owner=# BCO akoyaGO Integration
+  • Donor and Gift List by Date  [Donor and Gift List by Date.rdl]  owner=# BCO akoyaGO Integration
+  • Donor and Gift List by Name  [Donor and Gift List by Name.rdl]  owner=# BCO akoyaGO Integration
+  • Donor Profile  [DonorProfile.rdl]  owner=# BCO akoyaGO Integration
+  • Dt Accounts by Fund  [Dt Accounts by Fund.rdl]  owner=# BCO akoyaGO Integration
+  • Fund List by Fund  [Fund List by Fund.rdl]  owner=# BCO akoyaGO Integration
+  • Fund List by Name  [Fund List by Name.rdl]  owner=# BCO akoyaGO Integration
+  • Fund List by Type  [Fund List by Type.rdl]  owner=# BCO akoyaGO Integration
+  • Fund Net Assets by Fund Type  [Fund Net Assets by Fund Type.rdl]  owner=# BCO akoyaGO Integration
+  • Fund Net Assets by FundType  [Fund Net Assets by FundType.rdl]  owner=# BCO akoyaGO Integration
+  • Gift Payments to Reconcile  [Gift Payments to Reconcile.rdl]  owner=# BCO akoyaGO Integration
+  • Goal Detail  [GoalDetail.rdl]  owner=SYSTEM
+      Sub-report required by the Goal report.
+  • GOapply Review Responses  [Report1.rdl]  owner=# BCO akoyaGO Integration
+  • GOapply Review Responses By Reviewer  [Report1.rdl]  owner=# BCO akoyaGO Integration
+  • Grant Denial and Application List by Applicant Name  [Grant Denial and Application List by Applicant Name.rdl]  owner=# BCO akoyaGO Integration
+  • Grant Denial and Application List by Decision Date  [Grant Denial and Application List by Decision Date.rdl]  owner=# BCO akoyaGO Integration
+  • Grant Denial and Application List by Grant Amount  [Grant Denial and Application List by Grant Amount.rdl]  owner=# BCO akoyaGO Integration
+  • Grant Docket  [BoardDocket.rdl]  owner=# BCO akoyaGO Integration
+  • Grant Payments to Reconcile  [Grant Payments to Reconcile.rdl]  owner=# BCO akoyaGO Integration
+  • Grants Budget FY Summary  [Grants Budget FY Summary.rdl]  owner=# BCO akoyaGO Integration
+  • Grants by Program  [Grants by Program.rdl]  owner=# BCO akoyaGO Integration
+      Displays a list of grants by granting program
+  • Grants by Program with Pie Chart  [Grants by Program with Pie Chart.rdl]  owner=# BCO akoyaGO Integration
+      Displays a list of grants by granting program
+  • Invoice  [Invoice.rdl]  owner=SYSTEM
+      View an invoice and its line items.
+  • Invoice Status  [Invoice Status.rdl]  owner=SYSTEM
+      View your accounts receivable. 
+  • Invoice Status Detail  [Invoice Status Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Invoice Status report. 
+  • Invoice Sub-Report  [Invoice Sub-Report.rdl]  owner=SYSTEM
+      Sub-report required by the Invoice report.
+  • Keck – Application History Report  [Keck – Application History Report.rdl]  owner=Bromelkamp Admin
+  • Keck - History Report  [KeckHistoryFinal.rdl]  owner=Bromelkamp Admin
+  • Keck- Phase 1 Application Received  [Phase1ApplicationsReceived.rdl]  owner=Bromelkamp Admin
+  • Keck- Phase I Recommendations by Staff  [Phase1RecommendationsByStaff.rdl]  owner=Bromelkamp Admin
+  • Keck- Phase II Recommendations By Staff  [Phase2RecommendationsByStaff.rdl]  owner=Bromelkamp Admin
+  • Lead Source Effectiveness  [Lead Source Effectiveness.rdl]  owner=SYSTEM
+      Compare your lead sources. 
+  • Memorial Gift Report by Fund  [Memorial Gift Report by Fund.rdl]  owner=# BCO akoyaGO Integration
+      Memorial Gift Report by honor/memorial with address information
+  • Memorial Gifts  [Memorial Gifts.rdl]  owner=# BCO akoyaGO Integration
+  • Neglected Accounts  [Neglected Accounts.rdl]  owner=SYSTEM
+      Identify accounts that have not been contacted recently.
+  • Neglected Accounts Detail  [Neglected Accounts Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Neglected Accounts report. 
+  • Neglected Cases  [Neglected Cases.rdl]  owner=SYSTEM
+      Identify cases that have not been contacted recently. 
+  • Neglected Cases Detail  [Neglected Cases Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Neglected Cases report. 
+  • Neglected Leads  [Neglected Leads.rdl]  owner=SYSTEM
+      Identify leads that have not been contacted. 
+  • Neglected Leads Detail  [Neglected Leads Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Neglected Leads report. 
+  • New Donors this Quarter  [New Donors this Quarter.rdl]  owner=# BCO akoyaGO Integration
+  • Order  [Order.rdl]  owner=SYSTEM
+      View an order and its line items.
+  • Order Sub-Report  [Order Sub-Report.rdl]  owner=SYSTEM
+      Sub-report required by the Order report.
+  • Payments Due this Week  [Payments Due this Week.rdl]  owner=# BCO akoyaGO Integration
+  • Pending Funding Opportunities  [Pending Funding Opportunities.rdl]  owner=# BCO akoyaGO Integration
+  • Pending LOIs by Program  [Pending LOIs by Program.rdl]  owner=# BCO akoyaGO Integration
+  • Pending Requests by Program  [Pending Requests by Program.rdl]  owner=# BCO akoyaGO Integration
+  • PGL  [PGL (1).rdl]  owner=Bromelkamp Admin
+  • Pledges by Donor  [Pledges by Donor.rdl]  owner=# BCO akoyaGO Integration
+      A list of all pledges (gift payments where payment type = "pledge"), grouped by donor. This report includes both fulfilled and unfulfilled pledges. To see only unfulfilled pledges, filter for records 
+  • Printable Activities  [Report1.rdl]  owner=# BCO akoyaGO Integration
+  • Products By Account  [Products By Account.rdl]  owner=SYSTEM
+      View products that are used by an account. 
+  • Products By Account Detail  [Products By Account Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Products by Account report.
+  • Products By Contact  [Products By Contact.rdl]  owner=SYSTEM
+      View products that are used by a contact. 
+  • Products By Contact Detail  [Products By Contact Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Products by Contact report. 
+  • Progress against goals  [Goal.rdl]  owner=SYSTEM
+      View progress against goals
+  • Quote  [Quote.rdl]  owner=SYSTEM
+      View a quote and its line items.
+  • Quote Sub-Report  [Quote Sub-Report.rdl]  owner=SYSTEM
+      Sub-report required by the Quote report.
+  • Request Outcomes by Measure  [Request Outcomes by Measure.rdl]  owner=# BCO akoyaGO Integration
+  • Sales History  [Sales History.rdl]  owner=SYSTEM
+      Understand past sales performance.
+  • Sales History Detail  [Sales History Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Sales History report.
+  • Sales Pipeline  [Sales Pipeline.rdl]  owner=SYSTEM
+      View anticipated potential sales. 
+  • Sales Pipeline Detail  [Sales Pipeline Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Sales Pipeline report. 
+  • Scheduled Fund Distributions  [Scheduled Fund Distributions.rdl]  owner=# BCO akoyaGO Integration
+  • Scheduled Pledge Payments by Date  [Scheduled Pledge Payments by Date.rdl]  owner=# BCO akoyaGO Integration
+      A list of all scheduled pledge payments (gift payment records) sorted by Estimated Pledge Pay Date and grouped by month.
+  • Scheduled Pledge Payments by Donor  [Scheduled Pledge Payments by Donor.rdl]  owner=# BCO akoyaGO Integration
+      A list of all scheduled pledge payments (gift payment records) sorted by Estimated Pledge Pay Date and grouped by Donor.
+  • Scholarship  [Scholarship.rdl]  owner=# BCO akoyaGO Integration
+  • Scholarship (Totals Only Report)  [Scholarship (Totals Only Report).rdl]  owner=# BCO akoyaGO Integration
+  • Scholarship by Payee  [Scholarship by Payee.rdl]  owner=# BCO akoyaGO Integration
+  • Scholarship With Weighted Score  [Scholarship With Weighted Score.rdl]  owner=# BCO akoyaGO Integration
+  • Service Activity Volume  [Service Activity Volume.rdl]  owner=SYSTEM
+      View the patterns in service activity volume. 
+  • Service Activity Volume Detail  [Service Activity Volume Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Service Activity Volume report.
+  • SoCal Application Log  [SoCal Application Log.rdl]  owner=Bromelkamp Admin
+  • SoCal Application Log II  [SoCal Application Log II.rdl]  owner=Connor Noda
+  • SoCal Application Submitted Reviewers  [SoCal Application Submitted Reviewers.rdl]  PERSONAL owner=Bromelkamp Admin
+  • Top Knowledge Base Articles  [Top Knowledge Base Articles.rdl]  owner=SYSTEM
+      Identify the most frequently used knowledge base articles. 
+  • Top Knowledge Base Articles Detail  [Top Knowledge Base Articles Detail.rdl]  owner=SYSTEM
+      Sub-report required by the Top Knowledge Base Articles report.
+  • User Security Report  [User Security Report.rdl]  owner=# BCO akoyaGO Integration
+  • User Summary  [User Summary.rdl]  owner=SYSTEM
+      View user contact and security role information. 
+
+══ documenttemplate — 3 on export-relevant entities (of 15 total) ══
+
+  • Account Summary  [Word]  entity=account  id=9d6916e4-1033-4e03-a0e3-d15a5b133a9a
+  • rich text field tempalte test  [Word]  entity=akoya_request  id=dfbba009-819f-ee11-be37-000d3a341e8f
+  • test  [Excel]  entity=akoya_request  id=bd1a78a2-ab59-ef11-a317-000d3a31a7f3
+
+  (others, non-export entities, name only:)
+    - Campaign Overview [Excel] (campaign)
+    - Campaign Summary [Word] (campaign)
+    - Case SLA Status [Excel] (incident)
+    - Case Summary [Word] (incident)
+    - Case Summary [Excel] (incident)
+    - Invoice [Word] (invoice)
+    - Invoice Summary [Word] (invoice)
+    - Opportunity Summary [Word] (opportunity)
+    - Order Summary [Word] (salesorder)
+    - Pipeline Management [Excel] (opportunity)
+    - Print quote for customer [Word] (quote)
+    - Quote Summary [Word] (quote)
+
+══ COVERAGE SUMMARY (fail-loud — nothing silently skipped) ══
+  savedquery[akoya_request]: ✅ 144
+  savedquery[akoya_program]: ✅ 8
+  savedquery[account]: ✅ 42
+  savedquery[contact]: ✅ 44
+  userquery[akoya_request]: ✅ 0
+  userquery[akoya_program]: ✅ 0
+  userquery[account]: ✅ 0
+  userquery[contact]: ✅ 0
+  report: ✅ 116
+  documenttemplate: ✅ 15
+
+  10/10 surfaces readable; 0 failed.
+    of failures: 0 genuine privilege gap, 0 probe bug, 0 other.
+
+Done (read-only enumeration probe — Step A of residual (i)).

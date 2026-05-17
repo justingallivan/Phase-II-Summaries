@@ -1,0 +1,39 @@
+Test-record predicate verification — 2026-05-17T01:04:33.956Z
+Candidate: applicant account.name == "W. M. Keck Foundation"  (from system view "Test Requests")
+
+══ Step 1 — accounts named "W. M. Keck Foundation" ══
+  537e3b60-c18f-ee11-8179-000d3a341e8f  state=Active
+  a34504c3-c9fd-ee11-a1fe-000d3a3621c7  state=Inactive
+
+══ Step 2 — akoya_request rows with applicant = "W. M. Keck Foundation" (no statecode filter): 22 ══
+
+══ Step 3 — known test row #1000799 ══
+  ✅ CAUGHT by the predicate (status=Concept Done, grant=1)
+
+══ Step 4 — over-exclusion risk: shape of the 22 swept rows ══
+  by akoya_requeststatus:
+       7  Phase I Pending
+       6  Concept Pending
+       4  Phase II Pending
+       1  Closed
+       1  Pending
+       1  Concept Done
+       1  Approved
+       1  Proposal Invited
+  by wmkf_request_type:
+      15  Request
+       6  Concept
+       1  (null)
+  rows with akoya_grant > 0: 2 (would these be real grants wrongly excluded?)
+    #1002807  status=Closed  grant=1000000  title=Programable-polymer enabled molecular encoding, me
+    #1000799  status=Concept Done  grant=1  title=Test record
+
+  createdon span: 2024-04-23T20:42:31Z … 2026-04-14T20:10:10Z
+
+INTERPRETATION GUIDE:
+  - If #1000799 caught AND swept set is small/sentinel-shaped AND ~no real grants →
+    strong exclusion predicate; revise design "no detector established".
+  - If swept set contains real-looking funded grants → predicate OVER-excludes;
+    it is the Foundation legitimately giving to itself, NOT a clean test flag → Connor needed.
+
+Done (read-only test-record predicate probe — residual (iii)).
