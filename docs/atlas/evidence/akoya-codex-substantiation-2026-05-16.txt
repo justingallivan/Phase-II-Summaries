@@ -1,0 +1,61 @@
+Codex substantiation pass — 2026-05-17T00:28:36.889Z
+
+══ C3 (Claim 3) — native grant-amount fill by REFINED lifecycle class ══
+   (the blended "decided-terminal 38%" mixed award-eligible with declines that
+    structurally never carry an amount — this is the honest non-circular cut)
+   akoya_grant                in-flight (Pending*)                                         0% (0/474)
+   akoya_grant                AWARD-ELIGIBLE decided (Approved/Active/Closed)             96% (762/796)
+   akoya_grant                non-award terminal (declined/inelig/denied/done/not-invited)  11% (182/1680)
+   akoya_originalgrantamount  in-flight (Pending*)                                         0% (0/474)
+   akoya_originalgrantamount  AWARD-ELIGIBLE decided (Approved/Active/Closed)            100% (796/796)
+   akoya_originalgrantamount  non-award terminal (declined/inelig/denied/done/not-invited)  11% (182/1680)
+   → READ: in-flight ≈0%  vs  AWARD-ELIGIBLE decided ≫  vs non-award ≈0%.
+     The lifecycle confound is confirmed by the in-flight-vs-award-eligible gap;
+     the non-award class is ~0% BY DESIGN (declines never get an amount) and must
+     NOT be blended into the "decided-terminal" denominator.
+
+══ C4 (Claim 4) — migrated both-program-null RATE per akoya_decisiondate decade ══
+   decade   both-null / all-migrated   rate
+   1950s         0 /     6        0.00%
+   1960s         0 /    79        0.00%
+   1970s         0 /   220        0.00%
+   1980s         4 /  1929        0.21%
+   1990s        20 /  3808        0.53%
+   2000s        38 /  5249        0.72%
+   2010s        48 /  7636        0.63%
+   2020s         1 /  3646        0.03%
+   → READ: a flat rate across decades ⇒ sporadic data-entry, not a systematic
+     era-specific gap. A rate spiking in any decade ⇒ NOT volume-proportional.
+
+══ C5 (Claim 5) — NATIVE rows (createdon>2023-12-03) with PRE-2024 business date ══
+   native total                              2988
+   native w/ akoya_decisiondate not-null     931
+   native w/ wmkf_meetingdate not-null       2974
+   native akoya_decisiondate < 2024-01-01    168  (18.0% of dated)
+   native wmkf_meetingdate  < 2024-01-01     66  (2.2% of dated)
+   native EITHER business date < 2024-01-01  169  (5.66% of native)
+   → READ: ~0 / negligible ⇒ classifier spine is robust (native really is post-cutover).
+     Material count ⇒ re-created/misclassified migrated rows confound era-splits.
+
+══ C1 (Claim 1) — program-present itemized by wmkf_type (whole entity) ══
+    13754  Program
+     5343  Discretionary
+     5155  Site Visit
+      142  Special Grants
+      137  (null wmkf_type)
+       87  Individual
+       75  Special Projects
+       52  Miscellaneous
+   → 24745 rows carry a program across 8 distinct wmkf_type values
+     (incl. null wmkf_type). If "Program" is not ≈100% of this, programs are NOT
+     contained in wmkf_type=Program — they are a cross-cutting axis.
+     Program=13754 of 24745 = 56% ⇒ NOT nested.
+
+══ C2 (Claim 2) — the no-ask Approved native Request cohort, by wmkf_type ══
+   wmkf_request_type=Request resolved option value = 100000001; cohort n = 577
+    492  Discretionary
+     44  Program
+     31  Special Grants
+      6  Special Projects
+      4  Miscellaneous
+   → Discretionary 492/577 = 85% (predominant, not universal)
