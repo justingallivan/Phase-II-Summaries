@@ -1,0 +1,121 @@
+Token acquired.
+Probe date: 2026-05-17 (dated evidence)
+
+══ A. akoya_request — Lookups → account/contact + org/campus keyword attrs ══
+  akoya_applicantid            → [account]   "Applicant"
+  akoya_college                → [account]   "College"
+  akoya_gofundrecommender      → [contact]   "Grant Recommender"
+  akoya_highschool             → [account]   "High School"
+  akoya_payee                  → [account]   "Payee"
+  akoya_primarycontactid       → [contact]   "Primary Contact"
+  wmkf_authorizedofficial      → [contact]   "Authorized Official"
+  wmkf_billcomcontact          → [contact]   "Bill.com Contact"
+  wmkf_ceo                     → [contact]   "Organization Leader"
+  wmkf_copi1                   → [contact]   "Co-PI 1"
+  wmkf_copi2                   → [contact]   "Co-PI 2"
+  wmkf_copi3                   → [contact]   "Co-PI 3"
+  wmkf_copi4                   → [contact]   "Co-PI 4"
+  wmkf_copi5                   → [contact]   "Co-PI 5"
+  wmkf_financialinstitution    → [account]   "Financial Institution"
+  wmkf_grantwriter             → [contact]   "Grant Writer"
+  wmkf_liaison                 → [contact]   "Liaison"
+  wmkf_paymentcontact          → [contact]   "Payment Contact"
+  wmkf_projectleader           → [contact]   "Project Leader"
+  wmkf_researchleader          → [contact]   "Research Leader"
+
+  keyword-scan (name/label ~ org/campus/payee/site/parent/system/fiscal), 39:
+    akoya_applicantid              [Lookup]  "Applicant"
+    akoya_applicantidname          [String]  ""
+    akoya_applicantidyominame      [String]  ""
+    akoya_dc_payeeser              [Integer]  "dc_PayeeSER"
+    akoya_fiscalyear               [String]  "Fiscal Year"
+    akoya_parentguardian1          [String]  "Parent/Guardian 1 Name"
+    akoya_parentguardian1email     [String]  "Parent/Guardian 1 Email"
+    akoya_parentguardian1phone     [String]  "Parent/Guardian 1 Phone"
+    akoya_parentguardian2          [String]  "Parent/ Guardian 2 Name"
+    akoya_parentguardian2email     [String]  "Parent/Guardian 2 Email"
+    akoya_parentguardian2phone     [String]  "Parent/Guardian 2 Phone"
+    akoya_payee                    [Lookup]  "Payee"
+    akoya_payeename                [String]  ""
+    akoya_payeeyominame            [String]  ""
+    akoya_sitevisitdate            [DateTime]  "Site Visit Date"
+    akoya_sitevisitnotes           [Memo]  "Site Visit Notes"
+    wmkf_ceo                       [Lookup]  "Organization Leader"
+    wmkf_financialinstitution      [Lookup]  "Financial Institution"
+    wmkf_financialinstitutionname  [String]  ""
+    wmkf_financialinstitutionyominame [String]  ""
+    wmkf_firsttimegranteeflag      [Boolean]  "First Time Grantee Flag"
+    wmkf_firsttimegranteeflagname  [Virtual]  ""
+    wmkf_granteemeetseligibilityflag [Boolean]  "Grantee Meets Eligibility Flag"
+    wmkf_granteemeetseligibilityflagname [Virtual]  ""
+    wmkf_ifcapitalrequestdoyouhavesitecontrol [Picklist]  "If Capital Request Do You Have Site Control"
+    wmkf_organizationgovernmentunit [Picklist]  "Organization Government Unit"
+    wmkf_organizationgovernmentunitname [Virtual]  ""
+    wmkf_organizationisgovernmententity [Boolean]  "Organization is Government Entity"
+    wmkf_organizationisgovernmententityname [Virtual]  ""
+    wmkf_organizationname          [String]  "Organization Name"
+    wmkf_organizationnameonbillcomaccount [String]  "Organization Name on Bill.com Account"
+    wmkf_organizationpublicchartity [Picklist]  "Organization Public Chartity "
+    wmkf_organizationpublicchartityname [Virtual]  ""
+    wmkf_organizationqualified501c3 [Picklist]  "Organization Qualified 501(c)(3)"
+    wmkf_organizationqualified501c3name [Virtual]  ""
+    wmkf_paymentgoingtodifferentorganization [Picklist]  "Payment Going To Different Organization"
+    wmkf_paymentgoingtodifferentorganizationname [Virtual]  ""
+    wmkf_usingpayee                [Boolean]  "Using Payee"
+    wmkf_usingpayeename            [Virtual]  ""
+
+══ B. account — hierarchy/alias disambiguation fields ══
+  akoya_defaultpayee           → [account]   "Default Payee"
+  parentaccountid              → [account]   "Parent Organization"
+  preferredsystemuserid        → [systemuser]   "Preferred User"
+  wmkf_organizationleader      → [contact]   "Organization Leader"
+
+  keyword-scan account attrs, 29:
+    akoya_aka                      [String]  "AKA"
+    akoya_applicantid              [Integer]  "Applicant ID"
+    akoya_dc_defaultpayee          [Integer]  "dc_defaultpayee"
+    akoya_defaultpayee             [Lookup]  "Default Payee"
+    akoya_defaultpayeename         [String]  ""
+    akoya_defaultpayeeyominame     [String]  ""
+    akoya_grantee                  [Boolean]  "Grantee"
+    akoya_granteename              [Virtual]  ""
+    akoya_guidestarorganizationname [String]  "Pub 78 Organization Name"
+    akoya_institutiontype          [Picklist]  "Institution Type"
+    akoya_institutiontypename      [Virtual]  ""
+    akoya_intacctpayeeid           [String]  "Intacct Payee ID"
+    akoya_qbopayeeid               [String]  "QBO Payee Id"
+    ftpsiteurl                     [String]  "FTP Site"
+    name                           [String]  "Organizations Name"
+    parentaccountid                [Lookup]  "Parent Organization"
+    parentaccountidname            [String]  ""
+    parentaccountidyominame        [String]  ""
+    preferredsystemuserid          [Lookup]  "Preferred User"
+    preferredsystemuseridname      [String]  ""
+    preferredsystemuseridyominame  [String]  ""
+    wmkf_institutiontype           [Picklist]  "Institution Type"
+    wmkf_institutiontypename       [Virtual]  ""
+    wmkf_legalname                 [String]  "Legal Name"
+    wmkf_organizationisgovernmententity [Picklist]  "Organization is Government Entity"
+    wmkf_organizationisgovernmententityname [Virtual]  ""
+    wmkf_organizationleader        [Lookup]  "Organization Leader"
+    wmkf_organizationleadername    [String]  ""
+    wmkf_organizationleaderyominame [String]  ""
+
+══ C. #1003083 deep-dive — applicant vs payee accounts, disambiguation fields ══
+  #1003083 "Orbital Angular Momentum Entanglement: A Measurable Resource for Quantum Simulation in Solids"
+    applicant: University Of Georgia  (e975877a-998f-ee11-8179-000d3a341e8f)
+    payee:     University of Georgia Research Foundation, Inc.  (ae6807bb-f007-ef11-9f89-6045bd06623c)  tgt=account
+  APPLICANT account "University Of Georgia"
+     akoya_aka: University of Georgia
+     parentaccount: —  (—)
+     location: Athens, GA
+  PAYEE account "University of Georgia Research Foundation, Inc."
+     akoya_aka: University of Georgia
+     parentaccount: —  (—)
+     location: Athens, GA
+
+══ D. native applicant≠payee divergence ══
+  native rows with payee: 2626
+  sample n=400: payee≠applicant in 67 (17%)  [top-400 sample, indicative]
+
+Done (read-only org-disambiguation probe).
