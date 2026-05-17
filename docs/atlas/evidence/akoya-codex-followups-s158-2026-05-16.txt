@@ -1,0 +1,22 @@
+S158 Codex follow-ups — 2026-05-17T03:25:17.813Z (read-only)
+
+══ (a) Verify #993347 — claimed real original of test #1002807 ══
+  #993347: status=Closed  grant=$1,000,000  paid=$1,000,000  created=2023-12-03T18:19:44Z
+         applicant=University of Texas at Austin  program=Science and Engineering Research  type=Program
+         title="Programable-polymer enabled molecular encoding, memory, and neuromorph"
+  #1002807: status=Closed  grant=$1,000,000  paid=$0  created=2026-04-14T20:10:10Z
+         applicant=W. M. Keck Foundation  program=Science and Engineering Research  type=Program
+         title="Programable-polymer enabled molecular encoding, memory, and neuromorph"
+  INTERPRETATION: #993347 should be a REAL request — applicant ≠ "W. M. Keck Foundation",
+  plausible award — making #1002807 (Foundation-applicant, $1M, "molecular encoding") a credible clone-for-test.
+
+══ (b) Medical Research roll-up — test-record pollution check ══
+  Foundation-applicant account ids: 2
+  wmkf_type=Program rows tagged Medical Research      : 3835, $493,002,006 grant
+  ├─ with applicant = "W. M. Keck Foundation" (test predicate): 2, $0
+  └─ test-excluded Program total                      : 3833, $493,002,006
+  ⚠️ test-predicate rows present in the headline Program figure:
+     #1000211  grant=$0  created=2024-06-05T21:29:01Z
+     #1001795  grant=$0  created=2025-07-09T17:03:36Z
+
+Done (read-only — S158 Codex follow-ups).
