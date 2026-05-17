@@ -78,8 +78,12 @@ async function byProgram(token, extra) {
 
   // content sample for SoCal-area programs
   for (const prog of [...SOCAL]) {
+    // encodeURIComponent the $filter — program names contain '&' (e.g.
+    // "Civic & Community") which otherwise splits the URL query string (the
+    // S159 400 bug Codex flagged); other params are literal-safe.
+    const filter = `createdon gt 2023-12-03T23:59:59Z and akoya_programid/akoya_program eq '${prog.replace(/'/g, "''")}' and _wmkf_projectleader_value ne null`;
     const fx = `/akoya_requests?$top=10&$select=akoya_requestnum,akoya_title,_wmkf_projectleader_value,_akoya_primarycontactid_value,akoya_decisiondate` +
-      `&$filter=createdon gt 2023-12-03T23:59:59Z and akoya_programid/akoya_program eq '${prog.replace(/'/g, "''")}' and _wmkf_projectleader_value ne null&$orderby=akoya_decisiondate desc`;
+      `&$filter=${encodeURIComponent(filter)}&$orderby=akoya_decisiondate desc`;
     const s = await get(token, fx);
     console.log(`\n══ ${prog} (SoCal-area) — native rows WITH projectleader ══`);
     if (!s.ok) { console.log(`  [${s.status} ${JSON.stringify(s.body).slice(0,150)}]`); continue; }

@@ -25,7 +25,24 @@ Probe date: 2026-05-17 (dated evidence)
   (3 program(s) with n<10 native — suppressed)
 
 ══ Civic & Community (SoCal-area) — native rows WITH projectleader ══
-  [400 {"error":{"code":"0x80060888","message":"The query parameter [REDACTED] is not supported"}}]
+  #1000799 pl=Leica Noda · contact=Connor Noda
+     "Test record"
+  #1000217 pl=Ann Morse · contact=Kim Amadore
+     "The Friendship Campus"
+  #1000221 pl=Sara Jones · contact=Bryan McQueeney
+     "Ride On Covered Arena"
+  #997288 pl=Jessye Brick · contact=LaTissia Mitchell
+     "Maximizing Efficiency Through Legal Server Integra"
+  #997294 pl=Barbara K. Ige · contact=Scott Minkow
+     "Lifecraft College and Career Pathways Program"
+  #997295 pl=Audrey Casillas · contact=Jenni Kuida
+     "Tax Credit Expansion Pilot Program"
+  #1002244 pl=Amy Cortina Mathias · contact=Shelby McNabb
+     "From Certificates to Careers: Advancing Equitable "
+  #1001088 pl=Elizabeth Wright · contact=Jason Bowman
+     "Fountain House’s Hollywood Clubhouse Vans and Star"
+  #1002650 pl=Cecilia Ngo · contact=Cynthia Gellis
+     "Robert K. Ross Center for Hope and Healing: Work &"
 
 ══ Precollegiate Education (SoCal-area) — native rows WITH projectleader ══
   #1000233 pl=Romi Lassally · contact=Chloe Esperiquette
