@@ -156,6 +156,15 @@ export const APP_REGISTRY = [
     categories: ['phase-ii'],
     features: ['PDF + DOCX Input', 'Dynamics Auto-Fill', 'SharePoint Proposal Lookup', 'Goals Assessment', 'Editable Form', 'Word Export'],
   },
+  {
+    key: 'dataverse-bulk-export',
+    name: 'Dataverse Bulk Export',
+    href: '/dataverse-bulk-export',
+    icon: '📤',
+    description: 'Plain-English structured filter builder over akoya_request that emits a generous, trust-bounded, honestly-characterized Excel chunk with a baked-in reproducible Methods sheet — true FetchXML totals (never the /$count 5,000 undercount), forced era/type/amount/program choices, and fail-loud disclosure',
+    categories: ['other'],
+    features: ['Structured Filter Builder', 'True FetchXML Count', 'Forced Fan-Out Choices', 'Era + Disclosure Sentinels', 'Methods/Provenance Sheet', 'Confirm-Gated Run'],
+  },
 ];
 
 /** All app keys for convenience */

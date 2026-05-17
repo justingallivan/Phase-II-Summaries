@@ -1,10 +1,15 @@
 /**
- * Dataverse Power Tools — Track B — Phase 1 headless spine tests.
+ * Dataverse Power Tools — Track B — Phase 1 spine + Phase 2 confirm-token tests.
  *
  * The Phase-1 exit criterion (build plan §10/§11): the deterministic spine is
  * provable against fixture QuerySpecs BEFORE any UI. The committed probes +
  * dated evidence are the ground-truth oracle for the compiler/engine; this
  * suite encodes that oracle. No network, no Dataverse, no Vercel.
+ *
+ * Node env (matches the repo's jose-using tests, e.g. external-token.test.js):
+ * jose ships ESM that the jsdom transform does not parse. No test here needs a DOM.
+ *
+ * @jest-environment node
  */
 
 import { jest } from '@jest/globals';
@@ -19,6 +24,10 @@ import {
   fetchXmlAll, fetchXmlAggregateCount, FetchXmlError, PAGE_SIZE,
 } from '../../lib/services/dataverse-export/fetch-client.js';
 import { buildWorkbook } from '../../lib/services/dataverse-export/workbook.js';
+import {
+  mintResultToken, verifyResultToken,
+} from '../../lib/services/dataverse-export/result-token.js';
+import { SignJWT } from 'jose';
 import { DynamicsService } from '../../lib/services/dynamics-service.js';
 import ExcelJS from 'exceljs';
 
@@ -615,5 +624,65 @@ describe('fetch-client — backoff-hardened FetchXML primitive', () => {
     await expect(fetchXmlAggregateCount('akoya_requests',
       '<fetch aggregate="true"></fetch>', 'cnt'))
       .rejects.toThrow(/50,000 aggregate-count limit/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+describe('result-token — the stateless preview→run confirm gate', () => {
+  beforeAll(() => { process.env.NEXTAUTH_SECRET = 'test-nextauth-secret-at-least-32-chars-long'; });
+
+  const spec = () => ({
+    version: 1, entity: 'akoya_request', filters: [],
+    programRollup: 'optionB', excludeOperational: true,
+    excludeTestRecords: true, columns: { default: true }, eraScope: 'all',
+  });
+
+  test('mint → verify round-trips and binds the exact spec', async () => {
+    const { token, expiresInSec } = await mintResultToken(spec(), { trueTotal: 42 });
+    expect(expiresInSec).toBe(3600);
+    const v = await verifyResultToken(token);
+    expect(v.valid).toBe(true);
+    expect(v.spec).toEqual(spec());
+    expect(v.meta.trueTotal).toBe(42);
+  });
+
+  test('a tampered token ⇒ invalid_signature (cannot run an unforged spec)', async () => {
+    const { token } = await mintResultToken(spec());
+    const tampered = `${token.slice(0, -3)}AAA`;
+    expect((await verifyResultToken(tampered)).reason)
+      .toMatch(/invalid_signature|malformed/);
+  });
+
+  test('absent / empty token ⇒ no_token (the /run gate rejects it 403)', async () => {
+    expect((await verifyResultToken(undefined)).reason).toBe('no_token');
+    expect((await verifyResultToken('')).reason).toBe('no_token');
+  });
+
+  test('a NextAuth-style JWT (no dvx-preview typ) ⇒ wrong_type — a session '
+    + 'token cannot be replayed as a confirm token', async () => {
+    const foreign = await new SignJWT({ sub: 'user', role: 'staff' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime(Math.floor(Date.now() / 1000) + 600)
+      .sign(new TextEncoder().encode(process.env.NEXTAUTH_SECRET));
+    expect((await verifyResultToken(foreign)).reason).toBe('wrong_type');
+  });
+
+  test('an expired token ⇒ expired', async () => {
+    const past = await new SignJWT({ typ: 'dvx-preview', spec: spec(), meta: {} })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt(Math.floor(Date.now() / 1000) - 7200)
+      .setExpirationTime(Math.floor(Date.now() / 1000) - 3600)
+      .sign(new TextEncoder().encode(process.env.NEXTAUTH_SECRET));
+    expect((await verifyResultToken(past)).reason).toBe('expired');
+  });
+
+  test('a token signed with a DIFFERENT secret ⇒ invalid_signature', async () => {
+    const wrong = await new SignJWT({ typ: 'dvx-preview', spec: spec(), meta: {} })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime(Math.floor(Date.now() / 1000) + 600)
+      .sign(new TextEncoder().encode('a-totally-different-secret-32-chars-xx'));
+    expect((await verifyResultToken(wrong)).reason).toBe('invalid_signature');
   });
 });
