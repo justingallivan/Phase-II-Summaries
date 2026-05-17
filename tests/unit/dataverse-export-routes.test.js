@@ -1,0 +1,279 @@
+/**
+ * Dataverse Power Tools — Track B — Phase 2 route-handler integration tests.
+ *
+ * Covers the build-plan §11 route-level contract + the Codex S160 Phase-2
+ * fixes: auth/method gates, preview 422 + the operational-exclusion
+ * fail-loud, the stateless confirm gate (forged/absent → 403 BEFORE any SSE
+ * byte; /run honors the token's spec, never a mismatched body spec),
+ * metadata fail-loud, and the gated download proxy. result-token is REAL
+ * (the gate under test); the heavy deps are mocked.
+ *
+ * @jest-environment node
+ */
+
+// Uses the GLOBAL jest (no @jest/globals import) so babel-plugin-jest-hoist
+// lifts jest.mock above the static imports (repo precedent:
+// execute-prompt-payload-boundary.test.js). Factories may only reference
+// `mock`-prefixed vars (jest static check) — hence the naming.
+const mockTax = {
+  entity: 'akoya_request', enumeratedAt: 'now',
+  programs: [{ id: 'g-mr', name: 'Medical Research' }, { id: 'g-rr', name: 'Research Reviewer' }],
+  types: [{ id: 't-sv', name: 'Site Visit' }, { id: 't-p', name: 'Program' }],
+  fundingCategories: [{ id: 'f-h', name: 'Honorarium' }],
+  statuses: ['Approved', 'Phase I Declined'],
+  requestTypeOptions: [
+    { value: 1, label: 'Office Visit' }, { value: 2, label: 'Site Visit' },
+    { value: 3, label: 'Phone' }, { value: 100000000, label: 'Request' },
+  ],
+};
+const mockRequireAppAccess = jest.fn(async () => ({ profileId: 'p1', session: { user: {} } }));
+const mockFetchLiveTaxonomy = jest.fn(async () => mockTax);
+const mockFetchXmlAll = jest.fn();
+const mockFetchXmlAggregateCount = jest.fn(async () => 3);
+const mockPut = jest.fn(async () => ({ pathname: 'dataverse-export/x-abc.xlsx' }));
+const mockBlobGet = jest.fn();
+const mockBuildWorkbook = jest.fn(async () => Buffer.from('XLSXBYTES'));
+
+jest.mock('../../lib/utils/auth', () => ({
+  __esModule: true, requireAppAccess: (...a) => mockRequireAppAccess(...a),
+}));
+jest.mock('../../lib/services/dataverse-export/live-taxonomy', () => ({
+  __esModule: true,
+  fetchLiveTaxonomy: (...a) => mockFetchLiveTaxonomy(...a),
+  buildResolver: jest.requireActual('../../lib/services/dataverse-export/live-taxonomy.js')
+    .buildResolver,
+}));
+jest.mock('../../lib/services/dataverse-export/fetch-client', () => ({
+  __esModule: true,
+  fetchXmlAll: (...a) => mockFetchXmlAll(...a),
+  fetchXmlAggregateCount: (...a) => mockFetchXmlAggregateCount(...a),
+  FetchXmlError: class FetchXmlError extends Error {
+    constructor(m, o = {}) { super(m); this.name = 'FetchXmlError'; Object.assign(this, o); }
+  },
+}));
+jest.mock('@vercel/blob', () => ({
+  __esModule: true, put: (...a) => mockPut(...a), get: (...a) => mockBlobGet(...a),
+}));
+jest.mock('../../lib/services/dataverse-export/workbook', () => ({
+  __esModule: true,
+  buildWorkbook: (...a) => mockBuildWorkbook(...a),
+  WorkbookError: class WorkbookError extends Error {},
+}));
+
+import previewHandler from '../../pages/api/dataverse-export/preview';
+import runHandler from '../../pages/api/dataverse-export/run';
+import metadataHandler from '../../pages/api/dataverse-export/metadata';
+import downloadHandler from '../../pages/api/dataverse-export/download';
+import {
+  mintResultToken, mintDownloadToken,
+} from '../../lib/services/dataverse-export/result-token.js';
+
+const requireAppAccess = mockRequireAppAccess;
+const fetchLiveTaxonomy = mockFetchLiveTaxonomy;
+const fetchXmlAll = mockFetchXmlAll;
+const fetchXmlAggregateCount = mockFetchXmlAggregateCount;
+const put = mockPut;
+const buildWorkbook = mockBuildWorkbook;
+const blobGet = mockBlobGet;
+
+function mockRes() {
+  return {
+    statusCode: 200, body: null, headers: {}, chunks: [], ended: false,
+    status(c) { this.statusCode = c; return this; },
+    json(o) { this.body = o; this.ended = true; return this; },
+    setHeader(k, v) { this.headers[k] = v; },
+    write(s) { this.chunks.push(s); },
+    end() { this.ended = true; },
+  };
+}
+const sseEvents = (res) => res.chunks
+  .map(c => { try { return JSON.parse(c.replace(/^data: /, '').trim()); } catch { return null; } })
+  .filter(Boolean);
+
+const baseSpec = (over = {}) => ({
+  version: 1, entity: 'akoya_request', filters: [],
+  programRollup: 'optionB', excludeOperational: true, excludeTestRecords: true,
+  columns: { default: true }, eraScope: 'all', ...over,
+});
+
+beforeAll(() => { process.env.NEXTAUTH_SECRET = 'test-nextauth-secret-at-least-32-chars-long'; });
+beforeEach(() => {
+  jest.clearAllMocks();
+  requireAppAccess.mockResolvedValue({ profileId: 'p1', session: { user: {} } });
+  fetchLiveTaxonomy.mockResolvedValue(mockTax);
+  fetchXmlAggregateCount.mockResolvedValue(3);
+  fetchXmlAll.mockResolvedValue({ rows: [], fetched: 0, pages: 1, capped: false, truncatedByBudget: false });
+  buildWorkbook.mockResolvedValue(Buffer.from('XLSXBYTES'));
+  put.mockResolvedValue({ pathname: 'dataverse-export/x-abc.xlsx' });
+});
+
+describe('auth + method gates (all routes)', () => {
+  test('requireAppAccess denial short-circuits every route', async () => {
+    requireAppAccess.mockResolvedValue(null); // it already sent 401/403
+    for (const h of [previewHandler, runHandler, metadataHandler, downloadHandler]) {
+      const res = mockRes();
+      await h({ method: 'POST', body: {} }, res);
+      expect(res.ended).toBe(false); // handler returned without writing
+    }
+  });
+
+  test('wrong method → 405', async () => {
+    const res = mockRes();
+    await previewHandler({ method: 'GET', body: {} }, res);
+    expect(res.statusCode).toBe(405);
+  });
+});
+
+describe('preview', () => {
+  test('invalid spec → 422 + violations (no taxonomy fetch needed)', async () => {
+    const res = mockRes();
+    await previewHandler({ method: 'POST', body: { querySpec: { version: 99 } } }, res);
+    expect(res.statusCode).toBe(422);
+    expect(res.body.error).toBe('INVALID_QUERYSPEC');
+    expect(fetchLiveTaxonomy).not.toHaveBeenCalled();
+  });
+
+  test('excludeOperational + unresolvable labels → 422 fail-loud, NO token '
+    + '(Codex S160 P1 #6)', async () => {
+    fetchLiveTaxonomy.mockResolvedValue({
+      ...mockTax, programs: [], types: [], fundingCategories: [], requestTypeOptions: [],
+    });
+    const res = mockRes();
+    await previewHandler({ method: 'POST', body: { querySpec: baseSpec() } }, res);
+    expect(res.statusCode).toBe(422);
+    expect(res.body.error).toBe('OPERATIONAL_EXCLUSION_UNRESOLVED');
+    expect(res.body.resultToken).toBeUndefined();
+  });
+
+  test('unknown filter literal → taxonomyWarnings, NOT a 422 (§2.1 point 4)', async () => {
+    const res = mockRes();
+    await previewHandler({ method: 'POST', body: {
+      querySpec: baseSpec({ filters: [{ axis: 'status', op: 'eq', value: 'No Such Status' }] }),
+    } }, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.taxonomyWarnings.some(w => /No Such Status/.test(w.message))).toBe(true);
+    expect(res.body.resultToken).toBeTruthy();
+  });
+
+  test('era split does not false-alarm for an era-scoped spec (Codex P2 #8)', async () => {
+    const res = mockRes();
+    await previewHandler({ method: 'POST', body: { querySpec: baseSpec({ eraScope: 'native' }) } }, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.eraSplit).toEqual({ scope: 'native', count: 3, otherEraOutOfScope: true });
+  });
+});
+
+describe('run — the stateless confirm gate', () => {
+  test('absent token → 403 BEFORE any SSE byte', async () => {
+    const res = mockRes();
+    await runHandler({ method: 'POST', body: {} }, res);
+    expect(res.statusCode).toBe(403);
+    expect(res.body.error).toBe('CONFIRM_TOKEN_INVALID');
+    expect(res.headers['Content-Type']).toBeUndefined(); // no SSE started
+    expect(res.chunks).toHaveLength(0);
+  });
+
+  test('forged token → 403, no SSE', async () => {
+    const res = mockRes();
+    await runHandler({ method: 'POST', body: { resultToken: 'not.a.jwt' } }, res);
+    expect(res.statusCode).toBe(403);
+    expect(res.chunks).toHaveLength(0);
+  });
+
+  test('honors the TOKEN spec, never a mismatched body spec (Codex P2 #11)', async () => {
+    const tokenSpec = baseSpec({
+      filters: [{ axis: 'program', op: 'eq', value: 'TOKEN-PROGRAM-GUID' }],
+    });
+    const { token } = await mintResultToken(tokenSpec, { trueTotal: 3 });
+    const bodySpec = baseSpec({
+      filters: [{ axis: 'program', op: 'eq', value: 'ATTACKER-BODY-GUID' }],
+    });
+    const res = mockRes();
+    await runHandler({ method: 'POST', body: { resultToken: token, querySpec: bodySpec } }, res);
+
+    expect(fetchXmlAll).toHaveBeenCalled();
+    const compiledFetchXml = fetchXmlAll.mock.calls[0][1];
+    expect(compiledFetchXml).toContain('TOKEN-PROGRAM-GUID');
+    expect(compiledFetchXml).not.toContain('ATTACKER-BODY-GUID');
+    const ev = sseEvents(res);
+    expect(ev.find(e => e.event === 'ready')).toBeTruthy();
+  });
+
+  test('success → PRIVATE blob + gated proxy downloadUrl + expiresInSec', async () => {
+    const { token } = await mintResultToken(baseSpec(), { trueTotal: 3 });
+    const res = mockRes();
+    await runHandler({ method: 'POST', body: { resultToken: token } }, res);
+    expect(put).toHaveBeenCalledWith(
+      expect.stringContaining('dataverse-export/'),
+      expect.any(Buffer),
+      expect.objectContaining({ access: 'private',
+        contentDisposition: expect.stringContaining('attachment') }),
+    );
+    const ready = sseEvents(res).find(e => e.event === 'ready');
+    expect(ready.downloadUrl).toMatch(/^\/api\/dataverse-export\/download\?t=/);
+    expect(ready.expiresInSec).toBeGreaterThan(0);
+  });
+
+  test('terminal paging error → error frame, NO blob written', async () => {
+    fetchXmlAll.mockRejectedValue(Object.assign(new Error('page 3 failed'),
+      { name: 'FetchXmlError', stage: 'paging', retryable: false }));
+    const { token } = await mintResultToken(baseSpec(), { trueTotal: 9 });
+    const res = mockRes();
+    await runHandler({ method: 'POST', body: { resultToken: token } }, res);
+    const ev = sseEvents(res);
+    expect(ev.find(e => e.event === 'error')).toBeTruthy();
+    expect(ev.find(e => e.event === 'ready')).toBeFalsy();
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  test('truncated run still writes the blob + labels it', async () => {
+    fetchXmlAll.mockResolvedValue({
+      rows: [], fetched: 50000, pages: 50, capped: true, truncatedByBudget: false,
+    });
+    const { token } = await mintResultToken(baseSpec(), { trueTotal: 99999 });
+    const res = mockRes();
+    await runHandler({ method: 'POST', body: { resultToken: token } }, res);
+    const ev = sseEvents(res);
+    expect(ev.find(e => e.event === 'truncated')).toBeTruthy();
+    const ready = ev.find(e => e.event === 'ready');
+    expect(ready.truncated).toBe(true);
+    expect(put).toHaveBeenCalled();
+  });
+});
+
+describe('metadata + download', () => {
+  test('metadata fail-loud → 502 (never a stale/partial list)', async () => {
+    fetchLiveTaxonomy.mockRejectedValue(new Error('dataverse down'));
+    const res = mockRes();
+    await metadataHandler({ method: 'GET' }, res);
+    expect(res.statusCode).toBe(502);
+    expect(res.body.error).toBe('TAXONOMY_FETCH_FAILED');
+  });
+
+  test('download: invalid token → 403; valid token → streams private blob', async () => {
+    const bad = mockRes();
+    await downloadHandler({ method: 'GET', query: { t: 'nope' } }, bad);
+    expect(bad.statusCode).toBe(403);
+
+    const { Writable, Readable } = require('stream');
+    const { token } = await mintDownloadToken('dataverse-export/x-abc.xlsx');
+    blobGet.mockResolvedValue({
+      stream: Readable.toWeb(Readable.from([Buffer.from('XLSX')])),
+      blob: { contentType: 'application/vnd...sheet', size: 4,
+        contentDisposition: 'attachment; filename="x.xlsx"' },
+    });
+    // a real Writable so Readable.fromWeb(stream).pipe(res) works; headers
+    // are set synchronously before the pipe, so assert right after the call.
+    const headers = {};
+    const ok = new Writable({ write(_c, _e, cb) { cb(); } });
+    ok.headers = headers;
+    ok.statusCode = 200;
+    ok.status = (c) => { ok.statusCode = c; return ok; };
+    ok.json = (o) => { ok.body = o; return ok; };
+    ok.setHeader = (k, v) => { headers[k] = v; };
+    await downloadHandler({ method: 'GET', query: { t: token } }, ok);
+    expect(blobGet).toHaveBeenCalledWith('dataverse-export/x-abc.xlsx',
+      expect.objectContaining({ access: 'private' }));
+    expect(headers['Content-Disposition']).toMatch(/attachment/);
+  });
+});

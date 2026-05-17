@@ -2,31 +2,61 @@
  * Dataverse Power Tools — Track B — POST /api/dataverse-export/preview
  *
  * The human-confirm gate (build plan §5). Validates the QuerySpec (§2.1 →
- * 422 + violation list), compiles it, computes the TRUE total via FetchXML
- * aggregate count (NEVER OData /$count), and an era split (migrated/native
- * via the createdon provenance partition — three aggregate counts, NO data
- * rows). Returns the compiled FetchXML for inspection, the plain-English
- * appliedRules, any compile-time fail-loud (requiresResolver), an estimate,
- * and a signed `resultToken` that BINDS this exact validated spec so /run
- * cannot execute something the user did not see previewed.
+ * 422 + violations), resolves operational-exclusion labels against the LIVE
+ * taxonomy, compiles, computes the TRUE total via FetchXML aggregate (NEVER
+ * OData /$count) + an era split, surfaces unknown-filter-literal warnings
+ * (§2.1 point 4), and mints a signed `resultToken` binding the exact
+ * validated spec so /run cannot execute something unpreviewed.
  *
- * Per-row disclosure (the unclassified set, exact program-roll-up $) is
- * DISCOVERED from returned values and is finalized in the artifact's
- * Methods sheet at /run — it is not hidden, it is sequenced: the preview
- * shows everything computable before any rows are read (true total, era
- * composition, applied rules, fail-loud warnings).
+ * FAIL-LOUD: if excludeOperational is set but the operational labels cannot
+ * be resolved from the live taxonomy, the preview REFUSES (422) and mints no
+ * token — never a run that silently lets operational rows through (§3b/§9;
+ * Codex S160 P1).
  */
 
 import { requireAppAccess } from '../../../lib/utils/auth';
 import { compile, validateQuerySpec } from '../../../lib/services/dataverse-export/compiler';
-import { fetchXmlAggregateCount, FetchXmlError } from '../../../lib/services/dataverse-export/fetch-client';
+import { fetchXmlAggregateCount } from '../../../lib/services/dataverse-export/fetch-client';
 import { mintResultToken } from '../../../lib/services/dataverse-export/result-token';
+import { fetchLiveTaxonomy, buildResolver } from '../../../lib/services/dataverse-export/live-taxonomy';
 
-const ENTITY_SET = 'akoya_requests'; // akoya_request → akoya_requests (v1 fixed)
+const ENTITY_SET = 'akoya_requests';
 
 export const config = {
   api: { bodyParser: { sizeLimit: '256kb' }, externalResolver: true },
 };
+
+// §2.1 point 4 — a filter literal NOT in the live taxonomy is NOT a 422 and
+// NOT the post-query UNCLASSIFIED sentinel; it is a PREVIEW warning so the
+// user sees "this will match 0 rows" before confirming.
+function taxonomyWarnings(spec, tax) {
+  const sets = {
+    program: new Set(tax.programs.map(p => p.id)),
+    fundingCategory: new Set(tax.fundingCategories.map(g => g.id)),
+    type: new Set(tax.types.map(t => t.id)),
+    status: new Set(tax.statuses),
+    requestType: new Set((tax.requestTypeOptions || []).map(o => String(o.value))),
+  };
+  const warnings = [];
+  for (const f of spec.filters || []) {
+    const set = sets[f.axis];
+    if (!set) continue;
+    if (f.op !== 'eq' && f.op !== 'in') continue; // only literal-match ops
+    const vals = Array.isArray(f.value) ? f.value : (f.value === undefined ? [] : [f.value]);
+    for (const v of vals) {
+      const probe = f.axis === 'requestType' ? String(v) : v;
+      if (!set.has(probe)) {
+        warnings.push({
+          axis: f.axis,
+          value: v,
+          message: `filter value ${JSON.stringify(v)} on ${f.axis} is not in `
+            + `the current taxonomy — will match 0 rows unless newly added`,
+        });
+      }
+    }
+  }
+  return warnings;
+}
 
 export default async function handler(req, res) {
   const access = await requireAppAccess(req, res, 'dataverse-bulk-export');
@@ -45,34 +75,62 @@ export default async function handler(req, res) {
   }
 
   try {
-    const compiled = compile(spec);
+    // Live taxonomy → operational resolver + unknown-literal warnings.
+    const tax = await fetchLiveTaxonomy();
+    const resolver = buildResolver(tax);
 
-    // TRUE total (FetchXML aggregate) + era split (createdon PROVENANCE
-    // partition via the compiler's eraScope — never a business-period
-    // filter). Three aggregate counts; zero data rows.
-    const [trueTotal, migrated, native] = await Promise.all([
-      fetchXmlAggregateCount(ENTITY_SET, compiled.countFetchXml, compiled.countAlias),
-      fetchXmlAggregateCount(ENTITY_SET,
-        compile({ ...spec, eraScope: 'migrated' }).countFetchXml, compiled.countAlias),
-      fetchXmlAggregateCount(ENTITY_SET,
-        compile({ ...spec, eraScope: 'native' }).countFetchXml, compiled.countAlias),
-    ]);
+    const compiled = compile(spec, { resolver });
 
-    const estBytesPerRow = 1500; // rough; the artifact's real ceiling is 40 MB
-    const estBytes = trueTotal * estBytesPerRow;
+    // FAIL-LOUD: excludeOperational requested but a label did not resolve ⇒
+    // refuse (never mint a token that /run would execute with operational
+    // rows silently included). §3b/§9.
+    if (spec.excludeOperational && compiled.requiresResolver) {
+      return res.status(422).json({
+        error: 'OPERATIONAL_EXCLUSION_UNRESOLVED',
+        message: 'excludeOperational=true but one or more operational labels '
+          + '(Office/Site Visit, Phone, Research Reviewer, Honorarium) did not '
+          + 'resolve against the live taxonomy. Refusing to preview a spec '
+          + 'whose run would silently include operational rows.',
+        appliedRules: compiled.appliedRules,
+      });
+    }
+
+    const warnings = taxonomyWarnings(spec, tax);
+
+    // TRUE total (FetchXML aggregate, never /$count). Era split only when
+    // the spec is era-agnostic — for an already era-scoped spec the other
+    // era is out of scope and migrated+native==total would false-alarm
+    // (Codex S160 P2).
+    const eraScoped = spec.eraScope && spec.eraScope !== 'all';
+    const trueTotal = await fetchXmlAggregateCount(
+      ENTITY_SET, compiled.countFetchXml, compiled.countAlias);
+
+    let eraSplit;
+    if (eraScoped) {
+      eraSplit = { scope: spec.eraScope, count: trueTotal, otherEraOutOfScope: true };
+    } else {
+      const [migrated, native] = await Promise.all([
+        fetchXmlAggregateCount(ENTITY_SET,
+          compile({ ...spec, eraScope: 'migrated' }, { resolver }).countFetchXml,
+          compiled.countAlias),
+        fetchXmlAggregateCount(ENTITY_SET,
+          compile({ ...spec, eraScope: 'native' }, { resolver }).countFetchXml,
+          compiled.countAlias),
+      ]);
+      eraSplit = { migrated, native, reconciles: migrated + native === trueTotal };
+    }
 
     const { token, expiresInSec } = await mintResultToken(spec, { trueTotal });
 
     return res.status(200).json({
       trueTotal,
-      eraSplit: { migrated, native, reconciles: migrated + native === trueTotal },
+      eraSplit,
       compiledFetchXml: compiled.fetchXml,
       countFetchXml: compiled.countFetchXml,
       appliedRules: compiled.appliedRules,
-      requiresResolver: compiled.requiresResolver,
+      taxonomyWarnings: warnings,
       estimate: {
         rows: trueTotal,
-        approxBytes: estBytes,
         note: trueTotal > 50000
           ? 'Exceeds the 50,000-row hard cap — the run will be truncated '
             + '(loud). Narrow by program / year / status / institution.'
@@ -83,23 +141,20 @@ export default async function handler(req, res) {
         + '(UNCLASSIFIED set, exact Option-B program roll-up $, decline '
         + 'trifurcation, institution resolution) is discovered from returned '
         + 'values and baked into the artifact Methods sheet at /run — '
-        + 'sequenced, never hidden.'
-        + (compiled.requiresResolver
-          ? ' ⚠ Operational-exclusion clauses are DEFERRED (live-taxonomy '
-            + 'resolver not wired in this build) — see appliedRules.'
-          : ''),
+        + 'sequenced, never hidden.',
       resultToken: token,
       resultTokenExpiresInSec: expiresInSec,
     });
   } catch (err) {
-    if (err && err.status === 422) {
-      return res.status(422).json(err.body);
-    }
-    const isFetch = err instanceof FetchXmlError;
+    // Sanitized client payload; raw error to the server log only (Codex
+    // S160 P2 — lower-layer errors can carry a truncated Dataverse body).
+    const code = err && err.status === 422 ? 'INVALID_QUERYSPEC'
+      : err && err.name === 'FetchXmlError' ? 'TRUE_COUNT_FAILED'
+        : 'PREVIEW_FAILED';
     console.error('[dataverse-export/preview] failed:', err);
-    return res.status(isFetch ? 502 : 500).json({
-      error: isFetch ? 'TRUE_COUNT_FAILED' : 'PREVIEW_FAILED',
-      detail: String(err.message || err),
+    if (code === 'INVALID_QUERYSPEC') return res.status(422).json(err.body);
+    return res.status(code === 'TRUE_COUNT_FAILED' ? 502 : 500).json({
+      error: code,
       message: 'Refusing to show a guessed total. Retry; if the result '
         + 'exceeds the 50,000 aggregate-count limit, narrow the filter.',
     });
