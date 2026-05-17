@@ -1,6 +1,6 @@
 # Dataverse Power Tools — Track B (Bulk Export) Build Plan
 
-**Status:** Build-plan-ready (S159). Authored against the converged design in `docs/DATAVERSE_POWER_TOOLS_DESIGN.md` — that doc's **"Residuals — AUTHORITATIVE LIST"** owns scoping/status; this doc owns *engineering*. Do not restate status divergently here; where this plan needs a semantic determination it **points to** the design doc, it does not re-derive it.
+**Status:** Build-plan v2 (S159, post Codex cold-review — all P0/P1 folded; v1-core engineering decisions **resolved in this revision**, not deferred). Authored against the converged design in `docs/DATAVERSE_POWER_TOOLS_DESIGN.md` — that doc's **"Residuals — AUTHORITATIVE LIST"** owns scoping/status; this doc owns *engineering*. Do not restate status divergently here; where this plan needs a semantic determination it **binds to** the design doc by reference and names the must-not-drop specifics, it does not re-derive or restate divergently.
 
 **Prerequisite gates (all met S159):** v1-core data/semantic gates closed — default column contract (user-confirmed + Codex-audited), per-program decline segmentation (probe-resolved), era boundary / decided-state / program-type axes / operational exclusions / test-record predicate / institution-disambiguation design input. Open items are **scoped out of v1-core**: the 121-view preset library (Phase 3 guided layer), 4 embedded-nested RDL de-nests, the orthogonal Puzzle 2c doc-rationale dimension, Track A entirely.
 
@@ -49,7 +49,8 @@ The invariant that keeps this from regressing into "Explorer 2": **a structured 
             Excel artifact: Data sheet (+ per-row sentinels)
                           + Methods/Provenance sheet (baked-in honesty)
                                       ▼
-                    SSE progress → file_ready (base64)
+        streamed Content-Disposition: attachment (the file)
+        SSE channel carries PROGRESS ONLY (no base64 payload)
 ```
 
 **`QuerySpec`** (the seam — versioned JSON):
@@ -69,6 +70,22 @@ The invariant that keeps this from regressing into "Explorer 2": **a structured 
 ```
 Every fan-out (which budget, which date-basis, which program axis) is an explicit field in the spec — there is no "smart" default that hides a choice. The builder *forces* the choice; the compiler *fails closed* on an ambiguous/absent one.
 
+### 2.1 QuerySpec formal contract (validated server-side before compile)
+
+**Closed axis set** (a filter `axis` outside this set ⇒ reject): `program` (`akoya_programid`, GUID-valued), `fundingCategory` (`wmkf_grantprogram`, GUID-valued — the separate model-(b) axis), `dateBasis` (`akoya_decisiondate` only; `createdon`/business-period is rejected), `amount` (requires `which` ∈ {`awarded`,`requested`,`total`,`recommended`,`invited`}), `status` (`akoya_requeststatus`, validated against the live taxonomy), `type` (`wmkf_type`), `institution` (applicant/payee account identity or AKA), `requestType` (`wmkf_request_type`/`akoya_requesttype`).
+
+**Operators by axis-kind:** GUID/optionset → `eq`,`in`,`notnull`,`null`; money → `eq`,`gt`,`gte`,`lt`,`lte`,`between`; date → `between`,`onorafter`,`onorbefore`; string/identity → `eq`,`contains`,`in`. Any other (axis, op) pair ⇒ reject.
+
+**Validation matrix (preview & run both run it; identical):** (1) `version` known; (2) every `filter.axis` in the closed set; (3) (axis, op) legal; (4) GUID/optionset values exist in the **live** taxonomy (Living-taxonomy: fetched at validate time, not hardcoded) — an unknown value is *not* a reject, it compiles to the fail-loud `UNCLASSIFIED` path (§9); (5) `dateBasis.field` ≠ `createdon` (hard reject — `createdon` is provenance, never a history filter); (6) `amount.which` present when `axis=amount`; (7) `programRollup` ∈ {`optionB`}; (8) booleans (`excludeOperational`,`excludeTestRecords`,`columns.default`) present (no implicit default that hides a choice). `eraScope` ∈ {`all`,`migrated`,`native`} and is a **provenance** filter only.
+
+**Stable error contract** (HTTP 422, never a 500, never a silent coerce):
+```jsonc
+{ "error": "INVALID_QUERYSPEC",
+  "violations": [ { "code": "AXIS_UNKNOWN|OP_ILLEGAL|CREATEDON_AS_DATE|AMOUNT_WHICH_MISSING|VERSION_UNKNOWN|...",
+                    "path": "filters[2].op", "detail": "human-readable" } ] }
+```
+The builder cannot emit an invalid spec by construction; the contract exists because the spec is the public seam (Phase-2 AI will emit it) and a hand-rolled/AI spec must fail closed and legibly, never partially execute.
+
 ---
 
 ## 3. The deterministic core (`lib/services/dataverse-export/`)
@@ -84,6 +101,15 @@ The codebase has **no FetchXML support**: `dynamics-service.js::queryAllRecords`
 - **Backoff-hardened (Codex v1 requirement):** 429 / `Retry-After` / 5xx → exponential backoff + jitter, capped retries; the broad query the tool exists to serve must *succeed*, not throw on first blip. A page that ultimately fails after retries → loud, actionable error (never a silent partial).
 - Reuses `dynamics-service.js` only for the OAuth token acquisition + `fetchWithTimeout` abort wiring; the query path is independent.
 
+**Concrete v1 limits (fixed here, not "open"):**
+- FetchXML page size = **1,000** (`Prefer: odata.maxpagesize=1000` — FetchXML supports up to 5,000/page; 1,000 balances round-trips vs per-page latency/memory; one measured timing run during Phase 1 may raise it, but 1,000 is the committed default, not a TBD).
+- `hardCapRows` default = **50,000** (parameterized; replaces the arbitrary 5,000). Beyond it ⇒ `capped:true` + loud-truncation UX, never silent.
+- `hardBudgetMs` = **240,000** (240 s, under Vercel's 300 s ceiling with headroom for compile + XLSX write + stream start). Budget-exceed ⇒ stop paging, return `truncatedByBudget:true` with rows-so-far + the loud-truncation UX.
+- In-memory ceiling: rows buffered; **abort with a loud actionable error at 200 MB resident or 250k rows**, whichever first (a "generous chunk" is hundreds–low-thousands; exceeding this means the filter is too broad — tell the user to narrow, do not OOM).
+- XLSX byte ceiling: **40 MB** written-buffer; exceed ⇒ fail loud with "narrow the filter / fewer opt-in columns", not a truncated file. (The Explorer 3 MB base64 guard does not apply — Track B streams, see §5.)
+
+**Partial-page-failure contract:** a page that still fails after the capped backoff retries ⇒ the whole run **fails loud** (`{event:'error', stage:'paging', page:N, retryable:false}`) — never a silently-short file. There is no "best-effort partial export"; a short result that looks complete is the exact plausible-wrong-answer the tool exists to prevent.
+
 This module is testable in isolation against a fixture `QuerySpec` before any UI exists (Phase 1 exit criterion).
 
 ### 3b. QuerySpec → FetchXML compiler (`compiler.js`)
@@ -93,12 +119,12 @@ Pure function `compile(querySpec) → { fetchXml, countFetchXml, appliedRules[] 
 | Invariant | Compiler behavior |
 |---|---|
 | **Era** | `createdon` = creation-*provenance* partition only. Business-history filters compile to `akoya_decisiondate` (fallback `wmkf_meetingdate` when null on Active/awarded), **never `createdon`**. If a spec tries to time-slice on `createdon` → compile error. |
-| **Decided-state** | `akoya_requeststatus` value→class map (Pending\*=in-flight; \*Declined/Ineligible/Denied/Closed/\*Done/Approved=decided-terminal). Never decisiondate-presence. |
+| **Decided-state** | Implements the design-doc `akoya_requeststatus` value→class map **verbatim** (binding reference, design doc AUTHORITATIVE-LIST detail — do not re-derive). Pending\*=in-flight; \*Declined/Ineligible/Denied/Closed/\*Done/Approved=decided-terminal. **Must-not-drop ambiguous-middle resolutions (named so a reimplementation cannot silently lose them):** `Active`=awarded-in-performance (decided, not closed); `Proposal Not Invited`=terminal triage-decline (no award → declined class); `Withdrawn`=terminal no-award, **path-agnostic — the sentinel must NOT attribute a cause/actor**. Never decisiondate-presence (that is an approval stamp). A status absent from the live map ⇒ the §9 `UNCLASSIFIED` path, not a guess. |
 | **Program axis** | `akoya_programid`→`akoya_program` canonical, **keyed by GUID** (duplicate program name exists; 816 legacy nulls). `wmkf_grantprogram` is a *separate* coarse funding/payment axis — offered as a distinct labeled filter, never conflated. Default = `akoya_programid` ∧ `wmkf_type=Program`. |
 | **Program roll-up (Option B)** | Program grant total = `wmkf_type=Program` rows only; `Special Projects`/`Special Grants`/etc. compile as **separate reported lines**, never folded in. Emits a mandatory per-program in/out breakdown (disclosure engine). |
-| **Operational exclusion** | Strip Site/Office Visit/Phone + Research Reviewer on **every** axis; sharpest predicate `wmkf_grantprogram = Honorarium` (≡ `wmkf_type=Individual`). `Miscellaneous` is **real grants** — included. |
+| **Operational exclusion** | Axis-by-axis (binding reference: design-doc AUTHORITATIVE-LIST (ii) detail — not a single predicate): exclude `wmkf_request_type ∈ {Office Visit, Site Visit, Phone}` **and** `wmkf_type = Site Visit` **and** `akoya_program = Research Reviewer` (≡ `wmkf_type = Individual`, the Jan-2026 honorarium cohort). **Sharpest single reviewer-exclusion predicate: `wmkf_grantprogram = Honorarium`.** `wmkf_type = Miscellaneous` is **real grants** — included (52 rows/$3.35M, probe-substantiated). |
 | **Test records** | Default-exclude `applicant account.name = "W. M. Keck Foundation" ∧ native era` (22-row bounded; opt-in to include, with disclosure). |
-| **Amount fan-out** | `which: awarded` → `akoya_grant`; `requested` → `akoya_request`; `total` → `akoya_expenses`; plus `recommended`/`invited`. Money compiles the `*_base` currency pair, never the display string. |
+| **Amount fan-out** | `which: awarded` → `akoya_grant`; `requested` → `akoya_request`; `total` → `akoya_expenses`; `recommended` → `akoya_recommendedamount`; `invited` → `wmkf_invitedamount` (explicit fields, all five — no "plus …"). Money compiles the `*_base` currency pair (+ `LE_*currencyprecision/symbol`), never the display string. Migrated `akoya_request`/`akoya_expenses` are never emitted as a real amount (migration-backfill artifact → §3c B-structural sentinel). |
 
 The compiler returns `appliedRules[]` so the methods sheet can state, in plain English, exactly what was applied.
 
@@ -116,8 +142,8 @@ Post-query, per-row + aggregate. Produces the **baked-in honesty** (design doc �
 Plus the S159-resolved engine rules:
 - **Decline output (per-program-segmented, never pooled):** era-aware field — migrated `akoya_denialreason` (Picklist) / native `wmkf_denialnotes` (Memo); **SoCal-area programs additionally read the third field `wmkf_socalreasonsfordecline2`**; trifurcate declined-nulls into `declined-with-reason` / `declined-triage (no reason expected: Proposal Not Invited / *Ineligible)` / `declined-reason-missing (should exist)`; **`(program-unattributed declines)` is its own fail-loud bucket** (native `akoya_programid`-null, ~9% of native declines) — never silently dropped or mis-assigned; doc-resident rationale (Puzzle 2c) → surface a retrieval **link** only (extraction deferred).
 - **Primary Contact caption (mandatory):** `akoya_primarycontactid` = the institution's WMKF **foundation liaison / grant steward** (President's office for large gifts) — **NOT the PI**; the PI is `wmkf_projectleader` (see below).
-- **PI column (`wmkf_projectleader`, program-conditional):** research-scoped exports → DEFAULT (near-complete ~90–98% native); non-research → `N/A — no PI (non-research process)` sentinel, never blank.
-- **Institution disambiguation — fail-loud clustering, NO structural backstop:** `parentaccountid`/`akoya_defaultpayee` are ~0% (census) — unusable. Rollup clusters on `akoya_aka` (94%) + `wmkf_legalname` (82%) + `akoya_applicantid`/`akoya_payee` identities; `wmkf_usingpayee=true` is a *weak positive* divergence hint only (non-census sample evidence — do not present as precise). Unresolved/ambiguous orgs are surfaced as such; never imply false precision (e.g. "52 grants to UW" when variants are unresolved).
+- **PI column (`wmkf_projectleader`, program-conditional via a PER-PROGRAM annotation — NOT a blanket research/non-research binary):** each program carries a `pi_bearing` annotation in the semantic layer (parallel to the per-program decline rule, same Living-taxonomy discipline). Probe-derived seed (`akoya-projectleader-by-program-2026-05-17.txt`): PI-bearing = Medical Research 98%, Science & Engineering 90%, **Bridge Funding 100%** (a research *mechanism* — proves the crude "Research-program-name only" split is wrong); not-PI-bearing = Civic & Community 3% / Precollegiate 4% / Health Care 2% / discretionary-operational ~0%. Annotated PI-bearing ⇒ DEFAULT PI column; annotated not-PI-bearing ⇒ `N/A — no PI (non-research process)` sentinel, never blank; **program with no `pi_bearing` annotation ⇒ fail-loud `UNCLASSIFIED PROCESS — manual review required`** (§9), never a guessed default. Whole-entity 16/32% mig/nat is a process-pooled fiction — never used.
+- **Institution disambiguation — baked into the artifact in v1 (design hard requirement, lines 149-153; NOT deferrable, NOT "leave it to Excel"):** `parentaccountid`/`akoya_defaultpayee` are ~0% (census) — no structural backstop. v1 **emits a `resolved_institution` column** = a best-effort deterministic cluster key over `akoya_aka` (94%) + `wmkf_legalname` (82%) + the `akoya_applicantid`/`akoya_payee` account identities, **plus a mandatory `institution_resolution` annotation column** ∈ {`resolved`, `ambiguous — N variants unmerged`, `unresolved — no AKA/legal-name`}. `wmkf_usingpayee=true` is a *weak positive* divergence hint only (non-census sample evidence — never presented as precise). The clustering **fails loud, never false-precise**: ambiguous/unresolved rows carry the annotation, the methods sheet states the heuristic + its limits, and the composition line counts unresolved. Raw `akoya_applicantid`/`akoya_payee` + AKA + legal-name columns are *also* emitted (transparency) — but the resolved column + annotation is the v1 deliverable, because institution rollup is exactly what Excel cannot recover. (A learned/validated clustering heuristic is a Phase-2 *enhancement*; the v1 deterministic key + fail-loud annotation is not optional.)
 
 ### 3d. Excel artifact writer (`workbook.js`)
 
@@ -131,7 +157,7 @@ ExcelJS 4.4.0 (already a dependency; mirror the `recordsToExcel` pattern + 3 MB 
 
 The default SET is owned by the design doc's **Artifact 1 table** (do not duplicate the list here — reference it). Build rules:
 
-- **Default columns** = the Artifact-1 SET + S159 adds: `akoya_primarycontactid` (with the liaison caption), `account.address1_city`, `account.address1_stateorprovince`, and `wmkf_projectleader` **program-conditionally** (research → default PI; non-research → `N/A — no PI` sentinel).
+- **Default columns** = the Artifact-1 SET + S159 adds: `akoya_primarycontactid` (with the liaison caption), `account.address1_city`, `account.address1_stateorprovince`, and `wmkf_projectleader` **program-conditionally via the per-program `pi_bearing` annotation** (§3c — PI-bearing program ⇒ default PI; not-PI-bearing ⇒ `N/A — no PI` sentinel; unannotated ⇒ fail-loud).
 - **Opt-in (flagged):** `akoya_payee` ("native-era only ~1% migrated; mostly mirrors applicant in sample, diverges notably e.g. fiscal-sponsor/research-foundation — taxonomy not exhaustive"). Bucket-D fields, opt-in, flagged sparse.
 - **Pruned (never offered):** `akoya_purpose` (2-value boilerplate).
 - Money columns export the `*_base` currency pair. Lookups export the formatted display + the resolved-entity where the engine resolves it.
@@ -145,10 +171,12 @@ All three routes: `requireAppAccess(req, res, 'dataverse-bulk-export')` (per-rou
 | Route | Method | Behavior |
 |---|---|---|
 | `/api/dataverse-export/metadata` | GET | Live taxonomies (program/status/type) for the builder, enumerated from Dataverse **at request time** (Living-taxonomy: never hardcoded). Fail-loud on fetch failure (visible error, not a silent stale list). |
-| `/api/dataverse-export/preview` | POST | `QuerySpec` → compiled FetchXML (returned for inspection) + **true total via FetchXML aggregate count** + composition preview (era split, classification, unclassified set, program roll-up in/out, estimated size/time). **Returns NO data rows.** This is the human-confirm gate. |
-| `/api/dataverse-export/run` | POST | Confirmed `QuerySpec` → backoff-hardened FetchXML paging → Excel (Data + Methods sheets) → **SSE** progress frames + terminal `file_ready` (base64). Hard wall-clock budget; loud truncation. |
+| `/api/dataverse-export/preview` | POST | Validate `QuerySpec` (§2.1; 422 + violation list on failure) → compiled FetchXML (returned for inspection) + **true total via FetchXML aggregate count** + composition preview (era split, classification, unclassified set, program roll-up in/out, estimated size/time + a `resultToken` binding the validated spec). **Returns NO data rows.** The human-confirm gate. |
+| `/api/dataverse-export/run` | POST | Body = the `resultToken` from a prior `/preview` (the run cannot execute a spec the user did not see previewed — the confirm gate is enforced server-side, not just UI). Re-validate → backoff-hardened FetchXML paging → Excel (Data + Methods sheets) → **streamed `Content-Disposition: attachment; filename=...xlsx`** (the file body is the HTTP response, not base64). A **separate SSE progress channel** (`/api/dataverse-export/run/progress?token=`) carries progress/error events only — no payload. Hard 240 s budget; loud truncation. |
 
-SSE convention mirrors Virtual Review Panel: `res.write(\`data: ${JSON.stringify({ event, ...data })}\\n\\n\`)`, headers `text/event-stream` (or VRP's chunked text/plain) / no-cache / keep-alive. Progress events: `{event:'progress', pages, fetched, total}`; terminal `{event:'file_ready', filenameBase64...}` or `{event:'error', message, retryable}`.
+**File delivery (resolved — was an open question, now decided):** the workbook streams as the `/run` response body via `Content-Disposition: attachment` (ExcelJS `workbook.xlsx.write(res)` streaming). **No base64-over-SSE** — the Explorer 3 MB base64 guard is unworkable for a generous chunk and is explicitly *not* the model here. SSE is progress-only.
+
+**SSE convention** (progress channel) mirrors Virtual Review Panel: `res.write(\`data: ${JSON.stringify({ event, ...data })}\\n\\n\`)`, headers `text/event-stream` / no-cache / keep-alive. Events: `{event:'progress', pages, fetched, total}`; `{event:'truncated', reason:'cap'|'budget', total, fetched}`; `{event:'error', stage, message, retryable}`; `{event:'ready'}` (signals the client to GET the attachment). Run-failure HTTP contract: a fatal paging/compile error returns a non-200 JSON `{error, stage, retryable}` from `/run` (no half-written file); a mid-stream failure after headers are sent aborts the stream and the SSE channel emits the terminal `error` event (client discards the partial download — never silently kept).
 
 **API route security matrix:** `npm run check:api-routes` fails on `pages/api/**` additions without a matrix update — adding these 3 routes to `docs/API_ROUTE_SECURITY_MATRIX.md` is part of the implementation PR (catalogue grows 80→83).
 
@@ -165,7 +193,7 @@ SSE convention mirrors Virtual Review Panel: `res.write(\`data: ${JSON.stringify
   - *Which amount* (Awarded / Requested / Total project / Recommended / Invited — no bare "budget").
   - *Which program axis* (`akoya_programid` 24-program taxonomy default ∧ `wmkf_type=Program`; `wmkf_grantprogram` funding-category as a separate labeled filter).
 - **Preview/confirm panel** (renders the `/preview` response): the compiled spec in plain English, the **true total prominently**, the mandatory composition line, the program roll-up in/out line, and any **unclassified / fail-loud warnings** — the user sees the gaps *before* they run.
-- **Run + download** with live SSE progress; **loud truncation** if capped: true total shown prominently + the offered narrowing dimensions ("8,213 match — narrow by program / year / status / institution"), never a quiet footnote.
+- **Run + download**: confirm → open the SSE progress channel → on `ready` trigger the browser download of the streamed attachment. **Loud truncation** if `capped`/`truncated`: true total shown prominently + the offered narrowing dimensions ("8,213 match — narrow by program / year / status / institution"), never a quiet footnote. On `error`: the partial download (if any) is discarded with a visible message — never a silently-short file the user mistakes for complete.
 
 ---
 
@@ -180,7 +208,7 @@ SSE convention mirrors Virtual Review Panel: `res.write(\`data: ${JSON.stringify
 ## 8. Engineering requirements (Codex-mandated v1 — not "later")
 
 1. **Backoff-hardened paging is v1.** The robustness floor is *the big query must succeed*. 429/`Retry-After`/5xx → exponential backoff + jitter + capped retries; ultimate failure → loud actionable error, never a silent partial result. (Today's `queryAllRecords` throws on first non-200 — the exact broad query the tool exists for fails hardest; the new primitive must not.)
-2. **Concrete sync budget + a hard wall-clock ceiling.** Worst case 20 pages × 30 s = 600 s > Vercel's 300 s; rows buffer in memory. Realistic *filtered* slices are hundreds–low-thousands → synchronous is fine for real cases. v1 = hardened-synchronous with a **hard wall-clock budget**; on budget-exceed → return what's fetched + `truncatedByBudget` + the loud-truncation UX, never a hang or a silent cut. Async/background-job model is a **deferred** phase, built only if a genuine need exceeds what hardened-sync safely delivers.
+2. **Concrete sync budget + hard ceilings — fixed in §3a, not "open":** page size **1,000**, `hardBudgetMs` **240 s** (Vercel 300 s − headroom), `hardCapRows` **50,000**, in-memory abort **200 MB / 250k rows**, XLSX **40 MB**. Budget/cap-exceed → return-what's-fetched + `truncated` + loud UX, never a hang or silent cut. One Phase-1 measured timing run against a realistic broad filtered slice may *raise* page size, but the committed defaults stand without it. Async/background-job model is a **deferred** phase, built only if a genuine need exceeds what hardened-sync safely delivers.
 3. **Loud, actionable truncation.** Parameterize the arbitrary 5,000 cap; surface `capped` / true `totalCount` prominently in the UI with narrowing dimensions. (The helper already returns the signals — the defect was the cap + UI not surfacing it.)
 4. **True total via FetchXML aggregate, never OData `/$count`.** A correctness invariant, not a nicety — `/$count` caps at 5,000 and *looks exactly like* the triggering "~5,000 requests."
 
@@ -215,16 +243,25 @@ Enforced in the metadata route + disclosure engine (design doc §"Fail-loud runt
 - **`npm run check:api-routes`** — add the 3 routes to `docs/API_ROUTE_SECURITY_MATRIX.md` in the implementation PR (80→83); the gate fails on `pages/api/**` without it.
 - **`npm run check:atlas` / `:atlas:self-test`** — read-only over already-documented entities (`akoya_request`, `akoya_program`, `account`, `contact`); no new Postgres tables. Confirm green before/after; no Atlas page additions expected (verify, don't assume).
 - **Headless spine test (Phase 1 exit):** a fixture `QuerySpec` → compiled FetchXML snapshot + aggregate-count call + Excel byte-shape, with backoff simulated (injected 429s) — proves "the big query succeeds" before any UI.
-- **Disclosure golden test:** a known mixed-era, mixed-program, declined-with-nulls result → assert every sentinel, the composition line, the program roll-up in/out line, and zero bare blanks.
+- **Disclosure golden test:** a known mixed-era, mixed-program, declined-with-nulls result → assert every sentinel, the composition line, the program roll-up in/out line, the `resolved_institution`/`institution_resolution` columns, and zero bare blanks.
+- **QuerySpec validation suite:** every §2.1 reject path (unknown axis, illegal op, `createdon`-as-date, missing `amount.which`, unknown version) → 422 + correct violation code; an unknown taxonomy value → compiles to `UNCLASSIFIED` (not a reject).
+- **API auth tests:** each of the 3 routes returns 401/403 without `requireAppAccess('dataverse-bulk-export')`; CSRF/origin rejection; `/run` rejects a body whose `resultToken` was never previewed (server-side confirm-gate enforcement).
+- **SSE + streamed-download test:** progress events shape; `ready`→attachment GET; mid-stream `error` aborts the download and the client discards the partial; non-200 JSON on pre-stream fatal error.
+- **Truncation/budget tests:** injected slow pages → `truncatedByBudget` at 240 s with rows-so-far + UX; >`hardCapRows` → `capped`; oversized → loud fail, not a short file.
+- **UI confirm-gate test:** `/run` cannot be invoked from the builder without a rendered `/preview` (composition line + true total + warnings shown) first.
 
 ---
 
-## 12. Open questions / decisions needed
+## 12. Decisions resolved this revision (were Codex-flagged false-deferrals)
 
-1. **Excel delivery mechanism for large files.** `file_ready` base64-over-SSE mirrors the Explorer export, but the 3 MB XLSX guard is small for a "generous chunk." Decision: raise the guard + chunk the base64, or switch `/run` to a streamed `Content-Disposition: attachment` download with SSE only for progress? (Leaning: streamed attachment; confirm.)
-2. **Hard wall-clock budget value.** Vercel ceiling is 300 s; pick the v1 budget (e.g. 240 s) and the page-size (`Prefer: odata.maxpagesize`, 500 like the OData path or larger for FetchXML?). Needs one measured timing run against a realistic broad filtered slice.
-3. **`wmkf_grantprogram` as a second program filter — surface in v1 or Phase 2?** It's a resolved *axis* (model (b)) but a second program control adds builder complexity; v1 could ship `akoya_programid`-only with `wmkf_grantprogram` as a labeled Phase-2 add. (Leaning: v1 `akoya_programid` default + the funding-category filter behind an "advanced" disclosure.)
-4. **Institution-cluster presentation.** Given no structural backstop, does v1 (a) emit a `resolved_institution` best-effort cluster column + a fail-loud "unresolved variants" annotation, or (b) emit raw applicant/payee + AKA + legal-name columns and leave clustering to Excel? (Leaning: (b) for v1 — honest, no false precision; (a) is a Phase-2 enhancement once the clustering heuristic is validated.)
+The prior draft parked four items as "open" that were either already resolved by the design doc or are v1-core must-decides. All resolved here — none remain open for v1:
+
+1. **Excel delivery — RESOLVED:** streamed `Content-Disposition: attachment` (§5); SSE is progress-only; no base64-over-SSE. The Explorer 3 MB base64 guard is explicitly not the model.
+2. **Sync budget / page size — RESOLVED (§3a/§8):** 240 s budget, 1,000/page, 50k row cap, 200 MB/250k in-memory abort, 40 MB XLSX. A Phase-1 timing run may *raise* page size; the defaults are committed regardless.
+3. **`wmkf_grantprogram` filter — RESOLVED:** model (b) is settled (design doc) — v1 offers **both** `akoya_programid` (default ∧ `wmkf_type=Program`) and `wmkf_grantprogram` as separate labeled filters (§6). It is a filter control, not deferrable work; framing it as open was a scope regression.
+4. **Institution clustering — RESOLVED:** v1 **bakes in** `resolved_institution` + the `institution_resolution` fail-loud annotation (§3c) — a design hard requirement (it is precisely what Excel cannot recover), not a "leave it to Excel" option. A learned heuristic is a Phase-2 enhancement; the deterministic key + fail-loud annotation is v1.
+
+**Genuinely deferred (non-v1-core, by design — not open questions):** the 121-view preset library (Phase 3, gated on the recognition session), the AI on-ramp (Phase 2+), async/background-job export, bulk DOCX→text decline-rationale extraction, Track A. A Phase-1 measured timing run is the only empirical input outstanding and it can only *loosen* a committed default, never block the build.
 
 ---
 
