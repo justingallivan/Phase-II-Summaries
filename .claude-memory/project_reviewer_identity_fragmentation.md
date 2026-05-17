@@ -1,6 +1,6 @@
 ---
 name: project_reviewer_identity_fragmentation
-description: A peer reviewer's identity is scattered across 4 disjoint stores with no shared key — a hard constraint on Reviewer Manager → Dataverse
+description: Sample-based flag (5/87 + architecture, not a census) — a peer reviewer appears to span ≥4 disjoint stores with no shared key; forward constraint on Reviewer Manager → Dataverse
 metadata:
   type: project
 ---

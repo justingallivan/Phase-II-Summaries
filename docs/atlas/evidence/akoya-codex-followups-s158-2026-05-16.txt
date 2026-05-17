@@ -1,4 +1,4 @@
-S158 Codex follow-ups — 2026-05-17T03:25:17.813Z (read-only)
+S158 Codex follow-ups — 2026-05-17T03:50:33.693Z (read-only)
 
 ══ (a) Verify #993347 — claimed real original of test #1002807 ══
   #993347: status=Closed  grant=$1,000,000  paid=$1,000,000  created=2023-12-03T18:19:44Z
@@ -12,9 +12,10 @@ S158 Codex follow-ups — 2026-05-17T03:25:17.813Z (read-only)
 
 ══ (b) Medical Research roll-up — test-record pollution check ══
   Foundation-applicant account ids: 2
-  wmkf_type=Program rows tagged Medical Research      : 3835, $493,002,006 grant
-  ├─ with applicant = "W. M. Keck Foundation" (test predicate): 2, $0
-  └─ test-excluded Program total                      : 3833, $493,002,006
+  wmkf_type=Program rows tagged Medical Research                 : 3835, $493,002,006 grant
+  ├─ applicant=Foundation (applicant half only)                  : 2, $0
+  ├─ FULL test predicate (applicant=Foundation ∧ native-era)     : 2, $0
+  └─ test-excluded Program total                                 : 3833, $493,002,006
   ⚠️ test-predicate rows present in the headline Program figure:
      #1000211  grant=$0  created=2024-06-05T21:29:01Z
      #1001795  grant=$0  created=2025-07-09T17:03:36Z

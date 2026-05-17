@@ -48,7 +48,7 @@
 - [Pilot decisions locked 2026-05-06](project_intake_portal_pilot_decisions_2026-05-06.md) — six-decision walkthrough w/ Connor. **Items 1C + 1D superseded by 2026-05-13 entry.**
 - [Pilot Track 1 decisions 2026-05-13](project_intake_portal_pilot_decisions_2026-05-13.md) — 4 Track-1 items closed (1A membership Option A, 1B PA flows origin-agnostic, 1C reversed to PA-built packet, 1D narrowed to budget+roster)
 - [Reviewer migration plan locked S136](project_reviewer_postgres_to_dataverse_migration.md) — 1:1 model; most Postgres tables drain not migrate; auth doc `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`
-- [Reviewer identity fragmentation](project_reviewer_identity_fragmentation.md) — S158: a reviewer lives in ≥4 disjoint stores (dirty auto-created `contact` + GOapply object + honorarium `akoya_request` + Postgres `researchers`), no shared key; hard constraint on Reviewer Manager → Dataverse
+- [Reviewer identity fragmentation](project_reviewer_identity_fragmentation.md) — S158 *sample-based flag* (5/87 rows + architecture, Postgres not join-tested): a reviewer appears to span ≥4 disjoint stores (dirty auto-created `contact` + GOapply object + honorarium `akoya_request` + Postgres `researchers`) with no shared key; forward constraint on Reviewer Manager → Dataverse, not an exhaustive census
 - [No banking/PII in Dataverse](project_no_banking_pii_in_dataverse.md) — firm S158 management constraint: remittance/banking PII stays at bill.com (SoR); Dataverse stores only onboarding-status + a join pointer, never the detail
 - [Dataverse creator privileges delegated](project_dataverse_creator_privileges.md) — Connor 2026-05-06 OK'd direct entity creation for pilot scope; maintain `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md` audit catalog
 - [Slice-0 wmkf_role pre-deploy probe](project_slice0_role_probe.md) — use `scripts/probe-apprequestperson-role-data.js` NOT `dynamics-schema-diff.js`; CLEAR 2026-05-15 (5,561 rows, none in 100000002–4); re-run at deploy time
@@ -89,7 +89,7 @@
 - [Virtual Review Panel](project_virtual_review_panel.md) — Multi-LLM panel (Claude, GPT, Gemini, Perplexity); app key `virtual-review-panel`; stays Postgres permanently
 - [Tone calibration](feedback_review_panel_tone.md) — CSO feedback: don't mimic conservative study sections; balance critique with upside
 - [API Credit Monitoring](project_api_credit_monitoring.md) — admin dashboard widget + low-balance email alerts
-- [Dataverse Power Tools](project_dataverse_power_tools.md) — two separate apps (Find&fix edits + Bulk export) for the gaps Dynamics Explorer can't fill; design converged + Codex-reconciled at `docs/DATAVERSE_POWER_TOOLS_DESIGN.md`; Track B blocked on 3 evidence tasks, Track A write path on 3 policy decisions
+- [Dataverse Power Tools](project_dataverse_power_tools.md) — two separate apps (Find&fix edits + Bulk export) for the gaps Dynamics Explorer can't fill; design at `docs/DATAVERSE_POWER_TOOLS_DESIGN.md` (its "Residuals — AUTHORITATIVE LIST" is the single source of truth). S158: residual (i) substantially advanced, (ii) user-authority-closed (mixed provenance), (iii) artifact-backed closed; per-program decline segmentation still an open gating item; Track A write path on 3 policy decisions
 - [Living-taxonomy principle](project_living_taxonomy_principle.md) — taxonomies are living; read-live/fail-loud at runtime, no doc cadence; durable record = invariants/patterns/hazards + a staff orientation guide, NOT hardcoded value lists; probe only with a structural hypothesis
 
 ## Prompt + Execution

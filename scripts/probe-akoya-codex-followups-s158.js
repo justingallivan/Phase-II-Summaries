@@ -98,15 +98,22 @@ const money = (n) => '$' + Math.round(Number(n || 0)).toLocaleString();
 
   const isProgram = (r) => /^Program$/i.test(r[`_wmkf_type_value${FV}`] || '');
   const isFoundationApplicant = (r) => fAccts.includes(r._akoya_applicantid_value);
+  // FULL test predicate per the design doc: applicant=Foundation ∧ AkoyaGO-native
+  // era. Era classifier (doc): createdon date-part > 2023-12-03 ⇒ native
+  // (migrated rows are exactly 2023-12-03, the single import window).
+  const isNative = (r) => (r.createdon || '').slice(0, 10) > '2023-12-03';
+  const isTestPredicate = (r) => isFoundationApplicant(r) && isNative(r);
   const prog_all = rows.filter(isProgram);
-  const prog_fnd = prog_all.filter(isFoundationApplicant);
-  const prog_clean = prog_all.filter((r) => !isFoundationApplicant(r));
+  const prog_fnd = prog_all.filter(isTestPredicate);
+  const prog_fnd_applicantOnly = prog_all.filter(isFoundationApplicant);
+  const prog_clean = prog_all.filter((r) => !isTestPredicate(r));
   const sum = (set) => set.reduce((s, r) => s + Number(r.akoya_grant || 0), 0);
 
   console.log(`  Foundation-applicant account ids: ${fAccts.length}`);
-  console.log(`  wmkf_type=Program rows tagged Medical Research      : ${prog_all.length}, ${money(sum(prog_all))} grant`);
-  console.log(`  ├─ with applicant = "W. M. Keck Foundation" (test predicate): ${prog_fnd.length}, ${money(sum(prog_fnd))}`);
-  console.log(`  └─ test-excluded Program total                      : ${prog_clean.length}, ${money(sum(prog_clean))}`);
+  console.log(`  wmkf_type=Program rows tagged Medical Research                 : ${prog_all.length}, ${money(sum(prog_all))} grant`);
+  console.log(`  ├─ applicant=Foundation (applicant half only)                  : ${prog_fnd_applicantOnly.length}, ${money(sum(prog_fnd_applicantOnly))}`);
+  console.log(`  ├─ FULL test predicate (applicant=Foundation ∧ native-era)     : ${prog_fnd.length}, ${money(sum(prog_fnd))}`);
+  console.log(`  └─ test-excluded Program total                                 : ${prog_clean.length}, ${money(sum(prog_clean))}`);
   if (prog_fnd.length) {
     console.log(`  ⚠️ test-predicate rows present in the headline Program figure:`);
     for (const r of prog_fnd) console.log(`     #${r.akoya_requestnum}  grant=${money(r.akoya_grant)}  created=${r.createdon}`);
