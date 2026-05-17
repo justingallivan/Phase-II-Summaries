@@ -1,0 +1,51 @@
+Token acquired.
+Probe date: 2026-05-17 (dated evidence)
+
+══ wmkf_projectleader fill by program (NATIVE) — sorted by program size ══
+  n(native)  pl-filled   pl%   program
+     590        4     1%   (no program)
+     493      444    90%   Science and Engineering Research
+     486      475    98%   Medical Research
+     328        9     3%   Civic & Community  ◀ SoCal-area
+     289        0     0%   Directors' Directed Grant Program
+     112        5     4%   Precollegiate Education  ◀ SoCal-area
+      87        0     0%   Research Reviewer
+      85        2     2%   Health Care  ◀ SoCal-area
+      77        0     0%   Directors' Matching Grant Program
+      77        0     0%   Senior Staff Directed Grant Program
+      76        1     1%   Arts & Culture
+      69        0     0%   Employee Matching Grant Program
+      50        0     0%   Staff Directed Grant Program
+      49        0     0%   Strategic Fund
+      38        2     5%   Disaster Relief
+      30        0     0%   Chair's Grants
+      21        3    14%   Early Childhood
+      16       16   100%   Bridge Funding
+      10        0     0%   Miscellaneous
+  (3 program(s) with n<10 native — suppressed)
+
+══ Civic & Community (SoCal-area) — native rows WITH projectleader ══
+  [400 {"error":{"code":"0x80060888","message":"The query parameter [REDACTED] is not supported"}}]
+
+══ Precollegiate Education (SoCal-area) — native rows WITH projectleader ══
+  #1000233 pl=Romi Lassally · contact=Chloe Esperiquette
+     "Tripling foster youth enrollment in RTS’ signature"
+  #1000252 pl=Josephine Ochoa · contact=Melissa Gillis
+     "College Success Program"
+  #1001097 pl=Kristen Laskaris · contact=Catherine Suitor
+     "Expanding Career Exposure and Readiness in Allianc"
+  #1001651 pl=Brianne Gilbert · contact=Salvador Rivas
+     ""
+  #1001124 pl=Mia Henley · contact=Sandra Cano
+     ""
+
+══ Health Care (SoCal-area) — native rows WITH projectleader ══
+  #997297 pl=Adam Schickedanz · contact=Stellar Kim
+     "Resilience Investments & $upports for Economic (RI"
+  #1001163 pl=Jeannine Ventura · contact=Valerie Loduem
+     "Public Health Initiative"
+
+Read: SoCal-area pl% comparable to research ⇒ NOT research-only;
+~0% ⇒ research-process-only confirmed (caption stays).
+
+Done (read-only projectleader-by-program probe).
