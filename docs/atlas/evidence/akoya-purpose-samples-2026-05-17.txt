@@ -1,0 +1,84 @@
+Token acquired.
+Probe date: 2026-05-17  (dated evidence — Living-taxonomy policy)
+
+[metadata 400]
+
+══ akoya_purpose — fill rate ══
+  overall   4739/25561  (19%)
+  migrated  4739/22573  (21%)
+  native    0/2988  (0%)
+
+══ NATIVE — 12 most-recent rows with akoya_purpose ══
+
+══ MIGRATED — 12 most-recent rows with akoya_purpose ══
+  #996979  [2023-10-30] Closed · (no program)  (len=42)
+    "For general support of charitable purposes"
+  #996957  [2023-10-30] Closed · (no program)  (len=42)
+    "For general support of charitable purposes"
+  #996968  [2023-10-30] Closed · (no program)  (len=42)
+    "For general support of charitable purposes"
+  #996976  [2023-10-30] Closed · (no program)  (len=42)
+    "For general support of charitable purposes"
+  #996975  [2023-10-27] Closed · (no program)  (len=42)
+    "For general support of charitable purposes"
+  #996944  [2023-10-27] Closed · (no program)  (len=42)
+    "For general support of charitable purposes"
+  #996936  [2023-10-27] Closed · (no program)  (len=42)
+    "For general support of charitable purposes"
+  #996884  [2023-10-27] Closed · (no program)  (len=42)
+    "For general support of charitable purposes"
+  #996889  [2023-10-27] Closed · (no program)  (len=42)
+    "For general support of charitable purposes"
+  #997072  [2023-10-26] Closed · (no program)  (len=42)
+    "For general support of charitable purposes"
+  #996904  [2023-10-26] Closed · (no program)  (len=42)
+    "For general support of charitable purposes"
+  #996905  [2023-10-26] Closed · (no program)  (len=42)
+    "For general support of charitable purposes"
+
+Read: judge whether akoya_purpose is a stable, analyst-meaningful
+default export column or a sparse/free-text/duplicative one.
+
+Done (read-only akoya_purpose content sample).
+Token acquired.
+Probe date: 2026-05-17 (dated evidence)
+
+[metadata 400]
+
+══ top akoya_purpose values by row count ══
+   20822  "(null)"
+    4739  "For general support of charitable purposes"
+
+══ oldest-decisiondate migrated rows with akoya_purpose (variety check) ══
+  #956932 [1996-12-31] Closed (len=42)
+    "For general support of charitable purposes"
+  #956933 [1996-12-31] Closed (len=42)
+    "For general support of charitable purposes"
+  #957311 [1996-12-31] Closed (len=42)
+    "For general support of charitable purposes"
+  #957312 [1996-12-31] Closed (len=42)
+    "For general support of charitable purposes"
+  #957313 [1996-12-31] Closed (len=42)
+    "For general support of charitable purposes"
+  #957314 [1996-12-31] Closed (len=42)
+    "For general support of charitable purposes"
+  #957316 [1996-12-31] Closed (len=42)
+    "For general support of charitable purposes"
+  #957317 [1996-12-31] Closed (len=42)
+    "For general support of charitable purposes"
+  #957318 [1996-12-31] Closed (len=42)
+    "For general support of charitable purposes"
+  #957325 [1996-12-31] Closed (len=42)
+    "For general support of charitable purposes"
+  #957326 [1996-12-31] Closed (len=42)
+    "For general support of charitable purposes"
+  #957327 [1996-12-31] Closed (len=42)
+    "For general support of charitable purposes"
+  #957328 [1996-12-31] Closed (len=42)
+    "For general support of charitable purposes"
+  #957329 [1996-12-31] Closed (len=42)
+    "For general support of charitable purposes"
+  #957330 [1996-12-31] Closed (len=42)
+    "For general support of charitable purposes"
+
+Done (read-only akoya_purpose distribution).
