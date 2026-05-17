@@ -1,0 +1,22 @@
+Program roll-up — "Medical Research" by wmkf_type — 2026-05-17T02:56:24.776Z (read-only)
+
+  program record 94cab30b-958f-ee11-8179-000d3a341e8f  state=Active
+
+Total rows tagged akoya_programid="Medical Research": 4763
+
+wmkf_type              rows  funded          grant$           paid$  native
+---------------------------------------------------------------------------
+Program                3835     511    $493,002,006    $504,102,006     476
+Site Visit              884       0              $0              $0       2
+Special Grants           31      30     $32,000,000     $32,000,000       7
+Special Projects          9       3    $277,800,000    $219,050,000       0
+(no wmkf_type)            4       0              $0              $0       1
+---------------------------------------------------------------------------
+wmkf_type=Program        : 3835 rows, $493,002,006 awarded
+NON-Program (directed/discretionary/other) tagged Medical Research : 928 rows, $309,800,000 awarded
+
+⇒ Option A (pool all by akoya_programid) vs Option B (Program-only) differ by
+  928 rows / $309,800,000 — i.e. 39% of a naive "Medical Research grants" $ total
+  would be non-Program giving modes folded in. (THIS is the inflation magnitude.)
+
+Done (read-only — Medical Research program roll-up by wmkf_type).
