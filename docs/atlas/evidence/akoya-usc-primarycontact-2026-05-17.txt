@@ -1,0 +1,67 @@
+Token acquired.
+Probe date: 2026-05-17 (dated evidence)
+
+══ applicant accounts matching USC ══
+  "Hill Monastic Manuscript Library - St. John's University"  (aka: Hill Monastic Manuscript Library - St. John's University)  id=df19cf40-998f-ee11-8179-000d3a341fd9
+  "KUSC-FM"  (aka: KUSC-FM)  id=5dc8a786-c18f-ee11-8179-000d3a310f67
+  "Muscular Dystrophy Association"  (aka: Muscular Dystrophy Association)  id=0435ac3f-c18f-ee11-8179-000d3a341e8f
+  "University of Southern California"  (aka: University of Southern California)  id=dba32783-988f-ee11-8179-000d3a341e8f
+
+══ akoya_primarycontactid fill among USC requests ══
+  total USC requests:        225
+  with primary contact:      176/225  (78%)
+  migrated:                  160/203 have it  ·  native: 16/22 have it
+
+══ USC requests — newest by decision date (Primary Contact in context) ══
+  #1000834 [nat 2026-02-27] Approved           (no program)
+     contact: (null)   · "Grant to University of Southern California "
+  #1001044 [nat 2026-02-27] Approved           (no program)
+     contact: Hossein Pourmand   · "Grant to University of Southern California "
+  #1001394 [nat 2026-02-27] Approved           (no program)
+     contact: Hossein Pourmand   · "Grant to University of Southern California "
+  #1001952 [nat 2025-12-16] Active             (no program)
+     contact: Hossein Pourmand   · "Grant to University of Southern California "
+  #1002445 [nat 2025-12-09] Approved           (no program)
+     contact: Hossein Pourmand   · "Grant to University of Southern California "
+  #1002404 [nat 2025-11-17] Approved           (no program)
+     contact: Hossein Pourmand   · "Grant to University of Southern California "
+  #1002405 [nat 2025-11-17] Approved           (no program)
+     contact: Hossein Pourmand   · "Grant to University of Southern California "
+  #997407 [nat 2024-06-21] Closed             (no program)
+     contact: (null)   · ""
+  #997345 [nat 2024-04-03] Concept Done       (no program)
+     contact: (null)   · ""
+  #997384 [nat 2024-03-28] Closed             (no program)
+     contact: (null)   · ""
+  #997268 [nat 2023-12-27] Closed             (no program)
+     contact: (null)   · ""
+  #997264 [nat 2023-12-22] Closed             (no program)
+     contact: (null)   · ""
+  #997101 [MIG 2023-11-01] Phase I Declined   (no program)
+     contact: Hossein Pourmand   · "Guiding Electrons in Vacuum via Lagrange Points"
+  #996898 [MIG 2023-09-22] Closed             (no program)
+     contact: Carol L. Folt   · ""
+  #996899 [MIG 2023-09-22] Closed             (no program)
+     contact: Scott Rabenold   · ""
+  #996578 [MIG 2023-08-14] Phase II Declined  (no program)
+     contact: Hossein Pourmand   · "A little (nanoparticle) can go a long way: Spin cu"
+  #996851 [MIG 2023-08-07] Concept Done       (no program)
+     contact: Carol L. Folt   · ""
+  #996142 [MIG 2023-06-08] Active             (no program)
+     contact: Hossein Pourmand   · "Bringing Synthetic Bacterial Genomes to Life Using"
+  #996444 [MIG 2023-02-07] Concept Done       (no program)
+     contact: Carol L. Folt   · ""
+  #996300 [MIG 2022-12-09] Closed             (no program)
+     contact: Carol L. Folt   · ""
+  #996242 [MIG 2022-11-28] Closed             (no program)
+     contact: Scott Wandzilak   · ""
+  #996243 [MIG 2022-11-28] Closed             (no program)
+     contact: Scott Wandzilak   · ""
+  #996143 [MIG 2022-11-09] Closed             (no program)
+     contact: Sandra Campero   · ""
+  #996041 [MIG 2022-10-28] Closed             (no program)
+     contact: Sandra Campero   · ""
+  #995998 [MIG 2022-09-12] Closed             (no program)
+     contact: Kathryn Carrico   · ""
+
+Done (read-only USC primary-contact spot-check).
