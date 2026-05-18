@@ -29,7 +29,9 @@ Precondition 3 is a doc edit (us); precondition 4 is a post-deploy smoke (Connor
 
 Step-by-step maker-portal test instructions: **`docs/INTAKE_PORTAL_ITEM_6_MAKER_PORTAL_TESTS.md`** (drafted 2026-05-14 by parallel Codex pass; ready for Connor).
 
-### Update 2026-05-18 (S163) — Connor's deactivate ruling resolves P1(Delete) + P2; Item 6 no longer gates the slice-0 *schema* deploy
+### Update 2026-05-18 (S163) — Connor's deactivate ruling dissolves P1(Delete)+P2; **P1-Update remains an open pre-deploy gate**
+
+> **Correction (S163, post-Codex review).** An earlier draft of this subsection claimed "Item 6 no longer gates the slice-0 schema deploy" and that P1's Update residual was "the docs' acknowledged clean case, exercised post-deploy." That was an overstatement (Codex BLOCKER). Connor's email resolves the *design* (deactivate not delete) and dissolves the Delete-specific preconditions — it does **not** runtime-validate that the parent-status trigger filter binds on a `statecode`-only deactivation Update, which the original §0 precondition 1 demands as a **pre-deploy** gate. The accurate status is below.
 
 Connor's email (received S162, 2026-05-18; verbatim in memory `slice0-deactivate-not-delete-recalc`):
 
@@ -38,11 +40,14 @@ Connor's email (received S162, 2026-05-18; verbatim in memory `slice0-deactivate
 **Effect on the four preconditions:**
 
 - **P2 (Delete-trigger parent-ID resolution) — DISSOLVED, not pending.** There is no longer a Delete trigger. Deactivation is a `statecode`→Inactive **Update**, which carries the parent lookup. P2 guarded a code path Connor's ruling structurally removes; it is moot.
-- **P1 (filter binds on Create/Update/Delete) — Delete portion DISSOLVED.** The trigger event set is now {Create (drain insert), Update (deactivation + edits)} — no Delete. § 5 / line 138 already characterizes Create + Update as the *clean, handled* case; the only unverified event was Delete. P1's residual is "the parent-status filter binds on **Update**," which is (a) the docs' acknowledged clean case and (b) a *flow-correctness* concern, not a *schema-creation* concern — it is exercised post-deploy against a proxy then re-verified per **P4**'s existing provision.
+- **P1 (filter binds on Create/Update/Delete) — split by event:**
+  - *P1-Delete* — **DISSOLVED.** No Delete trigger exists in the deactivate model.
+  - *P1-Create* (drain insert while parent pre-`'Phase II Pending'`) — the originally-clean case; the filter is designed to *exclude* these, unchanged by Connor's ruling.
+  - *P1-Update* — 🔴 **UNVERIFIED — REMAINS A PRE-DEPLOY GATE.** The deactivate model makes the recompute fire on a child **Update whose only change is `statecode`→Inactive**. Whether the trigger-condition filter `_wmkf_request_value/akoya_requeststatus eq 'Phase II Pending'` actually *binds and fires* on a statecode-only Update is **not** something Connor's email establishes — he asserted the design, not maker-portal runtime validation. This is arguably a *new* sub-case the original Create/Update/Delete tests never isolated (ordinary field-edit Update ≠ statecode-only Update for PA trigger semantics). Per original §0 precondition 1, runtime validation of this is a **pre-deploy** requirement. It can be cleared two ways only: (i) Connor runs the maker-portal test on the deactivation-Update path and it binds; or (ii) the team records an **explicit, owned risk waiver** decoupling schema deploy from this check (rationale available: schema is inert/additive, flow is built+validated post-deploy under P4's proxy provision, fallback on failure is Option B `$batch` drain with zero schema rework). **Neither (i) nor (ii) has occurred as of S163** — so this remains an open pre-deploy gate.
 - **P3 — landed S150** (doc edit, ours).
 - **P4 — unchanged** (post-deploy, gates PA-flow-live only, never the schema deploy).
 
-**Net:** the slice-0 *schema* deploy (additive entities/attrs/option-values, verified non-destructive + collision-clear S163) has **no open Item-6 precondition**. What remains genuinely Connor-owned — building the recompute flow and the residual Update-filter-binding check — is, by this record's own wording (P4 + the `MAKER_PORTAL_TESTS.md` § 2 proxy path), **post-deploy**, downstream of creating inert additive schema.
+**Net (corrected):** Connor's ruling shrank the Item-6 gate from "Create/Update/Delete all unverified" to **exactly one open pre-deploy item: P1-Update (statecode-deactivation trigger-filter binding)**. P1-Delete, P2 are dissolved; P1-Create is clean; P3 landed; P4 is post-deploy. The slice-0 schema itself is verified additive/non-destructive/collision-clear (S163), so the *only* thing standing between here and `--execute` is the P1-Update decision: **Connor validates it, or the team records an explicit risk waiver.** Until one of those, slice-0 deploy is gated — narrowly, on P1-Update alone. (This corrects the earlier "no open Item-6 precondition" overstatement.)
 
 **Drain reconciliation lifecycle (corrects Option B mechanics, § 5 line ~142):** the post-submit-edit reconciliation is **deactivate-then-recompute-over-active**, NOT "delete old children, insert new." Obsolete child rows get `statecode`→Inactive; the recompute sums active children only. (`wmkf_proposalbudgetline`'s parental `cascade.Delete: Cascade` is orthogonal — it governs whole-`akoya_request` deletion / orphan cleanup, a different event, and stays as specced. No schema change: Dataverse custom entities carry `statecode`/`statuscode` by default.)
 
