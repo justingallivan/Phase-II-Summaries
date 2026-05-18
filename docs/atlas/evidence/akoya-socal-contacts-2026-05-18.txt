@@ -1,0 +1,36 @@
+Token acquired. Run 2026-05-18T16:25:01.931Z (read-only).
+
+══ PART A — #1001159 label→field Rosetta ══
+  request #1001159  (era: native, createdon 2024-11-30)
+  Request Primary Contact  akoya_primarycontactid = fb24a6a2-5caf-ef11-b8e9-00224803a64e (Kellye Ross)
+  Organization Leader      wmkf_ceo               = 8107e788-ce8f-ee11-8179-000d3a341e8f (Leah Hanes)
+  (research PI)            wmkf_projectleader     = null (∅)
+  Applicant account        akoya_applicantid      = a79b1773-c18f-ee11-8179-000d3a341e8f (Two Bit Circus Foundation)
+  Org Primary Contact      account.primarycontactid = fb24a6a2-5caf-ef11-b8e9-00224803a64e (Kellye Ross)
+  → Request PC == Org PC ? YES (same contact GUID)
+
+══ PART B — native SoCal census (wmkf_grantprogram=Southern California 8cf9c61d-a7cb-ee11-9079-000d3a341fd9) ══
+  native SoCal requests (census): 500
+
+  Request Primary Contact present : 449/500  (89.8%)
+  Applicant account present       : 500/500  (100.0%)
+  Org Primary Contact present     : 459/500  (91.8%)  [account.primarycontactid]
+  BOTH present                    : 421/500  (84.2%)
+  of BOTH, SAME contact GUID      : 286/421  (67.9%)
+  of BOTH, DIFFERENT person       : 135/421  (32.1%)
+
+  sample DIVERGENT (reqPC ≠ orgPC):
+    #1002796  La Compost  req=cabc350c-7f37-f111-88b5-000d3a3065b8  org=821bcc9d-7c37-f111-88b5-000d3a3065b8
+    #1003033  Year Up Inc.  req=fee66125-9945-f111-88b5-000d3a3065b8  org=19e7e563-1f44-f111-88b5-000d3a306d45
+    #1003037  After-School All-Stars Los Angeles  req=d66f815d-9a45-f111-88b4-000d3a306da2  org=a0de7381-e74e-f111-bec7-000d3a3064b7
+    #1002901  Latino Theater Company  req=18d33238-c744-f111-88b4-000d3a306da2  org=9281cb2b-bc44-f111-88b5-000d3a306d45
+    #1002938  Boys and Girls Clubs of Long Beach  req=0143f592-ce8f-ee11-8179-000d3a310f67  org=bde3194d-723e-f111-88b4-000d3a306da2
+
+  sample reqPC present but org has NO primary contact:
+    #997132  Young Storytellers
+    #997152  City Year Los Angeles
+    #1000189  Los Angeles LGBT Center
+    #1000190  Abode Communities
+    #1000156  Via Care Community Health Center
+
+Done (read-only SoCal contact-structure probe; native = census, migrated = follow-up).

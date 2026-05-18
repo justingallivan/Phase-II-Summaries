@@ -1,0 +1,56 @@
+Token acquired. Run 2026-05-18T16:04:57.999Z (read-only).
+Legend: 
+  wmkf_projectleader = Project Leader (research PI — user-attested)
+  wmkf_researchleader = Research Leader (instit. research officer — NOT PI per S159)
+  wmkf_ceo = CEO (org head — possible non-research lead?)
+  akoya_primarycontactid = Primary Contact (foundation liaison — broadly populated)
+  wmkf_copi1 = Co-PI slot 1 (legacy roster slot)
+  wmkf_programdirector = CONTROL: WMKF Program Director (internal staff — should be universal)
+
+══ OVERALL (all eras — process-pooled; read with care) — % of program's requests with each person field populated ══
+  (program rows ≥ 100 only; rate = field-not-null / program total)
+
+  program                         N projectlead researchlea         ceo primarycont       copi1 programdire
+  ---------------------------------------------------------------------------------------------------------
+  Research                     8500         48%          5%         87%         89%          7%         36%
+  Discretionary                5345          0%          0%         66%         66%          0%          0%
+  (null)                       4634          0%          0%         63%         63%          0%         11%
+  Southern California          4489          2%          0%         58%         58%          0%         34%
+  Undergraduate Education      2017         14%          0%         48%         49%          0%          2%
+  Young Scholars                326          5%          0%         84%         90%          0%          0%
+
+══ NATIVE only (AkoyaGO-current process — what each program calls it NOW) — % of program's requests with each person field populated ══
+  (program rows ≥ 100 only; rate = field-not-null / program total)
+
+  program                         N projectlead researchlea         ceo primarycont       copi1 programdire
+  ---------------------------------------------------------------------------------------------------------
+  Research                     1531         61%         25%         92%         96%         37%         93%
+  Southern California           681          3%          0%         88%         89%          0%         41%
+  Discretionary                 596          0%          0%         15%         18%          0%          0%
+
+══ wmkf_apprequestperson junction — schema for the lead-only-vs-any-PI-role fork ══
+  createdby                                Lookup
+  createdbyname                            String
+  createdbyyominame                        String
+  createdonbehalfby                        Lookup
+  createdonbehalfbyname                    String
+  createdonbehalfbyyominame                String
+  modifiedby                               Lookup
+  modifiedbyname                           String
+  modifiedbyyominame                       String
+  modifiedonbehalfby                       Lookup
+  modifiedonbehalfbyname                   String
+  modifiedonbehalfbyyominame               String
+  organizationid                           Lookup
+  organizationidname                       String
+  wmkf_assignmentkey                       String
+  wmkf_contact                             Lookup
+  wmkf_contactname                         String
+  wmkf_contactyominame                     String
+  wmkf_request                             Lookup
+  wmkf_requestname                         String
+  wmkf_role                                Picklist
+
+  junction total rows: 5561
+
+Done (read-only per-program person-role probe).

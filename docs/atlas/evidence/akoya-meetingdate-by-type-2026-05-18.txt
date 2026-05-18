@@ -1,0 +1,70 @@
+Token acquired. Probe run 2026-05-18T15:51:55.125Z (read-only).
+
+Entity total (FetchXML aggregate): 25561
+  wmkf_meetingdate IS NULL        : 122  (0.5% of all rows)
+  wmkf_meetingdate populated      : 25439  (99.5%)
+  → whole-entity ≥97% claim HOLDS at probe time.
+
+══ PART 1a — no-meeting-date by wmkf_type (Discretionary lives here) — OVERALL ══
+  group                          total   no-MD  no-MD rate
+  Program                        14426      50        0.3%
+  Discretionary                   5345       1        0.0%
+  Site Visit                      5264      29        0.6%
+  (null)                           159      39       24.5%
+  Special Grants                   152       0        0.0%
+  Individual                        87       0        0.0%
+  Special Projects                  75       3        4.0%
+  Miscellaneous                     52       0        0.0%
+  Office Visit                       1       0        0.0%
+
+══ PART 1a — by wmkf_type — MIGRATED only ══
+  group                          total   no-MD  no-MD rate
+  Program                        12248      49        0.4%
+  Site Visit                      5237      29        0.6%
+  Discretionary                   4749       0        0.0%
+  (null)                           135      27       20.0%
+  Special Grants                    95       0        0.0%
+  Special Projects                  69       3        4.3%
+  Miscellaneous                     40       0        0.0%
+
+══ PART 1a — by wmkf_type — NATIVE only ══
+  group                          total   no-MD  no-MD rate
+  Program                         2178       1        0.0%
+  Discretionary                    596       1        0.2%
+  Individual                        87       0        0.0%
+  Special Grants                    57       0        0.0%
+  Site Visit                        27       0        0.0%
+  (null)                            24      12       50.0%
+  Miscellaneous                     12       0        0.0%
+  Special Projects                   6       0        0.0%
+  Office Visit                       1       0        0.0%
+
+══ PART 1b — no-meeting-date by wmkf_request_type (Office/Site/Phone interaction logs live here) — OVERALL ══
+  group                          total   no-MD  no-MD rate
+  Request                        16227      37        0.2%
+  Concept                         3273       2        0.1%
+  Office Visit                    2826      10        0.4%
+  Site Visit                      1528       8        0.5%
+  Phone Call                       914      11        1.2%
+  (null)                           706      54        7.6%
+  Individual                        87       0        0.0%
+
+══ PART 1c — wmkf_type=Discretionary (67467457-f9c4-ee11-9079-000d3a310f67) ══
+  total Discretionary: 5345 · no meeting date: 1 (0.0%)
+  no-meeting-date Discretionary by akoya_requeststatus:
+    Pending                             1
+
+══ PART 2 — wmkf_donorname attribute metadata ══
+  LogicalName : wmkf_donorname
+  SchemaName  : wmkf_DonorName
+  AttributeType: Lookup  (LookupType)
+  → TIER 2 (lookup — needs a link-entity, like institution→account)
+  Lookup Targets: ["wmkf_donors"]
+  sample values:
+    "c77c72dd-2a72-f011-bec2-6045bd02b4cc"  (formatted: Niloo Hassas)
+    "c77c72dd-2a72-f011-bec2-6045bd02b4cc"  (formatted: Niloo Hassas)
+    "c77c72dd-2a72-f011-bec2-6045bd02b4cc"  (formatted: Niloo Hassas)
+    "c77c72dd-2a72-f011-bec2-6045bd02b4cc"  (formatted: Niloo Hassas)
+    "7bc7a940-8eec-ee11-a202-000d3a32c2f2"  (formatted: Thomas E. Everhart)
+
+Done (read-only meeting-date-by-type + donor-shape probe).
