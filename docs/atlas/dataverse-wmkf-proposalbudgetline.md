@@ -41,7 +41,7 @@ Data:
 ## Write paths
 
 - **(Future)** Intake drain at submit — creates 5–30 child rows in one pass, then PATCHes parent aggregates (`docs/BUDGET_FORM_SPEC.md` § "Idempotency + drain step ordering").
-- **(Future)** Connor's status-gated PA recompute flow (Item 6 A+B hybrid) on Create / **Update incl. `statecode`→Inactive deactivation** — recomputes parent aggregates post-submit over **active children only**. **No Delete trigger** (Connor S162 ruling, 2026-05-18; defunct children are deactivated, not deleted — see `INTAKE_PORTAL_ITEM_6_DISCUSSION.md` §0 "Update 2026-05-18 (S163)").
+- **(Future, NOT a settled pre-deploy contract)** Connor's status-gated PA recompute flow (Item 6 A+B hybrid) — *intended* trigger surface: Create / **Update incl. `statecode`→Inactive deactivation**, recomputing parent aggregates post-submit over **active children only**, **No Delete trigger** (Connor S162 ruling, 2026-05-18; defunct children are deactivated, not deleted). ⚠️ **The P1-Update trigger-filter binding on a `statecode`-only Update is UNVERIFIED** — Connor asserted the deactivate *design*, not maker-portal runtime validation that the parent-status filter binds on that Update. PA-recompute-flow-live is a post-deploy gate; whether this residual P1-Update check stays a *pre-deploy* gate or is covered by an explicit risk waiver is an **open decision** (BLOCKER, see `INTAKE_PORTAL_ITEM_6_DISCUSSION.md` §0 "Update 2026-05-18 (S163)" + `INTAKE_PORTAL_DESIGN.md`). Do not read this line as "trigger spec settled."
 
 ## Cross-system
 
@@ -58,6 +58,6 @@ Net-new entity (slice 0). No backfill — all population is forward-only via the
 ## Open questions / gotchas
 
 - **Entity-set name confirmed at deploy.** `wmkf_proposalbudgetlines` is the expected Dataverse pluralization; verify via metadata after deploy and correct here if Dataverse pluralized differently.
-- **Working name pending Connor.** `wmkf_proposalbudgetline` vs `wmkf_budgetline` — and category labels vs WMKF Research conventions — are Connor review items; renaming a deployed entity is painful, so confirm before `--execute`.
+- **Naming + category labels — RESOLVED S163 (2026-05-18, Justin decision), no longer pending Connor.** Entity name LOCKED as `wmkf_proposalbudgetline` (`wmkf_budgetline` dropped — see header **Naming** line). Cost-share category labels normalized to spaced form (`Waived Indirect` / `Waived Tuition` / `Other Cost Share`). Both were flagged as Connor review items; both are now closed. (Renaming a deployed entity is still painful — the lock exists precisely so `--execute` is safe on this axis.)
 - **`@odata.bind` keys are PascalCase** (`wmkf_Request@odata.bind`); lowercase produces `0x80048d19`.
 - **Forever-filter discipline.** Every "what is WMKF asked to fund?" query must carry the cost-share exclusion filter; missing it silently inflates totals.
