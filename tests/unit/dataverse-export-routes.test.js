@@ -189,6 +189,61 @@ describe('preview', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body.eraSplit).toEqual({ scope: 'native', count: 3, otherEraOutOfScope: true });
   });
+
+  test('loud-exclusion waterfall: sequential matched → −operational → '
+    + '−test → exported, attribution never double-counts', async () => {
+    // era-agnostic ⇒ 5 counts in order: exported, matched, afterOp,
+    // migrated, native (the Caltech∧S&E real shape: 47→29).
+    fetchXmlAggregateCount
+      .mockResolvedValueOnce(29)  // compiled (full spec) = exported/trueTotal
+      .mockResolvedValueOnce(47)  // matched (no operational/test)
+      .mockResolvedValueOnce(29)  // afterOperational (test still off)
+      .mockResolvedValueOnce(23)  // migrated
+      .mockResolvedValueOnce(6);  // native
+    const res = mockRes();
+    await previewHandler({ method: 'POST', body: { querySpec: baseSpec() } }, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.composition).toEqual(expect.objectContaining({
+      matched: 47,
+      excludedOperational: 18,   // 47 − 29
+      excludedTestRecords: 0,    // 29 − 29 (none removed by test step here)
+      exported: 29,
+      operationalApplied: true,
+      testRecordsApplied: true,
+    }));
+    expect(res.body.composition.sequencing).toMatch(/never double-counted/);
+    expect(res.body.trueTotal).toBe(29);
+  });
+
+  test('waterfall: a broken count invariant FAILS LOUD (no clamped, '
+    + 'plausible-wrong composition; Codex S161 P2)', async () => {
+    // matched < afterOperational is impossible (exclusions only add
+    // filters) — must 5xx, never a 200 with a clamped composition/token.
+    fetchXmlAggregateCount
+      .mockResolvedValueOnce(29)  // exported
+      .mockResolvedValueOnce(10)  // matched  (< afterOperational ⇒ invariant break)
+      .mockResolvedValueOnce(40)  // afterOperational
+      .mockResolvedValueOnce(5)
+      .mockResolvedValueOnce(5);
+    const res = mockRes();
+    await previewHandler({ method: 'POST', body: { querySpec: baseSpec() } }, res);
+    expect(res.statusCode).toBeGreaterThanOrEqual(500);
+    expect(res.body.composition).toBeUndefined();
+    expect(res.body.resultToken).toBeUndefined();
+  });
+
+  test('waterfall: exclusions OFF ⇒ matched == exported, applied flags false', async () => {
+    fetchXmlAggregateCount.mockResolvedValue(12);
+    const res = mockRes();
+    await previewHandler({ method: 'POST', body: {
+      querySpec: baseSpec({ excludeOperational: false, excludeTestRecords: false }),
+    } }, res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.composition).toEqual(expect.objectContaining({
+      matched: 12, excludedOperational: 0, excludedTestRecords: 0, exported: 12,
+      operationalApplied: false, testRecordsApplied: false,
+    }));
+  });
 });
 
 describe('run — the stateless confirm gate', () => {

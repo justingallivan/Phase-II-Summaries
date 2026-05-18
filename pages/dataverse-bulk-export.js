@@ -858,6 +858,54 @@ function DataverseBulkExport() {
                 </div>
               </div>
 
+              {/* Exclusion waterfall — surprising-but-correct numbers must
+                  never be misread (matched → −operational → −test → exported). */}
+              {preview.composition && (
+                <div className="border border-gray-300 rounded-lg p-4 mb-4">
+                  <div className="text-sm font-medium text-gray-700 mb-2">
+                    How this total was reached
+                  </div>
+                  <div className="font-mono text-sm space-y-1">
+                    <div className="flex justify-between">
+                      <span>Rows matching your filters</span>
+                      <span className="font-semibold">{fmt(preview.composition.matched)}</span>
+                    </div>
+                    {preview.composition.operationalApplied ? (
+                      <div className="flex justify-between text-amber-700">
+                        <span>− excluded as operational interaction logs
+                          {' '}(Office/Site Visit, phone, honoraria)</span>
+                        <span className="font-semibold">
+                          −{fmt(preview.composition.excludedOperational)}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between text-gray-500">
+                        <span>operational rows INCLUDED (toggle off)</span><span>—</span>
+                      </div>
+                    )}
+                    {preview.composition.testRecordsApplied ? (
+                      <div className="flex justify-between text-amber-700">
+                        <span>− excluded as test records (Foundation-applicant, native)</span>
+                        <span className="font-semibold">
+                          −{fmt(preview.composition.excludedTestRecords)}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between text-gray-500">
+                        <span>test records INCLUDED (toggle off)</span><span>—</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between border-t border-gray-300 pt-1 mt-1">
+                      <span className="font-semibold">Exported (this run)</span>
+                      <span className="font-bold">{fmt(preview.composition.exported)}</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {preview.composition.sequencing}
+                  </p>
+                </div>
+              )}
+
               {preview.estimate?.note && (
                 <div
                   className={`text-sm rounded-lg p-3 mb-4 ${

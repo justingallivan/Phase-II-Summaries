@@ -102,28 +102,73 @@ export default async function handler(req, res) {
     // era is out of scope and migrated+native==total would false-alarm
     // (Codex S160 P2).
     const eraScoped = spec.eraScope && spec.eraScope !== 'all';
-    const trueTotal = await fetchXmlAggregateCount(
-      ENTITY_SET, compiled.countFetchXml, compiled.countAlias);
+    const countOf = (c) =>
+      fetchXmlAggregateCount(ENTITY_SET, c.countFetchXml, compiled.countAlias);
 
-    let eraSplit;
+    // Loud-exclusion waterfall (the tool's core honesty promise — a
+    // surprising-but-correct number must never be misread):
+    //   matched      = user filters + eraScope ONLY (no operational/test)
+    //   afterOp      = + operational exclusion (as the user set it)
+    //   exported     = + test-record exclusion = trueTotal (full spec)
+    // Attribution is SEQUENTIAL (operational, then test — the compiler's
+    // own order); a row that is BOTH operational and a test record is
+    // counted at the operational step (removed first), never doubled.
+    const matchedCompiled = compile(
+      { ...spec, excludeOperational: false, excludeTestRecords: false },
+      { resolver });
+    const afterOpCompiled = compile(
+      { ...spec, excludeTestRecords: false }, { resolver });
+
+    let trueTotal, matched, afterOperational, eraSplit;
     if (eraScoped) {
+      [trueTotal, matched, afterOperational] = await Promise.all([
+        countOf(compiled), countOf(matchedCompiled), countOf(afterOpCompiled),
+      ]);
       eraSplit = { scope: spec.eraScope, count: trueTotal, otherEraOutOfScope: true };
     } else {
-      const [migrated, native] = await Promise.all([
-        fetchXmlAggregateCount(ENTITY_SET,
-          compile({ ...spec, eraScope: 'migrated' }, { resolver }).countFetchXml,
-          compiled.countAlias),
-        fetchXmlAggregateCount(ENTITY_SET,
-          compile({ ...spec, eraScope: 'native' }, { resolver }).countFetchXml,
-          compiled.countAlias),
+      let migrated, native;
+      [trueTotal, matched, afterOperational, migrated, native] = await Promise.all([
+        countOf(compiled), countOf(matchedCompiled), countOf(afterOpCompiled),
+        countOf(compile({ ...spec, eraScope: 'migrated' }, { resolver })),
+        countOf(compile({ ...spec, eraScope: 'native' }, { resolver })),
       ]);
       eraSplit = { migrated, native, reconciles: migrated + native === trueTotal };
     }
+
+    // FAIL LOUD on a broken count invariant — exclusions only ever ADD
+    // filter conditions, so the waterfall MUST be monotone non-increasing:
+    // matched ≥ afterOperational ≥ trueTotal. A violation means a compiler
+    // / count-order / Dataverse regression; clamping it to 0 would emit a
+    // plausible-wrong composition (the exact failure this tool exists to
+    // prevent — Codex S161 P2). Surfaces via the existing catch → 502.
+    if (![matched, afterOperational, trueTotal].every(Number.isFinite)
+        || !(matched >= afterOperational && afterOperational >= trueTotal)) {
+      const e = new Error(
+        `count invariant violated (matched=${matched} `
+        + `afterOperational=${afterOperational} exported=${trueTotal})`);
+      e.name = 'CountInvariantError';
+      throw e;
+    }
+
+    const composition = {
+      matched,
+      excludedOperational: spec.excludeOperational
+        ? matched - afterOperational : 0,
+      excludedTestRecords: spec.excludeTestRecords
+        ? afterOperational - trueTotal : 0,
+      exported: trueTotal,
+      operationalApplied: !!spec.excludeOperational,
+      testRecordsApplied: !!spec.excludeTestRecords,
+      sequencing: 'Sequential attribution (operational, then test records — '
+        + 'the compiler order). A row that is both is counted at the '
+        + 'operational step, never double-counted.',
+    };
 
     const { token, expiresInSec } = await mintResultToken(spec, { trueTotal });
 
     return res.status(200).json({
       trueTotal,
+      composition,
       eraSplit,
       compiledFetchXml: compiled.fetchXml,
       countFetchXml: compiled.countFetchXml,
