@@ -112,6 +112,7 @@ Required for production-only paths:
 - `IRS_VERIFY_SECRET` — shared secret for `/api/irs/verify-ein` (PowerAutomate caller; separate from `CRON_SECRET`)
 - `VRP_ALLOWED_PROVIDERS` — Virtual Review Panel allowlist (intersects with configured API keys; production fails closed if unset; must include `claude`)
 - `EXTERNAL_AZURE_AD_*` (tenant/client/secret) — applicant intake portal; provider only registers when all three are set, so staff-only deployments don't need them
+- `DVX_BLOB_RW_TOKEN` — Dataverse Bulk Export's **dedicated PRIVATE Vercel Blob store** RW token (store `dvx-export-private`). Deliberately separate from the shared `BLOB_READ_WRITE_TOKEN` (the public `phase-ii-summaries-blob` store used by uploads/reviewer-finder/review-manager/maintenance — must NOT be conflated). `run.js` writes / `download.js` reads the export artifact with this token (`access:'private'`); missing ⇒ pre-stream fail-loud 502 `BLOB_STORE_UNCONFIGURED`. Vercel CLI cannot connect a 2nd Blob store under a custom env-var name (collides on `BLOB_READ_WRITE_TOKEN`, 53.x + 54.x); provision = create store via CLI, then read its token from the Vercel dashboard and `vercel env add DVX_BLOB_RW_TOKEN` per env.
 
 Notable optional flags:
 - `DYNAMICS_IMPERSONATION_ENABLED=true` — sends `MSCRMCallerID` on user-driven Dynamics writes; off by default for safe rollout (see `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md`)

@@ -10,6 +10,24 @@ The pre-Session 84 chronological per-session log (everything after the September
 
 ---
 
+## May 2026 — Power Tools Track B shipped to production (Session 161)
+
+**Milestone:** Dataverse Bulk Export (Track B Power Tools) went from API-layer-only to **user-reachable and verified working end-to-end on production** — the first Power Tools app live. Built the forced-fan-out builder UI (`pages/dataverse-bulk-export.js`) over the stable S160 preview→run→download seam, then hardened it against real use.
+
+**Sessions:** 161 (single session; UI build + two Codex review/confirm rounds + three live-data fixes + Blob infra + loud-disclosure round, all probe-driven).
+
+**Ship state:**
+- Builder UI live; nav/docs/guide added; CLAUDE.md Applications row de-caveated.
+- Three live-Dataverse defects fixed (only surfaced on real data — tests mock the taxonomy): `akoya_program` primary-name field (`akoya_program`, not `akoya_name`); operational-exclusion label (`Phone Call`, not `Phone`); the `institution` axis was non-functional (bare condition on the `akoya_applicantid` lookup) → now an inner `account` link on name/AKA.
+- New **dedicated private Vercel Blob store** (`dvx-export-private` / `DVX_BLOB_RW_TOKEN`), separate from the shared public store; `access:'private'` + gated `/download` proxy; pre-stream fail-loud guard. Shared `BLOB_READ_WRITE_TOKEN` verified untouched.
+- Loud exclusion waterfall in `/preview` (matched → −operational → −test → exported) with a fail-loud count invariant — a surprising-but-correct number can no longer be misread.
+
+**Why it matters:** Proves the QuerySpec→FetchXML spine + private-artifact delivery in production, and validated the tool's core promise (fail-loud, honestly-characterized) by surviving a real reconciliation against an AkoyaGO export. 74/74 tests, P0 gates green throughout.
+
+**Pointers:** `docs/DATAVERSE_POWER_TOOLS_TRACK_B_BUILD_PLAN.md` §6/§10, `docs/DATAVERSE_POWER_TOOLS_DESIGN.md` (AUTHORITATIVE LIST), `docs/guides/DATAVERSE_BULK_EXPORT.md`. Commits `31f56c6`·`e4d49d3`·`83fc00e`·`a69fbe7`·`c11a27c`·`8ff9c5e`·`2c20e4d`.
+
+---
+
 ## May 2026 — Wave 2 W5/W6 cutover + IRS BMF reference layer (Session 147)
 
 **Milestone:** Closed Wave 2 W5 (reader cutover for `reviewer_suggestions` aggregation) and W6 step 1 (`pages/api/reviewer-finder/researchers.js` + Database tab UI retired, ~2,700 lines removed). Same session introduced a new product capability — IRS tax-exempt verification — that establishes Postgres as a durable **reference-data layer**, not just a Dynamics on-ramp. `irs_exempt_orgs` (V29) holds 1.26M rows from the 4 IRS BMF regional CSVs; quarterly cron does an atomic-swap refresh (stage → COPY FROM STDIN → dedupe by `(ein, region, ctid)` → ADD PK → rename); `/api/irs/verify-ein` is shared-secret-gated for PowerAutomate to call on `account` create/update. Threshold + dedupe + validation hardened across 5 Codex-driven iterations; not user-facing by design.
