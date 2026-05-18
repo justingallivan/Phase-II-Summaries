@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Layout, { PageHeader, Card, Button } from '../shared/components/Layout';
 import RequireAppAccess from '../shared/components/RequireAppAccess';
 import ErrorAlert from '../shared/components/ErrorAlert';
@@ -114,6 +114,28 @@ function toSpecFilter(row) {
   return { ...base, value: row.value };
 }
 
+const nonEmpty = (v) => String(v ?? '').trim() !== '';
+const finiteNum = (v) => nonEmpty(v) && Number.isFinite(Number(v));
+
+// A row is COMPLETE iff every input the chosen axis/op needs has a real
+// value. Incomplete rows must never reach /preview — a blank field would
+// otherwise coerce to a plausible-but-wrong predicate (`Number('')===0`,
+// `value=""` ⇒ a literal-empty filter, an empty `in` array). That silent
+// wrong-scope is exactly the plausible-wrong-answer this tool exists to
+// prevent (Codex S161 P0/P1). Valueless ops (null/notnull) are complete.
+function rowComplete(row) {
+  if (VALUELESS_OPS.has(row.op)) return true;
+  const isMoney = AXES[row.axis].kind === 'money';
+  if (row.op === 'between') {
+    return isMoney
+      ? finiteNum(row.from) && finiteNum(row.to)
+      : nonEmpty(row.from) && nonEmpty(row.to);
+  }
+  if (row.op === 'in') return Array.isArray(row.values) && row.values.length > 0;
+  if (isMoney) return finiteNum(row.value);
+  return nonEmpty(row.value);
+}
+
 function MultiSelect({ options, selected, onChange, disabled }) {
   return (
     <select
@@ -147,8 +169,22 @@ function DataverseBulkExport() {
   const [programRollup, setProgramRollup] = useState(false);
   const [useDefaultColumns, setUseDefaultColumns] = useState(true);
 
-  // ── Filters ──
-  const [filters, setFilters] = useState([newRow()]);
+  // ── Filters — start EMPTY: filters:[] is the valid "every request row"
+  //    baseline (loud truncation downstream). A synthetic default row would
+  //    silently scope the export (Codex S161 P0). ──
+  const [filters, setFilters] = useState([]);
+
+  // Monotonic spec revision — bumped on every spec mutation. A /preview
+  // response whose captured revision no longer matches is STALE and dropped
+  // (Codex S161 P1: an in-flight preview must not restore a token bound to a
+  // spec the user already edited away from).
+  const specRev = useRef(0);
+  // P3 — abort the SSE fetch + clear the expiry timer on unmount; mountedRef
+  // gates every post-await state setter so an unmount (or a stale-discarded
+  // preview) can never setState on an unmounted/abandoned component.
+  const abortRef = useRef(null);
+  const expiryTimerRef = useRef(null);
+  const mountedRef = useRef(true);
 
   // ── Preview / confirm gate ──
   const [preview, setPreview] = useState(null); // { ...response } incl. resultToken
@@ -160,6 +196,7 @@ function DataverseBulkExport() {
   const [progress, setProgress] = useState(null); // { stage, pages, fetched, total }
   const [truncation, setTruncation] = useState(null); // { reason, total, fetched }
   const [ready, setReady] = useState(null); // { downloadUrl, bytes, rows, trueTotal, truncated, expiresInSec }
+  const [downloadExpired, setDownloadExpired] = useState(false); // P2 — link TTL elapsed
   const [runError, setRunError] = useState(null); // { stage, message, retryable }
 
   const [topError, setTopError] = useState(null);
@@ -192,13 +229,28 @@ function DataverseBulkExport() {
 
   // Any spec change invalidates the rendered preview + its resultToken: the
   // confirm gate (build plan §11) — /run cannot execute an unpreviewed spec.
+  // Bumping specRev also strands any in-flight /preview response (Codex P1).
   const invalidatePreview = useCallback(() => {
+    specRev.current += 1;
+    if (expiryTimerRef.current) {
+      clearTimeout(expiryTimerRef.current);
+      expiryTimerRef.current = null;
+    }
     setPreview(null);
     setPreviewError(null);
     setReady(null);
+    setDownloadExpired(false);
     setProgress(null);
     setTruncation(null);
     setRunError(null);
+  }, []);
+
+  // P3 — on unmount: mark unmounted, abort an in-flight SSE fetch, clear the
+  // expiry timer. The mounted flag makes the post-await setState guards fire.
+  useEffect(() => () => {
+    mountedRef.current = false;
+    if (abortRef.current) abortRef.current.abort();
+    if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current);
   }, []);
 
   const patchRow = (id, patch) => {
@@ -222,10 +274,13 @@ function DataverseBulkExport() {
     invalidatePreview();
   };
 
+  // Only COMPLETE rows are emitted; an incomplete row never leaks a
+  // placeholder predicate. With zero (or all-incomplete) rows this is the
+  // valid filters:[] = every-request-row baseline.
   const querySpec = useMemo(
     () => ({
       version: 1,
-      filters: filters.map(toSpecFilter),
+      filters: filters.filter(rowComplete).map(toSpecFilter),
       eraScope,
       excludeOperational,
       excludeTestRecords,
@@ -234,6 +289,12 @@ function DataverseBulkExport() {
     }),
     [filters, eraScope, excludeOperational, excludeTestRecords, programRollup, useDefaultColumns]
   );
+
+  // Every present row must be complete before /preview is allowed — so the
+  // user is never surprised that a half-filled row was silently dropped.
+  // (filters:[] ⇒ every() true ⇒ the all-rows baseline stays runnable.)
+  const specComplete = filters.every(rowComplete);
+  const busy = previewing || running;
 
   const taxOptions = (axis) => {
     if (!tax) return [];
@@ -249,10 +310,16 @@ function DataverseBulkExport() {
   };
 
   const handlePreview = async () => {
+    // Snapshot the spec revision; if it changes (any edit) before this
+    // response lands, the response is stale and is dropped wholesale —
+    // including resultToken — so the run button can never be revealed
+    // bound to a spec the user already edited away from (Codex P1).
+    const myRev = specRev.current;
     setPreviewing(true);
     setPreviewError(null);
     setPreview(null);
     setReady(null);
+    setDownloadExpired(false);
     setRunError(null);
     setProgress(null);
     setTruncation(null);
@@ -264,15 +331,21 @@ function DataverseBulkExport() {
         body: JSON.stringify({ querySpec }),
       });
       const data = await resp.json();
+      // Stale (spec edited mid-flight) or unmounted ⇒ drop the response
+      // wholesale; the finally below still clears the spinner so the UI
+      // can never get stuck disabled (Codex S161 confirm P1a).
+      if (!mountedRef.current || myRev !== specRev.current) return;
       if (!resp.ok) {
         setPreviewError(data);
         return;
       }
       setPreview(data);
     } catch (err) {
-      setTopError(err.message || 'Preview request failed.');
+      if (mountedRef.current && myRev === specRev.current) {
+        setTopError(err.message || 'Preview request failed.');
+      }
     } finally {
-      setPreviewing(false);
+      if (mountedRef.current) setPreviewing(false);
     }
   };
 
@@ -281,14 +354,18 @@ function DataverseBulkExport() {
     setRunning(true);
     setRunError(null);
     setReady(null);
+    setDownloadExpired(false);
     setProgress(null);
     setTruncation(null);
     setTopError(null);
+    const ac = new AbortController();
+    abortRef.current = ac;
     try {
       const response = await fetch('/api/dataverse-export/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resultToken: preview.resultToken }),
+        signal: ac.signal,
       });
 
       // Pre-stream gate failures come back as a clean JSON 4xx/5xx, not SSE.
@@ -325,6 +402,17 @@ function DataverseBulkExport() {
           setTruncation({ reason: evt.reason, total: evt.total, fetched: evt.fetched });
         } else if (evt.event === 'ready') {
           setReady(evt);
+          setDownloadExpired(false);
+          // P2 — the download token is short-lived; when it elapses, swap
+          // the link for an in-app "expired, re-run" message rather than
+          // letting the user land on a raw 403 JSON page.
+          if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current);
+          if (evt.expiresInSec) {
+            expiryTimerRef.current = setTimeout(
+              () => setDownloadExpired(true),
+              evt.expiresInSec * 1000
+            );
+          }
         } else if (evt.event === 'error') {
           setRunError({ stage: evt.stage, message: evt.message, retryable: !!evt.retryable });
         }
@@ -354,13 +442,20 @@ function DataverseBulkExport() {
         }
       }
     } catch (err) {
-      setRunError({
-        stage: 'transport',
-        message: err.message || 'The export stream was interrupted.',
-        retryable: true,
-      });
+      // An intentional abort (unmount) is not a user-facing failure.
+      if (err && err.name === 'AbortError') return;
+      if (mountedRef.current) {
+        setRunError({
+          stage: 'transport',
+          message: err.message || 'The export stream was interrupted.',
+          retryable: true,
+        });
+      }
     } finally {
-      setRunning(false);
+      if (abortRef.current === ac) abortRef.current = null;
+      // Skip post-unmount setState (the unmount abort lands here too —
+      // Codex S161 confirm P3).
+      if (mountedRef.current) setRunning(false);
     }
   };
 
@@ -405,6 +500,7 @@ function DataverseBulkExport() {
               them deliberately and the Methods sheet records exactly what was applied.
             </p>
 
+            <fieldset disabled={busy} className="border-0 m-0 p-0 min-w-0 disabled:opacity-60">
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Era scope <span className="font-normal text-gray-500">(record-creation provenance — NOT a business period)</span>
@@ -500,6 +596,7 @@ function DataverseBulkExport() {
                 </span>
               </label>
             </div>
+            </fieldset>
           </Card>
 
           {/* ── Filters ── */}
@@ -508,30 +605,44 @@ function DataverseBulkExport() {
               <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
               <button
                 type="button"
+                disabled={busy}
                 onClick={() => {
                   setFilters((p) => [...p, newRow()]);
                   invalidatePreview();
                 }}
-                className="text-sm text-gray-700 border border-gray-300 rounded-lg px-3 py-1.5 hover:bg-gray-50"
+                className="text-sm text-gray-700 border border-gray-300 rounded-lg px-3 py-1.5 hover:bg-gray-50 disabled:opacity-40"
               >
                 + Add filter
               </button>
             </div>
             <p className="text-xs text-gray-500 mb-4">
-              All filters are combined with AND. No filters = every request row (the true total
-              will be large and the run will truncate loudly).
+              All filters are combined with AND. No filters = every request row — a valid
+              baseline, but the true total will be large and the run will truncate loudly.
             </p>
 
-            <div className="space-y-4">
+            {filters.length === 0 && (
+              <div className="border border-dashed border-gray-300 rounded-lg p-4 text-sm text-gray-500 mb-4">
+                No filters yet. Preview will count <span className="font-medium">every request
+                row</span> (expect a large total and a loud truncation). Add a filter to narrow
+                the export.
+              </div>
+            )}
+
+            <fieldset disabled={busy} className="border-0 m-0 p-0 min-w-0 space-y-4 disabled:opacity-60">
               {filters.map((row) => {
                 const kind = AXES[row.axis].kind;
                 const ops = OPS_BY_KIND[kind];
                 const isTax = !!AXES[row.axis].taxonomy;
                 const opts = isTax ? taxOptions(row.axis) : [];
+                const incomplete = !rowComplete(row);
                 return (
                   <div
                     key={row.id}
-                    className="border border-gray-200 rounded-lg p-3 bg-gray-50"
+                    className={`border rounded-lg p-3 ${
+                      incomplete
+                        ? 'border-amber-300 bg-amber-50'
+                        : 'border-gray-200 bg-gray-50'
+                    }`}
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <select
@@ -652,28 +763,41 @@ function DataverseBulkExport() {
                       <button
                         type="button"
                         onClick={() => {
-                          setFilters((p) =>
-                            p.length > 1 ? p.filter((r) => r.id !== row.id) : p
-                          );
+                          setFilters((p) => p.filter((r) => r.id !== row.id));
                           invalidatePreview();
                         }}
-                        disabled={filters.length === 1}
-                        className="text-xs text-gray-500 hover:text-red-600 disabled:opacity-30 px-2"
-                        title={filters.length === 1 ? 'At least one filter row' : 'Remove'}
+                        className="text-xs text-gray-500 hover:text-red-600 px-2"
+                        title="Remove this filter"
                       >
                         ✕
                       </button>
                     </div>
                     <p className="text-xs text-gray-500 mt-2">{AXES[row.axis].help}</p>
+                    {incomplete && (
+                      <p className="text-xs text-amber-700 mt-1 font-medium">
+                        Incomplete — give this filter a value, or remove it. It will not be
+                        previewed until then.
+                      </p>
+                    )}
                   </div>
                 );
               })}
-            </div>
+            </fieldset>
 
             <div className="mt-5">
-              <Button onClick={handlePreview} loading={previewing} disabled={previewing || running}>
+              <Button
+                onClick={handlePreview}
+                loading={previewing}
+                disabled={busy || !specComplete}
+              >
                 {previewing ? 'Computing true total…' : 'Preview (true count + composition)'}
               </Button>
+              {!specComplete && (
+                <p className="mt-2 text-xs text-amber-700 font-medium">
+                  One or more filters are incomplete. Complete or remove them before previewing —
+                  a half-filled filter is never silently dropped or guessed.
+                </p>
+              )}
               <p className="mt-2 text-xs text-gray-500">
                 Preview computes the real FetchXML aggregate count and composition. You must
                 preview before you can run — the run can only execute a spec you have seen.
@@ -871,17 +995,27 @@ function DataverseBulkExport() {
                       <> · true total {fmt(ready.trueTotal)}</>
                     )}
                   </p>
-                  <a
-                    href={ready.downloadUrl}
-                    className="inline-flex items-center justify-center font-semibold rounded-lg px-6 py-3 bg-gray-900 hover:bg-gray-800 text-white"
-                  >
-                    ⬇ Download Excel
-                  </a>
-                  {ready.expiresInSec && (
-                    <p className="mt-2 text-xs text-green-800">
-                      Link valid ~{Math.round(ready.expiresInSec / 60)} min (authenticated,
-                      single-purpose). Re-run the export for a fresh link.
-                    </p>
+                  {downloadExpired ? (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                      <span className="font-semibold">Download link expired.</span> The file is
+                      unchanged but the single-purpose link has timed out. Re-run the export to
+                      get a fresh link.
+                    </div>
+                  ) : (
+                    <>
+                      <a
+                        href={ready.downloadUrl}
+                        className="inline-flex items-center justify-center font-semibold rounded-lg px-6 py-3 bg-gray-900 hover:bg-gray-800 text-white"
+                      >
+                        ⬇ Download Excel
+                      </a>
+                      {ready.expiresInSec && (
+                        <p className="mt-2 text-xs text-green-800">
+                          Link valid ~{Math.round(ready.expiresInSec / 60)} min (authenticated,
+                          single-purpose). Re-run the export for a fresh link.
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               )}
