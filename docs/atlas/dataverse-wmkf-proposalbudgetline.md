@@ -25,7 +25,7 @@ Data:
 - `wmkf_year` (Integer 1..10, ApplicationRequired) — program year; Integer not Choice (forward-compatible across program lengths).
 - `wmkf_category` (Picklist, ApplicationRequired) — 9 values, integers **reserved S150, do not renumber**:
   - `100000000=Personnel`, `100000001=Equipment`, `100000002=Supplies`, `100000003=Travel`, `100000004=Other Direct`, `100000005=Indirect` (WMKF-spend; Indirect reserved, always $0)
-  - `100000006=WaivedIndirect`, `100000007=WaivedTuition`, `100000008=OtherCostShare` (cost-share). Labels verbatim from `INTAKE_PORTAL_SCHEMA_CHANGES.md:79-81`; the camelCase-vs-spaced inconsistency with WMKF-spend labels is a Connor review item (integers authoritative regardless).
+  - `100000006=Waived Indirect`, `100000007=Waived Tuition`, `100000008=Other Cost Share` (cost-share). Labels verbatim from `INTAKE_PORTAL_SCHEMA_CHANGES.md:79-81`; normalized to spaced form 2026-05-18 (S163, Justin decision — prior camelCase inconsistency resolved/closed). Filter-predicate shorthand in BUDGET_FORM_SPEC / ITEM_6 still writes the old camelCase tokens — integer-backed category references, not the label; integers authoritative for every guard.
 - `wmkf_description` (String 500) — free-text line-item description.
 - `wmkf_amount` (Money, USD; MinValue 0) — amount for this line. Negative rejected by the drain server-side before `createRecord` (Dataverse Money won't enforce; drain is the authoritative guard).
 - `wmkf_lineorder` (Integer 0..100000) — display order within `(request, year, category)`.

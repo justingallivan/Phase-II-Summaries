@@ -76,9 +76,11 @@ Microsoft custom option-set convention: values start at `100000000` and incremen
 | `100000003` | `Travel` | WMKF-spend |
 | `100000004` | `Other Direct` | WMKF-spend |
 | `100000005` | `Indirect` | WMKF-spend (reserved, always $0) |
-| `100000006` | `WaivedIndirect` | Cost-share |
-| `100000007` | `WaivedTuition` | Cost-share |
-| `100000008` | `OtherCostShare` | Cost-share |
+| `100000006` | `Waived Indirect` | Cost-share |
+| `100000007` | `Waived Tuition` | Cost-share |
+| `100000008` | `Other Cost Share` | Cost-share |
+
+> **Labels normalized to spaced form 2026-05-18 (S163, Justin decision)** — resolves the prior camelCase-vs-spaced inconsistency with the WMKF-spend labels; this table stays the verbatim source for `wmkf_proposalbudgetline.json`'s option labels. Filter-predicate shorthand elsewhere (`wmkf_category NOT IN (WaivedIndirect, …)` in BUDGET_FORM_SPEC / ITEM_6 / this doc's lines 22-26) still uses the old camelCase tokens — those are **integer-backed category references, not the display label**, and the integers are authoritative for every guard, so they are intentionally left as semantic shorthand.
 
 WMKF-spend aggregate queries filter `wmkf_category NOT IN (100000006, 100000007, 100000008)`. Cost-share aggregate (`wmkf_totalothersources`) uses the inverse `IN` set.
 

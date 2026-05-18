@@ -4,7 +4,7 @@
   "schemaName": "wmkf_ProposalBudgetLine",
   "displayName": "Proposal Budget Line",
   "displayCollectionName": "Proposal Budget Lines",
-  "description": "Intake-portal slice 0. Per-year, per-category budget rows drained from the applicant intake portal, child of akoya_request (parental, cascade delete). TWO DISTINCT DELETE AXES — do not conflate (Connor S162 ruling, see docs/INTAKE_PORTAL_ITEM_6_DISCUSSION.md § 0 'Update 2026-05-18 (S163)'): (1) the parental cascade.Delete:Cascade below governs WHOLE-akoya_request deletion / orphan cleanup — stays as specced; (2) the drain's post-submit-edit reconciliation must DEACTIVATE obsolete rows (statecode->Inactive), NEVER hard-delete them — the Item-6 recompute fires on that child Update and sums ACTIVE children only. Deactivation needs NO schema here: Dataverse custom entities carry statecode/statuscode by default. Cost-share rows live here too via wmkf_category 100000006-100000008 — WMKF-spend aggregate queries must filter wmkf_category NOT IN (100000006,100000007,100000008). Working name (wmkf_proposalbudgetline vs wmkf_budgetline) pending Connor naming review per docs/INTAKE_PORTAL_SCHEMA_CHANGES.md. Authoritative spec: docs/BUDGET_FORM_SPEC.md v3 + docs/INTAKE_PORTAL_SCHEMA_CHANGES.md 2026-05-14 entry.",
+  "description": "Intake-portal slice 0. Per-year, per-category budget rows drained from the applicant intake portal, child of akoya_request (parental, cascade delete). TWO DISTINCT DELETE AXES — do not conflate (Connor S162 ruling, see docs/INTAKE_PORTAL_ITEM_6_DISCUSSION.md § 0 'Update 2026-05-18 (S163)'): (1) the parental cascade.Delete:Cascade below governs WHOLE-akoya_request deletion / orphan cleanup — stays as specced; (2) the drain's post-submit-edit reconciliation must DEACTIVATE obsolete rows (statecode->Inactive), NEVER hard-delete them — the Item-6 recompute fires on that child Update and sums ACTIVE children only. Deactivation needs NO schema here: Dataverse custom entities carry statecode/statuscode by default. Cost-share rows live here too via wmkf_category 100000006-100000008 — WMKF-spend aggregate queries must filter wmkf_category NOT IN (100000006,100000007,100000008). Entity name LOCKED as wmkf_proposalbudgetline (Justin decision S163, 2026-05-18 — the wmkf_budgetline alternative is dropped; was flagged for Connor naming review, now closed). Authoritative spec: docs/BUDGET_FORM_SPEC.md v3 + docs/INTAKE_PORTAL_SCHEMA_CHANGES.md 2026-05-14 entry.",
   "ownershipType": "OrganizationOwned",
   "primaryNameAttribute": {
     "schemaName": "wmkf_Name",
@@ -27,7 +27,7 @@
       "type": "Picklist",
       "schemaName": "wmkf_Category",
       "displayName": "Category",
-      "description": "Budget category. 100000000-100000005 are WMKF-spend (Indirect reserved, always $0). 100000006-100000008 are cost-share — excluded from the WMKF-requested aggregate, summed into akoya_request.wmkf_totalothersources. Integer values reserved 2026-05-14 (S150); DO NOT renumber after deploy — Connor PAs / drain guards / packet builder hardcode these. LABELS match docs/INTAKE_PORTAL_SCHEMA_CHANGES.md:73-81 verbatim, incl. the cost-share camelCase tokens (WaivedIndirect/WaivedTuition/OtherCostShare) which are inconsistent with the spaced WMKF-spend labels (e.g. 'Other Direct') — that label-form inconsistency is a Connor review item before --execute; the integers are authoritative regardless of label.",
+      "description": "Budget category. 100000000-100000005 are WMKF-spend (Indirect reserved, always $0). 100000006-100000008 are cost-share — excluded from the WMKF-requested aggregate, summed into akoya_request.wmkf_totalothersources. Integer values reserved 2026-05-14 (S150); DO NOT renumber after deploy — Connor PAs / drain guards / packet builder hardcode these. LABELS match docs/INTAKE_PORTAL_SCHEMA_CHANGES.md:73-81 verbatim. Cost-share labels NORMALIZED to spaced form 'Waived Indirect'/'Waived Tuition'/'Other Cost Share' (Justin decision S163, 2026-05-18 — resolves the prior camelCase-vs-spaced inconsistency; was flagged as a Connor review item, now closed). NOTE: filter-predicate shorthand in BUDGET_FORM_SPEC / ITEM_6 / SCHEMA_REVIEW docs still writes the old camelCase tokens (WaivedIndirect etc.) — those are integer-backed CATEGORY references, NOT the display label, and the integers are authoritative for every guard, so they are intentionally left as semantic shorthand.",
       "requiredLevel": "ApplicationRequired",
       "options": [
         { "value": 100000000, "label": "Personnel" },
@@ -36,9 +36,9 @@
         { "value": 100000003, "label": "Travel" },
         { "value": 100000004, "label": "Other Direct" },
         { "value": 100000005, "label": "Indirect" },
-        { "value": 100000006, "label": "WaivedIndirect" },
-        { "value": 100000007, "label": "WaivedTuition" },
-        { "value": 100000008, "label": "OtherCostShare" }
+        { "value": 100000006, "label": "Waived Indirect" },
+        { "value": 100000007, "label": "Waived Tuition" },
+        { "value": 100000008, "label": "Other Cost Share" }
       ]
     },
     {
