@@ -68,17 +68,27 @@ if (!token) {
 }
 
 async function attrLogicalNames(entity) {
-  const url =
+  // Follow @odata.nextLink to exhaustion. A pre-deploy collision gate that
+  // reads only the first page could silently false-CLEAR if a colliding
+  // attribute lands on a later page (akoya_request carries 577 attrs).
+  const names = new Set();
+  let url =
     `${DYNAMICS_URL}/api/data/v9.2/EntityDefinitions(LogicalName='${entity}')` +
     `/Attributes?$select=LogicalName`;
-  const r = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'OData-Version': '4.0' },
-  });
-  if (!r.ok) {
-    throw new Error(`GET attributes for ${entity} failed (${r.status}): ${(await r.text()).slice(0, 300)}`);
+  let pages = 0;
+  while (url) {
+    const r = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'OData-Version': '4.0' },
+    });
+    if (!r.ok) {
+      throw new Error(`GET attributes for ${entity} failed (${r.status}): ${(await r.text()).slice(0, 300)}`);
+    }
+    const j = await r.json();
+    for (const a of j.value || []) names.add(String(a.LogicalName).toLowerCase());
+    url = j['@odata.nextLink'] || null;
+    if (++pages > 50) throw new Error(`Pagination guard tripped for ${entity} (>50 pages) — aborting rather than risk a partial read`);
   }
-  const j = await r.json();
-  return new Set((j.value || []).map((a) => String(a.LogicalName).toLowerCase()));
+  return names;
 }
 
 try {

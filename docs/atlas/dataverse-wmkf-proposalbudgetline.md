@@ -4,7 +4,7 @@
 **Live row count:** 0 (entity not yet created in Dataverse)
 **Entity set:** `wmkf_proposalbudgetlines`
 **Schema spec:** `lib/dataverse/schema/wave4/wmkf_proposalbudgetline.json`
-**Naming:** working name (`wmkf_proposalbudgetline` vs `wmkf_budgetline`) pending Connor review per `docs/INTAKE_PORTAL_SCHEMA_CHANGES.md`.
+**Naming:** LOCKED as `wmkf_proposalbudgetline` (Justin decision 2026-05-18, S163 — `wmkf_budgetline` alternative dropped; was flagged for Connor naming review, now closed).
 
 ## Source of truth
 
@@ -41,7 +41,7 @@ Data:
 ## Write paths
 
 - **(Future)** Intake drain at submit — creates 5–30 child rows in one pass, then PATCHes parent aggregates (`docs/BUDGET_FORM_SPEC.md` § "Idempotency + drain step ordering").
-- **(Future)** Connor's status-gated PA recompute flow (Item 6 A+B hybrid) on Create/Update/Delete — recomputes parent aggregates post-submit.
+- **(Future)** Connor's status-gated PA recompute flow (Item 6 A+B hybrid) on Create / **Update incl. `statecode`→Inactive deactivation** — recomputes parent aggregates post-submit over **active children only**. **No Delete trigger** (Connor S162 ruling, 2026-05-18; defunct children are deactivated, not deleted — see `INTAKE_PORTAL_ITEM_6_DISCUSSION.md` §0 "Update 2026-05-18 (S163)").
 
 ## Cross-system
 
