@@ -22,8 +22,11 @@ const mockTax = {
   fundingCategories: [{ id: 'f-h', name: 'Honorarium' }],
   statuses: ['Approved', 'Phase I Declined'],
   requestTypeOptions: [
+    // Labels mirror the LIVE akoya_request.wmkf_request_type picklist —
+    // the phone option is "Phone Call", not "Phone" (verified live; the
+    // OPERATIONAL_EXCLUSION constant must match this exactly).
     { value: 1, label: 'Office Visit' }, { value: 2, label: 'Site Visit' },
-    { value: 3, label: 'Phone' }, { value: 100000000, label: 'Request' },
+    { value: 3, label: 'Phone Call' }, { value: 100000000, label: 'Request' },
   ],
 };
 const mockRequireAppAccess = jest.fn(async () => ({ profileId: 'p1', session: { user: {} } }));
