@@ -1,78 +1,78 @@
-# Session 162 Prompt: Track B is LIVE — pivot to the UI/UX discussion
+# Session 163 Prompt: slice-0 (Connor unblocked the design) — then Track B floor follow-ups
 
-## Session 161 Summary
+## Session 162 Summary
 
-**Power Tools Track B (Dataverse Bulk Export) shipped to production and is verified working end-to-end.** S160 left the API layer done but no front-end; S161 built the builder UI, then hardened it through real prod use (three live-data defects, a Blob-infra gap, and a disclosure round) — every fix probe-driven against live Dataverse, never guessed. The user confirmed the final Caltech case works. **The user has explicitly deferred a UI/UX discussion to the next session** ("several issues regarding how and what we might search for") — that is the primary next step.
+A working-session, not a build session. Two threads: (1) a long, user-driven design conversation scoping the **Track B AI on-ramp "filter floor"** (what an NL→QuerySpec layer can honestly promise), grounded by **four new read-only probes**; (2) at close, **Connor's email resolving the slice-0 Item-6 block** — captured as the designated priority for S163.
 
 ### What was completed
 
-1. **Builder UI built** — `pages/dataverse-bulk-export.js`: forced-fan-out filter builder over the stable S160 `/preview`→`/run`→`/download` seam; RequireAppAccess; confirm-gated; loud truncation; fail-loud taxonomy. Nav is registry-driven (entry already existed). Added `docs/guides/DATAVERSE_BULK_EXPORT.md`; dropped the "builder UI not yet built" caveat from CLAUDE.md; reconciled status in build-plan §10 + design-doc AUTHORITATIVE LIST.
-2. **Two Codex UI rounds folded** — cold review (P0×2/P1×2/P2/P3) then a confirm round (2 residuals: stuck-spinner on stale preview, post-unmount setState). `mountedRef`/`specRev`/AbortController/expiry-timer all in.
-3. **Three live-Dataverse defects** (only surface on real data — tests mock the taxonomy; the fail-loud surfaces caught all three on first real use):
-   - `akoya_program` PrimaryNameAttribute is **`akoya_program`**, not `akoya_name` (`live-taxonomy.js`).
-   - operational-exclusion picklist label is **`Phone Call`**, not `Phone` (`constants.js`; fixture corrected too).
-   - the `institution` axis was **non-functional** — it emitted a bare condition on the `akoya_applicantid` *lookup*. Now compiles to an inner `account` link with OR(name, akoya_aka), eq/contains/in (`compiler.js`). Codex-reviewed.
-4. **Dedicated private Blob store** — prod `/run` failed: shared store is **public**, `put({access:'private'})` throws. Provisioned `dvx-export-private` + **`DVX_BLOB_RW_TOKEN`** (prod/preview/dev), threaded into `run.js`/`download.js` with a pre-stream fail-loud guard. Shared `BLOB_READ_WRITE_TOKEN` verified untouched throughout.
-5. **Loud exclusion waterfall** — reconciled a 29-vs-35 user report (29 was correct; their AkoyaGO ref silently mixed 29 grants + 6 of 18 operational rows). `/preview` now returns a `composition` (matched → −operational → −test → exported), rendered prominently. Codex-reviewed; one P2 folded (replaced silent `Math.max(0,…)` clamps with a hard fail-loud count invariant).
+1. **Track B floor scoping — design conversation + 4 probes (committed `e720c1a`).** The user's headline vision is confirmed as the **NL AI on-ramp** (Dynamics-Explorer-style prompt → hardened QuerySpec into the existing stable `/preview`→`/run` confirm seam); the builder UI demotes to a confirmation/inspection surface. Probes (dated evidence in `docs/atlas/evidence/`, atlas refined):
+   - `probe-akoya-meetingdate-by-type` — `wmkf_meetingdate` ~100% across every named process **incl. Discretionary** (disproves the "discretionary lacks a meeting date" worry); residue = untyped/`Pending` tail. PART 2: `wmkf_donorname` is a **Lookup → `wmkf_donors`** = the WMKF board/staff member who *directed* the gift (NOT an external donor).
+   - `probe-akoya-person-role-by-program` — per-program lead-person mapping: **Research** = `wmkf_projectleader` (+ `wmkf_apprequestperson` junction for co-PIs), **SoCal** = Primary Contact / `wmkf_ceo` (no PI), **Discretionary** = none. "PI" is research vocabulary, not entity-global. `DESIGN.md:196` 98/90% is a fine `akoya_programid` cut; coarse `wmkf_grantprogram=Research` is 61% native (segmentation-sensitive — Connor flag candidate).
+   - `probe-akoya-socal-contacts` — Rosetta on #1001159: Request PC = `akoya_primarycontactid`; **Org PC = `account.primarycontactid`** (on the applicant account, not the request); Org Leader = `wmkf_ceo`. Native SoCal both-present 84%, same-person ~68%.
+   - `probe-akoya-socal-contact-divergence` — SoCal-2025 divergent examples; surfaced **duplicate `contact` records** inflating GUID-divergence (name-match ≠ GUID-match — an AI footgun).
+2. **Ratified v1 floor** (user-approved as "a good start, refine later via prototype stress-test"):
+   - **Tier 1 (cheap scalars):** Request # (`akoya_requestnum`), Title (`akoya_title` contains), Meeting date (`wmkf_meetingdate`), Phase I status (`wmkf_phaseistatus`).
+   - **Tier 3:** Grant cycle — bonded to meeting date, fiscal year folded in, **mandatory off-cycle `UNCLASSIFIED cycle` fail-loud sentinel** (the cycle code is a June/Dec *convention*, not an invariant; off-month meetings silently drop today — see memory).
+   - **Tier 2:** Payee (cheapest — institution-pattern reuse), Program director (lead `wmkf_programdirector` only; carries a discretionary-exclusion disclosure like PI, milder), PI as an **explicitly research-scoped "Project Leader (research)" axis** with mandatory scope disclosure (NOT a generic "PI" axis — proven wrong).
+3. **Connor's slice-0 ruling received + captured** (memory `slice0-deactivate-not-delete-recalc`). See §A below.
 
-### Commits (S161, `main`, all pushed)
-`31f56c6` builder UI · `e4d49d3` Codex UI fold+confirm · `83fc00e` akoya_program field · `a69fbe7` Phone Call label · `c11a27c` institution axis · `8ff9c5e` private Blob store · `2c20e4d` loud waterfall · (+ this doc commit)
+### Commits (S162, `main`, pushed)
+- `e720c1a` — Track B floor-scoping probes + evidence + atlas refinement (S162)
+- (this doc commit)
 
-## Carry Forward
+Memory written this session (harness store, not repo): `dataverse-export-floor-scoping`, `akoya-temporal-axis-encodings`, `slice0-deactivate-not-delete-recalc` (+ `MEMORY.md` index). Read these before resuming either thread.
 
-### A. UI/UX discussion — THE PRIMARY NEXT STEP (user-flagged, deferred from S161)
-The user wants a working session on **how and what to search** in the builder — "several issues" regarding the search/filter experience. This is a *discussion first*, not an implementation task. Do NOT pre-build changes; surface options, let the user drive. Likely themes (infer, don't assume): the program filter is single-GUID exact (Caltech research $ is spread across Directors'/Matching/Medical programs, not just "Science and Engineering Research"); institution is exact name/AKA eq (works for clean accounts, no fuzzy/variant matching by design — §3c Normalize is disclosure-only); no multi-program / OR-across-axes; no preset/guided slices (Phase 3, gated). Bring the §10 ledger + design AUTHORITATIVE LIST to the conversation; the QuerySpec→FetchXML seam is stable + 4× Codex-reviewed — UI/semantics changes emit the same spec, never re-derive.
+## Potential Next Steps
 
-### B. Track B follow-ups (non-blocking; decide deliberately)
-- **Blob object lifecycle** — exposure closed (private + gated + ~1h token); physical deletion still rides the maintenance Blob sweep, which targets the *shared* store. The new `dvx-export-private` store has its OWN retention need — a deliberate cleanup decision is owed before GA (not a v1 blocker).
-- **Phase 3 preset library / AI on-ramp / async job / bulk DOCX decline-rationale / Track A** — all still non-v1-core, unchanged.
-- **Operational-resolver coverage** — a new operational variant in Dataverse ⇒ preview/run fail loud (422) by design; correct behavior, needs a data-only label reality surfaced loudly, never silent.
+### A. slice-0 — THE DESIGNATED PRIORITY (Connor unblocked the *design*; still a destructive carryover)
 
-### C. slice-0 deploy — STILL the pilot path; gated on Connor Item 6
-Unchanged from S161. Report factually: "gated on Connor's Item 6 maker-portal Tests 1+2" — not "overdue". Soft target 2026-05-19 was imminent at S161 close (session date 2026-05-17); no slice-0 movement (all S161 was Track B by user direction). Specs READY (`lib/dataverse/schema/wave4*/`, do NOT re-author). Deploy procedure when Item 6 clears: see S161 prompt §C (4 steps; re-run BLOCKING `scripts/probe-apprequestperson-role-data.js`, Connor field review, `apply-dataverse-schema.js --wave=4`, `setup-database.js` V30, post-deploy Atlas + gates).
+🔴 **Unverified-until-checked destructive carryover — do NOT treat as green-lit.** Connor's email (S162, full text in memory `slice0-deactivate-not-delete-recalc`) resolved the Item-6 design block:
 
-### D-F. Unchanged from S161
-Data-quality follow-up `#1001205`/`#1001249` (user → Connor/Sarah, not a Track B blocker); Reviewer Manager→Dataverse (read `project_reviewer_identity_fragmentation` first); COI policy wording; revert temp role elevations; Sarah's Phase II Research field inventory.
+> Option A (delete-driven parent recalculation) is a **no-go** — Dynamics gives no parent record ID on child delete. **Defunct children must be DEACTIVATED, not deleted**; the flow triggers on child *update* (deactivation) and recalculates the parent over **active children only**.
 
-## Open Items (pending Connor / a working-session — unchanged)
-- **Field Set D doc-label collision** — `dataverse-akoya-request.md` vs `DYNAMICS_AI_FIELDS_SPEC_v3_cn.md:107`. `check:memory-drift` red BY DESIGN until resolved. Ask Connor; do NOT silence.
-- **121-view recognition working-session** — gates the Phase-3 preset library only (NOT v1-core). Evidence `docs/atlas/evidence/akoya-recognition-sizing-2026-05-17.txt`.
-- **`incompatible_shape` drift bucket** — unbuilt in `reconcile-memory-claims.js`. Follow-up only if memory-drift tooling invested further.
+This resolves the *design* question only. It does **NOT** assert maker-portal Tests 1+2 pass under the deactivation pattern, nor that the destructive deploy is safe. Before any destructive step, per the carryover-hygiene rule: (1) re-read Connor's email + the memory entry; (2) rework any slice-0 spec/flow that assumed hard-delete of roster children to deactivate + active-only recalc; (3) re-run BLOCKING `scripts/probe-apprequestperson-role-data.js`; (4) grep live callers of the gated tables; (5) Connor field review; (6) `apply-dataverse-schema.js --wave=4`; (7) `setup-database.js` V30; (8) post-deploy Atlas + 3 P0 gates. Specs at `lib/dataverse/schema/wave4*/` (do NOT re-author). Slice-0 design context: prior S161 prompt §C + `docs/POSTGRES_TO_DATAVERSE_MIGRATION.md`.
 
-## Calendar Checkpoints (soft — Connor good-faith; report factually)
-- **2026-05-19** — slice-0 deploy *target* (soft); gated on Connor Item 6.
+### B. Track B floor — follow-ups (parked; not blocking slice-0)
+- **Primary Contact final shape — PARKED pending the user's SME reply** on what the SoCal Request-PC vs Org-PC divergence *means* (org-grants-staff vs request-driver-exec). Provisional: forced-choice Request-PC vs Org-PC (both Tier-2 links) with the duplicate-contact caveat. Do not ratify until the SME answers.
+- **Name-normalized re-count** — quantify *true* person-divergence vs the inflated ~31% GUID rate (cheap follow-up `probe-akoya-socal-contact-divergence`-style with name normalization).
+- **Donor** = Tier-2 fast-follow — needs a non-misleading "directed-by sponsor" axis label + a `wmkf_donors` entity-shape probe before build.
+- **Prototype** — the user's stated path: get a prototype NL→QuerySpec on-ramp running and stress-test against unanticipated use cases. The QuerySpec→FetchXML seam is unchanged (4× Codex-reviewed); the prototype emits into the same confirm gate (additive, not a rewrite).
+
+### C–F. Unchanged from S161/S162
+Field Set D doc-label collision (Connor; `check:memory-drift` red BY DESIGN — do not silence); Reviewer Manager→Dataverse (read `project_reviewer_identity_fragmentation` first); COI policy wording; revert temp role elevations; Sarah's Phase II Research field inventory; data-quality `#1001205`/`#1001249`.
+
+## Calendar Checkpoints (soft — Connor good-faith; report factually, not "overdue")
+- **2026-05-19** — slice-0 deploy *target* (soft); Connor has now responded on the design block (S163 can act, with re-verification).
 - **2026-05-26** — dry-run: flip a throwaway test request to `'Phase II Pending'`, watch PA flows fire.
 - **2026-05-30** — go/no-go review. **2026-06-01** — pilot accepts submissions (mid-June Phase II Research cycle).
 
-## Gotchas
-
-- **🔵 Blob store model = TWO stores, do not conflate.** Shared **public** `phase-ii-summaries-blob` (`BLOB_READ_WRITE_TOKEN`, 264d) serves uploads/reviewer-finder/review-manager/maintenance. Dataverse Bulk Export has its OWN **private** `dvx-export-private` (`DVX_BLOB_RW_TOKEN`). Never point dataverse-export at the public store (CRM-data exposure — Codex S160 P1) and never flip the shared store private (breaks every upload feature). Vercel CLI (53.x + 54.x) **cannot** connect a 2nd Blob store under a custom env-var name (errors on the `BLOB_READ_WRITE_TOKEN` collision — safely, never clobbers); provision via dashboard token read + `vercel env add`. Detail in CLAUDE.md env section.
-- **🔴 Living-taxonomy lesson (recurring this session).** The 69→74 dataverse-export tests **mock the taxonomy/fetch**, so any constant/field that drifts from live Dataverse is invisible to them — it ONLY surfaces on real Dataverse, which the fail-loud surfaces did, immediately, every time. When touching `lib/services/dataverse-export/{constants,live-taxonomy,compiler}.js`, verify field/label/option names against a live probe (env-loaded `.mjs`, client-credentials token, raw FetchXML/OData) — do not trust the fixture as ground truth.
-- **Codex relay rule** (`feedback_codex_relay_verbatim`): deliver Codex output verbatim, no commentary, foreground, FRESH cold thread, never resume. **Shell-safe prompts**: the codex-rescue dispatch shell-mangled a prompt containing code-blocks / `key: value` / `{ }` lines (lost 3 lines, "command not found"). Write review prompts as PROSE — no code fences, no `=`/`{`/backticks/leading-`word:` lines. A clean re-issue fixed it. Know when to STOP: S161's preview round did review→confirm and converged (0 P0/P1, 1 P2 folded).
-- **The QuerySpec→FetchXML seam is stable + 4× Codex-reviewed.** UI emits a QuerySpec; `/preview` is the authority for total/composition/warnings. The future AI on-ramp emits the same spec into the same confirm gate (additive).
-- **`createdon`-era ≠ business-era.** Time-slice on `akoya_decisiondate`; `eraScope` is creation-PROVENANCE only.
-- **W6 Postgres table-drop** (`project_w6_table_drop_pending`) triggers ≥ 2026-07-01 — not yet due. **Unverified-until-checked destructive carryover** — grep-verify the 4 drain-only tables have no live readers before any DROP.
-- **`check:memory-drift` red by design** (Field Set D). Advisory, NOT a P0 blocker. Don't silence.
-- **iCloud `.nosync` can clear `node_modules`** at session start — `npm ci` restores it. `git restore` usually right for silent working-tree mutations.
-- **dataverse-export tests use `@jest-environment node`** (jose ESM won't parse under jsdom). Run: `node node_modules/jest/bin/jest.js <file>`. The jest env here has NO real `fetch` — live repro must be a standalone env-loaded `.mjs`, not a jest test.
+## Gotchas (still live — carried forward)
+- 🔴 **slice-0 is destructive carryover.** Connor unblocked the *design*, not the deploy. Re-verify before any schema apply / table drop. "Connor responded" ≠ "safe to run."
+- 🔴 **"PI" / "primary contact" / "donor" are per-program / disambiguation hazards** — the field dictionary must be per-program, not entity-global; this is the AI on-ramp's correctness ceiling. Detail in memory `dataverse-export-floor-scoping`.
+- 🔵 **Blob = TWO stores, never conflate** — shared public `phase-ii-summaries-blob` (`BLOB_READ_WRITE_TOKEN`) vs Dataverse-export private `dvx-export-private` (`DVX_BLOB_RW_TOKEN`). (CLAUDE.md env section.)
+- 🔴 **Living-taxonomy lesson** — `lib/services/dataverse-export/{constants,live-taxonomy,compiler}.js` constants/field/label names must be verified against a live probe, not the fixtures (tests mock the taxonomy — green ≠ live-correct).
+- **`check:memory-drift` red by design** (Field Set D). Advisory, NOT a P0 blocker. Do not silence.
+- **dataverse-export tests use `@jest-environment node`**; live repro = standalone env-loaded `.mjs` (no `fetch` in the jest env). Probe pattern: `scripts/probe-akoya-*.js` — env-load `.env.local`, client_credentials token, FetchXML aggregate (NEVER OData `/$count`).
+- **iCloud `.nosync` can clear `node_modules`** at session start — `npm ci` restores; `git restore` for silent working-tree mutations. `.next`/`.next.nosync/` untracked is normal.
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `pages/dataverse-bulk-export.js` | The builder UI (forced fan-out, confirm gate, loud waterfall + truncation, fail-loud taxonomy) |
-| `pages/api/dataverse-export/{metadata,preview,run,download}.js` | Phase 2 API; `/preview` now returns `composition` waterfall + count-invariant fail-loud |
-| `lib/services/dataverse-export/{constants,live-taxonomy,compiler}.js` | Spine — live field/label names are ground truth (verify via probe, not fixtures) |
-| `tests/unit/dataverse-export*.test.js` | 74 tests (mock the taxonomy — green ≠ live-correct) |
-| `docs/DATAVERSE_POWER_TOOLS_{DESIGN,TRACK_B_BUILD_PLAN}.md` | Design AUTHORITATIVE LIST owns status; build plan §6/§10 owns engineering. Bring to the UI/UX discussion |
-| `docs/guides/DATAVERSE_BULK_EXPORT.md` | User guide |
+| memory `slice0-deactivate-not-delete-recalc` | Connor's verbatim ruling + how to apply + the destructive-carryover caveat — READ FIRST for §A |
+| memory `dataverse-export-floor-scoping` | Ratified v1 floor, per-program field hazards, parked items — READ FIRST for §B |
+| memory `akoya-temporal-axis-encodings` | Meeting date canonical; cycle is a convention not an invariant (fail-loud) |
+| `lib/dataverse/schema/wave4*/` | slice-0 specs — READY, do NOT re-author |
+| `scripts/probe-apprequestperson-role-data.js` | BLOCKING slice-0 pre-deploy probe (re-run) |
+| `scripts/probe-akoya-{meetingdate-by-type,person-role-by-program,socal-contacts,socal-contact-divergence}.js` | S162 floor-scoping probes (committed oracle) |
+| `pages/dataverse-bulk-export.js` · `pages/api/dataverse-export/*` · `lib/services/dataverse-export/*` | Track B app + stable QuerySpec→FetchXML seam (the AI on-ramp emits into this) |
 
 ## Testing
 
 ```bash
+npm run check:atlas && npm run check:atlas:self-test && npm run check:api-routes   # 3 P0 gates (green; api-routes=84)
 node node_modules/jest/bin/jest.js tests/unit/dataverse-export.test.js tests/unit/dataverse-export-routes.test.js  # 74/74
-npm run check:atlas && npm run check:atlas:self-test && npm run check:api-routes  # P0 gates (green; api-routes=84)
-node scripts/check-memory-drift.js   # advisory; exits 1 on Field Set D by design
-# Live probe pattern (when touching the spine): standalone .mjs, load .env.local,
-#   client_credentials token, raw FetchXML/OData. NOT a jest test (no fetch in that env).
+node scripts/check-memory-drift.js   # advisory; exits 1 on Field Set D BY DESIGN
+# Live probe pattern: standalone scripts/probe-akoya-*.js — .env.local, client_credentials, FetchXML aggregate (NOT /$count)
 ```
