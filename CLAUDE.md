@@ -84,6 +84,7 @@ A multi-application document processing system using Claude AI for grant-related
 | Grant Reporting | `grant-reporting.js` | `/api/grant-reporting/*` | Interactive grant final report extraction with Dynamics auto-fill, goals assessment vs. original proposal, and Word export |
 | Virtual Review Panel | `virtual-review-panel.js` | `/api/virtual-review-panel` | Multi-LLM review panel (Claude, GPT, Gemini, Perplexity) with claim verification + structured review + synthesis. Not in default grants; admin-assigned. |
 | Phase I Dynamics (Test) | `phase-i-dynamics.js` | `/api/phase-i-dynamics/summarize` | Single-request Phase I summarization with writeback to `akoya_request.wmkf_ai_summary` + `wmkf_ai_run` audit row. Pre-flight overwrite guard. Not in nav — direct URL only. |
+| Dataverse Bulk Export | `dataverse-bulk-export.js` *(builder UI not yet built — Phase 2 pending S161)* | `/api/dataverse-export/{metadata,preview,run,download}` | Track B (Power Tools): plain-English structured filter builder over `akoya_request` → trust-bounded, honestly-characterized Excel chunk + baked-in Methods/Provenance sheet. Deterministic QuerySpec→FetchXML spine (true aggregate count, never `/$count`; backoff-hardened paging; era/decline/PI/institution disclosure engine). API layer complete + twice Codex-reviewed; **the front-end page does not exist yet** so the app is not user-reachable. Admin-assignable (`dataverse-bulk-export`); not in default grants. See `docs/DATAVERSE_POWER_TOOLS_TRACK_B_BUILD_PLAN.md` §10. |
 
 ## Tech Stack
 
@@ -244,7 +245,7 @@ User-scoping convention: shared tables for organization-wide reference data; per
 
 ## API Endpoints
 
-The full route catalogue lives in **`docs/API_ROUTE_SECURITY_MATRIX.md`** (80 routes, CI-gated via `npm run check:api-routes` — PRs touching `pages/api/**` fail without a matrix update). Source files in `pages/api/<app>/` are authoritative for behavior.
+The full route catalogue lives in **`docs/API_ROUTE_SECURITY_MATRIX.md`** (84 routes, CI-gated via `npm run check:api-routes` — PRs touching `pages/api/**` fail without a matrix update). Source files in `pages/api/<app>/` are authoritative for behavior.
 
 Conventions:
 - App-specific routes use `requireAppAccess(req, res, 'app-key')`. App keys live in `shared/config/appRegistry.js`.
@@ -260,7 +261,7 @@ Conventions:
 Operational docs to know about (others in `docs/` are design backdrop, roadmaps, or point-in-time audits — find via grep when relevant):
 
 - **`docs/EXECUTOR_CONTRACT.md`** — shared spec PA `ExecutePrompt` and Vercel `executePrompt()` both implement. Read before any prompt work.
-- **`docs/API_ROUTE_SECURITY_MATRIX.md`** — 80-route catalogue, CI-gated.
+- **`docs/API_ROUTE_SECURITY_MATRIX.md`** — 84-route catalogue, CI-gated.
 - **`docs/SECURITY_OPERATING_PLAN.md`** — weekly/monthly/quarterly security cadence + watch-item escalation thresholds.
 - **`docs/CREDENTIALS_RUNBOOK.md`** — env vars, secret rotation, diagnostics.
 - **`docs/AUTHENTICATION_SETUP.md`** — Azure AD configuration.
