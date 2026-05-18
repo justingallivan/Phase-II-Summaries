@@ -4,7 +4,7 @@
   "schemaName": "wmkf_ProposalBudgetLine",
   "displayName": "Proposal Budget Line",
   "displayCollectionName": "Proposal Budget Lines",
-  "description": "Intake-portal slice 0. Per-year, per-category budget rows drained from the applicant intake portal, child of akoya_request (parental, cascade delete). Cost-share rows live here too via wmkf_category 100000006-100000008 — WMKF-spend aggregate queries must filter wmkf_category NOT IN (100000006,100000007,100000008). Working name (wmkf_proposalbudgetline vs wmkf_budgetline) pending Connor naming review per docs/INTAKE_PORTAL_SCHEMA_CHANGES.md. Authoritative spec: docs/BUDGET_FORM_SPEC.md v3 + docs/INTAKE_PORTAL_SCHEMA_CHANGES.md 2026-05-14 entry.",
+  "description": "Intake-portal slice 0. Per-year, per-category budget rows drained from the applicant intake portal, child of akoya_request (parental, cascade delete). TWO DISTINCT DELETE AXES — do not conflate (Connor S162 ruling, see docs/INTAKE_PORTAL_ITEM_6_DISCUSSION.md § 0 'Update 2026-05-18 (S163)'): (1) the parental cascade.Delete:Cascade below governs WHOLE-akoya_request deletion / orphan cleanup — stays as specced; (2) the drain's post-submit-edit reconciliation must DEACTIVATE obsolete rows (statecode->Inactive), NEVER hard-delete them — the Item-6 recompute fires on that child Update and sums ACTIVE children only. Deactivation needs NO schema here: Dataverse custom entities carry statecode/statuscode by default. Cost-share rows live here too via wmkf_category 100000006-100000008 — WMKF-spend aggregate queries must filter wmkf_category NOT IN (100000006,100000007,100000008). Working name (wmkf_proposalbudgetline vs wmkf_budgetline) pending Connor naming review per docs/INTAKE_PORTAL_SCHEMA_CHANGES.md. Authoritative spec: docs/BUDGET_FORM_SPEC.md v3 + docs/INTAKE_PORTAL_SCHEMA_CHANGES.md 2026-05-14 entry.",
   "ownershipType": "OrganizationOwned",
   "primaryNameAttribute": {
     "schemaName": "wmkf_Name",
@@ -95,7 +95,7 @@
       "referencedEntity": "akoya_request",
       "lookupSchemaName": "wmkf_Request",
       "lookupDisplayName": "Request",
-      "lookupDescription": "The proposal this budget line belongs to. Parental: deleting the request cascades delete to its budget lines.",
+      "lookupDescription": "The proposal this budget line belongs to. Parental: deleting the REQUEST cascades delete to its budget lines (whole-proposal orphan cleanup only). NOTE: the drain's post-submit-edit reconciliation does NOT delete individual lines — it deactivates them (statecode->Inactive) per Connor S162; see entity description.",
       "required": "ApplicationRequired",
       "cascade": {
         "Assign": "NoCascade",

@@ -29,6 +29,23 @@ Precondition 3 is a doc edit (us); precondition 4 is a post-deploy smoke (Connor
 
 Step-by-step maker-portal test instructions: **`docs/INTAKE_PORTAL_ITEM_6_MAKER_PORTAL_TESTS.md`** (drafted 2026-05-14 by parallel Codex pass; ready for Connor).
 
+### Update 2026-05-18 (S163) — Connor's deactivate ruling resolves P1(Delete) + P2; Item 6 no longer gates the slice-0 *schema* deploy
+
+Connor's email (received S162, 2026-05-18; verbatim in memory `slice0-deactivate-not-delete-recalc`):
+
+> "Option A [as delete-driven] is a no-go. Dynamics doesn't provide the parent record ID when the child record is deleted. But … defunct records shouldn't be deleted, they should be deactivated. The flow would run on the child record **update** deactivating it, and recalculate based only on **active** records."
+
+**Effect on the four preconditions:**
+
+- **P2 (Delete-trigger parent-ID resolution) — DISSOLVED, not pending.** There is no longer a Delete trigger. Deactivation is a `statecode`→Inactive **Update**, which carries the parent lookup. P2 guarded a code path Connor's ruling structurally removes; it is moot.
+- **P1 (filter binds on Create/Update/Delete) — Delete portion DISSOLVED.** The trigger event set is now {Create (drain insert), Update (deactivation + edits)} — no Delete. § 5 / line 138 already characterizes Create + Update as the *clean, handled* case; the only unverified event was Delete. P1's residual is "the parent-status filter binds on **Update**," which is (a) the docs' acknowledged clean case and (b) a *flow-correctness* concern, not a *schema-creation* concern — it is exercised post-deploy against a proxy then re-verified per **P4**'s existing provision.
+- **P3 — landed S150** (doc edit, ours).
+- **P4 — unchanged** (post-deploy, gates PA-flow-live only, never the schema deploy).
+
+**Net:** the slice-0 *schema* deploy (additive entities/attrs/option-values, verified non-destructive + collision-clear S163) has **no open Item-6 precondition**. What remains genuinely Connor-owned — building the recompute flow and the residual Update-filter-binding check — is, by this record's own wording (P4 + the `MAKER_PORTAL_TESTS.md` § 2 proxy path), **post-deploy**, downstream of creating inert additive schema.
+
+**Drain reconciliation lifecycle (corrects Option B mechanics, § 5 line ~142):** the post-submit-edit reconciliation is **deactivate-then-recompute-over-active**, NOT "delete old children, insert new." Obsolete child rows get `statecode`→Inactive; the recompute sums active children only. (`wmkf_proposalbudgetline`'s parental `cascade.Delete: Cascade` is orthogonal — it governs whole-`akoya_request` deletion / orphan cleanup, a different event, and stays as specced. No schema change: Dataverse custom entities carry `statecode`/`statuscode` by default.)
+
 **Sections 1–10 below** are the pre-decision walkthrough that produced this outcome; kept for context and for the option analysis under the boundary-rule exception. Sections 6 (questions) and 7 (recommendation matrix) are now historical — the answers locked above are authoritative.
 
 ---

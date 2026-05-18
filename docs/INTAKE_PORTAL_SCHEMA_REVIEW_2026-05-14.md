@@ -198,6 +198,16 @@ Connor live-verifies that none of these collide with existing `akoya_request` at
 
 Cheap pre-deploy sanity check that prevents a deploy-time conflict. Five minutes of his time.
 
+### ✅ RESOLVED — `[VERIFIED via probe]` 2026-05-18 (S163), done in-house, no Connor needed
+
+This is a **read-only metadata GET**, not a Connor/PowerShell dependency. Closed by `scripts/probe-slice0-attr-collision.mjs` (client_credentials → `EntityDefinitions/Attributes`, no writes):
+
+- **Net-new surface is ONE field, not three.** Of the three fields tabled above, only **`wmkf_totalothersources`** is net-new on `akoya_request`; `wmkf_totalwmkfrequested`/`wmkf_totalprojectcost` reuse existing AkoyaGO fields (`akoya_request` = WMKF requested, `akoya_expenses` = total project cost) per `wave4-existing/akoya_request-intake-aggregates.json` `_comment`. The "three fields" framing here is stale relative to the final spec.
+- **`akoya_request`** — **577** live attributes (the "364 fields" estimate above was itself an undercount; the live probe is authoritative): `wmkf_totalothersources` → **clear**.
+- **`wmkf_apprequestperson`** — 35 live attributes; the slice-0 roster fields `wmkf_effortpct` / `wmkf_biosketchurl` / `wmkf_lineorder` → **all clear** (this existing-entity surface was not in the original ask but carries the identical silent-no-op risk under creation-only `apply-dataverse-schema.js`).
+
+No rename needed. Collision check is **off the slice-0 critical path**. Re-run the probe at deploy time (point-in-time, like the role-data probe).
+
 ---
 
 ## 6. Does AkoyaGO surface inline edit on `wmkf_proposalbudgetline` rows?
