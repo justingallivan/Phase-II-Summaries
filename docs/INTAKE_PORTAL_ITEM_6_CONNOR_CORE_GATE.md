@@ -2,7 +2,7 @@
 
 Condensed from `INTAKE_PORTAL_ITEM_6_P1UPDATE_TEST_DRAFT_v5.md` — the **core gate only** (the minimal set that decides the slice-0 schema deploy). The mechanical parts (PATCH bodies, filter expressions, trigger/flow config, observation rules, pass/fail criteria) are reproduced verbatim from v5; surrounding prose is condensed. Evidence-only sections (reactivation §5.9, rapid-stress §5.11, transition-timing §5.12, UI realism §5.14) are intentionally omitted; they do not gate the decision.
 
-**Context (read once):** With the recompute flow triggering on a child Update whose only change is `statecode`→Inactive, we need to confirm a trigger-condition filter that traverses the child→parent lookup to filter on parent status (`akoya_requeststatus = 'Phase II Pending'`) (a) binds/saves, (b) does NOT fire when the parent is pre-submit, (c) fires exactly once when the parent is `Phase II Pending`, with `SdkMessage` exactly `Update` and correct parent attribution, and (d) the active-children query in that run excludes the just-deactivated row. Core effort ≈ 35–55 min (≈20–35 if Step 9 is skipped).
+**Context (read once):** With the recompute flow triggering on a child Update whose only change is `statecode`→Inactive, we need to confirm a trigger-condition filter that traverses the child→parent lookup to filter on parent status (`akoya_requeststatus = 'Phase II Pending'`) (a) binds/saves, (b) does NOT fire when the parent is pre-submit, (c) fires exactly once when the parent is `Phase II Pending`, with `SdkMessage` exactly `Update` and correct parent attribution, and (d) the active-children query in that run excludes the just-deactivated row. Core effort ≈ **20–35 min** (Step 10 is locked-skipped per the production `blank` decision; it would add ~15–25 min only if that decision were ever reversed).
 
 ---
 
@@ -39,7 +39,7 @@ Condensed from `INTAKE_PORTAL_ITEM_6_P1UPDATE_TEST_DRAFT_v5.md` — the **core g
 | `[ACTIVE_STATECODE_INT]` / `[ACTIVE_STATUSCODE_INT]` | Active state/status ints. Expected `0` / `1`; confirm. |
 | `[INACTIVE_STATECODE_INT]` / `[INACTIVE_STATUSCODE_INT]` | Inactive state/status ints. Expected `1` / `2`; confirm. |
 | `[AMOUNT_COLUMN]` | Numeric child column for Step 9. Real likely `wmkf_amount`. |
-| `[SELECT_COLUMNS_PRODUCTION_DECISION]` | `blank` (production leaves trigger Select columns empty — default/recommended; Step 10 is SKIPPED, gates nothing) or `configured` (production sets Select columns; Step 10 becomes a hard gate). **Decide before testing.** |
+| `[SELECT_COLUMNS_PRODUCTION_DECISION]` | **LOCKED = `blank`** (production decision S163, Codex-validated SAFE-WITH-CONDITIONS): the production recompute flow's trigger leaves Select columns empty. Record this value and **skip Step 10** (it stays in this doc only as a drift guardrail). The `configured` path applies only if that production decision is ever reversed. |
 | `[BUSINESS_SELECT_COLUMNS]` | e.g. `wmkf_amount,wmkf_category,wmkf_year,wmkf_description`. Only if `configured`. |
 | `[SOLUTION_NAME]` / `[FLOW_NAME]` | `WMKF Intake Item 6 PA Trigger Test` / `TEST Item 6 BudgetLine Deactivation Filter Binding`. |
 | `[SELECTED_CANDIDATE_LETTER]` / `[SELECTED_FILTER_EXPRESSION]` | The candidate that saves (Step 4). |
@@ -164,9 +164,9 @@ Proves the flow can read the active sibling set excluding the just-deactivated r
 
 ## STEP 10 — TEST 4: Select-columns — CONDITIONAL
 
-**If `[SELECT_COLUMNS_PRODUCTION_DECISION] = blank`:** record "Step 10 SKIPPED — production Select columns blank" and go to Step 11. Step 10 gates nothing in that case.
+**Production decision is LOCKED = `blank` (S163, Codex-validated):** record "Step 10 SKIPPED — production Select columns blank (locked design decision)" and go to Step 11. Step 10 gates nothing. (Accepted, validated tradeoff: with Select columns blank the recompute also fires on post-submit edits to non-aggregate child fields — operationally bounded at pilot scale; this was a deliberate choice, not an oversight. The parent-status Filter-rows condition still does the real scoping.)
 
-**If `configured`:** for each of the three sub-cases, first set Parent B = Phase II Pending and confirm `[CHILD_B_GUID]` Active (reactivate via Step 3 between sub-cases), edit the trigger Select columns, save, apply Step 6, send the Step 3 deactivation PATCH for `[CHILD_B_GUID]`, count attributable runs:
+**The `configured` branch below is retained only as a drift guardrail** — run it only if the locked `blank` decision is ever reversed: for each of the three sub-cases, first set Parent B = Phase II Pending and confirm `[CHILD_B_GUID]` Active (reactivate via Step 3 between sub-cases), edit the trigger Select columns, save, apply Step 6, send the Step 3 deactivation PATCH for `[CHILD_B_GUID]`, count attributable runs:
 - **10a — `[BUSINESS_SELECT_COLUMNS]`** (business fields only): expect **0** runs. If >0, record the run output and treat it as an unexpected platform observation requiring PA-docs confirmation.
 - **10b — `statecode`**: record whether 0 or 1 (observation).
 - **10c — `statecode,statuscode`**: expect **1** run, `SdkMessage` exactly `Update`.
