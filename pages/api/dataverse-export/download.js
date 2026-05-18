@@ -57,8 +57,22 @@ export default async function handler(req, res) {
     if (meta.size != null) res.setHeader('Content-Length', String(meta.size));
     res.setHeader('Cache-Control', 'private, no-store');
 
-    // Web ReadableStream → Node response.
-    Readable.fromWeb(result.stream).pipe(res);
+    // Web ReadableStream → Node response, with fail-loud error handling on
+    // BOTH ends (Codex S160 confirm P2): a late Blob/network failure after
+    // headers are sent cannot change the status code, so abort the response
+    // (the client sees a broken download, never a hung partial that looks
+    // complete) and log. No swallowed exception.
+    const node = Readable.fromWeb(result.stream);
+    node.on('error', (streamErr) => {
+      console.error('[dataverse-export/download] blob stream error:', streamErr);
+      if (!res.headersSent || !res.writableEnded) res.destroy(streamErr);
+    });
+    res.on('error', (resErr) => {
+      console.error('[dataverse-export/download] response error:', resErr);
+      node.destroy(resErr);
+    });
+    res.on('close', () => { if (!res.writableEnded) node.destroy(); }); // client aborted
+    node.pipe(res);
   } catch (err) {
     console.error('[dataverse-export/download] failed:', err);
     return res.status(502).json({

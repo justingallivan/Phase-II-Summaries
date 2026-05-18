@@ -107,19 +107,37 @@ beforeEach(() => {
   put.mockResolvedValue({ pathname: 'dataverse-export/x-abc.xlsx' });
 });
 
-describe('auth + method gates (all routes)', () => {
-  test('requireAppAccess denial short-circuits every route', async () => {
-    requireAppAccess.mockResolvedValue(null); // it already sent 401/403
-    for (const h of [previewHandler, runHandler, metadataHandler, downloadHandler]) {
-      const res = mockRes();
-      await h({ method: 'POST', body: {} }, res);
-      expect(res.ended).toBe(false); // handler returned without writing
-    }
+// NOTE: the REAL 401/403/CSRF/origin/is_active semantics live in
+// requireAppAccess and are covered by its own suite (tests around
+// lib/utils/auth). Here we assert the per-route GATE WIRING the security
+// matrix promises: every route calls requireAppAccess with the correct app
+// key BEFORE any side effect, and short-circuits cleanly on denial.
+describe('auth + method gates — every route, not preview-only (Codex confirm P2)', () => {
+  const ALL = [
+    { name: 'preview', h: () => previewHandler, ok: 'POST', bad: 'GET' },
+    { name: 'run', h: () => runHandler, ok: 'POST', bad: 'GET' },
+    { name: 'metadata', h: () => metadataHandler, ok: 'GET', bad: 'POST' },
+    { name: 'download', h: () => downloadHandler, ok: 'GET', bad: 'POST' },
+  ];
+
+  test.each(ALL)('$name gates on requireAppAccess(\'dataverse-bulk-export\') '
+    + 'before any side effect', async ({ h, ok }) => {
+    requireAppAccess.mockResolvedValue(null); // denial: it already sent 401/403
+    const res = mockRes();
+    await h()({ method: ok, body: {}, query: {} }, res);
+    expect(requireAppAccess).toHaveBeenCalledWith(
+      expect.anything(), expect.anything(), 'dataverse-bulk-export');
+    // No downstream work happened (no taxonomy fetch / blob / count).
+    expect(fetchLiveTaxonomy).not.toHaveBeenCalled();
+    expect(fetchXmlAggregateCount).not.toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
+    expect(blobGet).not.toHaveBeenCalled();
+    expect(res.ended).toBe(false); // handler returned; requireAppAccess owns the response
   });
 
-  test('wrong method → 405', async () => {
+  test.each(ALL)('$name rejects the wrong HTTP method → 405', async ({ h, bad }) => {
     const res = mockRes();
-    await previewHandler({ method: 'GET', body: {} }, res);
+    await h()({ method: bad, body: {}, query: {} }, res);
     expect(res.statusCode).toBe(405);
   });
 });
