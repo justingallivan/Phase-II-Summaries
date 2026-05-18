@@ -89,6 +89,25 @@ export default async function handler(req, res) {
     });
   }
 
+  // Dedicated PRIVATE Blob store token. The shared BLOB_READ_WRITE_TOKEN
+  // points at a PUBLIC store (used by uploads/reviewer-finder/etc.) and
+  // cannot serve a private blob — put({access:'private'}) on it throws
+  // "Cannot use private access on a public store". This artifact is CRM
+  // bulk data: it MUST live in a private store behind the gated /download
+  // proxy (build plan §5; Codex S160 P1). Fail loud + pre-stream if unset
+  // so a misconfig is a clean JSON 502, never a cryptic mid-SSE terminal
+  // error that looks like a query failure.
+  const blobToken = process.env.DVX_BLOB_RW_TOKEN;
+  if (!blobToken) {
+    return res.status(502).json({
+      error: 'BLOB_STORE_UNCONFIGURED',
+      message: 'The private export Blob store is not configured '
+        + '(DVX_BLOB_RW_TOKEN missing). The export artifact must be written '
+        + 'to a dedicated PRIVATE store, not the shared public store — '
+        + 'refusing to run.',
+    });
+  }
+
   // SSE — only AFTER every pre-stream gate.
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -153,6 +172,7 @@ export default async function handler(req, res) {
     const filename = `akoya-export-${stamp}-${result.fetched}rows.xlsx`;
     const blob = await put(`dataverse-export/${filename}`, buf, {
       access: 'private',
+      token: blobToken,
       contentType: XLSX_MIME,
       contentDisposition: `attachment; filename="${filename}"`,
       addRandomSuffix: true,

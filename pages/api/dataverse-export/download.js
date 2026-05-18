@@ -40,8 +40,21 @@ export default async function handler(req, res) {
     });
   }
 
+  // Must read from the SAME dedicated private store run.js wrote to (the
+  // shared BLOB_READ_WRITE_TOKEN is a different, public store).
+  const blobToken = process.env.DVX_BLOB_RW_TOKEN;
+  if (!blobToken) {
+    return res.status(502).json({
+      error: 'BLOB_STORE_UNCONFIGURED',
+      message: 'The private export Blob store is not configured '
+        + '(DVX_BLOB_RW_TOKEN missing). Cannot retrieve the artifact.',
+    });
+  }
+
   try {
-    const result = await get(verified.pathname, { access: 'private', useCache: false });
+    const result = await get(verified.pathname, {
+      access: 'private', useCache: false, token: blobToken,
+    });
     if (!result || !result.stream) {
       return res.status(404).json({
         error: 'ARTIFACT_NOT_FOUND',

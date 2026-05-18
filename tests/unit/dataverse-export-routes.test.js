@@ -99,7 +99,14 @@ const baseSpec = (over = {}) => ({
   columns: { default: true }, eraScope: 'all', ...over,
 });
 
-beforeAll(() => { process.env.NEXTAUTH_SECRET = 'test-nextauth-secret-at-least-32-chars-long'; });
+beforeAll(() => {
+  process.env.NEXTAUTH_SECRET = 'test-nextauth-secret-at-least-32-chars-long';
+  // run.js/download.js require a DEDICATED private-store token (the shared
+  // public BLOB_READ_WRITE_TOKEN cannot serve a private blob — prod log
+  // "Cannot use private access on a public store"). Pre-stream fail-loud
+  // guard; set a stub so the success-path specs exercise the real flow.
+  process.env.DVX_BLOB_RW_TOKEN = 'vercel_blob_rw_TESTSTORE_teststubsecret';
+});
 beforeEach(() => {
   jest.clearAllMocks();
   requireAppAccess.mockResolvedValue({ profileId: 'p1', session: { user: {} } });
@@ -228,11 +235,29 @@ describe('run — the stateless confirm gate', () => {
       expect.stringContaining('dataverse-export/'),
       expect.any(Buffer),
       expect.objectContaining({ access: 'private',
+        token: process.env.DVX_BLOB_RW_TOKEN,
         contentDisposition: expect.stringContaining('attachment') }),
     );
     const ready = sseEvents(res).find(e => e.event === 'ready');
     expect(ready.downloadUrl).toMatch(/^\/api\/dataverse-export\/download\?t=/);
     expect(ready.expiresInSec).toBeGreaterThan(0);
+  });
+
+  test('absent DVX_BLOB_RW_TOKEN → 502 BLOB_STORE_UNCONFIGURED pre-stream, '
+    + 'NO blob (a public-store misconfig fails loud + clean, never mid-SSE)', async () => {
+    const saved = process.env.DVX_BLOB_RW_TOKEN;
+    delete process.env.DVX_BLOB_RW_TOKEN;
+    try {
+      const { token } = await mintResultToken(baseSpec(), { trueTotal: 3 });
+      const res = mockRes();
+      await runHandler({ method: 'POST', body: { resultToken: token } }, res);
+      expect(res.statusCode).toBe(502);
+      expect(res.body.error).toBe('BLOB_STORE_UNCONFIGURED');
+      expect(put).not.toHaveBeenCalled();
+      expect(res.chunks.length).toBe(0); // pre-stream: no SSE bytes
+    } finally {
+      process.env.DVX_BLOB_RW_TOKEN = saved;
+    }
   });
 
   test('terminal paging error → error frame, NO blob written', async () => {
