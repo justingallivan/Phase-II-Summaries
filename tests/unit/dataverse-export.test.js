@@ -194,6 +194,47 @@ describe('compile() — every §3b invariant, bound not re-derived', () => {
     expect(countFetchXml).toContain('entityname="appl"');
   });
 
+  test('institution filters the APPLICANT ACCOUNT name/AKA via an inner '
+    + 'link-entity — akoya_applicantid is a lookup, so a bare condition on '
+    + 'it is invalid FetchXML; the count fetch carries the SAME link', () => {
+    const s = validSpec();
+    s.filters = [{ axis: 'institution', op: 'eq',
+      value: 'California Institute of Technology' }];
+    const { fetchXml, countFetchXml, appliedRules } = compile(s);
+
+    // NEVER a bare condition on the lookup attribute (the original defect).
+    expect(fetchXml).not.toContain('attribute="akoya_applicantid" operator=');
+    // inner applicant-account link, in BOTH the data and the count fetch.
+    const link = 'link-entity name="account" from="accountid" '
+      + 'to="akoya_applicantid" link-type="inner" alias="instf"';
+    expect(fetchXml).toContain(link);
+    expect(countFetchXml).toContain(link);
+    // OR(name, akoya_aka) keyed off the instf link alias.
+    expect(fetchXml).toContain(
+      'entityname="instf" attribute="name" operator="eq" '
+      + 'value="California Institute of Technology"');
+    expect(fetchXml).toContain(
+      'entityname="instf" attribute="akoya_aka" operator="eq" '
+      + 'value="California Institute of Technology"');
+    expect(appliedRules.join(' ')).toMatch(/Institution — applicant account name\/AKA/);
+
+    // contains → like %v% on both arms.
+    const c = validSpec();
+    c.filters = [{ axis: 'institution', op: 'contains', value: 'Institute' }];
+    const cf = compile(c).fetchXml;
+    expect(cf).toContain('entityname="instf" attribute="name" operator="like" value="%Institute%"');
+    expect(cf).toContain('entityname="instf" attribute="akoya_aka" operator="like" value="%Institute%"');
+
+    // in → multi-value on both arms.
+    const i = validSpec();
+    i.filters = [{ axis: 'institution', op: 'in', value: ['Caltech', 'MIT'] }];
+    const inf = compile(i).fetchXml;
+    expect(inf).toMatch(
+      /entityname="instf" attribute="name" operator="in"><value>Caltech<\/value><value>MIT<\/value>/);
+    expect(inf).toMatch(
+      /entityname="instf" attribute="akoya_aka" operator="in"><value>Caltech<\/value><value>MIT<\/value>/);
+  });
+
   test('the Honorarium sharpest reviewer-exclusion is actually applied', () => {
     const resolver = { resolve: (field, label) => `${field}:${label}` };
     const { fetchXml } = compile(validSpec(), { resolver });
