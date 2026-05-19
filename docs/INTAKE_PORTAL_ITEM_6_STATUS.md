@@ -95,7 +95,9 @@ cleared. Slice-0 deploy is gated, narrowly, on P1-Update alone.
 
 The next session acts as **verdict-checker**, not result-narrator. Check the
 returned evidence line-by-line against `CONNOR_CORE_GATE.md` Step 11
-(completeness) and Step 12 (verdict). Step 12 literals, verbatim:
+(completeness) and Step 12 (verdict). Step 12 verdict criteria, quoted from
+`CONNOR_CORE_GATE.md` Step 12 (the bolded **Does NOT clear the gate as full
+VERIFIED** clause is an added clarification, not in the CORE_GATE source):
 
 > - **VERIFIED** (clears the deploy gate): **real path**; a candidate saved;
 >   Step 7 PASS; Step 8 PASS; Step 9 PASS; Step 10 PASS or N/A (`blank`); every

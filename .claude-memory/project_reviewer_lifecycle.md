@@ -58,7 +58,7 @@ Reviewer lifecycle has 8 stages. Current state: discovery is well-automated (Rev
 - Tension: paying reviewers now, so can't cast too wide a net (risk of too many accepting)
 - Dashboard must show invitation funnel: target vs invited vs accepted vs pending vs declined
 - Need graceful "un-invite" if over-subscribed
-- Referral pipeline: declining reviewers often suggest alternates; manual reviewer entry exists in the Reviewer Finder UI but referral-source tracking still needs adding. (The prior `reviewer-finder.js:2802` "Add Researcher modal" reference rotted — that line and modal name no longer resolve in the now-~3.6k-line file [current modals: Enrichment/EmailGenerator/EditCandidate/Settings]; don't re-pin design notes to line numbers.)
+- Referral pipeline: declining reviewers often suggest alternates; capturing referral-source on suggested alternates is an unbuilt need. (A prior note pinned this to an "Add Researcher modal" at `reviewer-finder.js:2802`; that line/modal no longer resolves — current reviewer-finder modals are Enrichment/EmailGenerator/EditCandidate/Settings, i.e. **edit existing** candidates; no add/create-from-scratch reviewer UI was found. Do NOT assume a manual-entry surface exists — re-verify the entry path before building referral tracking on it. Don't re-pin design notes to line numbers.)
 
 **Review process details:**
 - Reviews are fully independent (no panel discussion, no inter-reviewer visibility)

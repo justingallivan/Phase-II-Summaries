@@ -4,7 +4,7 @@
 
 ## What This System Does
 
-This is a suite of 13 web-based tools built for the W.M. Keck Foundation staff. The tools use AI to automate time-intensive research administration tasks: evaluating grant proposals, finding expert peer reviewers, screening applicants for research integrity, analyzing funding landscapes, and querying CRM data in plain English. Staff access the tools through a web browser — no software installation required.
+This is a suite of web-based tools built for the W.M. Keck Foundation staff. The tools use AI to automate time-intensive research administration tasks: evaluating grant proposals, finding expert peer reviewers, screening applicants for research integrity, analyzing funding landscapes, and querying CRM data in plain English. Staff access the tools through a web browser — no software installation required.
 
 ## Application Suite
 

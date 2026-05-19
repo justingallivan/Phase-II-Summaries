@@ -234,16 +234,26 @@ already reconciled:
 
 - `MEMORY.md` index "still load-bearing" line → corrected ("drain-only, deletion ≥ 2026-07-01").
 - `project_reviewer_finder_dataverse_entry_path.md` central claim → fully rewritten ("SHIPPED").
-- `project_app_access_control.md` counts → 16 apps / ~48 endpoints (was 15 / ~30).
+- `project_app_access_control.md` counts → corrected. (S166-initial said "16 apps / ~48 endpoints"; **Codex follow-up caught two misses**: the `MEMORY.md` index line still said "~30 endpoints" — a denormalized restatement the body fix didn't reach — and 16/~48 were *themselves* now stale. Re-verified live 2026-05-19: **17 app definitions / ~52 endpoints**; index + body both reconciled to that single state.)
 - `project_grant_lifecycle_states_confirmed.md` false "slots do NOT exist" → removed.
 - `project_reviewer_accept_decline_links.md` "NOT yet built" → scoped to email-buttons; `respond.js` noted shipped.
 - `project_codex_recurring_review.md` / `..._external_id_foundation.md` / `..._pilot_decisions_2026-05-06.md` archive paths → already `docs/archive/`-prefixed.
 - `project_intake_portal_pilot_decisions_2026-05-13.md` `schema/intake/` → covered by an explicit top-of-file supersession banner.
 - `project_backend_automation.md` field names → already v3 (`wmkf_ai_dataextract`, "formerly `wmkf_ai_structured_data`").
 
-Only **one** genuine residual found and fixed S166: `project_reviewer_lifecycle.md:61`
-rotted `reviewer-finder.js:2802` "Add Researcher modal" ref (file now ~3.6k lines; no such
-modal name) → de-pinned, lesson encoded inline.
+Residuals found and fixed S166 (initial pass + Codex follow-up):
+- `project_reviewer_lifecycle.md:61` rotted `reviewer-finder.js:2802` "Add Researcher modal"
+  ref → de-pinned. **Codex follow-up:** the first rewrite still asserted "manual reviewer
+  entry exists in the UI" — unverified (current reviewer-finder modals only *edit* existing
+  candidates; no add-from-scratch UI found). Reworded to not assert an unverified surface.
+- `project_app_access_control.md` + `MEMORY.md` index counts (see bullet above) — Codex
+  caught the index restatement the body fix missed; both reconciled to live 17/52.
+
+**Process note:** the S166-initial "only one residual / already fully reconciled" framing
+was itself slightly overstated — the *bodies* of the high-signal memories were reconciled by
+intervening sessions, but a denormalized index restatement and two now-stale counts survived
+and were only caught on Codex re-review. This is the same fan-out/no-fan-in failure the audit
+exists to document; recorded here rather than papered over.
 
 **Gate-design defect for Phase 5 (do NOT silence now):** `RECONCILIATION_REPORT.json`'s
 `claim_audit` is a static re-parse of `AUDIT_S154_MEMORY_V2.md` (every claim's `source_file`
@@ -276,7 +286,7 @@ Acceptance:
 
 **Finding #6 undercounted.** The adjacent-context survey (ground-truth rule #3) found Concept Evaluator in **3 live docs Finding #6 did not name**: `SECURITY_ARCHITECTURE.md`, `PROMPT_STORAGE_DESIGN.md` (already correctly says "Deprecated/retired" — no change), and `guides/GETTING_STARTED.md` (already correct). The AUDIT_S154_* / `DOC_TRIAGE_2026-05-07.md` / this audit doc reference it as point-in-time history and were correctly left untouched. `appRegistry.js` verified: registry-removed, comment-only residual at lines 9–14 (S154 was right).
 
-**Out-of-scope rot flagged, not fixed (scope discipline):** `SYSTEM_OVERVIEW.md` ("All 13 applications") and `SECURITY_ARCHITECTURE.md` ("All 14 applications") carry independently-stale app counts (real suite is larger per `CLAUDE.md`). Row removal de-specified the SYSTEM_OVERVIEW count to avoid asserting a new wrong number; the SECURITY_ARCHITECTURE "14" left as-is. A general overview-docs refresh is a separate item, not Phase 4.
+**Adjacent stale app counts (scope discipline + Codex follow-up):** `SYSTEM_OVERVIEW.md` and `SECURITY_ARCHITECTURE.md` carry independently-stale app counts (real suite is larger per `CLAUDE.md`). S166-initial de-specified the SYSTEM_OVERVIEW *table* count ("All 13 applications" → "All applications") but **Codex follow-up caught a missed restatement**: line 7's "suite of 13 web-based tools" — now also de-specified ("suite of web-based tools"), consistent with not asserting a new wrong number. `SECURITY_ARCHITECTURE.md` "All 14 applications" is **still left as-is** (genuine remaining item — tracked P3); its retired-`evaluate-concepts.js` path in the historical §"REMEDIATED" finding was annotated (Codex MINOR) as as-of-finding/now-archived rather than rewritten.
 
 ### Phase 5 — Improve Gates — ✅ BOUNDED ITEMS DONE (S166, 2026-05-19); semantic gate deferred
 
@@ -288,9 +298,9 @@ Acceptance:
 - ✅ **`check:memory-drift --no-write` exists** — added to `scripts/check-memory-drift.js` + `npm run check:memory-drift:no-write` alias. Verified: read-only, evaluates the committed report, **does not regenerate/mutate `RECONCILIATION_REPORT.json`** (the default path does — that's the Phase-2 dirtying problem this fixes). Warns when the report is >24h old instead of silently regenerating.
 - ✅ **Gate docs warn against parallel `check:atlas` / `:atlas:self-test`** — added at 3 surfaces with the concrete cause: the self-test writes synthetic fixtures into `lib/services/atlas_selftest_tmp/` (a path `check:atlas` scans), so a concurrent `check:atlas` false-fails on them and races the self-test's `cleanup()`. Warnings in both script headers + `CLAUDE.md` binding-self-test paragraph.
 
-Binding self-tests green after the (comment-only) edits to `check-application-state-atlas.js` / `check-coverage-self-test.js`: `check:atlas:self-test` 12/12, `check:doc-currency:self-test` 12/12.
+Binding self-tests green after the (comment-only) edits to `check-application-state-atlas.js` / `check-coverage-self-test.js`: `check:atlas:self-test` 12/12, `check:doc-currency:self-test` 12/12 (re-observed S166 during the Codex-fix follow-up, not on-faith).
 
-**Logged for follow-up (not fixed — too big for a gate tweak):** `RECONCILIATION_REPORT.json`'s `claim_audit` re-parses the frozen `AUDIT_S154_MEMORY_V2.md` (every claim's `source_file` is that doc), so "stale: 38" never decreases as memories are fixed (Phase 2 proved it: the substantive S154 findings were already reconciled, count unchanged). The gate does **not** fail on this count (only on `drift_buckets` + `probe_errors`), so it is misleading-but-not-blocking. Re-deriving `claim_audit` from live memory state = automating the memory audit; tracked as a Register item.
+**Logged for follow-up (not fixed — too big for a gate tweak):** `RECONCILIATION_REPORT.json`'s `claim_audit` re-parses the frozen `AUDIT_S154_MEMORY_V2.md` (every claim's `source_file` is that doc), so "stale: 38" never decreases as memories are fixed (Phase 2 proved it: the substantive S154 findings were already reconciled, count unchanged). The gate does **not** fail on this count — it fails only on `spec_without_entity`, large `stale_row_count` (>50%), `doc_label_collision`, or `probe_errors` (NOT on `postgres_table_mismatch`, and NOT on the `claim_audit` "stale" count) — so it is misleading-but-not-blocking. Re-deriving `claim_audit` from live memory state = automating the memory audit; tracked as a Register item.
 
 ## Action Item Register
 
@@ -299,12 +309,12 @@ Binding self-tests green after the (comment-only) edits to `check-application-st
 | P0 | Reconcile `postgres-grant-cycles.md` | Engineering docs | Current code imports `grant-cycles-dataverse` |
 | P0 | Update Atlas index grant-cycle and proposal-search rows | Engineering docs | Live Dataverse: `wmkf_appgrantcycles` = 10 |
 | P0 | Resolve Field Set D label collision | Justin / Connor | Atlas vs v3 spec conflict |
-| P1 | ✅ DONE S166 — Clean `.claude-memory/` stale summaries | Engineering docs | S154 worklist already reconciled by intervening sessions; 1 residual fixed (`project_reviewer_lifecycle.md:61` rotted line ref). See Phase 2. |
+| P1 | ✅ DONE S166 — Clean `.claude-memory/` stale summaries | Engineering docs | S154 worklist bodies already reconciled by intervening sessions; Codex follow-up caught a denormalized index restatement + 2 now-stale counts (all fixed to live 17/52) + an unverified rewrite (corrected). See Phase 2. |
 | P2 | Fix `RECONCILIATION_REPORT.json` `claim_audit` (DEFERRED — sized S166) | Engineering | Re-parses frozen `AUDIT_S154_MEMORY_V2.md`; "38 stale" never decreases. Non-blocking (gate fails on drift_buckets/probe_errors, not this count). Re-derive = automating the memory audit; not a gate tweak. |
 | P1 | ✅ DONE S166 — Canonicalize Item 6 status page | Engineering docs | `docs/INTAKE_PORTAL_ITEM_6_STATUS.md` created (Phase 3) |
 | P1 | ✅ DONE S166 — Mark/archive superseded P1-Update drafts | Engineering docs | Top-banner pointers on 8 Item 6 docs; no deletion |
 | P2 | ✅ DONE S166 — Remove/label retired Concept Evaluator in live docs | Engineering docs | 5 docs edited; Finding #6 undercounted (3 more found, 2 already clean). See Phase 4. |
-| P3 | Refresh stale app counts in overview docs | Engineering docs | `SYSTEM_OVERVIEW`/`SECURITY_ARCHITECTURE` "13/14 applications" understate real suite — separate from Phase 4 |
+| P3 | Refresh stale app counts in overview docs (PARTIAL S166) | Engineering docs | `SYSTEM_OVERVIEW` de-specified (table + line 7, latter via Codex follow-up). `SECURITY_ARCHITECTURE` "All 14 applications" still understates real suite — remaining. |
 | P2 | Add semantic drift gates (DEFERRED — sized S166) | Engineering | ≈ automating the S154 memory audit + its own binding self-test; out of proportion to a gate tweak. Not half-built. |
 | P2 | ✅ DONE S166 — Add `check:memory-drift --no-write` | Engineering | Read-only flag + `check:memory-drift:no-write` alias; verified non-mutating. Phase 5. |
 | P2 | ✅ DONE S166 — Warn against parallel atlas gate runs | Engineering docs | 3 surfaces (both scripts + CLAUDE.md) w/ concrete cause. Phase 5. |

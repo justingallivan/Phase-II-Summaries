@@ -1153,6 +1153,8 @@ All new server-side outbound HTTP requests should use `safeFetch` from `lib/util
 
 **Location:** `pages/api/evaluate-concepts.js`, `pages/api/evaluate-multi-perspective.js`, `pages/api/dynamics-explorer/chat.js`, `pages/api/reviewer-finder/generate-emails.js`, `pages/api/process.js`, `pages/api/process-phase-i.js`, `pages/api/process-phase-i-writeup.js`, `pages/api/health.js`
 
+_(Historical as-of-finding paths. `evaluate-concepts.js` was later archived to `/_archived` when Concept Evaluator was retired 2026-04-25 — it is no longer a live route.)_
+
 **Risk:** Internal implementation details could aid attackers in crafting targeted attacks against specific services or dependencies.
 
 **Recommendation:** Use generic error messages in production; show detailed errors only in development. Ensure full errors are still logged server-side for debugging.

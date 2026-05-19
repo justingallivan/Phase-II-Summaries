@@ -86,7 +86,7 @@
 - [Reviewer history data quality](project_reviewer_history_data_quality.md) — pre-J26 proposals have no Postgres rows; zeros are "unknown", not "0 invited"
 
 ## App Infrastructure
-- [App-level access control](project_app_access_control.md) — Dataverse `wmkf_appuserappaccesses`; appRegistry.js source of truth; `requireAppAccess()` on all ~30 endpoints
+- [App-level access control](project_app_access_control.md) — Dataverse `wmkf_appuserappaccesses`; appRegistry.js source of truth; `requireAppAccess()` on ~52 app endpoints (verified 2026-05-19)
 - [Admin dashboard + API keys](project_admin_dashboard.md) — centralized server-side keys; usage logged to `api_usage_log`; Justin (id=2) is superuser
 - [Virtual Review Panel](project_virtual_review_panel.md) — Multi-LLM panel (Claude, GPT, Gemini, Perplexity); app key `virtual-review-panel`; stays Postgres permanently
 - [Tone calibration](feedback_review_panel_tone.md) — CSO feedback: don't mimic conservative study sections; balance critique with upside
