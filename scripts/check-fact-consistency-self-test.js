@@ -278,6 +278,20 @@ function buildProseFixtures() {
       expectFlagged: false,
       token: String(wrongEpsC),
     },
+    {
+      name: 'two markers on one line exempt two distinct facts',
+      file: 'neg_marker_multi.md',
+      body: `S166 narrative: 13 web-based tools and 30 app endpoints. <!-- fact-consistency:ignore fact=app-definition-count session=S166 reason=historical --> <!-- fact-consistency:ignore fact=requireappaccess-endpoint-count session=S166 reason=historical -->`,
+      expectFlagged: false,
+      token: '13',
+    },
+    {
+      name: 'single marker on multi-fact line still leaves the unmarked fact flagged',
+      file: 'pos_marker_one_of_two.md',
+      body: `S166 narrative: 13 web-based tools and 30 app endpoints. <!-- fact-consistency:ignore fact=app-definition-count session=S166 reason=historical -->`,
+      expectFlagged: true,
+      token: '30',
+    },
   ];
 }
 

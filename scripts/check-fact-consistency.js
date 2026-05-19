@@ -12,265 +12,29 @@
  * locally operational; update and register an allowed restatement only when the
  * exact number is operationally needed in that document.
  *
- * Future normalization must account for canonical-pointer rot: generated/pinned
- * count pointers can silently break if anchors are renamed. When that follow-up
- * lands, add a CI lint that validates fact-id-pinned pointer targets against
- * this CANONICAL_FACTS registry instead of trusting heading text.
+ * The fact registry + derives live in `scripts/lib/canonical-facts.js` (shared
+ * with `generate-canonical-counts.js` and `check-canonical-pointers.js`). The
+ * normalization pattern: a pointer to `docs/CANONICAL_COUNTS.md#<fact-id>` is
+ * the canonical source for each scalar; literal restatements in live prose are
+ * still gated here for freshness; cross-document anchor rot is caught by
+ * `check:canonical-pointers`.
  *
  * Historical exemptions are intentionally strict and single-line only. A stale
  * numeric claim is exempt only when the same line carries a structured marker:
  *   <!-- fact-consistency:ignore fact=<fact-id> as-of=YYYY-MM-DD -->
  * or the same marker with session=S166 or reason=historical/point-in-time.
+ *
+ * Modes:
+ *   default     — value-drift scan + canonical-counts on-disk drift assertion
+ *   --write     — regenerate docs/CANONICAL_COUNTS.md from the live registry
  */
 
 const fs = require('fs');
 const path = require('path');
-const parser = require('@babel/parser');
+const { repoRoot, CANONICAL_FACTS } = require('./lib/canonical-facts');
+const { renderCanonicalCountsDoc, CANONICAL_COUNTS_REL } = require('./lib/canonical-counts-render');
 
-const repoRoot = path.resolve(__dirname, '..');
-
-function failConfig(message) {
-  throw new Error(`fact-consistency configuration error: ${message}`);
-}
-
-function readText(rel) {
-  return fs.readFileSync(path.join(repoRoot, rel), 'utf8');
-}
-
-function parseJavaScript(rel, source) {
-  try {
-    return parser.parse(source, {
-      sourceType: 'unambiguous',
-      plugins: ['jsx', 'dynamicImport', 'objectRestSpread', 'classProperties'],
-      errorRecovery: false,
-    });
-  } catch (e) {
-    failConfig(`could not parse ${rel}: ${e.message}`);
-  }
-}
-
-function walk(node, visit) {
-  if (!node || typeof node.type !== 'string') return;
-  visit(node);
-  for (const [key, value] of Object.entries(node)) {
-    if (
-      key === 'loc' ||
-      key === 'start' ||
-      key === 'end' ||
-      key === 'leadingComments' ||
-      key === 'trailingComments' ||
-      key === 'innerComments'
-    ) {
-      continue;
-    }
-    if (Array.isArray(value)) {
-      for (const child of value) walk(child, visit);
-    } else if (value && typeof value.type === 'string') {
-      walk(value, visit);
-    }
-  }
-}
-
-function jsFilesUnder(rootRel) {
-  const root = path.join(repoRoot, rootRel);
-  const out = [];
-  (function walkDir(dir) {
-    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, ent.name);
-      if (ent.isDirectory()) walkDir(full);
-      else if (/\.(cjs|mjs|js|jsx|ts|tsx)$/.test(ent.name)) out.push(full);
-    }
-  })(root);
-  return out;
-}
-
-function deriveAppDefinitionCount() {
-  const rel = 'shared/config/appRegistry.js';
-  const ast = parseJavaScript(rel, readText(rel));
-  let registryArray = null;
-
-  for (const node of ast.program.body) {
-    if (node.type !== 'ExportNamedDeclaration') continue;
-    const decl = node.declaration;
-    if (!decl || decl.type !== 'VariableDeclaration') continue;
-    for (const d of decl.declarations) {
-      if (d.id && d.id.type === 'Identifier' && d.id.name === 'APP_REGISTRY') {
-        registryArray = d.init;
-      }
-    }
-  }
-
-  if (!registryArray) failConfig('APP_REGISTRY export not found in shared/config/appRegistry.js');
-  if (registryArray.type !== 'ArrayExpression') failConfig('APP_REGISTRY is not an array literal');
-  if (registryArray.elements.length === 0) failConfig('APP_REGISTRY is empty');
-
-  const keys = [];
-  registryArray.elements.forEach((entry, index) => {
-    if (!entry || entry.type !== 'ObjectExpression') {
-      failConfig(`APP_REGISTRY entry ${index} is not an object literal`);
-    }
-    const keyProp = entry.properties.find((prop) => {
-      if (!prop || prop.type !== 'ObjectProperty' || prop.computed) return false;
-      return prop.key.type === 'Identifier' && prop.key.name === 'key';
-    });
-    if (!keyProp) failConfig(`APP_REGISTRY entry ${index} is missing key`);
-    if (!keyProp.value || keyProp.value.type !== 'StringLiteral' || !keyProp.value.value) {
-      failConfig(`APP_REGISTRY entry ${index} has a non-string/empty key`);
-    }
-    keys.push(keyProp.value.value);
-  });
-
-  const dupes = keys.filter((k, i) => keys.indexOf(k) !== i);
-  if (dupes.length > 0) failConfig(`APP_REGISTRY has duplicate keys: ${[...new Set(dupes)].join(', ')}`);
-
-  return keys.length;
-}
-
-function requireAppAccessLocalNames(ast) {
-  const names = new Set();
-  walk(ast, (node) => {
-    if (node.type === 'ImportDeclaration') {
-      for (const spec of node.specifiers || []) {
-        if (
-          spec.type === 'ImportSpecifier' &&
-          spec.imported &&
-          spec.imported.type === 'Identifier' &&
-          spec.imported.name === 'requireAppAccess'
-        ) {
-          names.add(spec.local.name);
-        }
-      }
-    }
-    if (
-      node.type === 'VariableDeclarator' &&
-      node.id &&
-      node.id.type === 'ObjectPattern' &&
-      node.init &&
-      node.init.type === 'CallExpression' &&
-      node.init.callee.type === 'Identifier' &&
-      node.init.callee.name === 'require'
-    ) {
-      for (const prop of node.id.properties || []) {
-        if (
-          prop.type === 'ObjectProperty' &&
-          prop.key.type === 'Identifier' &&
-          prop.key.name === 'requireAppAccess' &&
-          prop.value.type === 'Identifier'
-        ) {
-          names.add(prop.value.name);
-        }
-      }
-    }
-  });
-  return names;
-}
-
-function deriveRequireAppAccessEndpointCount() {
-  let count = 0;
-  for (const full of jsFilesUnder('pages/api')) {
-    const rel = path.relative(repoRoot, full);
-    const source = fs.readFileSync(full, 'utf8');
-    const ast = parseJavaScript(rel, source);
-    const importedNames = requireAppAccessLocalNames(ast);
-    let calls = 0;
-
-    walk(ast, (node) => {
-      if (
-        node.type === 'CallExpression' &&
-        node.callee &&
-        node.callee.type === 'Identifier' &&
-        (node.callee.name === 'requireAppAccess' || importedNames.has(node.callee.name))
-      ) {
-        calls += 1;
-      }
-    });
-
-    if (importedNames.size > 0 && calls === 0) {
-      failConfig(`${rel} imports requireAppAccess but has zero call sites`);
-    }
-    if (calls > 0) count += 1;
-  }
-
-  if (count === 0) failConfig('no pages/api files call requireAppAccess');
-  return count;
-}
-
-function matchFrom(regex) {
-  return (line) => {
-    regex.lastIndex = 0;
-    const out = [];
-    let m;
-    while ((m = regex.exec(line)) !== null) {
-      out.push({ raw: m[0], asserted: Number(m[1]), index: m.index });
-    }
-    return out;
-  };
-}
-
-const CANONICAL_FACTS = [
-  {
-    id: 'app-definition-count',
-    describe: 'APP_REGISTRY application definitions',
-    derive: deriveAppDefinitionCount,
-    patterns: [
-      {
-        name: 'app definitions',
-        find: matchFrom(/\b(\d+)\s+app definitions?\b/gi),
-      },
-      {
-        name: 'applications',
-        find: matchFrom(/\b(?:all\s+)?(\d+)\s+applications\b/gi),
-      },
-      {
-        name: 'web-based tools',
-        find: matchFrom(/\b(?:suite of\s+)?(\d+)\s+web-based tools?\b/gi),
-      },
-    ],
-    knownMissFixtures: [
-      // Stale S166 miss: SYSTEM_OVERVIEW phrasing escaped the first gate.
-      'suite of 13 web-based tools',
-      // Stale S166 miss: SECURITY_ARCHITECTURE phrasing escaped the first gate.
-      'All 14 applications',
-    ],
-    knownNonMatches: [
-      'J26 application cycle',
-      '2026-05-19 application audit',
-      '17 application materials were uploaded',
-      'application status changed 14 times',
-    ],
-  },
-  {
-    id: 'requireappaccess-endpoint-count',
-    describe: 'pages/api files with requireAppAccess() call sites',
-    derive: deriveRequireAppAccessEndpointCount,
-    patterns: [
-      {
-        name: 'app endpoints',
-        find: matchFrom(/\b~?(\d+)\+?\s+app endpoints?\b/gi),
-      },
-      {
-        name: 'app-specific API endpoints',
-        find: matchFrom(/\b~?(\d+)\+?\s+app-specific API endpoints?\b/gi),
-      },
-      {
-        name: 'API endpoints',
-        find: matchFrom(/\b~?(\d+)\+?\s+API endpoints?\b/gi),
-      },
-    ],
-    knownMissFixtures: [
-      // Stale S166 miss: plus-suffixed app endpoint count escaped the first gate.
-      '30+ app endpoints',
-      // Stale S166 miss: API endpoint wording escaped the first gate.
-      '30 API endpoints',
-    ],
-    knownNonMatches: [
-      '30 endpoints',
-      '30 reviewer endpoints',
-      '2026-05-19 endpoint audit',
-      'J30 app cycle',
-    ],
-  },
-];
+const WRITE = process.argv.includes('--write');
 
 const SINGLE_FILES = ['CLAUDE.md', 'SESSION_PROMPT.md', 'README.md', 'GEMINI.md'];
 const ROOTS = ['docs', '.claude-memory'];
@@ -281,6 +45,13 @@ const POINT_IN_TIME_BASENAMES = new Set([
   'RECONCILIATION_REPORT.md',
 ]);
 const POINT_IN_TIME_PREFIXES = ['AUDIT_'];
+// CANONICAL_COUNTS.md is the generated source of truth — its literals are checked
+// by drift assertion against the registry, not by the prose pattern matcher.
+const GENERATED_LITERAL_FILE = CANONICAL_COUNTS_REL;
+
+function failConfig(message) {
+  throw new Error(`fact-consistency configuration error: ${message}`);
+}
 
 function hasPointInTimeFrontmatter(text) {
   const m = text.match(/^---\n([\s\S]*?)\n---/);
@@ -300,6 +71,7 @@ function collectFiles() {
     if (!full.endsWith('.md')) return;
     if (EXCLUDE_DIR.test(rel)) return;
     if (isPointInTimeBasename(path.basename(full))) return;
+    if (rel === GENERATED_LITERAL_FILE) return;
     const text = fs.readFileSync(full, 'utf8');
     if (hasPointInTimeFrontmatter(text)) return;
     out.push(full);
@@ -328,16 +100,20 @@ function collectFiles() {
   return out;
 }
 
-function parseIgnoreMarker(line) {
-  const marker = line.match(/<!--\s*fact-consistency:ignore\s+([^>]+?)\s*-->/);
-  if (!marker) return null;
-  const attrs = {};
-  const re = /([a-z-]+)=("[^"]+"|'[^']+'|[^\s]+)/g;
+function parseIgnoreMarkers(line) {
+  const out = [];
+  const re = /<!--\s*fact-consistency:ignore\s+([^>]+?)\s*-->/g;
   let m;
-  while ((m = re.exec(marker[1])) !== null) {
-    attrs[m[1]] = m[2].replace(/^['"]|['"]$/g, '');
+  while ((m = re.exec(line)) !== null) {
+    const attrs = {};
+    const attrRe = /([a-z-]+)=("[^"]+"|'[^']+'|[^\s]+)/g;
+    let a;
+    while ((a = attrRe.exec(m[1])) !== null) {
+      attrs[a[1]] = a[2].replace(/^['"]|['"]$/g, '');
+    }
+    out.push(attrs);
   }
-  return attrs;
+  return out;
 }
 
 function markerHasRequiredContext(attrs) {
@@ -349,9 +125,9 @@ function markerHasRequiredContext(attrs) {
 }
 
 function isExempt(line, factId) {
-  const attrs = parseIgnoreMarker(line);
-  if (!attrs) return false;
-  return attrs.fact === factId && markerHasRequiredContext(attrs);
+  const markers = parseIgnoreMarkers(line);
+  if (markers.length === 0) return false;
+  return markers.some((attrs) => attrs.fact === factId && markerHasRequiredContext(attrs));
 }
 
 function assertPatternFixtures(facts) {
@@ -367,9 +143,36 @@ function assertPatternFixtures(facts) {
   }
 }
 
+function assertCanonicalCountsInSync(facts) {
+  const expected = renderCanonicalCountsDoc(facts);
+  const fullPath = path.join(repoRoot, CANONICAL_COUNTS_REL);
+  if (WRITE) {
+    fs.writeFileSync(fullPath, expected);
+    return { regenerated: true };
+  }
+  if (!fs.existsSync(fullPath)) {
+    return { regenerated: false, error: `${CANONICAL_COUNTS_REL} is missing. Run \`npm run check:fact-consistency -- --write\` to generate it.` };
+  }
+  const actual = fs.readFileSync(fullPath, 'utf8');
+  if (actual !== expected) {
+    return { regenerated: false, error: `${CANONICAL_COUNTS_REL} is out of sync with the live registry. Run \`npm run check:fact-consistency -- --write\` to refresh it.` };
+  }
+  return { regenerated: false };
+}
+
 function main() {
   assertPatternFixtures(CANONICAL_FACTS);
   const facts = CANONICAL_FACTS.map((f) => ({ ...f, live: f.derive() }));
+
+  const sync = assertCanonicalCountsInSync(facts);
+  if (sync.error) {
+    console.error(`fact-consistency FAILED: ${sync.error}`);
+    process.exit(1);
+  }
+  if (sync.regenerated) {
+    console.log(`fact-consistency: regenerated ${CANONICAL_COUNTS_REL}.`);
+  }
+
   const files = collectFiles();
   const violations = [];
 
