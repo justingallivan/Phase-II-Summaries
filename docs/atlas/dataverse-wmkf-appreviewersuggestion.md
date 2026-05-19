@@ -129,4 +129,4 @@ Postgres `reviewer_suggestions` (337 rows) is parity at ~97.6% per S136 probe (`
 
 ## Migration disposition [ASSUMED — per migration plan]
 
-In active backfill. See `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`. Pending: 4 Postgres rows missing `request_number` (orphans), Review Manager `grant_cycles` Postgres dependency.
+In active backfill. See `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`. Pending: 4 Postgres rows missing `request_number` (orphans). ~~Review Manager `grant_cycles` Postgres dependency~~ **RESOLVED (verified 2026-05-18, S164):** Review Manager reads grant cycles from Dataverse via `lib/services/grant-cycles-dataverse`; no Postgres `grant_cycles` dependency remains in `pages/api/review-manager/*`.

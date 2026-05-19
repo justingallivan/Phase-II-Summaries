@@ -1,7 +1,7 @@
 # Atlas: `reviewer_suggestions` (Postgres)
 
-**Last verified:** 2026-05-07 via `scripts/audit-postgres-state.js` + `scripts/backfill-reviewer-suggestions-parity.js`
-**Live row count:** 337
+**Last verified:** schema/row-count 2026-05-07 via `scripts/audit-postgres-state.js` + `scripts/backfill-reviewer-suggestions-parity.js`; **read/write path lists re-derived 2026-05-18 (S164)** via full codebase grep + per-site SQL-verb classification (see "Read / write paths" below)
+**Live row count:** 337 (as of 2026-05-07; not re-probed S164 — S164 re-derived code paths only, not DB state)
 
 ## Source of truth
 
@@ -34,19 +34,23 @@ UNIQUE constraint: `(proposal_id, researcher_id)`.
 - **All 337 rows have `selected=true`** [VERIFIED 2026-05-07 via `scripts/audit-postgres-state.js`] — the "transient unselected scratch" pattern does not appear in live data. The Wave 2 cleanup-cron predicate is forward-looking only.
 - **Pre-J26 data-quality caveat:** the tool that writes here was first used in J26 cycle and adoption was uneven; pre-J26 proposals (J25, J24, ...) have **no rows here** — picker falls back to `akoya_request.wmkf_potentialreviewer1..5` slot population. Pre-J26 zeros mean "unknown", NOT "0 invited". [Source: `project_reviewer_history_data_quality.md`]
 
-## Read paths (16 files)
+## Read / write paths — RE-DERIVED 2026-05-18 (S164)
 
-- `lib/services/database-service.js`, `lib/services/maintenance-service.js`
-- `pages/api/reviewer-finder/{my-proposals,generate-emails,researchers,grant-cycles}.js`
-- 11 scripts (audit, backfill, inspect, cleanup, etc.)
+> The "16 read / 10 write files" lists captured 2026-05-07 are **superseded**. Re-derived from a full literal grep of `lib/`, `pages/`, `scripts/` for `reviewer_suggestions` + per-site SQL-verb classification. [VERIFIED 2026-05-18 (S164)]
 
-## Write paths (10 files)
+**Headline: zero runtime application code touches this table.** No `lib/services/**` and no `pages/api/**` file references `reviewer_suggestions`. The prior list's `lib/services/database-service.js` (gutted W5, commit `0c58da4`), `lib/services/maintenance-service.js`, and every `pages/api/reviewer-finder/*` entry (incl. the W6-deleted `researchers.js`) are all stale — Reviewer Finder + Review Manager are fully on the Dataverse adapter chain. `lib/dataverse/adapters/reviewer-suggestion.js` mentions the name in a migration **comment** only (no Postgres access). The table is now **script-only**, consistent with the drain-only disposition below.
 
-- `lib/services/database-service.js`
-- `pages/api/reviewer-finder/{extract-summary,generate-emails,researchers}.js`
-- `scripts/{clear-all-database,backfill-request-numbers,setup-database,cleanup-duplicate-cycles,assign-orphan-records,import-user-assignments}.js`
+**Schema / DDL (define the table — not an app path):**
+- `lib/db/schema.sql`, `lib/db/schema-v2.sql` (CREATE TABLE + columns), `lib/db/migrations/002_contact_enrichment.sql` (ALTER — contact-enrichment columns)
+- `scripts/setup-database.js` — CREATE TABLE + ALTER + migration-step DELETE/UPDATE (V-steps ≈ lines 815/841/844/853)
 
-**No `pages/api/review-manager/*` writers** — Review Manager reads `grant_cycles` from Postgres but writes lifecycle to Dataverse `wmkf_appreviewersuggestion` via the adapter.
+**Read-only scripts (SELECT/COUNT):** `audit-postgres-state.js`, `db-row-counts.js`, `inspect-reviewer-suggestions.js`, `inspect-reviewer-suggestions-pt2.js`, `audit-grant-cycle-duplicate-fk-refs.js`, `backfill-reviewer-suggestions-parity.js`, `reconcile-reviewer-migration.js`, `export-proposals-for-migration.js`, `probe-w4-1002285.js`, `acceptance-w3.js`, `cleanup-database.js` (direct SELECT COUNT; deletes `researchers` → `reviewer_suggestions` removed via FK CASCADE, not a direct write), and the three PG→Dataverse backfills `backfill-postgres-to-dataverse.js` / `backfill-reviewer-suggestions-to-dataverse.js` / `backfill-summary-blob-url-to-dataverse.js` (Postgres side read-only; write target is Dataverse).
+
+**Write scripts (direct INSERT/UPDATE/DELETE):** `clear-all-database.js` (DELETE — full wipe), `backfill-request-numbers.js` (UPDATE `request_number`), `cleanup-duplicate-cycles.js` (UPDATE re-point FK), `assign-orphan-records.js` (UPDATE `user_profile_id`; also reads), `import-user-assignments.js` (UPDATE), `setup-database.js` (migration-step DELETE/UPDATE; see DDL above).
+
+Not a path: `scripts/seed-reviewer-finder-prompts.js` (comment only), `scripts/README.md` (doc).
+
+**No `pages/api/review-manager/*` Postgres readers OR writers.** The prior claim "Review Manager reads `grant_cycles` from Postgres" is **stale**: Review Manager reads grant cycles from **Dataverse** via `lib/services/grant-cycles-dataverse` and writes reviewer lifecycle to Dataverse `wmkf_appreviewersuggestion` via the adapter. The Review Manager request path's only remaining Postgres touch is the shared cross-app auth gate (`requireAppAccess` → `user_profiles` / `dynamics_user_roles`) — identity infrastructure shared by all ~84 routes, not reviewer-domain data. [VERIFIED 2026-05-18 (S164) via transitive import grep of `pages/api/review-manager/*` + the full service chain]
 
 ## Cross-system
 

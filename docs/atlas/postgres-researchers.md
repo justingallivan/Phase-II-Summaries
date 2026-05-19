@@ -84,5 +84,5 @@ Per `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`: identity → `wmkf_potentialr
 
 ## Open questions / gotchas
 
-- Three callers of `DatabaseService.findResearcher` (not just discovery's cache lookup). Migration plan must cover all three.
+- ~~Three callers of `DatabaseService.findResearcher` (not just discovery's cache lookup). Migration plan must cover all three.~~ **RESOLVED (verified 2026-05-18, S164):** grep of `lib/`/`pages/`/`scripts/` finds zero live callers of `findResearcher`/`createOrUpdateResearcher` — all 4 matches are archaeology comments describing removed pre-W5 behavior. The migration covered them; nothing outstanding.
 - The 0%-populated bibliometric fields raise the question of whether they were ever live; treat the migration as **not** carrying metric data forward unless we re-scrape.

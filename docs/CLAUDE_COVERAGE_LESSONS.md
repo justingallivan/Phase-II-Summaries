@@ -45,6 +45,13 @@ Every entry includes:
   - `lib/services/execute-prompt.js:30-32` (`const PROMPTS_ENTITY = ...`, `REQUESTS_ENTITY`, `RUNS_ENTITY`)
 - **First miss:** original regex matched only the literal name `ENTITY_SET`, missing the parallel `*_ENTITY` naming scheme. **Lesson: when a regex matches a specific identifier, ask "is there a naming family this is part of?" Grep for `[A-Z_]*ENTITY` and `ENTITY_*` to see what other constants exist.**
 
+### E. Source-file extension traversal — the walker must read `.mjs`/`.cjs`, not just `.js`
+- **Pattern:** `if (!file.endsWith('.js')) continue;` — a *file-traversal* filter, not a code pattern. Any entity referenced **only** from a non-`.js` source file is invisible to the gate even though its directory is in `SCAN_DIRS`.
+- **Example:** `scripts/check-application-state-atlas.js` had this filter at **two** scan loops (the `DynamicsService`/client/OData detector and the `*_ENTITY` constant detector). The repo already ships 6 `.mjs` scripts referencing real entities — `scripts/enable-suggestion-audit.mjs` / `scripts/extend-responsetype-picklist.mjs` → `wmkf_appreviewersuggestion`; `scripts/extend-apprequestperson-role-picklist.mjs` / `scripts/probe-slice0-attr-collision.mjs` → `wmkf_apprequestperson`, `akoya_request` — all silently skipped while `scripts/` was nominally being scanned.
+- **Traversal ≠ detection (precision, Codex S164):** the fix makes `.mjs`/`.cjs` files *traversable* so entities referenced via the gate's **existing detector call-shapes** (`DynamicsService.<m>('set')`, `client.<v>('/set')`, `/api/data/v9.x/set`, `*_ENTITY`/`ENTITY_SET` consts) in those files are now caught. It does **not** add a new detector: a `.mjs` that names an entity only as an `EntityDefinitions(LogicalName=…)` metadata string is still undetected — but that was equally undetected in `.js` (the gate strips `entitydefinitions`), so it is not a regression and is out of scope here. The self-test fixture binds `.mjs` traversal for an existing call-shape (pattern A), which is the property that regressed.
+- **Severity nuance:** no *current* missing-coverage incident — the entities those `.mjs` use via detected call-shapes are also redundantly referenced from `.js`/`lib`, so `check:atlas` stayed green. The gap is **latent**: an entity referenced *only* from a `.mjs`/`.cjs` (via a detected call-shape) would pass undocumented.
+- **First miss:** anchored on `.js` because it's the dominant extension; never asked "what other executable source extensions does the repo actually run?" Caught by Codex S164 (2026-05-18). **Lesson: a file-extension filter is itself a coverage dimension. Enumerate every executable source extension the repo uses (`.js`, `.mjs`, `.cjs`) and make the walker accept all of them — grep the walker for `endsWith('.js')` / `\.js'` filters before claiming a coverage tool complete.**
+
 ---
 
 ## Patterns to search for in any new coverage tool (checklist)
@@ -65,6 +72,7 @@ Before claiming a coverage tool is complete, run these greps and confirm each is
    - Config files (JSON, YAML)
 4. **Reserved-word aliases:** `delete_`, `class_`, `import_`, `default_`, `interface_`, `let_`, `const_`, `function_`
 5. **Plural/singular variants:** Dataverse entity sets are usually plural with quirks (`wmkf_potentialreviewerses`, `accountses`); the entity name is singular. Both can appear in code depending on context.
+6. **File extensions the walker traverses:** does the directory walker read every executable source extension the repo runs (`.js`, `.mjs`, `.cjs`)? An `endsWith('.js')` filter silently drops `.mjs`/`.cjs` entity references even when their directory is scanned. Grep the walker for extension filters; assert a `.mjs` fixture is detected in the self-test.
 
 When in doubt, **write a deliberately-broken synthetic example** for each pattern variation and verify the tool catches it. Add the synthetic to the self-test fixture set.
 

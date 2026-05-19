@@ -126,7 +126,7 @@ function enumerateDataverseEntitySets() {
 
   for (const dir of SCAN_DIRS) {
     for (const file of walk(dir)) {
-      if (!file.endsWith('.js')) continue;
+      if (!/\.(?:js|mjs|cjs)$/.test(file)) continue; // pattern E (CLAUDE_COVERAGE_LESSONS.md): traverse .mjs/.cjs, not just .js
       const src = readFileSafe(file);
       for (const re of [dsRe, clientRe, odataPathRe]) {
         re.lastIndex = 0;
@@ -143,7 +143,7 @@ function enumerateDataverseEntitySets() {
   const setRe = /(?:^|\s)(?:const|let)\s+(?:[A-Z][A-Z0-9_]*_ENTITY|ENTITY_SET)\s*=\s*['"]([a-z_][a-z0-9_]*)['"]/gm;
   for (const dir of SCAN_DIRS) {
     for (const file of walk(dir)) {
-      if (!file.endsWith('.js')) continue;
+      if (!/\.(?:js|mjs|cjs)$/.test(file)) continue; // pattern E (CLAUDE_COVERAGE_LESSONS.md): traverse .mjs/.cjs, not just .js
       const src = readFileSafe(file);
       let m;
       while ((m = setRe.exec(src)) !== null) entities.add(m[1].toLowerCase());

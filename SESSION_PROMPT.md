@@ -44,7 +44,7 @@ Optional tidiness (not required to send Connor — the email references the comm
 - **Prototype** — the user's stated path: NL→QuerySpec on-ramp into the unchanged confirm seam (additive, not a rewrite).
 
 ### C–F. Unchanged from S161/S162
-Field Set D doc-label collision (Connor; `check:memory-drift` red BY DESIGN — do not silence); Reviewer Manager→Dataverse (read `project_reviewer_identity_fragmentation` first); COI policy wording; revert temp role elevations; Sarah's Phase II Research field inventory; data-quality `#1001205`/`#1001249`.
+Field Set D doc-label collision (Connor; `check:memory-drift` red BY DESIGN — do not silence); ~~Reviewer Manager→Dataverse~~ **(S164: engineering migration is DONE — landed W5/W6 2026-05-12, re-verified S164. Memory `project-reviewer-identity-fragmentation` now written. Only residue: a gated destructive Postgres-table retirement + an explicitly-out-of-scope fragmentation census — NOT live build work)**; COI policy wording; revert temp role elevations; Sarah's Phase II Research field inventory; data-quality `#1001205`/`#1001249`.
 
 ## Calendar Checkpoints (soft — Connor good-faith; report factually, not "overdue")
 - **2026-05-19** — slice-0 deploy *target* (soft). Status: still gated on P1-Update (Connor test not yet sent / waiver not authorized). Not "missed" — gated by an honest open question.

@@ -32,8 +32,10 @@ const repoRoot = path.resolve(__dirname, '..');
 // Non-dot directory so the gate's walker actually scans it.
 const tempDir = path.join(repoRoot, 'lib', 'services', 'atlas_selftest_tmp');
 
-// Each fixture: { name, buildCode(entityName) }. Entity name is generated at
-// runtime to keep it out of this script's source (the gate scans this script).
+// Each fixture: { name, buildCode(entityName), ext? }. Entity name is generated
+// at runtime to keep it out of this script's source (the gate scans this
+// script). `ext` defaults to 'js'; set it to exercise file-extension traversal
+// (pattern E in CLAUDE_COVERAGE_LESSONS.md).
 const FIXTURES = [
   {
     name: 'A. DynamicsService.queryRecords',
@@ -80,6 +82,14 @@ const FIXTURES = [
     name: 'D. <NAME>_ENTITY constant',
     buildCode: (e) => `const SELFTEST_FOO_ENTITY = '${e}';\nDynamicsService.queryRecords(SELFTEST_FOO_ENTITY);`,
   },
+  {
+    // Pattern E (CLAUDE_COVERAGE_LESSONS.md): the walker must traverse `.mjs`,
+    // not just `.js`. Same call site as fixture A, but written to a `.mjs`
+    // file — fails iff the gate's directory walker filters to `.js` only.
+    name: 'E. .mjs file is scanned (file-extension traversal)',
+    ext: 'mjs',
+    buildCode: (e) => `DynamicsService.queryRecords('${e}', {});`,
+  },
 ];
 
 function cleanup() {
@@ -119,7 +129,7 @@ function main() {
   for (let i = 0; i < FIXTURES.length; i += 1) {
     const fixture = FIXTURES[i];
     const entityName = uniqueEntityName(i);
-    const fixturePath = path.join(tempDir, `${entityName}.js`);
+    const fixturePath = path.join(tempDir, `${entityName}.${fixture.ext || 'js'}`);
     const code = fixture.buildCode(entityName);
     fs.writeFileSync(fixturePath, code);
 
