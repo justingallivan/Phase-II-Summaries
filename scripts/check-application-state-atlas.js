@@ -6,6 +6,11 @@
  * Phase 2 of docs/CLAUDE_REMEDIATION_PLAN.md. Without this, the Atlas
  * rots — same way the API_ROUTE_SECURITY_MATRIX did before its CI gate.
  *
+ * ⚠️ Run this SEQUENTIALLY with `check:atlas:self-test`, never in parallel.
+ * The self-test writes synthetic fixtures into `lib/services/atlas_selftest_tmp/`
+ * (a path this gate scans); a concurrent run here false-fails on them and
+ * races the self-test's cleanup. The /start skill runs the gates in order.
+ *
  * What this enforces (v1, structural coverage):
  *   1. Every Postgres table declared in schema.sql / migrations / setup-database.js
  *      is mentioned in at least one Atlas file.

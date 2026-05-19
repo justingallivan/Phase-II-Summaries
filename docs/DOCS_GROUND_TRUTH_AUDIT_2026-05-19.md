@@ -278,15 +278,19 @@ Acceptance:
 
 **Out-of-scope rot flagged, not fixed (scope discipline):** `SYSTEM_OVERVIEW.md` ("All 13 applications") and `SECURITY_ARCHITECTURE.md` ("All 14 applications") carry independently-stale app counts (real suite is larger per `CLAUDE.md`). Row removal de-specified the SYSTEM_OVERVIEW count to avoid asserting a new wrong number; the SECURITY_ARCHITECTURE "14" left as-is. A general overview-docs refresh is a separate item, not Phase 4.
 
-### Phase 5 — Improve Gates
+### Phase 5 — Improve Gates — ✅ BOUNDED ITEMS DONE (S166, 2026-05-19); semantic gate deferred
 
 Add targeted semantic checks only after the docs are clean, so the fixtures encode the corrected state.
 
 Acceptance:
 
-- New checks have self-test fixtures.
-- `check:memory-drift --no-write` exists for routine audits.
-- Gate docs warn against parallel `check:atlas` / `check:atlas:self-test` execution.
+- ⏸️ **New checks have self-test fixtures** — N/A this pass: **no new check was added.** Only a read-only flag + doc warnings. A new *semantic* drift gate (the open-ended P2 item) was deliberately **not** built — a real semantic memory gate ≈ automating the S154 audit (parse + classify ~73 memory files), out of proportion to a gate tweak and would need its own binding self-test harness (none exists for memory-drift). Flagged in the Register, not half-built.
+- ✅ **`check:memory-drift --no-write` exists** — added to `scripts/check-memory-drift.js` + `npm run check:memory-drift:no-write` alias. Verified: read-only, evaluates the committed report, **does not regenerate/mutate `RECONCILIATION_REPORT.json`** (the default path does — that's the Phase-2 dirtying problem this fixes). Warns when the report is >24h old instead of silently regenerating.
+- ✅ **Gate docs warn against parallel `check:atlas` / `:atlas:self-test`** — added at 3 surfaces with the concrete cause: the self-test writes synthetic fixtures into `lib/services/atlas_selftest_tmp/` (a path `check:atlas` scans), so a concurrent `check:atlas` false-fails on them and races the self-test's `cleanup()`. Warnings in both script headers + `CLAUDE.md` binding-self-test paragraph.
+
+Binding self-tests green after the (comment-only) edits to `check-application-state-atlas.js` / `check-coverage-self-test.js`: `check:atlas:self-test` 12/12, `check:doc-currency:self-test` 12/12.
+
+**Logged for follow-up (not fixed — too big for a gate tweak):** `RECONCILIATION_REPORT.json`'s `claim_audit` re-parses the frozen `AUDIT_S154_MEMORY_V2.md` (every claim's `source_file` is that doc), so "stale: 38" never decreases as memories are fixed (Phase 2 proved it: the substantive S154 findings were already reconciled, count unchanged). The gate does **not** fail on this count (only on `drift_buckets` + `probe_errors`), so it is misleading-but-not-blocking. Re-deriving `claim_audit` from live memory state = automating the memory audit; tracked as a Register item.
 
 ## Action Item Register
 
@@ -296,13 +300,14 @@ Acceptance:
 | P0 | Update Atlas index grant-cycle and proposal-search rows | Engineering docs | Live Dataverse: `wmkf_appgrantcycles` = 10 |
 | P0 | Resolve Field Set D label collision | Justin / Connor | Atlas vs v3 spec conflict |
 | P1 | ✅ DONE S166 — Clean `.claude-memory/` stale summaries | Engineering docs | S154 worklist already reconciled by intervening sessions; 1 residual fixed (`project_reviewer_lifecycle.md:61` rotted line ref). See Phase 2. |
-| P2 | Fix `RECONCILIATION_REPORT.json` `claim_audit` | Engineering | It re-parses frozen `AUDIT_S154_MEMORY_V2.md`; "38 stale" never decreases. Re-derive from live memory or stop counting. (Phase 5) |
+| P2 | Fix `RECONCILIATION_REPORT.json` `claim_audit` (DEFERRED — sized S166) | Engineering | Re-parses frozen `AUDIT_S154_MEMORY_V2.md`; "38 stale" never decreases. Non-blocking (gate fails on drift_buckets/probe_errors, not this count). Re-derive = automating the memory audit; not a gate tweak. |
 | P1 | ✅ DONE S166 — Canonicalize Item 6 status page | Engineering docs | `docs/INTAKE_PORTAL_ITEM_6_STATUS.md` created (Phase 3) |
 | P1 | ✅ DONE S166 — Mark/archive superseded P1-Update drafts | Engineering docs | Top-banner pointers on 8 Item 6 docs; no deletion |
 | P2 | ✅ DONE S166 — Remove/label retired Concept Evaluator in live docs | Engineering docs | 5 docs edited; Finding #6 undercounted (3 more found, 2 already clean). See Phase 4. |
 | P3 | Refresh stale app counts in overview docs | Engineering docs | `SYSTEM_OVERVIEW`/`SECURITY_ARCHITECTURE` "13/14 applications" understate real suite — separate from Phase 4 |
-| P2 | Add semantic drift gates | Engineering | After docs corrected |
-| P2 | Add `check:memory-drift --no-write` | Engineering | Avoid dirtying tracked report during audit |
+| P2 | Add semantic drift gates (DEFERRED — sized S166) | Engineering | ≈ automating the S154 memory audit + its own binding self-test; out of proportion to a gate tweak. Not half-built. |
+| P2 | ✅ DONE S166 — Add `check:memory-drift --no-write` | Engineering | Read-only flag + `check:memory-drift:no-write` alias; verified non-mutating. Phase 5. |
+| P2 | ✅ DONE S166 — Warn against parallel atlas gate runs | Engineering docs | 3 surfaces (both scripts + CLAUDE.md) w/ concrete cause. Phase 5. |
 
 ## Best Practices For Learning / Remediation
 

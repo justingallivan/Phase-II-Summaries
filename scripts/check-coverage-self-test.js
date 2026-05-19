@@ -22,6 +22,12 @@
  *      skips dot-directories.
  *
  * When LESSONS.md gains a new pattern, ADD A FIXTURE HERE for it.
+ *
+ * ⚠️ DO NOT run this concurrently with `npm run check:atlas`. This self-test
+ * writes synthetic fixtures into `lib/services/atlas_selftest_tmp/` — a path
+ * the real Atlas gate scans. A parallel `check:atlas` will pick up these fake
+ * entities and FALSE-FAIL, and its scan races this script's cleanup() rmSync.
+ * Always run the Atlas gates sequentially (the /start skill already does).
  */
 
 const fs = require('fs');

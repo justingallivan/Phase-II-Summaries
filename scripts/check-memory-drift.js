@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 /**
  * CI gate for memory/Atlas reconciliation drift.
+ *
+ * Flags:
+ *   --no-write   Routine-audit mode. Never regenerate RECONCILIATION_REPORT.json
+ *                (the default path runs reconcile-memory-claims.js when the
+ *                report is stale, which mutates the git-tracked file). Evaluates
+ *                the existing committed report read-only so an audit run does not
+ *                dirty the working tree. Errors if no report exists.
  */
 
 const fs = require('fs');
@@ -35,7 +42,19 @@ function runReconcile() {
 }
 
 function main() {
-  if (!reportIsFresh()) runReconcile();
+  const noWrite = process.argv.slice(2).includes('--no-write');
+
+  if (noWrite) {
+    if (!fs.existsSync(reportPath)) {
+      console.error(`memory drift check failed: --no-write set but ${path.relative(repoRoot, reportPath)} does not exist (nothing to audit read-only)`);
+      process.exit(1);
+    }
+    if (!reportIsFresh()) {
+      console.warn(`note: --no-write — evaluating the committed report read-only; it is >24h old and was NOT regenerated (drift_buckets/probe data may be stale).`);
+    }
+  } else if (!reportIsFresh()) {
+    runReconcile();
+  }
 
   let report;
   try {
