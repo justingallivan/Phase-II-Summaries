@@ -2,27 +2,10 @@
 /**
  * Binding self-test for scripts/check-fact-consistency.js.
  *
- * Exercises the gate against synthetic .md fixtures so a regression in its
- * detection / exemption logic breaks CI (mirrors check-coverage-self-test.js).
- *
- * Fixtures per registered canonical fact:
- *   1. POSITIVE  — states the fact with a deliberately WRONG value → gate
- *                  MUST flag it.
- *   2. NEGATION  — states the fact with the CORRECT live value → gate MUST
- *                  NOT flag that line (guards against a gate that flags
- *                  everything).
- *   3. EXEMPT    — states a WRONG value but with the historical escape hatch
- *                  → gate MUST NOT flag it (guards the exemption logic).
- *
- * Wrong values are computed at runtime (live + large offset + random) so
- * they never appear as literals here — defensive even though this gate only
- * scans .md (this .js is not scanned), matching the discipline learned in
- * check-coverage-self-test.js.
- *
- * ⚠️ DO NOT run concurrently with `npm run check:fact-consistency`. This
- * writes fixtures into `docs/fact_consistency_selftest_tmp/`, a path that
- * gate scans; a parallel run false-flags on them and races cleanup().
- * Always run the pair sequentially.
+ * Layer A writes synthetic live-doc fixtures and verifies prose matching plus
+ * strict same-line structured exemptions. Layer B cross-checks the production
+ * derives with an independent lightweight scanner so the self-test does not
+ * duplicate the production Babel-AST implementation.
  */
 
 const fs = require('fs');
@@ -31,130 +14,318 @@ const { execSync } = require('child_process');
 
 const repoRoot = path.resolve(__dirname, '..');
 const gate = path.join(repoRoot, 'scripts', 'check-fact-consistency.js');
-// Non-dot dir under docs/ so the gate's walker scans it.
 const tempDir = path.join(repoRoot, 'docs', 'fact_consistency_selftest_tmp');
-
-// Derive each fact's live value the same way the gate does, so fixtures are
-// relative to ground truth (not hard-coded).
-function liveAppDefinitionCount() {
-  const src = fs.readFileSync(path.join(repoRoot, 'shared/config/appRegistry.js'), 'utf8');
-  return (src.match(/^\s{2,}key: '/gm) || []).length;
-}
-function liveEndpointCount() {
-  const root = path.join(repoRoot, 'pages/api');
-  let n = 0;
-  (function walk(d) {
-    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
-      const f = path.join(d, e.name);
-      if (e.isDirectory()) walk(f);
-      else if (fs.readFileSync(f, 'utf8').includes('requireAppAccess')) n += 1;
-    }
-  })(root);
-  return n;
-}
-
-const rand = () => 1000 + Math.floor(Math.random() * 9000);
-
-function buildFixtures() {
-  const apps = liveAppDefinitionCount();
-  const eps = liveEndpointCount();
-  const wrongApps = apps + rand();
-  const wrongEps = eps + rand();
-  return [
-    {
-      name: 'POSITIVE: wrong app-definition count is flagged',
-      file: 'pos_apps.md',
-      body: `Registry has all ${wrongApps} app definitions today.`,
-      expectFlagged: true,
-      token: String(wrongApps),
-    },
-    {
-      name: 'NEGATION: correct app-definition count is NOT flagged',
-      file: 'neg_apps.md',
-      body: `Registry has all ${apps} app definitions today.`,
-      expectFlagged: false,
-      token: String(apps),
-    },
-    {
-      name: 'POSITIVE: wrong requireAppAccess endpoint count is flagged',
-      file: 'pos_eps.md',
-      body: `requireAppAccess() guards ~${wrongEps} app endpoints now.`,
-      expectFlagged: true,
-      token: String(wrongEps),
-    },
-    {
-      name: 'EXEMPT: wrong value with historical qualifier is NOT flagged',
-      file: 'exempt_hist.md',
-      body: `It was ${wrongApps} app definitions back at S154; now larger.`,
-      expectFlagged: false,
-      token: String(wrongApps),
-    },
-    {
-      name: 'EXEMPT: wrong value with inline ignore marker is NOT flagged',
-      file: 'exempt_marker.md',
-      body: `Roughly ${wrongEps} app endpoints. <!-- fact-consistency:ignore -->`,
-      expectFlagged: false,
-      token: String(wrongEps),
-    },
-  ];
-}
+const syntheticDir = path.join(repoRoot, 'scripts', 'fact_consistency_selftest_tmp');
 
 function cleanup() {
-  if (fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true });
+  for (const dir of [tempDir, syntheticDir]) {
+    if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 function runGate() {
   try {
-    return execSync(`node ${JSON.stringify(gate)}`, {
-      cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8',
-    });
+    return { status: 0, output: execSync(`node ${JSON.stringify(gate)}`, {
+      cwd: repoRoot,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf8',
+    }) };
   } catch (e) {
-    return (e.stdout || '') + (e.stderr || '');
+    return { status: e.status || 1, output: (e.stdout || '') + (e.stderr || '') };
   }
+}
+
+function stripCommentsAndStrings(src) {
+  let out = '';
+  let i = 0;
+  let state = 'code';
+  let quote = null;
+  while (i < src.length) {
+    const c = src[i];
+    const n = src[i + 1];
+    if (state === 'code') {
+      if (c === '/' && n === '/') {
+        state = 'line';
+        out += '  ';
+        i += 2;
+      } else if (c === '/' && n === '*') {
+        state = 'block';
+        out += '  ';
+        i += 2;
+      } else if (c === '"' || c === "'" || c === '`') {
+        state = 'string';
+        quote = c;
+        out += ' ';
+        i += 1;
+      } else {
+        out += c;
+        i += 1;
+      }
+    } else if (state === 'line') {
+      if (c === '\n') {
+        state = 'code';
+        out += '\n';
+      } else {
+        out += ' ';
+      }
+      i += 1;
+    } else if (state === 'block') {
+      if (c === '*' && n === '/') {
+        state = 'code';
+        out += '  ';
+        i += 2;
+      } else {
+        out += c === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+    } else if (state === 'string') {
+      if (c === '\\') {
+        out += '  ';
+        i += 2;
+      } else if (c === quote) {
+        state = 'code';
+        quote = null;
+        out += ' ';
+        i += 1;
+      } else {
+        out += c === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+    }
+  }
+  return out;
+}
+
+function independentAppCountFromSource(src) {
+  const stripped = stripCommentsAndStrings(src);
+  const exportIdx = stripped.indexOf('export const APP_REGISTRY');
+  if (exportIdx === -1) throw new Error('independent app scanner: APP_REGISTRY export not found');
+  const start = stripped.indexOf('[', exportIdx);
+  if (start === -1) throw new Error('independent app scanner: APP_REGISTRY array not found');
+  let depth = 0;
+  let end = -1;
+  for (let i = start; i < stripped.length; i += 1) {
+    if (stripped[i] === '[') depth += 1;
+    if (stripped[i] === ']') depth -= 1;
+    if (depth === 0) {
+      end = i;
+      break;
+    }
+  }
+  if (end === -1) throw new Error('independent app scanner: APP_REGISTRY array not closed');
+  const arrayText = src.slice(start, end + 1);
+  const cleanArray = stripCommentsAndStrings(arrayText);
+  let braceDepth = 0;
+  let count = 0;
+  for (let i = 0; i < cleanArray.length; i += 1) {
+    const c = cleanArray[i];
+    if (c === '{') {
+      braceDepth += 1;
+      if (braceDepth === 1) {
+        const tail = cleanArray.slice(i);
+        if (/^\{[\s\S]*?\bkey\s*:/.test(tail)) count += 1;
+      }
+    } else if (c === '}') {
+      braceDepth -= 1;
+    }
+  }
+  if (count === 0) throw new Error('independent app scanner: zero app keys found');
+  return count;
+}
+
+function independentLiveAppCount() {
+  return independentAppCountFromSource(fs.readFileSync(path.join(repoRoot, 'shared/config/appRegistry.js'), 'utf8'));
+}
+
+function independentEndpointCountInFiles(files) {
+  let count = 0;
+  for (const file of files) {
+    const stripped = stripCommentsAndStrings(fs.readFileSync(file, 'utf8'));
+    if (/\brequireAppAccess\s*\(/.test(stripped)) count += 1;
+  }
+  return count;
+}
+
+function walkJs(dir, out = []) {
+  for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, ent.name);
+    if (ent.isDirectory()) walkJs(full, out);
+    else if (/\.(cjs|mjs|js|jsx|ts|tsx)$/.test(ent.name)) out.push(full);
+  }
+  return out;
+}
+
+function independentLiveEndpointCount() {
+  return independentEndpointCountInFiles(walkJs(path.join(repoRoot, 'pages/api')));
+}
+
+function assertSyntheticIndependentScanners() {
+  fs.mkdirSync(syntheticDir, { recursive: true });
+  const registryFixture = `
+    export const APP_REGISTRY = [
+      // { key: 'commented-old-app' },
+      { key: 'one', meta: { key: 'nested-ignored' } },
+      { key: "two" },
+      /*
+      { key: 'commented-block-app' },
+      */
+      { key: 'three' },
+    ];
+  `;
+  const registryPath = path.join(syntheticDir, 'synthetic-appRegistry.js');
+  fs.writeFileSync(registryPath, registryFixture);
+  const appCount = independentAppCountFromSource(fs.readFileSync(registryPath, 'utf8'));
+  if (appCount !== 3) throw new Error(`independent app scanner synthetic expected 3, got ${appCount}`);
+
+  const apiFixtures = {
+    'import-only.js': "import { requireAppAccess } from '../../lib/utils/auth';\nexport default function h() {}\n",
+    'comment-only.js': "// requireAppAccess(req, res, 'x')\nexport default function h() {}\n",
+    'string-only.js': "const s = \"requireAppAccess(req, res, 'x')\";\nexport default function h() {}\n",
+    'suffix-name.js': "function requireAppAccessXYZ() {}\nrequireAppAccessXYZ();\n",
+    'real-call.js': "import { requireAppAccess } from '../../lib/utils/auth';\nexport default async function h(req, res) { return requireAppAccess(req, res, 'x'); }\n",
+  };
+  const apiDir = path.join(syntheticDir, 'api');
+  fs.mkdirSync(apiDir, { recursive: true });
+  for (const [name, body] of Object.entries(apiFixtures)) fs.writeFileSync(path.join(apiDir, name), body);
+  const endpointCount = independentEndpointCountInFiles(walkJs(apiDir));
+  if (endpointCount !== 1) throw new Error(`independent endpoint scanner synthetic expected 1, got ${endpointCount}`);
+}
+
+function buildProseFixtures() {
+  const apps = independentLiveAppCount();
+  const eps = independentLiveEndpointCount();
+  const wrongAppsA = apps + 1000;
+  const wrongAppsB = apps + 1001;
+  const wrongAppsC = apps + 1002;
+  const wrongEpsA = eps + 1000;
+  const wrongEpsB = eps + 1001;
+  const wrongEpsC = eps + 1002;
+  return [
+    {
+      name: 'known miss: web-based tools phrasing is flagged',
+      file: 'pos_known_tools.md',
+      body: 'This remains a suite of 13 web-based tools.',
+      expectFlagged: true,
+      token: '13',
+    },
+    {
+      name: 'known miss: applications phrasing is flagged',
+      file: 'pos_known_apps.md',
+      body: 'Used by All 14 applications.',
+      expectFlagged: true,
+      token: '14',
+    },
+    {
+      name: 'known miss: plus app endpoints phrasing is flagged',
+      file: 'pos_known_plus_eps.md',
+      body: 'Protected by 30+ app endpoints.',
+      expectFlagged: true,
+      token: '30',
+    },
+    {
+      name: 'known miss: API endpoints phrasing is flagged',
+      file: 'pos_known_api_eps.md',
+      body: 'Protected by 30 API endpoints.',
+      expectFlagged: true,
+      token: '30',
+    },
+    {
+      name: 'session tag alone does not exempt',
+      file: 'pos_session_not_exempt.md',
+      body: `Updated in S166: ${wrongAppsA} app definitions remain.`,
+      expectFlagged: true,
+      token: String(wrongAppsA),
+    },
+    {
+      name: 'correct value is not flagged',
+      file: 'neg_correct.md',
+      body: `Registry has all ${apps} app definitions today and ${eps} app endpoints.`,
+      expectFlagged: false,
+      token: String(apps),
+    },
+    {
+      name: 'correct structured marker exempts',
+      file: 'neg_marker_correct.md',
+      body: `Historically there were ${wrongAppsB} app definitions. <!-- fact-consistency:ignore fact=app-definition-count as-of=2026-05-19 -->`,
+      expectFlagged: false,
+      token: String(wrongAppsB),
+    },
+    {
+      name: 'wrong fact id marker does not exempt',
+      file: 'pos_marker_wrong_fact.md',
+      body: `Historically there were ${wrongAppsC} app definitions. <!-- fact-consistency:ignore fact=requireappaccess-endpoint-count as-of=2026-05-19 -->`,
+      expectFlagged: true,
+      token: String(wrongAppsC),
+    },
+    {
+      name: 'missing required marker fields does not exempt',
+      file: 'pos_marker_missing_required.md',
+      body: `Historically there were ${wrongEpsA} API endpoints. <!-- fact-consistency:ignore fact=requireappaccess-endpoint-count -->`,
+      expectFlagged: true,
+      token: String(wrongEpsA),
+    },
+    {
+      name: 'session marker exempts when fact-bound',
+      file: 'neg_marker_session.md',
+      body: `Historically there were ${wrongEpsB} app endpoints. <!-- fact-consistency:ignore fact=requireappaccess-endpoint-count session=S166 -->`,
+      expectFlagged: false,
+      token: String(wrongEpsB),
+    },
+    {
+      name: 'reason marker exempts when fact-bound',
+      file: 'neg_marker_reason.md',
+      body: `Historically there were ${wrongEpsC} app endpoints. <!-- fact-consistency:ignore fact=requireappaccess-endpoint-count reason=historical -->`,
+      expectFlagged: false,
+      token: String(wrongEpsC),
+    },
+  ];
+}
+
+function assertProseFixtures() {
+  fs.mkdirSync(tempDir, { recursive: true });
+  const fixtures = buildProseFixtures();
+  for (const fx of fixtures) fs.writeFileSync(path.join(tempDir, fx.file), fx.body + '\n');
+  const { output } = runGate();
+
+  const failures = [];
+  for (const fx of fixtures) {
+    const flagged = output.includes(fx.file) && output.includes(fx.token);
+    if (flagged !== fx.expectFlagged) failures.push({ fx, flagged });
+  }
+  if (failures.length > 0) {
+    const details = failures.map(({ fx, flagged }) => {
+      return `  - ${fx.name}: expected flagged=${fx.expectFlagged}, got ${flagged}; body=${fx.body}`;
+    }).join('\n');
+    throw new Error(`prose fixture failures:\n${details}\n\nGate output tail:\n${output.slice(-1200)}`);
+  }
+}
+
+function assertProductionDerives() {
+  const expectedApps = independentLiveAppCount();
+  const expectedEps = independentLiveEndpointCount();
+  const { status, output } = runGate();
+  if (status !== 0) throw new Error(`gate must be clean before derive cross-check:\n${output}`);
+  const m = output.match(/app-definition-count=(\d+), requireappaccess-endpoint-count=(\d+)/);
+  if (!m) throw new Error(`could not parse gate summary:\n${output}`);
+  const gotApps = Number(m[1]);
+  const gotEps = Number(m[2]);
+  if (gotApps !== expectedApps) throw new Error(`app derive mismatch: gate=${gotApps}, independent=${expectedApps}`);
+  if (gotEps !== expectedEps) throw new Error(`endpoint derive mismatch: gate=${gotEps}, independent=${expectedEps}`);
 }
 
 function main() {
   cleanup();
-  fs.mkdirSync(tempDir, { recursive: true });
-
-  const fixtures = buildFixtures();
-  // Write all fixtures, run the gate once, then assert per fixture by token.
-  for (const fx of fixtures) fs.writeFileSync(path.join(tempDir, fx.file), fx.body + '\n');
-  const output = runGate();
+  assertSyntheticIndependentScanners();
+  assertProseFixtures();
   cleanup();
-
-  const failures = [];
-  for (const fx of fixtures) {
-    // A fixture is "flagged" if the gate output cites its temp file with its token.
-    const flagged = output.includes(fx.file) && output.includes(fx.token);
-    if (flagged !== fx.expectFlagged) {
-      failures.push({ fx, flagged });
-    }
-  }
-
-  if (failures.length > 0) {
-    console.error(`fact-consistency self-test FAIL — ${failures.length}/${fixtures.length} fixture(s) misbehaved:\n`);
-    for (const { fx, flagged } of failures) {
-      console.error(`  ✗ ${fx.name}`);
-      console.error(`    expected flagged=${fx.expectFlagged}, got flagged=${flagged}`);
-      console.error(`    fixture body: ${fx.body}`);
-    }
-    console.error(`\n  Gate output tail:\n${(output || '').slice(-600).trim()}\n`);
-    console.error(
-      'A regression in scripts/check-fact-consistency.js changed detection or\n' +
-      'exemption behavior. Restore it, or if intentional update BOTH the gate\n' +
-      'and these fixtures in the same commit.\n',
-    );
-    process.exit(1);
-  }
-
-  console.log(`fact-consistency self-test OK — ${fixtures.length}/${fixtures.length} fixtures behaved as expected.`);
+  assertProductionDerives();
+  console.log('fact-consistency self-test OK — prose fixtures and independent derive cross-check passed.');
 }
 
 try {
   main();
 } catch (e) {
   cleanup();
-  console.error(e);
-  process.exit(2);
+  console.error(e.message || e);
+  process.exit(1);
 }

@@ -123,7 +123,7 @@
 | **Execution** | Server-side only (API routes) |
 | **Data sent** | Proposal text, document content, user prompts, researcher names, CRM query results |
 | **Data received** | AI-generated analysis, summaries, structured data, tool-use responses |
-| **Used by** | All 14 applications |
+| **Used by** | Application-specific routes |
 | **Models** | Claude Sonnet 4 (most apps), Claude Haiku 4.5 (expense reporter, Dynamics Explorer, contact enrichment); per-app overrides via `baseConfig.js` `getModelForApp()` |
 | **Rate handling** | Retry with exponential backoff (1s initial, 10s max, 2 retries), then fallback to cheaper model |
 
@@ -650,7 +650,7 @@ Authentication is enforced at three levels — edge middleware, API route middle
 
 | Function | Behavior | Used by |
 |----------|----------|---------|
-| `requireAppAccess(req, res, ...appKeys)` | CSRF origin check + auth + profile + `is_active` check + app grant (OR logic). Returns `{ profileId, session }` or sends 401/403. Uses in-memory cache with 2-minute TTL (includes `isActive` flag). Disabled accounts blocked before superuser bypass. | All 30+ app-specific API endpoints |
+| `requireAppAccess(req, res, ...appKeys)` | CSRF origin check + auth + profile + `is_active` check + app grant (OR logic). Returns `{ profileId, session }` or sends 401/403. Uses in-memory cache with 2-minute TTL (includes `isActive` flag). Disabled accounts blocked before superuser bypass. | App-specific API endpoints |
 | `requireAuthWithProfile(req, res)` | Auth + linked profile + `is_active` check (direct DB query, fail-open). Returns `profileId` or sends 401/403. Blocks request-body `profileId` injection in production. | User-scoped infrastructure (admin, preferences, app-access) |
 | `requireAuth(req, res)` | CSRF origin check + auth. Returns session or sends 401. | System endpoints (health, file upload, blob proxy) |
 | `optionalAuth(req, res)` | Returns session or null; no error response. | Public-optional routes |
@@ -898,7 +898,7 @@ Every Dynamics tool execution is logged to `dynamics_query_log`:
 |---------|---------------|
 | **User authentication** | Azure AD SSO via NextAuth.js (OAuth 2.0 Authorization Code) |
 | **Edge middleware** | `withAuth`/`jose` JWT validation in Vercel Edge Runtime — unauthenticated users never see the app |
-| **API route protection** | `requireAppAccess()` on all 30+ app endpoints; `requireAuthWithProfile()` on infrastructure endpoints; `requireAuth()` on system endpoints |
+| **API route protection** | `requireAppAccess()` on app-specific endpoints; `requireAuthWithProfile()` on infrastructure endpoints; `requireAuth()` on system endpoints |
 | **App-level access control** | Per-user app grants via `user_app_access` table; new users get only `dynamics-explorer` by default |
 | **Superuser bypass** | Users with `role = 'superuser'` in `dynamics_user_roles` bypass all app access checks |
 | **CRM authentication** | OAuth 2.0 Client Credentials, server-side only |
