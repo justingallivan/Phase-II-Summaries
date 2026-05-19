@@ -164,7 +164,6 @@ The following apps currently support JSON/Markdown export and could benefit from
 
 | App | Page File | Priority |
 |-----|-----------|----------|
-| Concept Evaluator | `concept-evaluator.js` | Medium |
 | Batch Phase I Summaries | `batch-phase-i-summaries.js` | High |
 | Batch Phase II Summaries | `batch-proposal-summaries.js` | High |
 | Literature Analyzer | `literature-analyzer.js` | Medium |

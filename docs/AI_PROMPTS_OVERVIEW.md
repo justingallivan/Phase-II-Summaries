@@ -41,6 +41,8 @@ Produces a **one-page standardized writeup** with: institution name, an italiciz
 
 ## Concept Evaluator
 
+> **⚠️ RETIRED 2026-04-25 (Session 110).** This app's page/API/prompt were archived to `/_archived`; it is no longer in the registry or nav. The prompt description below is **retained for reference only** — it is not a live workflow.
+
 A **two-stage pre-screening** tool. Stage 1 reads a concept page image and extracts key info plus search keywords. The system then searches academic databases (PubMed, arXiv, bioRxiv, ChemRxiv). Stage 2 uses those results to rate the concept on five dimensions:
 
 - **Novelty** (Strong / Moderate / Weak)
@@ -138,7 +140,7 @@ A **conversational CRM assistant** — staff ask questions in plain English (e.g
 | Phase II Writeup / Batch Phase II | Proposal Summarizer |
 | Batch Phase I Summaries | Phase I Summaries |
 | Phase I Writeup | Phase I Writeup |
-| Concept Evaluator | Concept Evaluator |
+| Concept Evaluator _(retired 2026-04-25; reference only)_ | Concept Evaluator |
 | Multi-Perspective Evaluator | Multi-Perspective Evaluator |
 | Literature Analyzer | Literature Analyzer |
 | Funding Analysis | Funding Gap Analyzer |

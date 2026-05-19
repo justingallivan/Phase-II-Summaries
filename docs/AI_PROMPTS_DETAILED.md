@@ -14,7 +14,7 @@ This document contains the actual text of every prompt we send to Claude, with c
   - [Q&A System Prompt](#phase-ii-qa)
 - [Batch Phase I Summaries](#batch-phase-i-summaries)
 - [Phase I Writeup](#phase-i-writeup)
-- [Concept Evaluator](#concept-evaluator)
+- [Concept Evaluator](#concept-evaluator) _(retired 2026-04-25 — reference only)_
   - [Stage 1: Initial Analysis](#concept-stage-1)
   - [Stage 2: Final Evaluation](#concept-stage-2)
 - [Multi-Perspective Evaluator](#multi-perspective-evaluator)
@@ -258,6 +258,8 @@ The `common.js` file does not contain prompts sent to Claude. It provides shared
 
 <a name="concept-evaluator"></a>
 ## Concept Evaluator
+
+> **⚠️ RETIRED 2026-04-25 (Session 110).** Page/API/prompt archived to `/_archived`; not in the registry or nav. The full prompt text below is **retained for reference only** (it documents the original concept-screening logic and is cross-referenced by the Multi-Perspective Evaluator stages) — it is not a live workflow.
 
 <a name="concept-stage-1"></a>
 ### Stage 1: Initial Analysis

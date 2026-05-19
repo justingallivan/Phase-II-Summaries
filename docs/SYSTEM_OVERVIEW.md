@@ -10,7 +10,6 @@ This is a suite of 13 web-based tools built for the W.M. Keck Foundation staff. 
 
 | Application | What It Does |
 |-------------|-------------|
-| Concept Evaluator | Screens research concepts against published literature to identify the strongest candidates |
 | Multi-Perspective Evaluator | Evaluates proposals from three independent viewpoints and synthesizes a consensus |
 | Batch Phase I Summaries | Summarizes multiple Phase I proposals at once with customizable length |
 | Batch Phase II Summaries | Summarizes multiple Phase II proposals at once with customizable length |
@@ -24,11 +23,13 @@ This is a suite of 13 web-based tools built for the W.M. Keck Foundation staff. 
 | Integrity Screener | Screens applicants against retraction databases and public records |
 | Dynamics Explorer | Lets staff query CRM data in plain English |
 
-All 13 applications are AI-powered, using Anthropic's Claude models.
+> _Concept Evaluator was retired 2026-04-25 (Session 110) — page/API/prompt archived to `/_archived`. Removed from this suite list; retained only as reference material in the AI-prompt docs._
+
+All applications are AI-powered, using Anthropic's Claude models. _(This list is illustrative, not exhaustive; `CLAUDE.md` is the authoritative app catalogue.)_
 
 ## Data Sources & Integrations
 
-- **AI**: Claude (Anthropic) — powers all 13 applications
+- **AI**: Claude (Anthropic) — powers all applications
 - **CRM**: Microsoft Dynamics 365 — grant tracking, contacts, proposals
 - **Literature**: PubMed, ArXiv, BioRxiv, ChemRxiv — published research
 - **Researcher profiles**: ORCID — researcher identity and contact info

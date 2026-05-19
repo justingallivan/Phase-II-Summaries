@@ -86,7 +86,7 @@
 
 | # | Application | Purpose | Primary External Services |
 |---|-------------|---------|---------------------------|
-| 1 | Concept Evaluator | Pre-Phase I screening | Claude, PubMed, Google Scholar |
+| 1 | Concept Evaluator — _retired 2026-04-25; archived to `/_archived` (row kept for numbering stability; not a live attack surface)_ | Pre-Phase I screening (historical) | Claude, PubMed, Google Scholar |
 | 2 | Multi-Perspective Evaluator | 3-perspective proposal evaluation | Claude |
 | 3 | Batch Phase I Summaries | Batch Phase I processing | Claude |
 | 4 | Batch Phase II Summaries | Batch Phase II processing | Claude |
@@ -124,7 +124,7 @@
 | **Data sent** | Proposal text, document content, user prompts, researcher names, CRM query results |
 | **Data received** | AI-generated analysis, summaries, structured data, tool-use responses |
 | **Used by** | All 14 applications |
-| **Models** | Claude Opus 4 (concept evaluator), Claude Sonnet 4 (most apps), Claude Haiku 4.5 (expense reporter, Dynamics Explorer, contact enrichment) |
+| **Models** | Claude Sonnet 4 (most apps), Claude Haiku 4.5 (expense reporter, Dynamics Explorer, contact enrichment); per-app overrides via `baseConfig.js` `getModelForApp()` |
 | **Rate handling** | Retry with exponential backoff (1s initial, 10s max, 2 retries), then fallback to cheaper model |
 
 ### 2.2 PubMed / NCBI E-utilities — Literature Search
@@ -137,7 +137,7 @@
 | **Execution** | Server-side only |
 | **Data sent** | Research keywords, publication search queries |
 | **Data received** | Article IDs (PMIDs), publication metadata (title, authors, journal, abstract, DOI) |
-| **Used by** | Reviewer Finder, Concept Evaluator |
+| **Used by** | Reviewer Finder _(Concept Evaluator was also a consumer; retired 2026-04-25)_ |
 | **Rate handling** | 350ms delay without key, 100ms with key; batches of 200 articles |
 
 ### 2.3 ArXiv — Preprint Repository

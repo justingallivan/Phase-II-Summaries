@@ -264,15 +264,19 @@ Acceptance:
 - ✅ Connor validation status is unmistakable — STATUS §3(i): test SENT S165, AWAITING Step 11 evidence + Step 12 verdict, gate still OPEN.
 - ✅ Explicit blocker preserved — STATUS §2: no `--execute` until (i) or (ii); never autonomous.
 
-### Phase 4 — Retire Or Mark Old App Docs
+### Phase 4 — Retire Or Mark Old App Docs — ✅ DONE (S166, 2026-05-19)
 
 Start with Concept Evaluator references and older overview docs.
 
 Acceptance:
 
-- Current overview docs list only current apps.
-- Archived/retired app material is labeled historical.
-- User-facing guides do not imply retired flows are available.
+- ✅ Current overview docs list only current apps — Concept Evaluator row removed from `SYSTEM_OVERVIEW.md` "Application Suite" and from the `PDF_EXPORT.md` enhancement backlog.
+- ✅ Archived/retired app material is labeled historical — `SECURITY_ARCHITECTURE.md` inventory row marked retired (kept in place for numbered-row stability), PubMed-consumer line annotated, stale `Opus 4 (concept evaluator)` model note corrected (verified vs `baseConfig.js`: **no app uses opus**); `AI_PROMPTS_OVERVIEW.md` + `AI_PROMPTS_DETAILED.md` Concept Evaluator prompt sections given a "RETIRED — retained for reference only" banner (prompt text deliberately kept; cross-referenced by MPE stages) + TOC/table annotations.
+- ✅ User-facing guides do not imply retired flows are available — `guides/GETTING_STARTED.md` already correct ("Concept Evaluator was retired 2026-04-25"); no change needed.
+
+**Finding #6 undercounted.** The adjacent-context survey (ground-truth rule #3) found Concept Evaluator in **3 live docs Finding #6 did not name**: `SECURITY_ARCHITECTURE.md`, `PROMPT_STORAGE_DESIGN.md` (already correctly says "Deprecated/retired" — no change), and `guides/GETTING_STARTED.md` (already correct). The AUDIT_S154_* / `DOC_TRIAGE_2026-05-07.md` / this audit doc reference it as point-in-time history and were correctly left untouched. `appRegistry.js` verified: registry-removed, comment-only residual at lines 9–14 (S154 was right).
+
+**Out-of-scope rot flagged, not fixed (scope discipline):** `SYSTEM_OVERVIEW.md` ("All 13 applications") and `SECURITY_ARCHITECTURE.md` ("All 14 applications") carry independently-stale app counts (real suite is larger per `CLAUDE.md`). Row removal de-specified the SYSTEM_OVERVIEW count to avoid asserting a new wrong number; the SECURITY_ARCHITECTURE "14" left as-is. A general overview-docs refresh is a separate item, not Phase 4.
 
 ### Phase 5 — Improve Gates
 
@@ -295,7 +299,8 @@ Acceptance:
 | P2 | Fix `RECONCILIATION_REPORT.json` `claim_audit` | Engineering | It re-parses frozen `AUDIT_S154_MEMORY_V2.md`; "38 stale" never decreases. Re-derive from live memory or stop counting. (Phase 5) |
 | P1 | ✅ DONE S166 — Canonicalize Item 6 status page | Engineering docs | `docs/INTAKE_PORTAL_ITEM_6_STATUS.md` created (Phase 3) |
 | P1 | ✅ DONE S166 — Mark/archive superseded P1-Update drafts | Engineering docs | Top-banner pointers on 8 Item 6 docs; no deletion |
-| P2 | Remove retired Concept Evaluator from live docs | Engineering docs | App removed from registry |
+| P2 | ✅ DONE S166 — Remove/label retired Concept Evaluator in live docs | Engineering docs | 5 docs edited; Finding #6 undercounted (3 more found, 2 already clean). See Phase 4. |
+| P3 | Refresh stale app counts in overview docs | Engineering docs | `SYSTEM_OVERVIEW`/`SECURITY_ARCHITECTURE` "13/14 applications" understate real suite — separate from Phase 4 |
 | P2 | Add semantic drift gates | Engineering | After docs corrected |
 | P2 | Add `check:memory-drift --no-write` | Engineering | Avoid dirtying tracked report during audit |
 
