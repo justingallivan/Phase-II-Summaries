@@ -1,89 +1,75 @@
-# Session 165 Prompt: slice-0 P1-Update still THE open gate (Track B / W5-W6 solo work cleared S164)
+# Session 166 Prompt: memory-architecture root cause corrected; slice-0 awaiting Connor; AGENTS.md→symlink resolved
 
-## Session 164 Summary
+## Session 165 Summary
 
-Colleague-blocked on the headline threads (Connor for slice-0 §A, SME for Track B Primary-Contact, Sarah for Phase II inventory), so this was a **solo-runway session** on the Reviewer-domain Postgres→Dataverse area. Net: a stale carryover was corrected against ground truth, the spec'd hard-prereq restore script was built + twice Codex-reviewed, and a latent P0-gate blind spot was fixed via the mandated coverage-lessons protocol. **slice-0 §A is UNCHANGED and remains the single open destructive-carryover gate** (no Connor test sent, no waiver authorized — untouched this session).
+A docs/infra-integrity session. Net: Atlas Phase-1 canonical reconciliation shipped; the auto-generated `AGENTS.md` corruption was chased to root and resolved as a tracked symlink (Codex-verified end-to-end); slice-0 §A moved (Connor test SENT); and a **mid-session ground-truth error was caught and corrected** — the "memory doesn't propagate / iCloud" conclusion was wrong because it missed the git-tracked `.claude-memory/` store.
 
-### What was completed (all in commit `b5d3f48`)
+### What was completed
 
-1. **"Reviewer Manager→Dataverse" carryover was STALE — corrected.** The engineering migration is **DONE** (W5/W6, 2026-05-12), re-verified S164: zero `lib/services/**` or `pages/api/**` runtime code touches Postgres `reviewer_suggestions`/`researchers`; it's script-only/drain-only. Wrote the missing phantom memory `project-reviewer-identity-fragmentation` (referenced by `DATAVERSE_POWER_TOOLS_DESIGN.md:344` + old SESSION_PROMPT, never written). Corrected stale atlas claims (`postgres-reviewer-suggestions.md` — re-derived the read/write path lists from a full codebase grep; `postgres-researchers.md` findResearcher open-Q resolved; `dataverse-wmkf-appreviewersuggestion.md` grant_cycles dep resolved).
-2. **Built `scripts/restore-reviewer-suggestion-cleanup-backup.js`** — the plan's spec'd hard-prerequisite for the post-pilot one-shot cleanup (Rollback §3 / dependency step 15). Defines backup-blob contract v1 (cleanup script doesn't exist yet). Dry-run verified **live read-only** (WOULD-CREATE/WOULD-UPDATE branches). **NOT** wired to a real cleanup; `--commit` not run (no backup artifact exists until the cleanup script is built — post-pilot).
-3. **Two Codex reviews (verbatim-shared, per memory).** Fixed a **BLOCKER** (`selected` silently defaulted to `true` → misclassified unengaged rows; now REQUIRED-boolean hard-SKIP gate) + idempotency-wording CONCERN (find-then-update/create, not a true alt-key PATCH). Resolved the plan's **restore-script filename double-booking** per Codex (distinct names — `restore-reviewer-suggestion-cleanup-backup.js` (A, built) vs `restore-postgres-drain-table-backup.js` (B, NOT built)); corrected 3 stale "Idempotent via alt key" plan phrases.
-4. **Atlas-gate blind spot fixed via the mandated coverage-lessons protocol.** Codex caught `check-application-state-atlas.js` scanning `.js` only (6 `.mjs` already reference real entities — latent, not a live incident). Order followed: `CLAUDE_COVERAGE_LESSONS.md` pattern E → self-test `.mjs` fixture (fail-before `1/12` → pass-after `12/12`) → gate widened to `.js|.mjs|.cjs` → all 3 P0 gates green. Committed together.
-5. **W5/W6 scope confirmed: nothing overdue.** W5 + W6-step-1 shipped 2026-05-12; everything remaining is post-pilot / ≥2026-07-01 / destructive-carryover-gated.
+1. **Atlas Phase 1 (`984bae8`).** Reconciled `docs/atlas/postgres-grant-cycles.md` (was Dataverse-primary at top, "Review Manager reads Postgres" at tail — code-disproven: `render-emails.js:27`/`send-emails.js:43` import only `grant-cycles-dataverse`), `APPLICATION_STATE_ATLAS.md` index rows (grant_cycles drain-only; `wmkf_appgrantcycle` 10 rows not "empty"; `proposal_searches.grant_cycle_id` historical), and added a loud Field Set D blocker banner to `dataverse-akoya-request.md`. From `docs/DOCS_GROUND_TRUTH_AUDIT_2026-05-19.md` Findings #1/#2/#3. 5 gates green (sequential).
+2. **AGENTS.md corruption → tracked symlink (`34e673c`, `5047d5e`, `bd93e6b`).** `AGENTS.md`/`.agents/` were a blind `s/Claude/Codex/` derivative of `CLAUDE.md` (false stack; **unsafe `VRP_ALLOWED_PROVIDERS=Codex`** vs real `claude`; nonexistent file refs). Codex-verified (synchronous rescue): Codex ingests literal `AGENTS.md` bytes as session `user_instructions` (a thin pointer = context-blind), no hook auto-regenerates it, only the manual `migrate-to-codex` skill writes it (unlink+recreate → severs a symlink visibly, never silent CLAUDE.md mutation). Resolution: `AGENTS.md` = tracked relative **symlink → CLAUDE.md** (mode 120000); `.agents/` gitignored; `CLAUDE.md` top note added. **Verified end-to-end**: a fresh Codex session's `user_instructions` = current CLAUDE.md via the symlink (incl. the just-added note; corrupted value gone).
+3. **slice-0 §A moved — path (i) ACTIVE.** Justin emailed Connor the P1-Update core-gate test. Awaiting Step 11 evidence + Step 12 verdict. Gate still OPEN.
+4. **Memory-architecture root cause (CORRECTED same session).** "Memories stopped propagating" → caused by the active write target silently shifting from git-tracked `.claude-memory/` to the per-machine `~/.claude/.../memory/` harness store ~S161–164. iCloud move can't fix it (harness store isn't in the repo) and adds git risk. The multi-session "phantom memory" belief was the same store-divergence artifact (the named memories DO exist in `.claude-memory/`). Authoritative: `.claude-memory/project_memory_two_stores_propagation.md`.
 
-### Commits (S164, `main`)
-- `b5d3f48` — restore script + Atlas-gate .mjs fix + Reviewer Manager ground-truth + double-booking resolution (9 files, +317/−25)
-- (this /stop) — Document Session 164 and create Session 165 prompt
-
-Memory (harness store, NOT repo — won't sync via git): NEW `project-reviewer-identity-fragmentation`, NEW `decision-module-typeless-warning-accept`; `MEMORY.md` index updated.
+### Commits (S165, `main`, pushed)
+- `984bae8` — Atlas Phase 1 reconciliation (+ audit doc)
+- `34e673c` — gitignore Codex `AGENTS.md`/`.agents/`
+- `5047d5e` — AGENTS.md thin pointer (intermediate, superseded)
+- `bd93e6b` — **AGENTS.md → tracked symlink to CLAUDE.md** (final)
+- (this `/stop`) — Document Session 165 + Session 166 prompt + corrected memory note
 
 ## Potential Next Steps
 
-### A. slice-0 / P1-Update — STILL THE open gate (destructive carryover; NOT green-lit; UNCHANGED since S163)
+### ⚠️ ENV-0. Memory propagation — root cause FOUND; consolidation is an OPEN Justin decision (READ FIRST)
+Full authoritative detail: **`.claude-memory/project_memory_two_stores_propagation.md`** (git-tracked, propagates).
+- **TWO stores.** `.claude-memory/` = git-tracked, snake_case, ~73 files, **propagates via push/pull**, `/stop` commits it. `~/.claude/projects/<slug>/memory/` = kebab harness store the current build writes to, **per-machine, does NOT propagate**.
+- **Decision (do not reconfigure env unilaterally — surface & propose):** (A, recommended) **repo OUT of iCloud** + reconverge on `.claude-memory/` as memory-of-record; harness store = scratch. (B) mirror harness→`.claude-memory/` at `/stop`, or sync only the harness dir. **Never** put `.git`/working tree in iCloud.
+- **Until reconverged: dual-write** — anything that must reach the other Mac goes in a git-tracked file (`.claude-memory/`, `SESSION_PROMPT.md`, `docs/`), not only the harness store.
+- iCloud state point-in-time S165 (this Mac, NOT durable): symlink + `.git` + `main==origin/main` intact, no `.icloud`/conflict-copies. `/start`'s `git rev-parse HEAD` is the early `.git`-corruption tripwire.
 
-🔴 Untouched S164. Connor resolved the S162 *design*; the P1-Update *binding* (does the parent-status trigger filter bind/fire on a `statecode`-only deactivation Update) is unverified. Two mutually-exclusive paths, **neither done**:
-1. **Send Connor the test.** Email draft is the **local uncommitted** `docs/INTAKE_PORTAL_ITEM_6_CONNOR_EMAIL.md` (see gotcha — not on the other Mac). Attach committed `INTAKE_PORTAL_ITEM_6_CONNOR_CORE_GATE.md`. Await Step 11 evidence + Step 12 verdict.
-2. **Authorize the waiver.** Drafted UNAUTHORIZED in `INTAKE_PORTAL_ITEM_6_P1UPDATE_TEST_DRAFT_v5.md` Artifact 1. Justin's signature line blank by design; do not self-authorize.
+### A. slice-0 / P1-Update — STILL THE open gate (destructive carryover; NOT green-lit). Path (i) ACTIVE — test SENT to Connor; AWAITING Step 11 evidence + Step 12 verdict. Gate OPEN (sending ≠ clearing).
+**Next-session action = be the verdict-checker** when Connor replies. Hold the verdict to Step 11 literals / Step 12 criteria, NOT a narrative "it works". 🔴 Motivated-reasoning guard: Justin told Connor "Plan B = lots of extra work" + Connor "thinking about how to make Plan A viable" — a FAIL is cheap/planned (→ Option B drain-side, **zero schema rework**, not a rollback). Full line-by-line acceptance checklist + the (a)–(d) guards: memory `slice0-deactivate-not-delete-recalc` S165 status block (kebab harness store — **also mirror its essence to `.claude-memory/` so it propagates**). Connor email = local-uncommitted `docs/INTAKE_PORTAL_ITEM_6_CONNOR_EMAIL.md`. Two mutually-exclusive clears: (i) Connor maker-portal VERIFIED on the deactivation-Update path, or (ii) authorized waiver (`..._P1UPDATE_TEST_DRAFT_v5.md` Artifact 1, UNAUTHORIZED — do not self-authorize). On clean VERIFIED (real path) OR waiver: re-run BOTH point-in-time probes; grep live callers; `apply-dataverse-schema.js --target=prod --wave=4 --execute`; `extend-apprequestperson-role-picklist.mjs`; `setup-database.js` (V30); post-deploy Atlas + 3 P0 gates. Specs `lib/dataverse/schema/wave4*/` — do NOT re-author. `--execute` never autonomous.
 
-On a clean Connor result OR authorized waiver, deploy sequence (re-verify destructive state at the moment): re-run BOTH point-in-time probes; grep live callers; `apply-dataverse-schema.js --target=prod --wave=4 --execute`; `scripts/extend-apprequestperson-role-picklist.mjs`; `node scripts/setup-database.js` (V30); post-deploy Atlas amendments + 3 P0 gates. Specs at `lib/dataverse/schema/wave4*/` — do NOT re-author. Optional tidiness: land v5/handout as the real §5 in `docs/INTAKE_PORTAL_ITEM_6_MAKER_PORTAL_TESTS.md`.
-
-### B. Track B floor — follow-ups (parked; untouched S163/S164; not blocking slice-0)
-- **Primary Contact final shape — PARKED pending the SME reply** (SoCal Request-PC vs Org-PC). Provisional: forced-choice Request-PC vs Org-PC (both Tier-2) + duplicate-contact caveat. Do not ratify until SME answers.
-- **Name-normalized re-count** — quantify *true* person-divergence vs the inflated ~31% GUID rate (solo, read-only; pre-loads the parked PC decision).
-- **Donor** = Tier-2 fast-follow — non-misleading "directed-by sponsor" label + `wmkf_donors` entity-shape probe before build.
-- **Prototype** — user's stated path: NL→QuerySpec on-ramp into the unchanged confirm seam (additive, not a rewrite).
+### B. Track B floor — follow-ups (parked; not blocking slice-0)
+- Primary Contact final shape — PARKED pending SME (SoCal Request-PC vs Org-PC). - Name-normalized re-count (solo, read-only). - Donor Tier-2 fast-follow (`wmkf_donors` shape probe first). - Prototype: NL→QuerySpec on-ramp into the unchanged confirm seam (additive).
 
 ### C–F.
-- ~~Reviewer Manager→Dataverse~~ **CLOSED S164** — migration done W5/W6; only residue is (i) the gated destructive Postgres-table retirement (post-pilot ≥2026-07-01, carryover-hygiene) and (ii) the explicitly out-of-scope fragmentation census. Neither is live build work. Memory `project-reviewer-identity-fragmentation` is authoritative.
-- **`scripts/restore-postgres-drain-table-backup.js` (the "B" restore) — NOT built.** Spec'd at plan line 801; ~30-line JSONL→INSERT for the dropped Postgres drain tables. Post-pilot, ≥2026-07-01, destructive-carryover-gated — NOT now; write it "with the actual row format in front of you" (Codex's W6 note).
-- Field Set D doc-label collision (Connor; `check:memory-drift` red BY DESIGN — do not silence); COI policy wording; revert temp role elevations (treat as unverified carryover — verify before acting); Sarah's Phase II Research field inventory; data-quality `#1001205`/`#1001249`.
+- Reviewer Manager→Dataverse **CLOSED S164** (residue gated/out-of-scope; memory `project-reviewer-identity-fragmentation`). - `scripts/restore-postgres-drain-table-backup.js` ("B" restore) NOT built — post-pilot ≥2026-07-01, destructive-carryover-gated. - Field Set D doc-label collision (Connor; `check:memory-drift` red BY DESIGN — do not silence). - COI policy wording; revert temp role elevations (unverified carryover — verify first); Sarah's Phase II inventory; data-quality `#1001205`/`#1001249`.
 
-## Calendar Checkpoints (soft — Connor good-faith; report factually, not "overdue")
-- **2026-05-19** — slice-0 deploy *target* (soft). Still gated on P1-Update. Not "missed" — gated by an honest open question.
-- **2026-05-26** — dry-run: flip a throwaway test request to `'Phase II Pending'`, watch PA flows fire.
-- **2026-05-30** — go/no-go. **2026-06-01** — pilot accepts submissions (mid-June Phase II Research).
-- **≥2026-07-01** — post-pilot drain-only Postgres table drop (needs the "B" restore script built first).
+## Calendar Checkpoints (soft — report factually, not "overdue")
+- **2026-05-19** slice-0 deploy *target* (soft) — gated on P1-Update, not "missed". **2026-05-26** dry-run. **2026-05-30** go/no-go. **2026-06-01** pilot opens. **≥2026-07-01** post-pilot drain-table drop (needs "B" restore built first).
 
-## Gotchas (still live — carried forward)
-- 🔴 **slice-0 is destructive carryover; P1-Update is the single open gate.** Design resolved S162; binding unverified. No `--execute` autonomously; re-run both point-in-time probes at deploy.
-- 🔵 **Connor email = intentionally uncommitted local working file** (`docs/INTAKE_PORTAL_ITEM_6_CONNOR_EMAIL.md`). NOT on the other Mac — regenerate from the committed handout if resuming elsewhere.
-- 🟢 **Present Codex output VERBATIM**, primary, immediately, before any paraphrase (memory `feedback-share-codex-verbatim`). Run codex-rescue **synchronously**, not background.
-- 🟡 **Phantom-memory pattern** — this repo's docs cite memories that were never written (`project_reviewer_identity_fragmentation` [now written S164], `project_reviewer_postgres_to_dataverse_migration`, `project_w6_table_drop_pending` [still phantom]). Verify a cited memory exists before trusting "see memory X"; don't fabricate its contents.
-- 🟢 **Coverage tools must scan `.js`, `.mjs`, `.cjs`** — `CLAUDE_COVERAGE_LESSONS.md` pattern E (added S164). Any new/edited `scripts/check-*.js` needs the matching self-test fixture; `check:atlas:self-test` now 12/12.
-- 🟢 **MODULE_TYPELESS warning = ACCEPTED (Option E)** — memory `decision-module-typeless-warning-accept`. Never do a broad `.js`→`.mjs` rename (D); F (gradual CJS) only if ever revisited. Do not re-litigate.
-- 🔴 **"PI" / "primary contact" / "donor" are per-program disambiguation hazards** — field dictionary per-program, not entity-global (memory `dataverse-export-floor-scoping`).
-- 🔵 **Blob = TWO stores, never conflate** — public `phase-ii-summaries-blob` (`BLOB_READ_WRITE_TOKEN`) vs Dataverse-export private `dvx-export-private` (`DVX_BLOB_RW_TOKEN`).
-- 🔴 **Living-taxonomy lesson** — `lib/services/dataverse-export/{constants,live-taxonomy,compiler}.js` names verified against a live probe, not fixtures.
-- **`check:memory-drift` red by design** (Field Set D). Advisory, NOT a P0 blocker. Do not silence.
-- **dataverse-export tests use `@jest-environment node`**; live repro = standalone env-loaded `.mjs` (.env.local, client_credentials, FetchXML aggregate, NEVER OData `/$count`).
-- **iCloud `.nosync` can clear `node_modules`** at session start — `npm ci` restores; `.next`/`.next.nosync/` + `AGENTS.md`/`.agents/` (Codex artifacts) untracked is normal — do NOT commit the latter.
+## Gotchas (still live)
+- 🔴 **TWO memory stores — see ENV-0.** `.claude-memory/` (git, propagates) vs `~/.claude/.../memory/` (harness, per-machine). Dual-write durable knowledge to a git-tracked file. **"Phantom memory" was a store-divergence artifact** — `project_w6_table_drop_pending` & `project_reviewer_postgres_to_dataverse_migration` DO exist in `.claude-memory/`; check BOTH stores before calling a memory phantom.
+- 🟢 **`AGENTS.md` is a tracked symlink → `CLAUDE.md`** (Codex-verified it reads through it). Do NOT run the `migrate-to-codex` skill here (severs it). If `AGENTS.md` shows as a regular file in `git status`: `git checkout AGENTS.md`. `.agents/` gitignored. Do not re-litigate.
+- 🔴 **slice-0 destructive carryover; P1-Update single open gate.** No `--execute` autonomously; re-run both point-in-time probes at deploy.
+- 🔵 **Connor email** = intentionally uncommitted local file; regenerate from the committed `CONNOR_CORE_GATE.md` handout if on another Mac.
+- 🟢 **Present Codex output VERBATIM**, primary, before any paraphrase (`feedback_codex_relay_verbatim`). Run codex-rescue **synchronously** (`--wait`) — background wedged on a DNS-blocked curl S165; cancel+resume+`--wait`+no-network is the recovery.
+- 🟢 **Reconcile docs, don't append-patch**; surface ALL external-review findings verbatim; **probe before concluding** (S165 ENV-0 error = concluded before probing `.claude-memory/`).
+- 🔴 **"PI"/"primary contact"/"donor" are per-program hazards** (`dataverse-export-floor-scoping`). 🔵 **Blob = TWO stores** (`phase-ii-summaries-blob`/`BLOB_READ_WRITE_TOKEN` vs `dvx-export-private`/`DVX_BLOB_RW_TOKEN`).
+- **`check:memory-drift` red by design** (Field Set D) — advisory, do not silence. **Coverage tools scan `.js|.mjs|.cjs`** (pattern E). **MODULE_TYPELESS = accepted (E)** — do not re-litigate.
+- **iCloud `.nosync` can clear `node_modules`** at session start — `npm ci` restores; `.next`/`.next.nosync/` untracked is normal.
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| memory `slice0-deactivate-not-delete-recalc` | P1-Update is the open gate; deactivate-not-delete — READ FIRST for §A |
-| memory `feedback-share-codex-verbatim` | Codex output verbatim, primary, immediately — READ before any Codex run |
-| memory `project-reviewer-identity-fragmentation` | Reviewer Manager→Dataverse DONE; residue gated/out-of-scope — READ for C–F |
-| memory `decision-module-typeless-warning-accept` | Accept E, never broad D — do not re-litigate |
-| memory `dataverse-export-floor-scoping` / `akoya-temporal-axis-encodings` | Track B floor + per-program hazards / meeting-date canonical — READ for §B |
-| `docs/INTAKE_PORTAL_ITEM_6_CONNOR_CORE_GATE.md` | Connor send-handout (committed) — Steps 1–12 |
-| `docs/INTAKE_PORTAL_ITEM_6_CONNOR_EMAIL.md` | Connor email — LOCAL working file, uncommitted |
-| `docs/INTAKE_PORTAL_ITEM_6_P1UPDATE_TEST_DRAFT_v5.md` | Full runbook + waiver (Artifact 1, UNAUTHORIZED) |
-| `docs/INTAKE_PORTAL_ITEM_6_DISCUSSION.md` §0 | Authoritative Item-6 decision record |
+| `.claude-memory/project_memory_two_stores_propagation.md` | ENV-0 authoritative (git-tracked, propagates) — READ FIRST |
+| memory `slice0-deactivate-not-delete-recalc` (harness) | §A verdict-checker checklist + (a)–(d) guards — READ for §A |
+| `docs/INTAKE_PORTAL_ITEM_6_CONNOR_CORE_GATE.md` | Connor send-handout (committed), Steps 1–12 |
+| `docs/INTAKE_PORTAL_ITEM_6_DISCUSSION.md` §0 | Authoritative Item-6 decision record (P1-Update gate) |
+| `docs/INTAKE_PORTAL_ITEM_6_P1UPDATE_TEST_DRAFT_v5.md` | Full runbook + waiver Artifact 1 (UNAUTHORIZED) |
 | `lib/dataverse/schema/wave4*/` | slice-0 specs — READY, do NOT re-author |
-| `scripts/probe-apprequestperson-role-data.js` · `scripts/probe-slice0-attr-collision.mjs` | The two BLOCKING point-in-time pre-deploy probes |
-| `scripts/restore-reviewer-suggestion-cleanup-backup.js` | S164 — the "A" Dataverse-suggestion restore (built; post-pilot use) |
-| `docs/CLAUDE_COVERAGE_LESSONS.md` | Pattern E (`.mjs`/`.cjs` traversal) — READ before editing any `check-*` gate |
+| `scripts/probe-apprequestperson-role-data.js` · `scripts/probe-slice0-attr-collision.mjs` | Two BLOCKING point-in-time pre-deploy probes |
+| `docs/DOCS_GROUND_TRUTH_AUDIT_2026-05-19.md` | S165 audit — Phase 2–5 worklist (memory cleanup, Item-6 canonicalization, gates) |
+| `AGENTS.md` | Symlink → CLAUDE.md (do not edit directly; do not run migrate-to-codex) |
 
 ## Testing
 
 ```bash
-npm run check:atlas && npm run check:atlas:self-test && npm run check:api-routes   # 3 P0 gates (green; self-test 12/12; api-routes=84)
-node scripts/probe-apprequestperson-role-data.js     # exit 0=CLEAR; re-run at slice-0 deploy
-node scripts/probe-slice0-attr-collision.mjs         # exit 0=CLEAR; re-run at slice-0 deploy
-node scripts/check-memory-drift.js                   # advisory; exits 1 on Field Set D BY DESIGN
-# restore script dry-run (read-only, safe): node scripts/restore-reviewer-suggestion-cleanup-backup.js --file <backup.json>
-# Live probe pattern: standalone scripts/probe-*.mjs/.js — .env.local, client_credentials, FetchXML aggregate (NOT /$count)
+npm run check:atlas && npm run check:atlas:self-test && npm run check:api-routes   # 3 P0 gates (green S165; self-test 12/12; api-routes=84)
+test -L AGENTS.md && readlink AGENTS.md                                            # must be: CLAUDE.md (symlink intact)
+git rev-parse HEAD && git status --porcelain                                       # .git-corruption tripwire (iCloud)
+node scripts/probe-apprequestperson-role-data.js && node scripts/probe-slice0-attr-collision.mjs  # exit 0=CLEAR; re-run at slice-0 deploy
+node scripts/check-memory-drift.js                                                 # advisory; exits 1 on Field Set D BY DESIGN
 ```
