@@ -1,5 +1,7 @@
 # DRAFT — UNAUTHORIZED / UNLANDED — Connor send-candidate v5 (S163, 2026-05-18)
 
+> **Canonical status:** **`INTAKE_PORTAL_ITEM_6_STATUS.md`**. This file is retained for the full §5 procedures and the **waiver Artifact 1** (UNAUTHORIZED until Justin signs it). Current state — the P1-Update gate, waiver status, Connor status — is tracked in STATUS, not here. The condensed handout actually sent to Connor is `INTAKE_PORTAL_ITEM_6_CONNOR_CORE_GATE.md`.
+
 ## v3 -> v4 review deltas
 
 1. §5.11 rapid multi-child deactivation is re-scoped as bounded stress evidence. A missing run, non-`Update` `SdkMessage`, or child-GUID attribution failure remains gate-relevant, but retry/duplicate ambiguity by itself is recorded and escalated as a separate Power Automate concurrency/run-history finding rather than forcing the P1-Update gate to FAIL.

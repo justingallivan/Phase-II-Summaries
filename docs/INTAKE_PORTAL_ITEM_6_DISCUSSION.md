@@ -1,5 +1,7 @@
 # Intake Portal Item 6 — Drain vs. PA Write Conflict on Aggregate Fields
 
+> **Status entry point:** for *current* Item 6 / slice-0 state (is the deploy cleared? the P1-Update gate? waiver + Connor status?) read **`INTAKE_PORTAL_ITEM_6_STATUS.md`** — it is the single canonical dashboard. *This doc remains authoritative for the locked design decision* (§0: deactivate-not-delete, the A+B hybrid, the four preconditions); STATUS only summarizes §0 and never overrides it on the decision. The Status line directly below predates §0's S163 correction and is kept for history — trust §0 and STATUS over it.
+
 **Status (updated 2026-05-14, Connor sync):** Q1 + Q2 answered; active path locked as A+B hybrid pending three pre-deploy preconditions (maker-portal Tests 1 + 2 + design-doc rule-exception edit) plus one post-deploy PA-flow-live gate (real-schema verification). See § 0.
 
 ## 0. Decisions locked 2026-05-14 (Connor sync — post-doc-draft)

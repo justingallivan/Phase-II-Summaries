@@ -226,16 +226,17 @@ Acceptance:
 - Historical memories are explicitly labeled historical.
 - The 38 stale findings are either corrected or intentionally retained with a clear supersession marker.
 
-### Phase 3 — Collapse Intake Item 6 Docs
+### Phase 3 — Collapse Intake Item 6 Docs — ✅ DONE (S166, 2026-05-19)
 
 Create a single canonical status page, then demote older drafts.
 
 Acceptance:
 
-- One page answers: "Is slice-0 deploy cleared?"
-- Every draft points to that page.
-- Waiver status is unmistakable.
-- Connor validation status is unmistakable.
+- ✅ One page answers: "Is slice-0 deploy cleared?" — `docs/INTAKE_PORTAL_ITEM_6_STATUS.md` created (§1 = NO; one open gate = P1-Update).
+- ✅ Every draft points to that page — top-banner pointers added to `DISCUSSION` (status-entry-point; §0 still authoritative for the decision), `CONNOR_CORE_GATE` (also corrected stale "not yet sent" subtitle → SENT), `P1UPDATE_TEST_DRAFT{,_v2,_v3,_v4,_v5}`, `MAKER_PORTAL_TESTS`, `QUICK_PROBE`. Non-destructive (banners only; no doc deleted).
+- ✅ Waiver status is unmistakable — STATUS §3(ii): waiver Artifact 1 DRAFTED, **UNAUTHORIZED**, not self-authorizable.
+- ✅ Connor validation status is unmistakable — STATUS §3(i): test SENT S165, AWAITING Step 11 evidence + Step 12 verdict, gate still OPEN.
+- ✅ Explicit blocker preserved — STATUS §2: no `--execute` until (i) or (ii); never autonomous.
 
 ### Phase 4 — Retire Or Mark Old App Docs
 
@@ -265,8 +266,8 @@ Acceptance:
 | P0 | Update Atlas index grant-cycle and proposal-search rows | Engineering docs | Live Dataverse: `wmkf_appgrantcycles` = 10 |
 | P0 | Resolve Field Set D label collision | Justin / Connor | Atlas vs v3 spec conflict |
 | P1 | Clean `.claude-memory/MEMORY.md` stale summaries | Engineering docs | `check:memory-drift`: 38 stale claims |
-| P1 | Canonicalize Item 6 status page | Engineering docs | Prevent accidental schema deploy |
-| P1 | Mark/archive superseded P1-Update drafts | Engineering docs | Reduce version-sprawl risk |
+| P1 | ✅ DONE S166 — Canonicalize Item 6 status page | Engineering docs | `docs/INTAKE_PORTAL_ITEM_6_STATUS.md` created (Phase 3) |
+| P1 | ✅ DONE S166 — Mark/archive superseded P1-Update drafts | Engineering docs | Top-banner pointers on 8 Item 6 docs; no deletion |
 | P2 | Remove retired Concept Evaluator from live docs | Engineering docs | App removed from registry |
 | P2 | Add semantic drift gates | Engineering | After docs corrected |
 | P2 | Add `check:memory-drift --no-write` | Engineering | Avoid dirtying tracked report during audit |

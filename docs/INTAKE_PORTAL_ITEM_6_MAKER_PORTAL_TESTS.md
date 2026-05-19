@@ -1,5 +1,7 @@
 # Intake Portal Item 6 -- Maker Portal Tests
 
+> **⚠️ Pre-deactivate (2026-05-14) — history.** Predates Connor's deactivate-not-delete ruling; superseded for live test mechanics by `INTAKE_PORTAL_ITEM_6_CONNOR_CORE_GATE.md`. Retained because **§3 Candidates A–E** are still referenced by `INTAKE_PORTAL_ITEM_6_DISCUSSION.md` §0. Canonical status (is slice-0 cleared? the P1-Update gate? waiver + Connor status?): **`INTAKE_PORTAL_ITEM_6_STATUS.md`**.
+
 **Status:** draft test runbook for Connor, 2026-05-14.
 
 **Related docs:**

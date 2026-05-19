@@ -1,5 +1,7 @@
 # DRAFT — UNAUTHORIZED / UNLANDED — for Codex review only (S163, 2026-05-18)
 
+> **⚠️ Superseded — history only.** Canonical Item 6 / slice-0 status (is the deploy cleared? the P1-Update gate? waiver + Connor status?) lives in **`INTAKE_PORTAL_ITEM_6_STATUS.md`**. Superseded by v5 / `INTAKE_PORTAL_ITEM_6_CONNOR_CORE_GATE.md`; do not infer current state from this file.
+
 ## v3 -> v4 review deltas
 
 1. §5.11 rapid multi-child deactivation is re-scoped as bounded stress evidence. A missing run, non-`Update` `SdkMessage`, or child-GUID attribution failure remains gate-relevant, but retry/duplicate ambiguity by itself is recorded and escalated as a separate Power Automate concurrency/run-history finding rather than forcing the P1-Update gate to FAIL.
