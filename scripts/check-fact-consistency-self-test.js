@@ -292,6 +292,34 @@ function buildProseFixtures() {
       expectFlagged: true,
       token: '30',
     },
+    {
+      name: 'pointer-wrapped stale value is flagged (regression guard for the keep-number conversion)',
+      file: 'pos_pointer_stale.md',
+      body: `Live docs claim all [${wrongAppsA}](docs/CANONICAL_COUNTS.md#app-definition-count) app definitions exist.`,
+      expectFlagged: true,
+      token: String(wrongAppsA),
+    },
+    {
+      name: 'pointer-wrapped correct value is not flagged',
+      file: 'neg_pointer_correct.md',
+      body: `Registry currently has all [${apps}](docs/CANONICAL_COUNTS.md#app-definition-count) app definitions.`,
+      expectFlagged: false,
+      token: String(apps),
+    },
+    {
+      name: 'pointer with empty link is still unwrapped and flagged',
+      file: 'pos_pointer_empty_link.md',
+      body: `Stale claim: [${wrongEpsA}]() app endpoints remain.`,
+      expectFlagged: true,
+      token: String(wrongEpsA),
+    },
+    {
+      name: 'marker exemption applies to pointer-wrapped stale value',
+      file: 'neg_pointer_marker.md',
+      body: `Historically there were [${wrongAppsB}](docs/CANONICAL_COUNTS.md#app-definition-count) app definitions. <!-- fact-consistency:ignore fact=app-definition-count as-of=2026-05-19 -->`,
+      expectFlagged: false,
+      token: String(wrongAppsB),
+    },
   ];
 }
 

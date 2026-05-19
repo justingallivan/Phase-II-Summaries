@@ -130,6 +130,19 @@ function isExempt(line, factId) {
   return markers.some((attrs) => attrs.fact === factId && markerHasRequiredContext(attrs));
 }
 
+// Pointer-form unwrap: the keep-number-plus-link normalization pattern wraps
+// each gated literal as `[N](docs/CANONICAL_COUNTS.md#fact-id)`. Without
+// unwrapping, the `\d+` would be followed by `]` instead of whitespace and
+// every number-plus-context regex would silently miss the pointer form,
+// turning the conversion into a gate bypass. We rewrite `[N](url)` → `N` on
+// a copy of the line before pattern matching; the original line is still
+// used for violation reporting so the user sees the actual pointer text.
+// Empty URL `[N]()` is intentionally still unwrapped — a stale value wrapped
+// that way should still be flagged.
+function normalizeForMatching(line) {
+  return line.replace(/\[(\d+)\]\([^)]*\)/g, '$1');
+}
+
 function assertPatternFixtures(facts) {
   for (const fact of facts) {
     for (const sample of fact.knownMissFixtures || []) {
@@ -180,9 +193,10 @@ function main() {
     const rel = path.relative(repoRoot, file);
     const lines = fs.readFileSync(file, 'utf8').split('\n');
     lines.forEach((line, i) => {
+      const normalized = normalizeForMatching(line);
       for (const fact of facts) {
         for (const pattern of fact.patterns) {
-          for (const m of pattern.find(line)) {
+          for (const m of pattern.find(normalized)) {
             if (m.asserted === fact.live) continue;
             if (isExempt(line, fact.id)) continue;
             violations.push({
