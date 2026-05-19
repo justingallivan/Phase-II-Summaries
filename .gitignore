@@ -43,10 +43,13 @@ scripts/dynamics-schema-diff.json
 .git.nosync
 tmp/
 .playwright-mcp/
-# Codex CLI auto-generated artifacts — blind s/Claude/Codex/ derivative of
-# CLAUDE.md / .claude/skills (asserts false stack + unsafe VRP allowlist value).
-# .agents/ stays ignored. AGENTS.md is now a COMMITTED thin pointer to CLAUDE.md
-# (not ignored) — if Codex tooling re-clobbers it with the full derivative, that
-# shows as a tracked-file diff; restore with `git checkout AGENTS.md`.
-# See docs/DOCS_GROUND_TRUTH_AUDIT_2026-05-19.md.
+# Codex CLI artifacts. .agents/ stays ignored (corrupted s/Claude/Codex/ skill
+# mirrors). AGENTS.md is NOT ignored — it is a tracked symlink to CLAUDE.md so
+# Codex loads identical current content (Codex verified: it ingests literal
+# AGENTS.md bytes as user_instructions; a thin pointer would leave it
+# context-blind). The only writer is the manual `migrate-to-codex` skill, which
+# unlink()s + recreates (Codex-verified cli.py:452-470) — that SEVERS the
+# symlink into a regular file = visible tracked diff, never a silent CLAUDE.md
+# mutation. Restore with `git checkout AGENTS.md`. Do not run migrate-to-codex
+# here. Background: docs/DOCS_GROUND_TRUTH_AUDIT_2026-05-19.md.
 .agents/

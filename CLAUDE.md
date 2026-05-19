@@ -1,5 +1,7 @@
 # Document Processing Multi-App System
 
+> **Agent-instruction file note.** This `CLAUDE.md` is the single canonical agent-instruction surface. `AGENTS.md` at repo root is a tracked **symlink to `CLAUDE.md`** so AGENTS.md-aware agents (Codex, etc.) load identical, current content with no second drift surface. Do **not** run the `migrate-to-codex` skill against this repo — it severs the symlink and writes a corrupted `s/Claude/Codex/` copy (false stack, unsafe `VRP_ALLOWED_PROVIDERS`). If `AGENTS.md` ever appears as a regular file in `git status`, it was clobbered: `git checkout AGENTS.md` to restore the symlink. Background: `docs/DOCS_GROUND_TRUTH_AUDIT_2026-05-19.md`.
+
 ## Git Commit Policy
 
 **Commit working changes regularly.** This provides rollback points when debugging.
