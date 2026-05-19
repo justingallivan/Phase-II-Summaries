@@ -209,7 +209,7 @@ Acceptance:
 - Grant-cycle docs match current code imports and live Dataverse row count.
 - Field Set D collision is either resolved or loudly blocked everywhere.
 
-### Phase 2 — Clean Memory Layer
+### Phase 2 — Clean Memory Layer — ✅ EFFECTIVELY COMPLETE (verified S166, 2026-05-19)
 
 Use `docs/RECONCILIATION_REPORT.json` and `docs/AUDIT_S154_MEMORY_V2.md` as the worklist.
 
@@ -225,6 +225,32 @@ Acceptance:
 - No stale memory summary can be mistaken for current state.
 - Historical memories are explicitly labeled historical.
 - The 38 stale findings are either corrected or intentionally retained with a clear supersession marker.
+
+**S166 verification outcome.** Re-audited the S154 worklist against *current* `.claude-memory/`
+state rather than applying it blindly (the S154 audit is dated 2026-05-14; ~20+ commits
+touched `.claude-memory/` between it and S166). Result: the substantive work was **already
+done by intervening sessions** — every high-signal S154 finding checked in context was
+already reconciled:
+
+- `MEMORY.md` index "still load-bearing" line → corrected ("drain-only, deletion ≥ 2026-07-01").
+- `project_reviewer_finder_dataverse_entry_path.md` central claim → fully rewritten ("SHIPPED").
+- `project_app_access_control.md` counts → 16 apps / ~48 endpoints (was 15 / ~30).
+- `project_grant_lifecycle_states_confirmed.md` false "slots do NOT exist" → removed.
+- `project_reviewer_accept_decline_links.md` "NOT yet built" → scoped to email-buttons; `respond.js` noted shipped.
+- `project_codex_recurring_review.md` / `..._external_id_foundation.md` / `..._pilot_decisions_2026-05-06.md` archive paths → already `docs/archive/`-prefixed.
+- `project_intake_portal_pilot_decisions_2026-05-13.md` `schema/intake/` → covered by an explicit top-of-file supersession banner.
+- `project_backend_automation.md` field names → already v3 (`wmkf_ai_dataextract`, "formerly `wmkf_ai_structured_data`").
+
+Only **one** genuine residual found and fixed S166: `project_reviewer_lifecycle.md:61`
+rotted `reviewer-finder.js:2802` "Add Researcher modal" ref (file now ~3.6k lines; no such
+modal name) → de-pinned, lesson encoded inline.
+
+**Gate-design defect for Phase 5 (do NOT silence now):** `RECONCILIATION_REPORT.json`'s
+`claim_audit` is a static re-parse of `AUDIT_S154_MEMORY_V2.md` (every claim's `source_file`
+is that one doc). Its "38 stale" count therefore never decreases as memories are fixed — it
+measures the frozen audit, not live memory. The live signals are the `drift_buckets`
+(Dataverse/Postgres probes) only. Phase 5 should either re-derive `claim_audit` from current
+memory state or stop counting it as "stale." Logged in the Action Item Register.
 
 ### Phase 3 — Collapse Intake Item 6 Docs — ✅ DONE (S166, 2026-05-19)
 
@@ -265,7 +291,8 @@ Acceptance:
 | P0 | Reconcile `postgres-grant-cycles.md` | Engineering docs | Current code imports `grant-cycles-dataverse` |
 | P0 | Update Atlas index grant-cycle and proposal-search rows | Engineering docs | Live Dataverse: `wmkf_appgrantcycles` = 10 |
 | P0 | Resolve Field Set D label collision | Justin / Connor | Atlas vs v3 spec conflict |
-| P1 | Clean `.claude-memory/MEMORY.md` stale summaries | Engineering docs | `check:memory-drift`: 38 stale claims |
+| P1 | ✅ DONE S166 — Clean `.claude-memory/` stale summaries | Engineering docs | S154 worklist already reconciled by intervening sessions; 1 residual fixed (`project_reviewer_lifecycle.md:61` rotted line ref). See Phase 2. |
+| P2 | Fix `RECONCILIATION_REPORT.json` `claim_audit` | Engineering | It re-parses frozen `AUDIT_S154_MEMORY_V2.md`; "38 stale" never decreases. Re-derive from live memory or stop counting. (Phase 5) |
 | P1 | ✅ DONE S166 — Canonicalize Item 6 status page | Engineering docs | `docs/INTAKE_PORTAL_ITEM_6_STATUS.md` created (Phase 3) |
 | P1 | ✅ DONE S166 — Mark/archive superseded P1-Update drafts | Engineering docs | Top-banner pointers on 8 Item 6 docs; no deletion |
 | P2 | Remove retired Concept Evaluator from live docs | Engineering docs | App removed from registry |

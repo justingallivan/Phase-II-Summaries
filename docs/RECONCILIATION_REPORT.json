@@ -1,31 +1,231 @@
 {
-  "generated": "2026-05-15T06:06:41.254Z",
+  "generated": "2026-05-19T19:48:19.842Z",
   "summary": {
     "total_claims": 157,
     "stale": 38,
     "verified": 88,
     "unknown": 31,
-    "probe_errors": 25
+    "probe_errors": 1
   },
   "probe_notes": {
-    "dataverse": "probe_error: fetch failed",
-    "postgres": "probe_skipped: getaddrinfo ENOTFOUND ep-frosty-credit-afovxswa-pooler.c-2.us-west-2.aws.neon.tech"
+    "dataverse": "completed",
+    "postgres": "completed"
   },
   "drift_buckets": {
-    "spec_without_entity": [],
+    "spec_without_entity": [
+      {
+        "entity": "wmkf_app_grant_cycle",
+        "spec_file": "lib/dataverse/schema/wave2/wmkf_app_grant_cycle.json",
+        "severity": "high",
+        "evidence": "Dataverse probe returned probe_404; treat as drift, not proof of non-existence"
+      },
+      {
+        "entity": "wmkf_app_proposal_search",
+        "spec_file": "lib/dataverse/schema/wave2/wmkf_app_proposal_search.json",
+        "severity": "high",
+        "evidence": "Dataverse probe returned probe_404; treat as drift, not proof of non-existence"
+      },
+      {
+        "entity": "wmkf_app_publication",
+        "spec_file": "lib/dataverse/schema/wave2/wmkf_app_publication.json",
+        "severity": "high",
+        "evidence": "Dataverse probe returned probe_404; treat as drift, not proof of non-existence"
+      },
+      {
+        "entity": "wmkf_app_request_person",
+        "spec_file": "lib/dataverse/schema/wave2/wmkf_app_request_person.json",
+        "severity": "high",
+        "evidence": "Dataverse probe returned probe_404; treat as drift, not proof of non-existence"
+      },
+      {
+        "entity": "wmkf_app_researcher",
+        "spec_file": "lib/dataverse/schema/wave2/wmkf_app_researcher.json",
+        "severity": "high",
+        "evidence": "Dataverse probe returned probe_404; treat as drift, not proof of non-existence"
+      },
+      {
+        "entity": "wmkf_app_reviewer_suggestion",
+        "spec_file": "lib/dataverse/schema/wave2/wmkf_app_reviewer_suggestion.json",
+        "severity": "high",
+        "evidence": "Dataverse probe returned probe_404; treat as drift, not proof of non-existence"
+      },
+      {
+        "entity": "wmkf_app_publication_author",
+        "spec_file": "lib/dataverse/schema/wave2/wmkf_app_z_publication_author.json",
+        "severity": "high",
+        "evidence": "Dataverse probe returned probe_404; treat as drift, not proof of non-existence"
+      }
+    ],
     "entity_without_atlas": [],
-    "stale_row_count": [],
+    "stale_row_count": [
+      {
+        "entity": "wmkf_ai_prompt",
+        "atlas_claim": 10,
+        "live_count": 11,
+        "source_file": "docs/atlas/dataverse-wmkf-ai-run-and-prompt.md"
+      },
+      {
+        "entity": "wmkf_ai_prompts",
+        "atlas_claim": 10,
+        "live_count": 11,
+        "source_file": "docs/atlas/dataverse-wmkf-ai-run-and-prompt.md"
+      },
+      {
+        "entity": "wmkf_ai_run",
+        "atlas_claim": 325,
+        "live_count": 329,
+        "source_file": "docs/atlas/dataverse-wmkf-ai-run-and-prompt.md"
+      },
+      {
+        "entity": "wmkf_ai_runs",
+        "atlas_claim": 325,
+        "live_count": 329,
+        "source_file": "docs/atlas/dataverse-wmkf-ai-run-and-prompt.md"
+      },
+      {
+        "entity": "wmkf_apprequestpersons",
+        "atlas_claim": 5561,
+        "live_count": 5000,
+        "source_file": "docs/atlas/dataverse-akoya-request.md"
+      },
+      {
+        "entity": "wmkf_policy",
+        "atlas_claim": 1,
+        "live_count": 2,
+        "source_file": "docs/atlas/dataverse-wmkf-policy-and-policy-version.md"
+      },
+      {
+        "entity": "wmkf_policyversion",
+        "atlas_claim": 1,
+        "live_count": 8,
+        "source_file": "docs/atlas/dataverse-wmkf-policy-and-policy-version.md"
+      }
+    ],
     "doc_label_collision": [
       {
         "label": "Field Set D",
         "sources": [
-          "docs/atlas/dataverse-akoya-request.md: ready",
-          "docs/atlas/dataverse-akoya-request.md#2: wmkfaifitassessment (Picklist) + wmkfaifitrationale (Memo) — ready",
+          "docs/atlas/dataverse-akoya-request.md: 107 instead says Field Set D = PD Assignment (writes existing wmkfprogramdirector, no new akoyarequest fields)",
+          "docs/atlas/dataverse-akoya-request.md#2: memory-drift stays red by design on this doclabelcollision",
+          "docs/atlas/dataverse-akoya-request.md#3: ready",
+          "docs/atlas/dataverse-akoya-request.md#4: the deployment isn't in doubt, the label is",
+          "docs/atlas/dataverse-akoya-request.md#5: wmkfaifitassessment (Picklist) + wmkfaifitrationale (Memo) — ready",
           "docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md: PD Assignment"
         ]
       }
     ],
-    "postgres_table_mismatch": []
+    "postgres_table_mismatch": [
+      {
+        "table": "api_usage_log",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "dynamics_feedback",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "dynamics_query_log",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "dynamics_restrictions",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "dynamics_user_roles",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "expertise_matches",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "expertise_roster",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "grant_cycles",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "health_check_history",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "intake_audit",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "intake_drafts",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "integrity_screenings",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "irs_exempt_orgs",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "maintenance_runs",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "panel_review_items",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "panel_reviews",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "playing_with_neon",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "policy_publish_audit",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "retractions",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "screening_dismissals",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "system_alerts",
+        "in_schema_sql": false,
+        "deployed": true
+      },
+      {
+        "table": "user_profiles",
+        "in_schema_sql": false,
+        "deployed": true
+      }
+    ]
   },
   "claim_audit": [
     {
