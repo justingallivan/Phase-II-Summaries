@@ -43,8 +43,10 @@ scripts/dynamics-schema-diff.json
 .git.nosync
 tmp/
 .playwright-mcp/
-# Codex CLI auto-generated artifacts — corrupted s/Claude/Codex/ derivative of
+# Codex CLI auto-generated artifacts — blind s/Claude/Codex/ derivative of
 # CLAUDE.md / .claude/skills (asserts false stack + unsafe VRP allowlist value).
-# Do NOT commit; do NOT trust as ground truth. See DOCS_GROUND_TRUTH_AUDIT_2026-05-19.
-AGENTS.md
+# .agents/ stays ignored. AGENTS.md is now a COMMITTED thin pointer to CLAUDE.md
+# (not ignored) — if Codex tooling re-clobbers it with the full derivative, that
+# shows as a tracked-file diff; restore with `git checkout AGENTS.md`.
+# See docs/DOCS_GROUND_TRUTH_AUDIT_2026-05-19.md.
 .agents/
