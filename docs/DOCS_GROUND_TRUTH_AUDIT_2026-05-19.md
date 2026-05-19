@@ -294,7 +294,7 @@ Add targeted semantic checks only after the docs are clean, so the fixtures enco
 
 Acceptance:
 
-- ⏸️ **New checks have self-test fixtures** — N/A this pass: **no new check was added.** Only a read-only flag + doc warnings. A new *semantic* drift gate (the open-ended P2 item) was deliberately **not** built — a real semantic memory gate ≈ automating the S154 audit (parse + classify ~73 memory files), out of proportion to a gate tweak and would need its own binding self-test harness (none exists for memory-drift). Flagged in the Register, not half-built.
+- ✅ **New checks have self-test fixtures** — `check:fact-consistency` was built (S166, after the Codex review re-exposed the recurring fan-out/no-fan-in scalar-drift class ≥3× in one session). It derives each `CANONICAL_FACTS` scalar from the live repo and fails on stale restatements in live docs/memory; binding self-test `check:fact-consistency:self-test` 5/5 (positive + negation + 2 exemption fixtures). This is the **bounded** slice (crisply code-derivable, drift-prone scalars only); the **general semantic checker stays correctly deferred** (NLP-hard ≈ automating the S154 audit — not half-built). Codified in `CLAUDE.md` as the mandatory fan-in before any fact-level doc/memory "DONE" claim.
 - ✅ **`check:memory-drift --no-write` exists** — added to `scripts/check-memory-drift.js` + `npm run check:memory-drift:no-write` alias. Verified: read-only, evaluates the committed report, **does not regenerate/mutate `RECONCILIATION_REPORT.json`** (the default path does — that's the Phase-2 dirtying problem this fixes). Warns when the report is >24h old instead of silently regenerating.
 - ✅ **Gate docs warn against parallel `check:atlas` / `:atlas:self-test`** — added at 3 surfaces with the concrete cause: the self-test writes synthetic fixtures into `lib/services/atlas_selftest_tmp/` (a path `check:atlas` scans), so a concurrent `check:atlas` false-fails on them and races the self-test's `cleanup()`. Warnings in both script headers + `CLAUDE.md` binding-self-test paragraph.
 
@@ -315,7 +315,7 @@ Binding self-tests green after the (comment-only) edits to `check-application-st
 | P1 | ✅ DONE S166 — Mark/archive superseded P1-Update drafts | Engineering docs | Top-banner pointers on 8 Item 6 docs; no deletion |
 | P2 | ✅ DONE S166 — Remove/label retired Concept Evaluator in live docs | Engineering docs | 5 docs edited; Finding #6 undercounted (3 more found, 2 already clean). See Phase 4. |
 | P3 | Refresh stale app counts in overview docs (PARTIAL S166) | Engineering docs | `SYSTEM_OVERVIEW` de-specified (table + line 7, latter via Codex follow-up). `SECURITY_ARCHITECTURE` "All 14 applications" still understates real suite — remaining. |
-| P2 | Add semantic drift gates (DEFERRED — sized S166) | Engineering | ≈ automating the S154 memory audit + its own binding self-test; out of proportion to a gate tweak. Not half-built. |
+| P2 | ✅ PARTIAL S166 — bounded scalar-drift gate built (`check:fact-consistency` + self-test); **general semantic gate still DEFERRED** | Engineering | Fan-out/no-fan-in scalar class now gated + self-tested + codified in CLAUDE.md as the mandatory fan-in. General semantic checker ≈ automating the S154 audit — correctly not built. |
 | P2 | ✅ DONE S166 — Add `check:memory-drift --no-write` | Engineering | Read-only flag + `check:memory-drift:no-write` alias; verified non-mutating. Phase 5. |
 | P2 | ✅ DONE S166 — Warn against parallel atlas gate runs | Engineering docs | 3 surfaces (both scripts + CLAUDE.md) w/ concrete cause. Phase 5. |
 

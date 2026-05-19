@@ -685,7 +685,7 @@ Authentication is enforced at three levels — edge middleware, API route middle
 
 | Attribute | Detail |
 |-----------|--------|
-| **Registry** | `shared/config/appRegistry.js` — single source of truth for all 14 app definitions (keys, names, routes, icons, categories) |
+| **Registry** | `shared/config/appRegistry.js` — single source of truth for all 17 app definitions (keys, names, routes, icons, categories) |
 | **Database** | `user_app_access` table — per-user app grants with `(user_profile_id, app_key)` unique constraint |
 | **Default grants** | New users receive only `dynamics-explorer`; all other apps require explicit superuser grant |
 | **Superuser bypass** | Users with `role = 'superuser'` in `dynamics_user_roles` bypass all app checks |

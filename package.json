@@ -20,7 +20,9 @@
     "check:doc-currency": "node scripts/check-doc-currency.js",
     "check:doc-currency:self-test": "node scripts/check-doc-currency-self-test.js",
     "check:memory-drift": "node scripts/check-memory-drift.js",
-    "check:memory-drift:no-write": "node scripts/check-memory-drift.js --no-write"
+    "check:memory-drift:no-write": "node scripts/check-memory-drift.js --no-write",
+    "check:fact-consistency": "node scripts/check-fact-consistency.js",
+    "check:fact-consistency:self-test": "node scripts/check-fact-consistency-self-test.js"
   },
   "dependencies": {
     "@vercel/analytics": "^1.6.1",
