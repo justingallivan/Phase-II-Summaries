@@ -4,6 +4,9 @@
 **Live row count:** **~25,561** (FetchXML aggregate, 2026-05-15). ⚠️ OData `/$count` returns **5,000** — Dataverse caps `$count` at 5,000; the "5,000" figure is the cap, not the total. Use FetchXML aggregate / RetrieveTotalRecordCount for the true count.
 **Entity set:** `akoya_requests`
 
+> 🔴 **BLOCKED — owner decision required: "Field Set D" label collision (UNRESOLVED).**
+> This page labels `wmkf_ai_fitassessment` + `wmkf_ai_fitrationale` as **Field Set D** (line ~52). `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md:107` instead says **Field Set D** = PD Assignment (writes existing `wmkf_programdirector`, no new `akoya_request` fields). Both fit-assessment fields are deployed and populated live — **the deployment is not in doubt; the label is.** Until Connor resolves this: **name concrete `wmkf_ai_*` fields in any plan/code — never "Field Set D" by label.** `npm run check:memory-drift` stays **red by design** on this `doc_label_collision`; do **not** silence it to go green (CLAUDE.md memory-drift gate rule). Tracked as audit Finding #3 / register P0 (`docs/DOCS_GROUND_TRUTH_AUDIT_2026-05-19.md`).
+
 ## Source of truth
 
 **Master grant-request record.** AkoyaGO-vendor-owned core fields + WMKF-added `wmkf_*` extension fields. The lifecycle pivot for proposals — Reviewer Finder, Review Manager, Phase I/II Summaries, Grant Reporting all read here.

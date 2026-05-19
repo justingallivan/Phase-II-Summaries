@@ -27,7 +27,7 @@ The canonical reference for the live state of the application's data layer.
 | `publications` | 0 | dead writer | [postgres-publications.md](atlas/postgres-publications.md) |
 | `researcher_keywords` | 1,028 | active | [postgres-other-reviewer-tables.md](atlas/postgres-other-reviewer-tables.md) |
 | `reviewer_suggestions` | 337 | mirror (~99% parity to Dataverse) | [postgres-reviewer-suggestions.md](atlas/postgres-reviewer-suggestions.md) |
-| `grant_cycles` | 13 | sole source — load-bearing | [postgres-grant-cycles.md](atlas/postgres-grant-cycles.md) |
+| `grant_cycles` | 13 | drain-only — Dataverse-primary post-W3 (2026-05-12); no app readers/writers | [postgres-grant-cycles.md](atlas/postgres-grant-cycles.md) |
 | `proposal_searches` | 0 | dead | [postgres-other-reviewer-tables.md](atlas/postgres-other-reviewer-tables.md) |
 | `search_cache` | 0 | dead | [postgres-other-reviewer-tables.md](atlas/postgres-other-reviewer-tables.md) |
 
@@ -140,11 +140,11 @@ Useful summary of how Postgres ↔ Dataverse currently join (or will join post-c
 | `researchers.email` | `wmkf_potentialreviewers.wmkf_emailaddress` | de-dupe key |
 | `reviewer_suggestions.request_number` | `akoya_requests.akoya_requestnum` | natural key |
 | `reviewer_suggestions.researcher_id` (→ email) | `wmkf_appreviewersuggestion._wmkf_potentialreviewer_value` | indirect |
-| `grant_cycles` (entire table) | `wmkf_appgrantcycle` (deployed but empty) | post-migration |
+| `grant_cycles` (entire table) | `wmkf_appgrantcycle` — **10 rows** (2026-05-14 audit), Dataverse-primary | migration complete (W3, 2026-05-12) |
 | `wmkf_appreviewersuggestion.wmkf_reviewsharepointfolder` | SharePoint `akoya_request/{requestNumber}_{guidNoHyphensUpper}/Reviewer_Uploads/{reviewerSubfolder}` | written by `lib/services/review-upload.js`; any plan that touches reviewer suggestions must preserve this path or orphan the SharePoint files |
 | `wmkf_ai_run.wmkf_ai_Prompt@odata.bind` | `wmkf_ai_prompt` | written by `lib/services/execute-prompt.js`; FK from audit row to source prompt |
 | `wmkf_ai_run.wmkf_ai_Request@odata.bind` | `akoya_request` | written by `execute-prompt.js` + `dynamics-service.js logAiRun`; FK from audit row to processed request |
-| `proposal_searches.grant_cycle_id` (Postgres) | `grant_cycles.id` (Postgres) | LEFT JOIN in `grant-cycles.js`; load-bearing for cycle UI even though table is empty |
+| ~~`proposal_searches.grant_cycle_id` → `grant_cycles.id`~~ *(historical)* | — | **No longer an application dependency.** `pages/api/reviewer-finder/grant-cycles.js:99` retains only a past-tense NOTE; no live LEFT JOIN. `proposal_searches` = 0 rows, dead (see row table line 31). |
 
 ## "As-built vs. as-designed" reconciliation (Wave 2)
 
@@ -153,7 +153,7 @@ Useful summary of how Postgres ↔ Dataverse currently join (or will join post-c
 | `wmkf_appresearcher` | ✅ 21 attrs | ✅ 24 attrs | ✅ 334 rows |
 | `wmkf_appreviewersuggestion` | extension manifest | ✅ 52 attrs | ✅ 336 rows |
 | `wmkf_apppublication` | ✅ 14 attrs | ✅ 14 attrs | empty |
-| `wmkf_appgrantcycle` | ✅ 8 attrs | ✅ 10 attrs (different gap from Postgres) | empty |
+| `wmkf_appgrantcycle` | ✅ 8 attrs | ✅ 10 attrs (different gap from Postgres) | ✅ 10 rows (2026-05-14 audit) |
 | `wmkf_appproposalsearch` | ✅ | ❌ NOT DEPLOYED | n/a |
 | `wmkf_app_z_publication_author` | ✅ | ❌ NOT DEPLOYED | n/a |
 
