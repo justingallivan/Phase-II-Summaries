@@ -46,6 +46,7 @@
 - [External ID auth foundation SHIPPED (S129)](project_intake_portal_external_id_foundation.md) — tenant `04a1406b...`, NextAuth `entra-external` provider, `/apply` route auth round-trip verified.
 - [Skinny pilot scope, not feature-for-feature](project_intake_portal_skinny_scope.md) — pilot sized like external reviewer intake; Phase II Research mid-June 2026; design doc at `docs/INTAKE_PORTAL_DESIGN.md`
 - [Capture machine-legible structured data](project_machine_legible_form_capture.md) — split budgets/rosters/milestones into structured fields, not narrative; Sarah + Connor own form wishlists
+- [Match institution against existing accounts at intake](project_intake_portal_institution_match.md) — match-first, create-as-last-resort against `accounts.{name, akoya_aka, wmkf_legalname, wmkf_abbreviation}`. Free-text input pollutes the canonical institution registry ("Stafnord" → "Stanford"). GOverify doesn't dedup.
 - [Pilot decisions locked 2026-05-06](project_intake_portal_pilot_decisions_2026-05-06.md) — six-decision walkthrough w/ Connor. **Items 1C + 1D superseded by 2026-05-13 entry.**
 - [Pilot Track 1 decisions 2026-05-13](project_intake_portal_pilot_decisions_2026-05-13.md) — 4 Track-1 items closed (1A membership Option A, 1B PA flows origin-agnostic, 1C reversed to PA-built packet, 1D narrowed to budget+roster)
 - [Reviewer migration plan locked S136](project_reviewer_postgres_to_dataverse_migration.md) — 1:1 model; most Postgres tables drain not migrate; auth doc `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`

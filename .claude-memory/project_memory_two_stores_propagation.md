@@ -17,4 +17,26 @@
 - Alternative if the harness mechanism itself must roam: mirror harness→`.claude-memory/` at `/stop`, or sync only the harness `memory/` dir — never the repo/`.git`.
 - Until reconverged, **dual-write**: anything that must reach the other Mac goes in a git-tracked file (`.claude-memory/`, `SESSION_PROMPT.md`, `docs/`), not only the harness store. This file is the corrected, propagating record; the harness `memory-propagation-icloud-misfix.md` is the same finding kept locally accurate.
 
-Status: **root cause IDENTIFIED & corrected; consolidation decision OPEN (Justin).** Not green-lit infra work.
+## Update (S168, 2026-05-20): harness store is symlinked on THIS Mac
+
+Discovered while writing a new memory entry: on the current Mac, the harness directory
+
+`~/.claude/projects/-Users-gallivan-Library-Mobile-Documents-com-apple-CloudDocs-Documents-Programming-Claude-Projects-WMKF-Apps/memory/`
+
+is a **symlink** pointing to `.claude-memory/` in the repo. `readlink` confirms; `stat` shows the same inode for files accessed via either path. So on this machine, **the two stores are one physical store** — writes to either path land in the git-tracked `.claude-memory/` and propagate via push/pull. This is effectively the "Reconverge on `.claude-memory/`" alternative from the *How to apply* list, implemented via symlink.
+
+**Verification needed on the OTHER Mac.** The symlink is filesystem-local — it exists on this machine but is not a repo artifact. The other Mac's harness directory is almost certainly still a regular directory (the harness creates one by default on first run). Until verified, treat the propagation hazard as resolved on THIS Mac only:
+
+```bash
+# Run on the other Mac to check:
+readlink "$HOME/.claude/projects/-Users-gallivan-Library-Mobile-Documents-com-apple-CloudDocs-Documents-Programming-Claude-Projects-WMKF-Apps/memory"
+# If it returns the repo's .claude-memory/ path → already consolidated.
+# If it returns nothing (regular dir) → recreate as symlink:
+#   mv .../memory .../memory.bak
+#   ln -s "<repo path>/.claude-memory" .../memory
+#   (then merge any unique kebab entries from .bak before deleting)
+```
+
+Until the other Mac is verified/fixed, dual-write of durable knowledge still applies there.
+
+Status: **root cause IDENTIFIED & corrected; consolidation OPEN on the other Mac (verify + apply symlink); iCloud-removal decision still open.** Not green-lit infra work.
