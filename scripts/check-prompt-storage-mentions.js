@@ -22,8 +22,10 @@
  * Exemption (any one passes):
  *   - Same-line directional/historical keyword (historical / retired /
  *     formerly / legacy / superseded / renamed / "never materialized" /
- *     proposed / proposed-but-never-shipped / draft / pre-rename /
- *     replaced-by / strikethrough ~~).
+ *     proposed / proposed-but-never-shipped / pre-rename / replaced(-by) /
+ *     replaces / strikethrough ~~). Intentionally NOT exempted: bare
+ *     `draft`, `pre-shipped`, `Dataverse`, `wmkf_ai_prompt`, or any other
+ *     non-directional marker — each can co-occur with a stale claim.
  *   - Same-line structured marker:
  *       <!-- prompt-storage:ignore [reason=<short-id>] -->
  *   - Allowlist entry (script-side; for the historical-record docs).
@@ -124,7 +126,7 @@ const SAME_LINE_OK = new RegExp(
     '\\b(superseded|superseding|renamed|renamed-to|replaced(-by)?|replaces)\\b',
     '\\bproposed(-but-never-(shipped|materialized))?\\b',
     '\\bnever\\s+(materialized|shipped|landed)\\b',
-    '\\b(pre-rename|pre-shipped)\\b',
+    '\\bpre-rename\\b',
     '~~',
   ].join('|'),
 );

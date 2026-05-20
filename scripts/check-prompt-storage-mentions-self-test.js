@@ -147,6 +147,12 @@ function buildFixtures() {
       expectFlagged: true,
     },
     {
+      name: '"pre-shipped" alone does NOT exempt (regression guard)',
+      file: 'pos_pre_shipped_not_exempt.md',
+      body: 'Create pre-shipped rows in `wmkf_prompt_template` ahead of cutover.',
+      expectFlagged: true,
+    },
+    {
       name: '"Dataverse" alone does NOT exempt (regression guard)',
       file: 'pos_dataverse_not_exempt.md',
       body: 'The Dataverse `wmkf_prompt_template` table is the source.',
