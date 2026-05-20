@@ -85,6 +85,7 @@
 - [External reviewer file access architecture](project_external_reviewer_file_access.md) — SHIPPED 2026-05-03. Token primitive, /external/* endpoints, SharePoint upload, event-driven token expiry all live.
 - [Reviewer count invariant](project_reviewer_count_invariant.md) — need 3 confirmed reviewers per proposal; 5 wmkf_potentialreviewer slots are over-invite buffer
 - [Reviewer history data quality](project_reviewer_history_data_quality.md) — pre-J26 proposals have no Postgres rows; zeros are "unknown", not "0 invited"
+- [Match reviewer affiliation against existing accounts](project_reviewer_institution_match.md) — `wmkf_appresearcher.wmkf_primaryaffiliation` is uncurated free text today; promotion to `contact.parentcustomerid` is the load-bearing join. Reuse the intake-portal fuzzy-match primitive at save-candidates, contact promotion, and any future reviewer self-edit.
 
 ## App Infrastructure
 - [App-level access control](project_app_access_control.md) — Dataverse `wmkf_appuserappaccesses`; appRegistry.js source of truth; `requireAppAccess()` coverage is checked by `check:fact-consistency`
