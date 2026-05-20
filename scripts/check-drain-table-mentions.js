@@ -311,8 +311,13 @@ function main() {
       `Each drained table mention must carry a same-line drain/historical/post-W context annotation, OR a structured marker:\n` +
       `  <!-- drain-table:ignore reason=<short-reason> -->\n` +
       `Live source of truth is Dataverse: wmkf_appresearcher / wmkf_potentialreviewer / wmkf_appreviewersuggestion / wmkf_appgrantcycle.\n` +
-      `If a mention belongs to a doc whose PURPOSE is describing drained tables (atlas/postgres-*, migration plan, etc.),\n` +
-      `add the file to ALLOWLIST_FILES in scripts/check-drain-table-mentions.js with a justification.\n`
+      `If a mention belongs to a doc whose PURPOSE is describing drained tables:\n` +
+      `  - Atlas state pages (docs/atlas/*.md, docs/APPLICATION_STATE_ATLAS.md): add a visible top-of-file marker\n` +
+      `      <!-- drain-table:file-purpose=atlas-state-page -->\n` +
+      `    (The marker's allowed paths are constrained by FILE_MARKER_TAG_PATHS — adding the marker to a non-matching path\n` +
+      `    is a configuration error, not a silent bypass.)\n` +
+      `  - Migration plans / lessons-learned / migration-memory: add the file to ALLOWLIST_FILES in this script with a\n` +
+      `    justification comment. Allowlist is intentionally narrow; do not broaden it to silence drift in state docs.\n`
     );
     for (const v of violations) {
       console.error(`  ✗ ${v.rel}:${v.lineNo} — drained table ${v.table}`);

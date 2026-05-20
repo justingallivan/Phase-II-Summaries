@@ -171,7 +171,7 @@ A Vercel app page + API endpoint that:
 - Behind feature flag until ready *(no longer relevant; the writes are unconditional in the cutover endpoints)*
 
 ### Key files
-- `lib/services/dynamics-service.js` — stubbed write methods, existing auth token flow works
+- `lib/services/dynamics-service.js` — write methods are live (`createRecord`/`updateRecord` shipped — the earlier "stubbed; currently throw" status was historical). Existing auth token flow works.
 - (Permission requests are tracked inline in `docs/STRATEGY.md` IT-dependency table; the historical `PENDING_ADMIN_REQUESTS.md` is in `docs/archive/` after all four asks resolved.)
 
 **Dependencies:** Connor grants write permissions.
