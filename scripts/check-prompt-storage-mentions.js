@@ -38,7 +38,15 @@ const path = require('path');
 
 const repoRoot = path.resolve(__dirname, '..');
 
-// Stale prompt-storage names that should NOT appear as live entity claims.
+// Stale prompt-storage entity names that should NOT appear as live claims.
+// Scope is intentionally bounded to ENTITY names (not field names): the
+// proposed field names `wmkf_output_schema` / `wmkf_variables` / `wmkf_body`
+// were also renamed (to `wmkf_ai_promptoutputschema` / `wmkf_ai_promptvariables`
+// / `wmkf_ai_promptbody`), but those identifiers are too generic to gate
+// without false-positives — e.g. `wmkf_body` is a legitimate field on the
+// unrelated `wmkf_policyversion` entity (see REVIEWER_STAGE_2A_BUILD_PLAN.md).
+// The field-name rename was applied to design docs in the same sweep as the
+// entity-name fix; future drift is a doc-maintenance concern, not gated.
 const STALE_ENTITIES = [
   'wmkf_prompt_template',
   'wmkf_prompt_templates',
@@ -107,13 +115,16 @@ const ENTITY_RE = new RegExp(
 // markers. NOT exempted: bare "Dataverse" (a stale claim can mention the
 // Dataverse target while still asserting wmkf_prompt_template as live),
 // "wmkf_ai_prompt" alone (could be in a contradictory sentence).
+// Tightened S167 post-pass-N per Codex: `draft` is too permissive (matches
+// "create draft rows in `wmkf_prompt_template`"). Removed. Same architectural
+// concern as the drain-table gate's pass-6 keyword pruning.
 const SAME_LINE_OK = new RegExp(
   [
     '\\b(historical|RETIRED|retired|formerly|legacy)\\b',
     '\\b(superseded|superseding|renamed|renamed-to|replaced(-by)?|replaces)\\b',
     '\\bproposed(-but-never-(shipped|materialized))?\\b',
     '\\bnever\\s+(materialized|shipped|landed)\\b',
-    '\\b(draft|pre-rename|pre-shipped)\\b',
+    '\\b(pre-rename|pre-shipped)\\b',
     '~~',
   ].join('|'),
 );

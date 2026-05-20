@@ -115,6 +115,61 @@ function buildFixtures() {
       body: 'The `wmkf_prompt_template_v2_legacy` cache lives elsewhere.',
       expectFlagged: false,
     },
+    // Post-pass-N additions per Codex review.
+    {
+      name: 'double-quoted name is flagged',
+      file: 'pos_double_quote.md',
+      body: 'The team picked "wmkf_prompt_template" as the working name.',
+      expectFlagged: true,
+    },
+    {
+      name: 'Dataverse-prefixed identifier is flagged',
+      file: 'pos_dataverse_prefix.md',
+      body: 'PA will read from Dataverse wmkf_prompt_template at startup.',
+      expectFlagged: true,
+    },
+    {
+      name: 'plural variant is flagged',
+      file: 'pos_plural.md',
+      body: 'A pool of `wmkf_prompt_templates` per program area is planned.',
+      expectFlagged: true,
+    },
+    {
+      name: 'no-underscore variant is flagged',
+      file: 'pos_no_underscore.md',
+      body: 'The wmkf_prompttemplate entity is the source of prompts.',
+      expectFlagged: true,
+    },
+    {
+      name: '"draft" alone does NOT exempt (regression guard for tightened keywords)',
+      file: 'pos_draft_not_exempt.md',
+      body: 'Create draft rows in `wmkf_prompt_template` for review.',
+      expectFlagged: true,
+    },
+    {
+      name: '"Dataverse" alone does NOT exempt (regression guard)',
+      file: 'pos_dataverse_not_exempt.md',
+      body: 'The Dataverse `wmkf_prompt_template` table is the source.',
+      expectFlagged: true,
+    },
+    {
+      name: '"wmkf_ai_prompt" mention alone does NOT exempt',
+      file: 'pos_ai_prompt_not_exempt.md',
+      body: 'Use either `wmkf_prompt_template` or `wmkf_ai_prompt` depending on the cycle.',
+      expectFlagged: true,
+    },
+    {
+      name: '"legacy" annotation passes',
+      file: 'neg_legacy.md',
+      body: 'The legacy `wmkf_prompt_template` design was retired before deployment.',
+      expectFlagged: false,
+    },
+    {
+      name: '"replaces" annotation passes',
+      file: 'neg_replaces.md',
+      body: '`wmkf_ai_prompt` replaces `wmkf_prompt_template` per the rename.',
+      expectFlagged: false,
+    },
   ];
 }
 

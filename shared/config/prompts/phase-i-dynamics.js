@@ -8,9 +8,12 @@
  *
  * Keeping them in one place guarantees the fallback matches what's seeded in
  * Dynamics. The dedicated prompt-storage table shipped as `wmkf_ai_prompt`
- * (live behind the Executor at `lib/services/execute-prompt.js`); this file
- * is kept as a permanent production fallback so a CRM outage doesn't take
- * down the v2 path.
+ * (live behind the Executor at `lib/services/execute-prompt.js`). Note: the
+ * live v2 API path (`/api/phase-i-dynamics/summarize-v2`) reads from
+ * `wmkf_ai_prompts` via the Executor and does NOT use this bundled
+ * fallback. This file remains as the legacy `PromptResolver` fallback
+ * (used by maintenance scripts) and as the seed source for the scratch
+ * `wmkf_ai_run` record consumed by those scripts.
  */
 
 import { KECK_GUIDELINES } from '../keck-guidelines.js';

@@ -34,7 +34,7 @@ No app today lets you select a *set* of requests by cycle / year / program area 
 ### 2. Bring-your-own-prompt batch app
 Today's batch apps (`batch-phase-i-summaries`, `batch-proposal-summaries`) are hardwired to specific prompts. A generic "apply this prompt template to this set of proposals, return structured results" surface does not exist. Most retrospective questions need exactly that.
 
-**Shape when built:** staff picks a prompt (from `wmkf_ai_prompt` or an ad hoc editor), picks a request set (gap 1), kicks off a job, downloads results. The prompt's `wmkf_output_schema` (see `docs/WORKFLOW_CHAINING_DESIGN.md`) drives the result columns.
+**Shape when built:** staff picks a prompt (from `wmkf_ai_prompt` or an ad hoc editor), picks a request set (gap 1), kicks off a job, downloads results. The prompt's `wmkf_ai_promptoutputschema` (see `docs/WORKFLOW_CHAINING_DESIGN.md`) drives the result columns.
 
 ### 3. Batch API integration
 Existing batch apps call `/v1/messages` synchronously in a loop. For 100+ proposals that's fragile (timeouts, rate limits, partial-failure handling is crude) and full-price. Anthropic's Batch API (`/v1/messages/batches`) fixes both: async submit with a 24-hour SLA (often ~1 hour in practice), 50% off list, pattern-match JSONL results. Details captured in `docs/PDF_INPUT_FOR_BACKEND.md` under "Future batch-analysis regime."
@@ -62,7 +62,7 @@ Retrospective prompts naturally live in `wmkf_ai_prompt` (see `docs/PROMPT_STORA
 - **Published retrospective prompts** — the analysis has been run once, validated, and the prompt is worth keeping for future repeats. Lives in the main table, discoverable in a prompt picker.
 - **Ad hoc / scratch prompts** — one-off experiments. Either don't persist, or persist with a `status: 'draft'` and an author scope, so the picker doesn't show them to everyone.
 
-The `wmkf_output_schema` field becomes especially important here — it's how the generic batch runner knows what columns to put in the exported spreadsheet.
+The `wmkf_ai_promptoutputschema` field becomes especially important here — it's how the generic batch runner knows what columns to put in the exported spreadsheet.
 
 ## Cost shape (informal)
 

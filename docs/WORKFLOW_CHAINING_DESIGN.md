@@ -85,7 +85,7 @@ One call reads the proposal. Four or five downstream steps read structured field
 Today's Vercel prompts return unstructured markdown. Target-state Pattern A prompts should declare their structured outputs explicitly, so downstream callers and the dashboard know what fields they produce:
 
 ```json
-// wmkf_ai_prompt.wmkf_output_schema for phase-i-writeup
+// wmkf_ai_prompt.wmkf_ai_promptoutputschema for phase-i-writeup
 {
   "prose_summary": {
     "type": "markdown",
@@ -112,10 +112,10 @@ Today's Vercel prompts return unstructured markdown. Target-state Pattern A prom
 
 ### Prompt chaining is first-class
 
-A downstream prompt's `wmkf_variables` can reference upstream prompt outputs rather than raw inputs:
+A downstream prompt's `wmkf_ai_promptvariables` can reference upstream prompt outputs rather than raw inputs:
 
 ```json
-// wmkf_ai_prompt.wmkf_variables for compliance-field-set-c
+// wmkf_ai_prompt.wmkf_ai_promptvariables for compliance-field-set-c
 {
   "summary": {"source": "akoya_request.wmkf_ai_summary"},
   "keywords": {"source": "akoya_request.wmkf_keywords"},
@@ -141,12 +141,12 @@ Blockers that aren't in current v1 as scoped in `PROMPT_STORAGE_DESIGN.md`:
    - **Connor's domain.** Should be scoped and sequenced alongside `wmkf_ai_prompt` creation.
 
 2. **Prompt schema additions** in `wmkf_ai_prompt` (tracked in `PROMPT_STORAGE_DESIGN.md`):
-   - `wmkf_output_schema` (Memo, JSON) — declared outputs
-   - Optional: extend `wmkf_variables` entries to include `{source: "..."}` for chained inputs
+   - `wmkf_ai_promptoutputschema` (Memo, JSON) — declared outputs
+   - Optional: extend `wmkf_ai_promptvariables` entries to include `{source: "..."}` for chained inputs
 
 3. **PA flow complexity.** Each ingest flow needs to parse JSON output and PATCH multiple Dynamics fields, not just one. More flow steps than "write `rawOutput` to a single field." Error handling for malformed JSON needs a retry policy.
 
-4. **JSON schema validation.** Either PA or Next.js (hybrid) validates Claude's JSON against `wmkf_output_schema` and retries on failure. Hybrid composition makes this easy — `claude-reviewer-service.js` can grow a JSON-retry loop. Full PA composition makes this painful.
+4. **JSON schema validation.** Either PA or Next.js (hybrid) validates Claude's JSON against `wmkf_ai_promptoutputschema` and retries on failure. Hybrid composition makes this easy — `claude-reviewer-service.js` can grow a JSON-retry loop. Full PA composition makes this painful.
 
 ## Honest caveats
 
@@ -163,8 +163,8 @@ Blockers that aren't in current v1 as scoped in `PROMPT_STORAGE_DESIGN.md`:
 The storage design is about *where prompts live* and *how they're versioned*. This doc is about *how workflows use them* to pass data between steps.
 
 This doc's principles add to the storage design:
-- A new column in `wmkf_ai_prompt`: `wmkf_output_schema`
-- Possibly: extended `wmkf_variables` entries with `source:` references to upstream outputs
+- A new column in `wmkf_ai_prompt`: `wmkf_ai_promptoutputschema`
+- Possibly: extended `wmkf_ai_promptvariables` entries with `source:` references to upstream outputs
 - A design assumption that the first call in a workflow is an "ingest" call that produces data for many downstream callers
 - A reshaping of the Phase I writeup prompt itself: in the target state it's an *ingest* prompt producing structured fields, not just a prose-summary prompt
 
