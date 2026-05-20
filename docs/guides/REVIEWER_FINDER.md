@@ -1,18 +1,17 @@
 # Reviewer Finder Guide
 
-> **Note (2026-05-08):** Saved candidates now write directly to Dataverse (`wmkf_potentialreviewer` + `wmkf_appreviewersuggestion` + `wmkf_appresearcher`) instead of the legacy Postgres `reviewer_suggestions` table. Per-proposal picker and a "My Proposals" PD-filtered view are also available in the app. The "Database" tab still browses the Postgres researcher pool — that pool is being drained per `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` but is still load-bearing for now. The walkthrough below describes the user-facing flow; for the underlying data model see `docs/atlas/dataverse-wmkf-appreviewersuggestion.md`.
+> **Note (2026-05-19):** Saved candidates write directly to Dataverse (`wmkf_potentialreviewer` + `wmkf_appreviewersuggestion` + `wmkf_appresearcher`). Per-proposal picker and a "My Proposals" PD-filtered view are also available in the app. The "Database" tab and its underlying Postgres researcher pool were **retired in W6 (2026-05-12)** — researcher data now lives in Dataverse alongside the rest of reviewer state. The walkthrough below describes the user-facing flow; for the underlying data model see `docs/atlas/dataverse-wmkf-appreviewersuggestion.md`.
 
 Find qualified peer reviewers for grant proposals using AI analysis combined with academic database verification.
 
 ## Overview
 
-The Reviewer Finder has three tabs:
+The Reviewer Finder has two tabs:
 
 | Tab | Purpose |
 |-----|---------|
 | **Find Reviewers** | Upload a proposal, run AI analysis, and discover candidates |
 | **My Candidates** | View and manage saved reviewers, generate invitation emails |
-| **Database** | Browse all researchers saved across proposals |
 
 ## Step-by-Step: Finding Reviewers
 
@@ -69,22 +68,6 @@ Select candidates and click **Enrich Contacts** to search for their email addres
 5. Download the files and open them in your email client
 
 > **Note:** .eml files open as received messages. To send, either **Forward** the message (removing "Fwd:" from the subject) or copy the content into a new email.
-
-## Database Tab
-
-Browse and search all researchers across all proposals:
-- **Search** by name, affiliation, or email
-- **Filter** by "Has Email", "Has Website", or expertise tags
-- **Sort** by name, affiliation, h-index, or last updated
-- Click any row to view full details, edit notes, or associate the researcher with a different proposal
-
-### Adding Researchers Manually
-
-Click **Add Researcher** to enter a new researcher directly:
-- Name, affiliation, department
-- Contact info (email, website, ORCID, Google Scholar ID)
-- Metrics (h-index, i10-index, citations)
-- Expertise keywords (comma-separated)
 
 ## Settings
 

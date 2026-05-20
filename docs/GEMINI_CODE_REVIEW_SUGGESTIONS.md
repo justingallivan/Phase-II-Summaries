@@ -29,7 +29,7 @@ We have several instances where we are "reinventing the wheel" with manual logic
     *   *Why:* Regex-based HTML generation is prone to XSS and fails on nested markdown structures.
 *   **Unified AI Streaming Hook:** Create a `useAIStream` custom hook.
     *   *Target:* Abstract the `reader.read()` and SSE `data: ` parsing logic.
-    *   *Benefit:* This will reduce the code in `pages/` by ~100 lines per file and ensure progress tracking is handled identically across all 13 apps.
+    *   *Benefit:* This will reduce the code in `pages/` by ~100 lines per file and ensure progress tracking is handled identically across all app pages.
 
 ---
 

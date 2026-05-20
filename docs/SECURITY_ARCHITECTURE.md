@@ -661,7 +661,7 @@ Authentication is enforced at three levels — edge middleware, API route middle
 | Component | Purpose |
 |-----------|---------|
 | `AppAccessContext` | React context; fetches `/api/app-access` on mount; exposes `hasAccess(appKey)`, `isSuperuser`. Deny-by-default during loading; fail-closed on fetch error. |
-| `RequireAppAccess` | Page-level wrapper on all 14 app pages; shows "Access Not Available" if denied. |
+| `RequireAppAccess` | Page-level wrapper on all [17](CANONICAL_COUNTS.md#app-definition-count) app pages; shows "Access Not Available" if denied. |
 | `Layout.js` | Filters navigation links by app access. |
 
 **Auth kill switch:** Setting `AUTH_REQUIRED=false` disables authentication at all layers. Intended for emergency access or local development.
@@ -720,15 +720,17 @@ Postgres-resident entities scope per-user via `user_profile_id` foreign key. Wav
 | `wmkf_appuserpreferences` | Dataverse | Per-user | User-owned (`ownerid`); cascade follows Dataverse relationship config |
 | `wmkf_appuserappaccesses` | Dataverse | Per-user | `_wmkf_user_value` lookup to system user |
 | `wmkf_appsystemsettings` | Dataverse | Global | Superuser-managed model overrides + secret-expiration metadata |
-| `proposal_searches` | Postgres | Per-user | `WHERE user_profile_id = ?` (SET NULL on profile delete) |
-| `reviewer_suggestions` | Postgres | Per-user | `WHERE user_profile_id = ?` (SET NULL on profile delete) |
+| `wmkf_appreviewersuggestion` | Dataverse | Per-user (PD scope) | `wmkf_appreviewersuggestion` migrated from Postgres `reviewer_suggestions` (W3-W6 / 2026-05-12); PG table is script-only drain. |
+| `wmkf_appgrantcycle` | Dataverse | Shared | Migrated from Postgres `grant_cycles` at W3 cutover (2026-05-12); PG table is drain-only. |
+| `proposal_searches` *(Postgres drain-only; no live app readers per Atlas)* | Postgres | Per-user | `WHERE user_profile_id = ?` (SET NULL on profile delete) |
+| `reviewer_suggestions` *(Postgres drain-only; superseded by Dataverse `wmkf_appreviewersuggestion`)* | Postgres | Per-user | `WHERE user_profile_id = ?` (SET NULL on profile delete) |
 | `integrity_screenings` | Postgres | Per-user | `WHERE user_profile_id = ?` |
 | `screening_dismissals` | Postgres | Indirect per-user | FK to `integrity_screenings`; API does not enforce ownership check on `screeningId` — see note below |
 | `dynamics_query_log` | Postgres | Per-user | `WHERE user_profile_id = ?` |
 | `api_usage_log` | Postgres | Per-user | `WHERE user_profile_id = ?` |
-| `researchers` | Postgres | Shared | All users see same pool |
-| `publications` | Postgres | Shared | Linked to researchers |
-| `grant_cycles` | Postgres | Shared | Organization-wide |
+| `researchers` *(Postgres drain-only post-W6 2026-05-12)* | Postgres | Shared | All users see same pool |
+| `publications` *(Postgres drain-only)* | Postgres | Shared | Linked to researchers |
+| `grant_cycles` *(Postgres drain-only; Dataverse `wmkf_appgrantcycle` is source of truth)* | Postgres | Shared | Organization-wide |
 | `retractions` | Postgres | Shared | Read-only import |
 
 **Note on `screening_dismissals`:** This table has no direct `user_profile_id` column — it references `screening_id` (FK to `integrity_screenings`). The `/api/integrity-screener/dismiss` endpoint does not verify that the `screeningId` belongs to the authenticated user before creating or reading dismissals. An authenticated user with `integrity-screener` access could dismiss matches on another user's screening by enumerating `screeningId` values. Low risk (all users share the same dismissal intent for false positives), but should be hardened for defense-in-depth.
@@ -1212,7 +1214,7 @@ _(Historical as-of-finding paths. `evaluate-concepts.js` was later archived to `
 
 **Finding:** `dynamics_query_log` grows with every CRM query and has no archival or cleanup mechanism.
 
-**Remediation:** Daily maintenance cron (`/api/cron/maintenance`) runs `MaintenanceService.cleanupQueryLog()` to delete records older than the configured retention period (default 365 days). Retention is configurable via `system_settings` table.
+**Remediation:** Daily maintenance cron (`/api/cron/maintenance`) runs `MaintenanceService.cleanupQueryLog()` to delete records older than the configured retention period (default 365 days). Retention is configurable via Dataverse `wmkf_appsystemsettings` *(formerly Postgres `system_settings`, dropped 2026-05-12)*.
 
 #### L4: Debug Information in Development
 
@@ -1274,9 +1276,9 @@ _(Historical as-of-finding paths. `evaluate-concepts.js` was later archived to `
 
 #### L10: API Usage Log Unbounded Growth — REMEDIATED
 
-**Finding:** `api_usage_log` grows with every Claude API call across all apps (16 in current registry) and has no archival or cleanup mechanism.
+**Finding:** `api_usage_log` grows with every Claude API call across all apps ([17](CANONICAL_COUNTS.md#app-definition-count) in current registry) and has no archival or cleanup mechanism.
 
-**Remediation:** Daily maintenance cron (`/api/cron/maintenance`) runs `MaintenanceService.cleanupUsageLog()` to delete records older than the configured retention period (default 90 days). Retention is configurable via `system_settings` table.
+**Remediation:** Daily maintenance cron (`/api/cron/maintenance`) runs `MaintenanceService.cleanupUsageLog()` to delete records older than the configured retention period (default 90 days). Retention is configurable via Dataverse `wmkf_appsystemsettings` *(formerly Postgres `system_settings`, dropped 2026-05-12)*.
 
 ### Cron Job Security
 

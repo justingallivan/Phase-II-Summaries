@@ -239,8 +239,9 @@ Vercel Postgres. Authoritative source: `lib/db/schema.sql` + `lib/db/migrations/
 | Table | Purpose |
 |-------|---------|
 | `user_profiles` | Identity (azure_id, azure_email, is_active, dynamics_systemuser_id) |
-| `researchers`, `publications`, `grant_cycles` | Reviewer Finder shared pool |
-| `proposal_searches`, `reviewer_suggestions` | Reviewer Finder per-user state |
+| `researchers`, `publications` | Postgres drain-only (Reviewer Finder formerly read this pool; W6 retired the Database tab and `researchers.js` 2026-05-12). Active reviewer state now in Dataverse `wmkf_appresearcher` / `wmkf_potentialreviewer`. |
+| `grant_cycles` | Postgres drain-only post-W3 cutover (2026-05-12); Dataverse `wmkf_appgrantcycle` is source of truth. See `docs/atlas/postgres-grant-cycles.md`. |
+| `proposal_searches`, `reviewer_suggestions` | Postgres drain-only / script-only (Reviewer Finder per-user state migrated to Dataverse `wmkf_appreviewersuggestion`). |
 | `retractions`, `integrity_screenings`, `screening_dismissals` | Integrity Screener (Retraction Watch + per-user history) |
 | `dynamics_feedback` | Dynamics Explorer thumbs + auto-detected failures |
 | `expertise_roster`, `expertise_matches` | Expertise Finder roster + match history |
