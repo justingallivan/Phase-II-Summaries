@@ -13,7 +13,6 @@
  * PATCH /api/review-manager/reviewers
  *   Single  : { suggestionId, reviewStatus?, notes? }
  *   Batch   : { suggestionIds: [...], reviewStatus }
- *   By prop : { proposalId, proposalUrl?, proposalPassword? }   (bulk)
  *
  * Note: suggestionId values are Dataverse GUIDs (strings). reviewStatus values
  * are the legacy string codes — the suggestion adapter translates them to the
@@ -180,12 +179,6 @@ async function handleGet(req, res, access) {
           grantCycleCode: request.cycleCode,
           cycleLabel: request.cycleLabel,
           meetingDate: request.meetingDate,
-          // proposalUrl/proposalPassword come from the suggestion rows
-          // (kept as proposal-level by setting them on every accepted reviewer
-          // for the same request via bulkUpdateByRequest). Pull from the first
-          // suggestion for display — UI bulk-PATCH keeps them in sync.
-          proposalUrl: s.wmkf_proposalurl || null,
-          proposalPassword: s.wmkf_proposalpassword || null,
           reviewers: [],
         };
       }
@@ -208,7 +201,6 @@ async function handleGet(req, res, access) {
         responseType: typeof s.wmkf_responsetype === 'number'
           ? RESPONSE_TYPE_BY_VALUE[s.wmkf_responsetype]
           : null,
-        proposalUrl: s.wmkf_proposalurl || null,
         materialsSentAt: s.wmkf_materialssentat || null,
         reminderSentAt: s.wmkf_remindersentat || null,
         reminderCount: s.wmkf_remindercount ?? 0,
@@ -262,24 +254,9 @@ async function handlePatch(req, res, access) {
     const {
       suggestionId,
       suggestionIds,
-      proposalId,
       reviewStatus,
       notes,
-      proposalUrl,
-      proposalPassword,
     } = req.body || {};
-
-    // Bulk: proposal-level settings (URL/password) for all accepted reviewers
-    if (proposalId && (proposalUrl !== undefined || proposalPassword !== undefined)) {
-      const updates = {};
-      if (proposalUrl !== undefined) updates.proposalUrl = proposalUrl || null;
-      if (proposalPassword !== undefined) updates.proposalPassword = proposalPassword || null;
-      const updated = await suggestionAdapter.bulkUpdateByRequest(proposalId, updates, { actingUserSystemId });
-      return res.status(200).json({
-        success: true,
-        message: `Updated ${updated} reviewer(s) on this proposal`,
-      });
-    }
 
     // Batch: status change across multiple suggestions
     if (Array.isArray(suggestionIds) && suggestionIds.length > 0) {

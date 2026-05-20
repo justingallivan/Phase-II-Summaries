@@ -16,7 +16,7 @@
  *   - suggestionIds: string[]
  *   - templateType: 'materials' | 'followup' | 'thankyou'
  *   - template: { subject, body }
- *   - settings: { signature, proposalUrl, reviewerFormLink, customFields, ... }
+ *   - settings: { signature, reviewerFormLink, customFields, ... }
  *
  * Response:
  *   - drafts: Array<{ suggestionId, candidateName, candidateEmail, requestNumber,
@@ -166,8 +166,6 @@ export default async function handler(req, res) {
       };
       const templateSettings = {
         signature: settings.signature || '',
-        proposalUrl: sug.wmkf_proposalurl || settings.proposalUrl || '',
-        proposalPassword: sug.wmkf_proposalpassword || settings.proposalPassword || '',
         reviewDueDate: settings.reviewDueDate || cycle.review_deadline || null,
         reviewerFormLink: settings.reviewerFormLink || '',
         externalLink: externalLinkBySuggestion[suggestionId] || '',

@@ -45,8 +45,8 @@ Thank you for your time and expertise.
 
 This is a friendly reminder that your review of "{{proposalTitle}}" is due by {{reviewDueDate}}.
 
-The full proposal is available here:
-{{proposalUrl}}
+Your secure reviewer link (also in the original invitation):
+{{externalLink}}
 
 Please let us know if you need additional time or have any questions.
 
@@ -340,8 +340,6 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
           template: currentTemplate,
           settings: {
             signature: settings.signature || '',
-            proposalUrl: settings.proposalUrl || '',
-            proposalPassword: settings.proposalPassword || '',
             reviewDueDate: emailFields.reviewDueDate || settings.reviewDueDate || '',
             customFields: {
               proposalSendDate: emailFields.proposalSendDate || '',
@@ -617,8 +615,8 @@ function EmailModal({ isOpen, onClose, reviewers, proposalTitle, settings, onEma
                 <p className="text-xs font-medium text-gray-600 mb-1">Available Placeholders</p>
                 <div className="flex flex-wrap gap-1">
                   {['greeting', 'recipientName', 'salutation', 'recipientLastName',
-                    'proposalTitle', 'piName', 'piInstitution', 'proposalUrl',
-                    'proposalPassword', 'reviewDueDate', 'programName', 'signature',
+                    'proposalTitle', 'piName', 'piInstitution', 'externalLink',
+                    'reviewDueDate', 'programName', 'signature',
                     'investigatorTeam', 'reviewerFormLink',
                     'customField:proposalSendDate', 'customField:commitDate', 'customField:honorarium',
                     'customField:proposalDueDate'].map(p => (
@@ -1025,20 +1023,15 @@ function CycleOverviewTab({ proposals, cycles, selectedCycleCode, onCycleChange,
 
 // ─── Proposal Detail Tab ────────────────────────────────────────────────────
 
-function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, settings, onSettingsChange }) {
+function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, settings }) {
   const [selectedReviewers, setSelectedReviewers] = useState(new Set());
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [uploadModalReviewer, setUploadModalReviewer] = useState(null);
   const [editingNotes, setEditingNotes] = useState(null); // { suggestionId, value }
   const [savingNotes, setSavingNotes] = useState(false);
-  const [proposalUrl, setProposalUrl] = useState(proposal?.proposalUrl || '');
-  const [proposalPassword, setProposalPassword] = useState(proposal?.proposalPassword || '');
-  const [savingProposal, setSavingProposal] = useState(false);
 
-  // Sync proposal fields when proposal changes
+  // Reset selection / notes when proposal changes
   useEffect(() => {
-    setProposalUrl(proposal?.proposalUrl || '');
-    setProposalPassword(proposal?.proposalPassword || '');
     setSelectedReviewers(new Set());
     setEditingNotes(null);
   }, [proposal?.proposalId]);
@@ -1076,25 +1069,6 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
       return next;
     });
   };
-
-  const saveProposalFields = async () => {
-    setSavingProposal(true);
-    try {
-      await fetch('/api/review-manager/reviewers', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proposalId: proposal.proposalId, proposalUrl, proposalPassword }),
-      });
-      if (onSettingsChange) onSettingsChange('proposalUrl', proposalUrl);
-      if (onRefresh) onRefresh();
-    } catch (err) {
-      console.error('Failed to save proposal fields:', err);
-    } finally {
-      setSavingProposal(false);
-    }
-  };
-
-  const proposalFieldsChanged = proposalUrl !== (proposal.proposalUrl || '') || proposalPassword !== (proposal.proposalPassword || '');
 
   const saveNotes = async (suggestionId, notes) => {
     setSavingNotes(true);
@@ -1224,52 +1198,22 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
         </select>
       </div>
 
-      {/* Proposal Info & URL */}
+      {/* Proposal Info */}
       <Card>
-        <div className="space-y-3">
-          <div className="flex justify-between items-start">
-            <div>
-              <h3 className="font-semibold text-gray-900">{proposal.proposalTitle}</h3>
-              <p className="text-sm text-gray-600 mt-1">
-                {proposal.proposalAuthors && <span>PI: {proposal.proposalAuthors}</span>}
-                {proposal.proposalInstitution && <span> — {proposal.proposalInstitution}</span>}
+        <div className="flex justify-between items-start">
+          <div>
+            <h3 className="font-semibold text-gray-900">{proposal.proposalTitle}</h3>
+            <p className="text-sm text-gray-600 mt-1">
+              {proposal.proposalAuthors && <span>PI: {proposal.proposalAuthors}</span>}
+              {proposal.proposalInstitution && <span> — {proposal.proposalInstitution}</span>}
+            </p>
+            {(proposal.cycleLabel || proposal.grantCycleCode) && (
+              <p className="text-xs text-gray-500 mt-1">
+                Cycle: {proposal.cycleLabel || proposal.grantCycleCode}
               </p>
-              {(proposal.cycleLabel || proposal.grantCycleCode) && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Cycle: {proposal.cycleLabel || proposal.grantCycleCode}
-                </p>
-              )}
-            </div>
-            <StatusSummary statusSummary={proposal.statusSummary} />
+            )}
           </div>
-
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Proposal URL</label>
-            <input
-              type="url"
-              value={proposalUrl}
-              onChange={e => setProposalUrl(e.target.value)}
-              placeholder="https://..."
-              className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Password</label>
-            <input
-              type="text"
-              value={proposalPassword}
-              onChange={e => setProposalPassword(e.target.value)}
-              placeholder="Document password (if required)"
-              className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-400 focus:border-transparent"
-            />
-            <button
-              onClick={saveProposalFields}
-              disabled={savingProposal || !proposalFieldsChanged}
-              className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {savingProposal ? 'Saving...' : 'Save'}
-            </button>
-          </div>
+          <StatusSummary statusSummary={proposal.statusSummary} />
         </div>
       </Card>
 
@@ -1429,7 +1373,6 @@ function ProposalDetailTab({ proposal, proposals, onProposalChange, onRefresh, s
         proposalTitle={proposal.proposalTitle}
         settings={{
           ...settings,
-          proposalUrl: proposalUrl || proposal.proposalUrl || '',
           reviewDueDate: proposal.reviewDeadline,
         }}
         onEmailsSent={() => {
@@ -1620,7 +1563,6 @@ function ReviewManagerPage() {
               onProposalChange={setSelectedProposal}
               onRefresh={handleRefresh}
               settings={settings}
-              onSettingsChange={handleSettingsChange}
             />
           )}
         </div>
