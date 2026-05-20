@@ -10,6 +10,24 @@ The pre-Session 84 chronological per-session log (everything after the September
 
 ---
 
+## May 2026 — Structural drift-prevention gates shipped (Session 167)
+
+**Milestone:** Two new CI gates close two long-standing recurring doc-drift families. `check:drain-table-mentions` (reviewer-domain Postgres-vs-Dataverse drift across all 6 drained tables) and `check:prompt-storage-mentions` (the `wmkf_prompt_template` rename — the table that never shipped under that name) now fail loud on any unannotated mention. Both have constrained file-purpose markers (visible in-doc, path-scoped — abuse-resistant) replacing the invisible-allowlist pattern that hid drift. Companion: `check:canonical-pointers` + generated `docs/CANONICAL_COUNTS.md` close the G normalization arc started against `check:fact-consistency`.
+
+**Sessions:** 167 (single session; 17 commits; nine Codex-driven tightening cycles before both gates were Codex-confirmed SOUND).
+
+**Ship state:**
+- 3 new gates: `check:canonical-pointers`, `check:drain-table-mentions`, `check:prompt-storage-mentions`. Each has binding self-tests (17 + 17 + 22 fixtures); 13 gates total in the project.
+- Two Codex-verified ground-truth claims established and frozen in code: (a) zero live SQL against the 6 reviewer-domain PG tables; (b) `wmkf_ai_prompt` is the live entity, `wmkf_prompt_template` never shipped.
+- ~50 docs/memory entries reconciled to current state across multiple commits. New canonical pattern: `[N](docs/CANONICAL_COUNTS.md#<fact-id>)` keep-number-plus-pointer for code-derived scalars; `<!-- drain-table:file-purpose=atlas-state-page -->` etc. for whole-file declarations.
+- Pointer-form regex escape (`[N](url) word` was bypassing `\d+\s+`) fixed in `check:fact-consistency`; multi-marker exemption support added.
+
+**Why it matters:** Three iterative audit passes (8 + 8 + 9 findings) failed to converge because each pass found a new sub-cluster in the same drift family — case-by-case fixing was the wrong shape. Mechanical fan-in via gates is the lever. Future drift in either family fails CI rather than waiting for a periodic audit. The pattern (Codex-verified ground truth → constrained gate → narrow allowlist → binding self-test → Codex-verify gate soundness) is now a repeatable shape for similar problems.
+
+**Pointers:** `CLAUDE.md` paragraphs documenting each gate; `scripts/check-{drain-table,prompt-storage,canonical-pointers}-mentions.js` + self-tests; `docs/CANONICAL_COUNTS.md`. Commits `fec3f2e`·`32e4e90`·`6b9166a`·`29b1481`·`52dc0b8`·`3674bc8`·`afe7244`·`1b81106`·`13c0392`·`fe42885`·`3dbc13c`·`ff9d943`·`77052bf`·`b5537cd`·`9f99868`·`5033bcc`·`9f0013e`.
+
+---
+
 ## May 2026 — Power Tools Track B shipped to production (Session 161)
 
 **Milestone:** Dataverse Bulk Export (Track B Power Tools) went from API-layer-only to **user-reachable and verified working end-to-end on production** — the first Power Tools app live. Built the forced-fan-out builder UI (`pages/dataverse-bulk-export.js`) over the stable S160 preview→run→download seam, then hardened it against real use.
