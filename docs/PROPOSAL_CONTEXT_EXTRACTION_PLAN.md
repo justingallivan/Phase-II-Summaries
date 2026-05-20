@@ -94,7 +94,7 @@ At Sonnet 4.6 pricing: ~$0.50 saved per advancing proposal. At Opus pricing: ~$2
 ## Connection to existing plans
 
 - `docs/WORKFLOW_CHAINING_DESIGN.md` — this doc is the "ingest" side of ingest-once/chain-downstream. The extraction here is the *output* of the initial multi-output prompt; every downstream stage reads these fields as *input*.
-- `docs/PROMPT_STORAGE_DESIGN.md` — the initial-pass prompt goes in `wmkf_prompt_template` like any other. Its structured-output schema lives in `wmkf_output_schema` (single row defining the full extraction shape above).
+- `docs/PROMPT_STORAGE_DESIGN.md` — the initial-pass prompt goes in `wmkf_ai_prompt` like any other. Its structured-output schema lives in `wmkf_output_schema` (single row defining the full extraction shape above).
 - `docs/DYNAMICS_AI_FIELDS_SPEC_v3_cn.md` — needs extension with the field set above. Connor would add the columns and choose the `wmkf_ai_` vs `wmkf_` naming convention (same open question as the rest of the AI fields).
 - Memory: `wmkf_ai_dataextract` was deferred "until the capture shape is settled." **This is the capture shape.**
 

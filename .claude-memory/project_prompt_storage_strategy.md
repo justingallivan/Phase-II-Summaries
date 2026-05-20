@@ -16,7 +16,7 @@ Session 109 (2026-04-24) reconciled six design docs + Wave 1 reality + Connor's 
 
 ### Architectural decisions locked in (Session 109)
 - **Path B — declarative wrappers + generic executors** (not Path A duplication, not Path C HTTP gateway)
-- **Table name is `wmkf_ai_prompt`** (Connor built it) — *not* `wmkf_prompt_template` as PROMPT_STORAGE_DESIGN says. Field names on it: `wmkf_ai_promptname`, `wmkf_ai_promptbody`, `wmkf_ai_promptvariables`, `wmkf_ai_promptoutputschema`, `wmkf_ai_promptstatus`, `wmkf_ai_iscurrent`, `wmkf_promptversion`, `wmkf_ai_rollbackfrom`, etc. See EXECUTOR_CONTRACT.md for full field list.
+- **Table name is `wmkf_ai_prompt`** (Connor built it) — *not* `wmkf_prompt_template` as PROMPT_STORAGE_DESIGN originally proposed. <!-- prompt-storage:ignore reason=rename-callout --> Field names on it: `wmkf_ai_promptname`, `wmkf_ai_promptbody`, `wmkf_ai_promptvariables`, `wmkf_ai_promptoutputschema`, `wmkf_ai_promptstatus`, `wmkf_ai_iscurrent`, `wmkf_promptversion`, `wmkf_ai_rollbackfrom`, etc. See EXECUTOR_CONTRACT.md for full field list.
 - **Two chain shapes, both first-class:** sequential (output → input, via `prior_output` source kind, Phase 1) and parallel-consumer (shared input block, via `context_block` source kind, Phase 2)
 - **Variables are declarative** with `source.kind` enum: `dynamics`, `sharepoint`, `override` (Phase 0); `prior_output` (Phase 1); `context_block` (Phase 2)
 - **Outputs are declarative** with `target.kind` enum: `akoya_request`, `wmkf_ai_run`, `none`
@@ -40,7 +40,7 @@ Session 109 (2026-04-24) reconciled six design docs + Wave 1 reality + Connor's 
 **Phase 2:** context blocks + parallel-consumer chains. `shared.full_application` block referenced by `phase-i.summary` + `phase-i.compliance`. `placement: system` attribute. Cross-prompt cache alignment.
 
 ### Retired from prior plan
-- Old name `wmkf_prompt_template` — Connor built table as `wmkf_ai_prompt`; PROMPT_STORAGE_DESIGN needs global rename
+- Old name `wmkf_prompt_template` — Connor built table as `wmkf_ai_prompt` (renamed); PROMPT_STORAGE_DESIGN updated globally S167. <!-- prompt-storage:ignore reason=rename-history -->
 - Old field names (`wmkf_body`, `wmkf_variables`, `wmkf_output_schema`) — actual names are `wmkf_ai_promptbody`, `wmkf_ai_promptvariables`, `wmkf_ai_promptoutputschema`
 - `wmkf__ai_summary` on akoya_request — confirmed a typo by Connor, being deleted, ignore
 - Hybrid-vs-full-PA-composition debate — decided Session 102: full PA composition (no Vercel dependency at runtime)

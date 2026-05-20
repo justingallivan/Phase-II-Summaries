@@ -496,7 +496,7 @@ Once schemas exist in sandbox for a wave:
 ## Related docs
 
 - `docs/RETROSPECTIVE_ANALYSIS_PLAN.md` — division of labor (PA vs. apps); generic BYO-prompt app may produce tables that land here
-- `docs/PROMPT_STORAGE_DESIGN.md` — `wmkf_prompt_template` (Connor is creating; precursor to this migration)
+- `docs/PROMPT_STORAGE_DESIGN.md` — `wmkf_ai_prompt` (the prompt-template table Connor built; the originally-proposed `wmkf_prompt_template` name was renamed before shipping; precursor to this migration, now live)
 - `docs/BACKEND_AUTOMATION_PLAN.md` — PA flows read/write Dataverse; this migration makes our web apps play by the same rules
 - `docs/DYNAMICS_IDENTITY_RECONCILIATION_PLAN.md` — parallel work on `systemuser` side of the person-reconciliation problem
 - `docs/DYNAMICS_SCHEMA_ANNOTATION.md` — field annotations for `akoya_request`, including the fiscal-year / meeting-date fields this doc depends on

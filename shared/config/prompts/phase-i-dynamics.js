@@ -7,9 +7,10 @@
  *      the scratch `wmkf_ai_run` record
  *
  * Keeping them in one place guarantees the fallback matches what's seeded in
- * Dynamics. When `wmkf_prompt_template` ships, this file can either be
- * retired or kept as a permanent production fallback — leaning toward the
- * latter so a CRM outage doesn't take down the v2 path.
+ * Dynamics. The dedicated prompt-storage table shipped as `wmkf_ai_prompt`
+ * (live behind the Executor at `lib/services/execute-prompt.js`); this file
+ * is kept as a permanent production fallback so a CRM outage doesn't take
+ * down the v2 path.
  */
 
 import { KECK_GUIDELINES } from '../keck-guidelines.js';

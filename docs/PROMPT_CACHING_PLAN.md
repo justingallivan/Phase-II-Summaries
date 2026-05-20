@@ -104,7 +104,7 @@ Ran v1 (monolithic user message) vs v2 (system/user split fetched from Dynamics)
 
 #### 6. `batch-phase-ii` / `batch-phase-i` / `process.js`
 - **Today:** each call is a different proposal; the giant instruction block is concatenated with proposal text into one user message. No shared prefix across items.
-- **When system/user split happens** (part of `wmkf_prompt_template` migration): instructions → cached system, proposal → user. A batch of 10 proposals inside 5 minutes becomes 1 write + 9 reads on the instruction block for free.
+- **When system/user split happens** (part of `wmkf_ai_prompt` migration): instructions → cached system, proposal → user. A batch of 10 proposals inside 5 minutes becomes 1 write + 9 reads on the instruction block for free.
 - **Effort:** zero additional beyond the migration.
 - **Expected win:** Moderate today (98 + 20 calls/year). Will grow substantially when PowerAutomate backend automation fires sequential proposals through these flows.
 

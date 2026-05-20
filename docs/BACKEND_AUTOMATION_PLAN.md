@@ -15,7 +15,7 @@ See `docs/GRANT_CYCLE_LIFECYCLE.md` for the full proposal lifecycle with stage-b
 
 > **Update — Session 100, 2026-04-15:** Two design decisions taken since this plan was originally written change how Phase 1+ should be approached:
 >
-> 1. **Prompts move out of `.js` into a Dataverse `wmkf_prompt_template` table** so PA can read them natively. See `docs/PROMPT_STORAGE_DESIGN.md`. Affects Phase 1 (prompts under development now should be designed with the storage schema in mind) and Phase 4 (PA flow construction reads from this table, not from hard-coded text).
+> 1. **Prompts move out of `.js` into a Dataverse `wmkf_ai_prompt` table** so PA can read them natively. (Shipped — Connor built the table as `wmkf_ai_prompt`, not the originally-proposed `wmkf_prompt_template`; the Executor service at `lib/services/execute-prompt.js` reads from it via the `wmkf_ai_prompts` entity set.) See `docs/PROMPT_STORAGE_DESIGN.md`. Affects Phase 1 (prompts under development now should be designed with the storage schema in mind) and Phase 4 (PA flow construction reads from this table, not from hard-coded text).
 > 2. **Workflow chaining via structured outputs** — the first call in a backend lifecycle (e.g., Phase I writeup) produces structured fields that downstream calls (compliance, PD assignment, etc.) consume from Dynamics, rather than re-reading the proposal. See `docs/WORKFLOW_CHAINING_DESIGN.md`. Materially changes what the "Summary + keyword extraction" prompt should produce, and what intermediate Dynamics fields need to exist on `akoya_request` before downstream PA flows can chain.
 >
 > The "Hybrid vs. full PA composition" question was resolved in Session 102 (2026-04-16): **full PA composition**. PA owns the entire flow including direct Anthropic API calls. The architecture diagram below accurately reflects the chosen path.
@@ -37,7 +37,7 @@ See `docs/GRANT_CYCLE_LIFECYCLE.md` for the full proposal lifecycle with stage-b
 > 2. **Sonnet 4.6's empirical cache minimum is ~2,048 tokens** (docs say 1,024). PA flows should only bother assembling `cache_control` JSON when the stable prefix (tools + system + cached user blocks) comfortably exceeds 2K tokens. For smaller prompts the marker is a no-op. See `docs/PROMPT_CACHING_PLAN.md`.
 > 3. **Image handling creates a path asymmetry.** PA backend strips images in a pre-filter (lean, text-only); user-side Vercel paths likely keep PDFs with images intact. The cached content profiles differ significantly — a user-side PDF with figures may be 12–20K tokens vs. 5–7K text-only. Caching ROI is correspondingly higher on the user-side path.
 >
-> Related: Session 103 shipped a working prototype of the Dynamics-stored-prompt pattern against the Phase I test endpoint — see the "Session 103 prototype findings" section of `PROMPT_STORAGE_DESIGN.md`. The `PromptResolver` service is in place; swap its `_fetchFromDynamics()` to read from `wmkf_prompt_template` when Connor's table lands.
+> Related: Session 103 shipped a working prototype of the Dynamics-stored-prompt pattern against the Phase I test endpoint — see the "Session 103 prototype findings" section of `PROMPT_STORAGE_DESIGN.md`. **Update:** the Executor (`lib/services/execute-prompt.js`) is now the live prompt-execution path — it reads current prompt rows from Dataverse entity set `wmkf_ai_prompts` and writes audit rows to `wmkf_ai_runs`. The earlier `PromptResolver` service is a Session 103 holdover that reads a scratch row on `wmkf_ai_runs`; it is still in tree but is used only by scripts, not by live API routes.
 >
 > Also in Session 103: a **proposal context extraction plan** (`docs/PROPOSAL_CONTEXT_EXTRACTION_PLAN.md`) that extends the workflow-chaining idea for the upcoming single-phase cycle. Proposes ~15 structured fields the initial pass should extract so deep-dive calls (reviewer matching, panel review, compliance) read ~1.5K tokens of curated context instead of the full ~7K-token proposal. Compounds with expensive models and multi-LLM panel work. Not blocking v1; factored in when planning single-phase cycle Dynamics fields.
 
@@ -64,7 +64,7 @@ Staff use the Vercel app for tasks requiring judgment:
 - Virtual review panels
 - Ad-hoc proposal summarization and analysis
 
-Results from these tools will flow back to Dynamics via direct API writes (once write permissions are granted).
+Results from these tools flow back to Dynamics via direct API writes (write permissions granted; `createRecord` / `updateRecord` shipped — the earlier "once write permissions are granted" gate cleared).
 
 ### Prompt Development (Vercel App → Batch Evaluation)
 
@@ -174,7 +174,7 @@ A Vercel app page + API endpoint that:
 - `lib/services/dynamics-service.js` — write methods are live (`createRecord`/`updateRecord` shipped — the earlier "stubbed; currently throw" status was historical). Existing auth token flow works.
 - (Permission requests are tracked inline in `docs/STRATEGY.md` IT-dependency table; the historical `PENDING_ADMIN_REQUESTS.md` is in `docs/archive/` after all four asks resolved.)
 
-**Dependencies:** Connor grants write permissions.
+**Dependencies:** ~~Connor grants write permissions~~ — granted; write primitives shipped.
 
 ---
 
@@ -211,17 +211,16 @@ System/infrastructure data that has no Dynamics equivalent:
 (Wave 1 retired 2026-05-12: `user_preferences`, `user_app_access`, `system_settings` moved to Dataverse `wmkf_appuserpreferences`, `wmkf_appuserappaccesses`, `wmkf_appsystemsettings`.)
 
 ### Prerequisites (Connor)
-- Create corresponding entities/fields in Dynamics for each table above
-- Define the Dynamics schema for reviewer data, screening results, etc.
+- ~~Create corresponding entities/fields in Dynamics for each table above~~ — done for the reviewer-domain entities (`wmkf_appresearcher`, `wmkf_potentialreviewer`, `wmkf_appreviewersuggestion`, `wmkf_appgrantcycle`, `wmkf_apprequestperson`). Pending: integrity / panel-review / expertise entities (no scheduled work).
+- ~~Define the Dynamics schema for reviewer data, screening results, etc.~~ — reviewer schema shipped (Wave 2). Screening / panel / expertise schemas not yet defined.
 
 ### Migration strategy
-TBD — options are:
-1. **Gradual dual-write:** App writes to both Vercel Postgres and Dynamics during transition, cut over when confident
-2. **One-time bulk migration:** Migrate existing data, switch app to Dynamics-only reads/writes
 
-After migration, service classes switch from Vercel Postgres queries to Dynamics API calls for operational data.
+**SHIPPED for reviewer domain in W3-W6 (2026-05-12):** the reviewer-domain Postgres tables are now drain-only and Dataverse is the source of truth (see status banner at top of "Tables to migrate" section and `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`). The chosen approach was a cut-over per-endpoint with W3 (grant cycles), W4 (suggestion data alignment), W5 (reader migration), W6 (Database tab / researchers.js retirement). Postgres drop is post-pilot (≥2026-07-01).
 
-**Dependencies:** Phase 2 (write access), Connor creates Dynamics entities.
+For the remaining Postgres-only tables (integrity, panel, expertise), the same per-table cut-over pattern applies when scheduled.
+
+**Dependencies (residual):** Connor creates Dynamics entities for the not-yet-migrated tables.
 
 ---
 
@@ -291,11 +290,11 @@ Connor (parallel):
 After Phase 1 prompts are validated:
   Phase 4: PowerAutomate Flow Configuration (deploy prompts in flows)
 
-When Connor grants write permissions:
-  Phase 2: Dynamics Write-Back (human-initiated tools)
+~~When Connor grants write permissions~~ — granted (S77 era):
+  Phase 2: Dynamics Write-Back (human-initiated tools) — SHIPPED
 
 After Phase 2 + Connor creates Dynamics entities:
-  Phase 3: Data Migration to Dynamics
+  Phase 3: Data Migration to Dynamics — reviewer-domain SHIPPED W3-W6 (2026-05-12); integrity/panel/expertise tables remain Postgres-only.
 
 Ongoing:
   Phase 5: Operational Maturity
@@ -335,8 +334,8 @@ All within Connor's access — no external IT or vendor dependencies.
 | `lib/services/graph-service.js` | SharePoint document access (Phase 1) |
 | `shared/config/baseConfig.js` | Cache patterns to reuse |
 | `pages/admin.js` | Batch evaluation UI (Phase 1), processing dashboard (Phase 5) |
-| `pages/api/reviewer-finder/save-candidates.js` | Add Dynamics write-back (Phase 2) |
-| `pages/api/review-manager/reviewers.js` | Add Dynamics write-back (Phase 2) |
+| `pages/api/reviewer-finder/save-candidates.js` | Dynamics write-back SHIPPED (Phase 2 / W2-W3); writes to `wmkf_potentialreviewer` + `wmkf_appresearcher` + `wmkf_appreviewersuggestion` |
+| `pages/api/review-manager/reviewers.js` | Dynamics-backed (W3-W6 / S164); status updates via `suggestionAdapter.updateLifecycle` |
 | `docs/GRANT_CYCLE_LIFECYCLE.md` | Full lifecycle reference |
 | `docs/archive/PENDING_ADMIN_REQUESTS.md` | Historical permission requests (all resolved as of 2026-05-08) |
 | `docs/archive/CRM_EMAIL_SEND_PLAN.md` | Phase A, independent but complementary (archived; shipped S77) |

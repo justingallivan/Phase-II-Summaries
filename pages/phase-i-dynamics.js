@@ -302,7 +302,7 @@ function PhaseIDynamics() {
             <span>
               <span className="font-medium text-gray-900">Use Dynamics-stored prompt (v2)</span>
               <span className="block text-xs text-gray-600">
-                Fetches system/user prompt split from <code>wmkf_ai_runs</code> scratch record,
+                Executes via <code>executePrompt()</code> against Dataverse <code>wmkf_ai_prompts</code>,
                 uses <code>cache_control</code> on the system block. Output stored to the same
                 field — compare the two runs against each other.
               </span>

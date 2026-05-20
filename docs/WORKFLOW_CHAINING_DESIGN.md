@@ -85,7 +85,7 @@ One call reads the proposal. Four or five downstream steps read structured field
 Today's Vercel prompts return unstructured markdown. Target-state Pattern A prompts should declare their structured outputs explicitly, so downstream callers and the dashboard know what fields they produce:
 
 ```json
-// wmkf_prompt_template.wmkf_output_schema for phase-i-writeup
+// wmkf_ai_prompt.wmkf_output_schema for phase-i-writeup
 {
   "prose_summary": {
     "type": "markdown",
@@ -115,7 +115,7 @@ Today's Vercel prompts return unstructured markdown. Target-state Pattern A prom
 A downstream prompt's `wmkf_variables` can reference upstream prompt outputs rather than raw inputs:
 
 ```json
-// wmkf_prompt_template.wmkf_variables for compliance-field-set-c
+// wmkf_ai_prompt.wmkf_variables for compliance-field-set-c
 {
   "summary": {"source": "akoya_request.wmkf_ai_summary"},
   "keywords": {"source": "akoya_request.wmkf_keywords"},
@@ -138,9 +138,9 @@ Blockers that aren't in current v1 as scoped in `PROMPT_STORAGE_DESIGN.md`:
    - `wmkf_budget_summary` (Text)
    - `wmkf_timeline` (Text)
    - Final field list depends on what downstream steps actually need.
-   - **Connor's domain.** Should be scoped and sequenced alongside `wmkf_prompt_template` creation.
+   - **Connor's domain.** Should be scoped and sequenced alongside `wmkf_ai_prompt` creation.
 
-2. **Prompt schema additions** in `wmkf_prompt_template` (tracked in `PROMPT_STORAGE_DESIGN.md`):
+2. **Prompt schema additions** in `wmkf_ai_prompt` (tracked in `PROMPT_STORAGE_DESIGN.md`):
    - `wmkf_output_schema` (Memo, JSON) — declared outputs
    - Optional: extend `wmkf_variables` entries to include `{source: "..."}` for chained inputs
 
@@ -163,7 +163,7 @@ Blockers that aren't in current v1 as scoped in `PROMPT_STORAGE_DESIGN.md`:
 The storage design is about *where prompts live* and *how they're versioned*. This doc is about *how workflows use them* to pass data between steps.
 
 This doc's principles add to the storage design:
-- A new column in `wmkf_prompt_template`: `wmkf_output_schema`
+- A new column in `wmkf_ai_prompt`: `wmkf_output_schema`
 - Possibly: extended `wmkf_variables` entries with `source:` references to upstream outputs
 - A design assumption that the first call in a workflow is an "ingest" call that produces data for many downstream callers
 - A reshaping of the Phase I writeup prompt itself: in the target state it's an *ingest* prompt producing structured fields, not just a prose-summary prompt
