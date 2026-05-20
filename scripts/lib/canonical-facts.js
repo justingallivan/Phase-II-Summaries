@@ -232,16 +232,42 @@ const CANONICAL_FACTS = [
         name: 'web-based tools',
         find: matchFrom(/\b(?:suite of\s+)?(\d+)\s+web-based tools?\b/gi),
       },
+      {
+        name: 'app pages',
+        find: matchFrom(/\b(?:all\s+)?(\d+)\s+app pages\b/gi),
+      },
+      {
+        name: 'in current registry',
+        find: matchFrom(/\b(\d+)\s+in current registry\b/gi),
+      },
+      {
+        name: 'apps',
+        // Narrow "N apps" — REQUIRE "across" or "all" as a scope marker so
+        // we catch suite-scope phrasings without flagging unrelated "N apps"
+        // counts (e.g. "30 apps in queue"). S167 audit pass-2 surfaced
+        // "across all 13 apps" and "across 17 apps" as the live forms.
+        find: matchFrom(/\b(?:across\s+(?:all\s+)?|all\s+)(\d+)\s+apps\b/gi),
+      },
     ],
     knownMissFixtures: [
       'suite of 13 web-based tools',
       'All 14 applications',
+      'all 14 app pages',
+      '16 in current registry',
+      'across all 13 apps',
+      'across 17 apps',
     ],
     knownNonMatches: [
       'J26 application cycle',
       '2026-05-19 application audit',
       '17 application materials were uploaded',
       'application status changed 14 times',
+      // The narrow "apps" pattern should not match these unrelated counts.
+      '30 apps in queue',
+      '5 mobile apps reviewed',
+      '14 desktop apps',
+      // Adjective-modified "N <adj> apps" — number not adjacent to "apps".
+      'all 14 mobile apps',
     ],
   },
   {

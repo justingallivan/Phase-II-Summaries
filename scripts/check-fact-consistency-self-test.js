@@ -320,6 +320,34 @@ function buildProseFixtures() {
       expectFlagged: false,
       token: String(wrongAppsB),
     },
+    {
+      name: 'broadened pattern: stale "app pages" is flagged',
+      file: 'pos_app_pages.md',
+      body: `Wrapper on all ${wrongAppsA} app pages today.`,
+      expectFlagged: true,
+      token: String(wrongAppsA),
+    },
+    {
+      name: 'broadened pattern: stale "in current registry" is flagged',
+      file: 'pos_current_registry.md',
+      body: `Across all apps (${wrongAppsB} in current registry) the log grows.`,
+      expectFlagged: true,
+      token: String(wrongAppsB),
+    },
+    {
+      name: 'broadened pattern: stale "across all N apps" is flagged',
+      file: 'pos_across_all_apps.md',
+      body: `Progress tracking is handled identically across all ${wrongAppsC} apps.`,
+      expectFlagged: true,
+      token: String(wrongAppsC),
+    },
+    {
+      name: 'broadened pattern: bare "N apps" (no across/all) is not flagged',
+      file: 'neg_bare_apps.md',
+      body: `Today there are ${wrongAppsA} apps in the queue.`,
+      expectFlagged: false,
+      token: String(wrongAppsA),
+    },
   ];
 }
 
