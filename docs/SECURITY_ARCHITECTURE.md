@@ -563,9 +563,9 @@
 | Category | Tables | Sensitivity | Scoping |
 |----------|--------|-------------|---------|
 | User identity | `user_profiles` | Medium — Azure IDs, emails | Per-user |
-| User settings | `user_preferences` | High — encrypted API keys | Per-user |
-| App access | `user_app_access` | Medium — per-user app grants | Per-user |
-| System config | `system_settings` | Medium — model overrides, settings | Global |
+| User settings | `user_preferences` *(now Dataverse `wmkf_appuserpreferences`)* | High — encrypted API keys | Per-user |
+| App access | `user_app_access` *(now Dataverse `wmkf_appuserappaccesses`)* | Medium — per-user app grants | Per-user |
+| System config | `system_settings` *(now Dataverse `wmkf_appsystemsettings`)* | Medium — model overrides, settings | Global |
 | API usage | `api_usage_log` | Medium — model, tokens, cost per request | Per-user |
 | Researcher data | `researchers`, `publications`, `researcher_keywords` | Low — public academic data | Shared/global |
 | Search results | `proposal_searches` | Medium — proposal metadata, blob URLs | Per-user |
@@ -686,7 +686,7 @@ Authentication is enforced at three levels — edge middleware, API route middle
 | Attribute | Detail |
 |-----------|--------|
 | **Registry** | `shared/config/appRegistry.js` — single source of truth for all [17](CANONICAL_COUNTS.md#app-definition-count) app definitions (keys, names, routes, icons, categories) |
-| **Database** | `user_app_access` table — per-user app grants with `(user_profile_id, app_key)` unique constraint |
+| **Database** | Dataverse `wmkf_appuserappaccesses` (per-user app grants). The Postgres `user_app_access` table that previously enforced this via a `(user_profile_id, app_key)` unique constraint was dropped 2026-05-12 at the Wave 1 cutover. |
 | **Default grants** | New users receive only `dynamics-explorer`; all other apps require explicit superuser grant |
 | **Superuser bypass** | Users with `role = 'superuser'` in `dynamics_user_roles` bypass all app checks |
 | **Caching** | In-memory `Map` with 2-minute TTL; invalidated on grant/revoke via `clearAppAccessCache()` |
@@ -899,7 +899,7 @@ Every Dynamics tool execution is logged to `dynamics_query_log`:
 | **User authentication** | Azure AD SSO via NextAuth.js (OAuth 2.0 Authorization Code) |
 | **Edge middleware** | `withAuth`/`jose` JWT validation in Vercel Edge Runtime — unauthenticated users never see the app |
 | **API route protection** | `requireAppAccess()` on app-specific endpoints; `requireAuthWithProfile()` on infrastructure endpoints; `requireAuth()` on system endpoints |
-| **App-level access control** | Per-user app grants via `user_app_access` table; new users get only `dynamics-explorer` by default |
+| **App-level access control** | Per-user app grants via Dataverse `wmkf_appuserappaccesses` *(formerly Postgres `user_app_access`, dropped 2026-05-12)*; new users get only `dynamics-explorer` by default |
 | **Superuser bypass** | Users with `role = 'superuser'` in `dynamics_user_roles` bypass all app access checks |
 | **CRM authentication** | OAuth 2.0 Client Credentials, server-side only |
 | **ORCID authentication** | OAuth 2.0 Client Credentials (`/read-public` scope), server-side only |
@@ -1024,7 +1024,7 @@ All new server-side outbound HTTP requests should use `safeFetch` from `lib/util
 
 | Control | Implementation |
 |---------|---------------|
-| **App-level access** | `requireAppAccess()` with per-user grants via `user_app_access` table; OR logic for multi-app endpoints |
+| **App-level access** | `requireAppAccess()` with per-user grants via Dataverse `wmkf_appuserappaccesses` *(formerly Postgres `user_app_access`, dropped 2026-05-12)*; OR logic for multi-app endpoints |
 | **User data scoping** | All user-specific queries filter by `user_profile_id` derived from session (never from request params in production) |
 | **Dynamics RBAC** | `superuser` / `read_only` / `read_write` roles with table/field restrictions |
 | **Dynamics restriction enforcement** | Dual-layer: chat handler (user-facing) + DynamicsService (defense-in-depth) |
@@ -1200,7 +1200,7 @@ _(Historical as-of-finding paths. `evaluate-concepts.js` was later archived to `
 
 **Finding:** Uploaded files persist indefinitely in Vercel Blob. There is no cleanup process for old or orphaned files.
 
-**Remediation:** Daily maintenance cron (`/api/cron/maintenance`) runs `MaintenanceService.cleanupBlobs()` which cross-references all blob URLs in `proposal_searches`, `grant_cycles`, and `reviewer_suggestions` against blob storage, and deletes orphaned files older than the configured retention period (default 90 days). Retention is configurable via `system_settings` table.
+**Remediation:** Daily maintenance cron (`/api/cron/maintenance`) runs `MaintenanceService.cleanupBlobs()` which cross-references all blob URLs in Dataverse `wmkf_appgrantcycle.wmkf_reviewtemplateurl` and `wmkf_appreviewersuggestion` (`wmkf_summarybloburl` + `wmkf_reviewbloburl`, the latter historical-only post-2026-05-03 SharePoint cutover) against blob storage, and deletes orphaned files older than the configured retention period (default 90 days). Retention is configurable via Dataverse `wmkf_appsystemsettings`. (Post-W5 cutover; previously cross-referenced Postgres `proposal_searches`, `grant_cycles`, `reviewer_suggestions` with retention from `system_settings`.)
 
 #### L2: No Encryption Key Rotation Mechanism — REMEDIATED
 
@@ -1339,14 +1339,14 @@ openssl rand -hex 32
 | Table | Sensitivity | Scoping | Records | Content |
 |-------|-------------|---------|---------|---------|
 | `user_profiles` | Medium | Per-user | ~10s | Azure ID, email, display name |
-| `user_preferences` | **High** | Per-user | ~50s | Encrypted API keys, settings |
-| `user_app_access` | Medium | Per-user | ~100s | Per-user app grants (app_key + granted_by) |
-| `system_settings` | Medium | Global | ~10s | Model overrides, system configuration |
+| `user_preferences` *(now Dataverse `wmkf_appuserpreferences`)* | **High** | Per-user | ~50s | Encrypted API keys, settings |
+| `user_app_access` *(now Dataverse `wmkf_appuserappaccesses`)* | Medium | Per-user | ~100s | Per-user app grants (app_key + granted_by) |
+| `system_settings` *(now Dataverse `wmkf_appsystemsettings`)* | Medium | Global | ~10s | Model overrides, system configuration |
 | `api_usage_log` | Medium | Per-user | Growing | Model, tokens, cost, latency per API call |
 | `researchers` | Low | Shared | ~1000s | Public academic profiles |
 | `publications` | Low | Shared | ~5000s | Public paper metadata |
 | `researcher_keywords` | Low | Shared | Variable | Expertise areas for researchers |
-| `grant_cycles` | Low | Shared | ~10s | Cycle names, dates, templates |
+| `grant_cycles` *(Postgres drain-only post-W3 2026-05-12; Dataverse `wmkf_appgrantcycle` is source of truth, ~10 rows)* | Low | Shared | ~10s | Cycle names, dates, templates |
 | `proposal_searches` | Medium | Per-user | ~100s | Proposal metadata, blob URLs |
 | `reviewer_suggestions` | Medium | Per-user | ~1000s | Reviewer-proposal matches, outreach status |
 | `search_cache` | Low | Shared | Variable | Cached literature search results (6-month expiry) |

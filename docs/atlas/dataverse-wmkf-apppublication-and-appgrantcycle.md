@@ -1,6 +1,6 @@
 # Atlas: `wmkf_apppublication`, `wmkf_appgrantcycle`, and undeployed Wave 2 entities
 
-**Last verified:** 2026-05-07 via `scripts/audit-dataverse-state.js` + EntityDefinitions metadata probe
+**Last verified:** 2026-05-07 via `scripts/audit-dataverse-state.js` + EntityDefinitions metadata probe. **`wmkf_appgrantcycle` section re-verified 2026-05-19** post-W3 cutover (see that section); the other entities on this page (publication, proposalsearch, junction) retain the 2026-05-07 audit.
 
 ## `wmkf_apppublication` — DEPLOYED but EMPTY
 
@@ -14,19 +14,19 @@ Custom attrs (14, all confirmed deployed): `wmkf_apppublicationid` (PK), `wmkf_t
 
 **Migration disposition:** Postgres `publications` is also empty (0 rows). Wave 2 plan is to retire the Postgres table and only start writing here when discovery is rewired. The schema-as-code calls out that authorship goes through a junction (`wmkf_app_publication_author`), but that junction is **NOT deployed** (404 on entity set). Defer junction deployment until publications start landing.
 
-## `wmkf_appgrantcycle` — DEPLOYED, EMPTY, partial schema
+## `wmkf_appgrantcycle` — DEPLOYED, DATAVERSE-PRIMARY (W3 cutover 2026-05-12)
 
-**Live row count:** 0
+**Live row count:** 10 (per 2026-05-14 audit in `docs/atlas/postgres-grant-cycles.md`)
 **Entity set:** `wmkf_appgrantcycles`
 **Schema-as-code:** `lib/dataverse/schema/wave2/wmkf_app_grant_cycle.json` (8 attrs)
 
 Deployed custom attrs (10): `wmkf_appgrantcycleid`, `wmkf_displayname` (primary), `wmkf_fiscalyearcode`, `wmkf_meetingdate`, `wmkf_summarypages`, `wmkf_reviewreturndeadline`, `wmkf_reviewtemplateurl`, `wmkf_reviewtemplatefilename`, `wmkf_additionalattachments`, `wmkf_isactive` (+ `wmkf_isactivename` virtual).
 
-**Gap vs. Postgres `grant_cycles`:** Missing `short_code`, `program_name`, `custom_fields` from both schema-as-code and live deployment. `short_code` is load-bearing (used by `cycle-code.js`).
+**Gap vs. Postgres `grant_cycles` (re-verify before destructive PG action):** `short_code`, `program_name`, `custom_fields` were flagged absent in the 2026-05-07 probe. `short_code` is load-bearing (used by `cycle-code.js`). Re-verify via `scripts/dynamics-schema-diff.js wmkf_appgrantcycle` before dropping the Postgres drain table — these columns may still need patching even though Dataverse is now source of truth for the row data.
 
 > **Codex round-3 finding correction:** Schema-as-code has 8 attributes (not 2). Real gap: `short_code`/`program_name`/`custom_fields` are absent.
 
-**No adapter, no callers.** Migration plan needs schema patches before this can replace Postgres `grant_cycles`. See `docs/atlas/postgres-grant-cycles.md` for Postgres side.
+**Callers:** `lib/services/grant-cycles-dataverse.js` is the live read/write path. Consumed by `pages/api/reviewer-finder/grant-cycles.js`, `pages/api/review-manager/render-emails.js`, `pages/api/review-manager/send-emails.js`, and `lib/services/maintenance-service.js` (blob cleanup, via `wmkf_reviewtemplateurl`). Postgres `grant_cycles` is drain-only post-W3 cutover; see `docs/atlas/postgres-grant-cycles.md` for the cross-reference. Post-pilot drop of the Postgres table is destructive-carryover-gated (≥2026-07-01).
 
 ## `wmkf_appproposalsearch` — NOT DEPLOYED
 
@@ -51,7 +51,7 @@ Junction for `wmkf_apppublication ↔ wmkf_appresearcher`. Defer until publicati
 | `wmkf_appresearcher` | ✅ | ✅ | ✅ (334 rows) |
 | `wmkf_appreviewersuggestion` | (extension manifest only) | ✅ | ✅ (336 rows) |
 | `wmkf_apppublication` | ✅ | ✅ | empty |
-| `wmkf_appgrantcycle` | ✅ (partial) | ✅ (partial) | empty |
+| `wmkf_appgrantcycle` | ✅ (partial) | ✅ | 10 rows (Dataverse-primary post-2026-05-12) |
 | `wmkf_appproposalsearch` | ✅ | ❌ | n/a |
 | `wmkf_app_z_publication_author` | ✅ | ❌ | n/a |
 

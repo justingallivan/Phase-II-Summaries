@@ -1,5 +1,7 @@
 # Reviewer Finder → Dataverse Cutover: Outstanding Work
 
+> **Status banner (2026-05-19):** Workstreams **2a** (Review Manager `/reviewers` GET/PATCH) and **2b** (`send-emails` Dataverse migration) **SHIPPED in W3–W6 / S164**. Both `pages/api/review-manager/reviewers.js` and `pages/api/review-manager/send-emails.js` are now Dataverse-backed, and the Postgres `grant_cycles` table is drain-only (post-W3 cutover 2026-05-12). Workstream 1 (contact promotion at first invitation) and Workstream 3 (historical backfill) — re-verify before treating either as outstanding; the contact-promotion hook appears wired in `send-emails.js` per the W5 docstring. The 2026-04-30 narrative below describes the pre-cutover state and is retained for historical context.
+
 **Status as of 2026-04-30:** Reviewer Finder is fully Dataverse-backed for save and read paths. Postgres still receives dual writes from `save-candidates.js` and remains the source of truth for the rest of the reviewer lifecycle (Review Manager UI). This document covers the three workstreams that finish the migration and the historical backfill.
 
 ## Current state
