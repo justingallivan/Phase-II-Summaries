@@ -22,9 +22,7 @@ Custom attrs (14, all confirmed deployed): `wmkf_apppublicationid` (PK), `wmkf_t
 
 Deployed custom attrs (10): `wmkf_appgrantcycleid`, `wmkf_displayname` (primary), `wmkf_fiscalyearcode`, `wmkf_meetingdate`, `wmkf_summarypages`, `wmkf_reviewreturndeadline`, `wmkf_reviewtemplateurl`, `wmkf_reviewtemplatefilename`, `wmkf_additionalattachments`, `wmkf_isactive` (+ `wmkf_isactivename` virtual).
 
-**Gap vs. Postgres `grant_cycles` (re-verify before destructive PG action):** `short_code`, `program_name`, `custom_fields` were flagged absent in the 2026-05-07 probe. `short_code` is load-bearing (used by `cycle-code.js`). Re-verify via `scripts/dynamics-schema-diff.js wmkf_appgrantcycle` before dropping the Postgres drain table — these columns may still need patching even though Dataverse is now source of truth for the row data.
-
-> **Codex round-3 finding correction:** Schema-as-code has 8 attributes (not 2). Real gap: `short_code`/`program_name`/`custom_fields` are absent.
+**Schema-patch SHIPPED 2026-05-12 (W3 preflight):** the three fields originally flagged as missing (`wmkf_ShortCode`, `wmkf_ProgramName`, `wmkf_CustomFields`) are now in both schema-as-code and the deployed entity. Live evidence: `lib/services/grant-cycles-dataverse.js:75-99` selects all three on every read, and `:129` addresses rows by the `wmkf_shortcode` alt-key — the prod cycle endpoint has been calling these successfully since 2026-05-12. (Re-verify via `scripts/dynamics-schema-diff.js wmkf_appgrantcycle` if you need a metadata-level confirmation before any destructive Postgres action.)
 
 **Callers:** `lib/services/grant-cycles-dataverse.js` is the live read/write path. Consumed by `pages/api/reviewer-finder/grant-cycles.js`, `pages/api/review-manager/render-emails.js`, `pages/api/review-manager/send-emails.js`, and `lib/services/maintenance-service.js` (blob cleanup, via `wmkf_reviewtemplateurl`). Postgres `grant_cycles` is drain-only post-W3 cutover; see `docs/atlas/postgres-grant-cycles.md` for the cross-reference. Post-pilot drop of the Postgres table is destructive-carryover-gated (≥2026-07-01).
 

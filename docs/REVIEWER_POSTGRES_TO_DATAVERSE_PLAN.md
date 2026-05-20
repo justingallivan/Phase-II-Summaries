@@ -39,17 +39,19 @@ Refreshed 2026-05-12. Several artifacts have shipped since the plan was locked; 
 
 Every application file holding a live Postgres read/write against a Wave 2 drain table. **This is the actual scope of "cutover" work** — not just the two endpoints originally cited (`render-emails.js` / `send-emails.js`).
 
-| File | Drain tables touched | Operations | Notes |
+> **Status banner (2026-05-19, S167 ground-truth verification):** Independent code grep (Codex-verified) confirms **zero live SQL** against `researchers`, `publications`, `researcher_keywords`, `reviewer_suggestions`, `grant_cycles`, `proposal_searches` anywhere under `pages/api/`, `lib/services/`, `lib/dataverse/`, or `shared/`. The cutover is complete at the application runtime layer. Every row below is historical; the "shipped" annotations are now baked into the source files themselves (see file headers). Only `scripts/*` admin tools still SQL these tables.
+
+| File | Drain tables touched (pre-cutover) | Status | Notes |
 |---|---|---|---|
-| `pages/api/reviewer-finder/grant-cycles.js` | `grant_cycles`, `proposal_searches`, `reviewer_suggestions` | full CRUD | Largest single Postgres consumer; admin UI for cycle management. Cutover blocks `wmkf_appgrantcycle` adoption. |
-| `pages/api/reviewer-finder/generate-emails.js` | `reviewer_suggestions` | read + UPDATE | Email-generation flow; updates per-suggestion send state. |
-| `pages/api/reviewer-finder/my-proposals.js` | `reviewer_suggestions` | read | Per-PD proposals list. |
-| `pages/api/reviewer-finder/extract-summary.js` | `proposal_searches` (read), `reviewer_suggestions` (UPDATE) | broken | IDOR guard reads `proposal_searches` which is empty — endpoint is functionally broken today. Locked S136: **retire entirely**; UI caller at `pages/reviewer-finder.js:3538`. |
-| ~~`pages/api/reviewer-finder/researchers.js`~~ | `researchers`, `researcher_keywords`, `reviewer_suggestions`, `grant_cycles` | full CRUD | **RETIRED 2026-05-12** in W6 step 1 — endpoint deleted, Database tab UI removed from `pages/reviewer-finder.js`. The heaviest Postgres consumer is gone. |
-| `pages/api/review-manager/render-emails.js` | `grant_cycles` | read | `loadCycleConfigs()` reads cycle metadata for email composition. |
-| `pages/api/review-manager/send-emails.js` | `grant_cycles` | read | Same `loadCycleConfigs()` path. |
-| `lib/services/database-service.js` | `researchers`, `publications`, `researcher_keywords`, `reviewer_suggestions` | full CRUD | Service-layer methods called from `discovery-service.js`, `deduplication-service.js`, `contact-enrichment-service.js`. Cutover requires either swapping internals to Dataverse adapters or retiring these methods entirely. |
-| `lib/services/maintenance-service.js` | `proposal_searches`, `grant_cycles`, `reviewer_suggestions` | read (blob URL cleanup) | Daily cron walks blob URLs in these tables to clean orphans in Vercel Blob. Cutover must redirect to Dataverse equivalents or accept that blob cleanup loses coverage during transition. |
+| `pages/api/reviewer-finder/grant-cycles.js` | `grant_cycles`, `proposal_searches`, `reviewer_suggestions` | **SHIPPED W3 (2026-05-12), Dataverse-only** | Imports `lib/services/grant-cycles-dataverse`; loud-fail guard if `WAVE2_BACKEND_GRANT_CYCLES=postgres`. |
+| `pages/api/reviewer-finder/generate-emails.js` | `reviewer_suggestions` | **SHIPPED W5 (2026-05-12)** | Now uses `lib/dataverse/adapters/reviewer-suggestion`. |
+| `pages/api/reviewer-finder/my-proposals.js` | `reviewer_suggestions` | **SHIPPED W5 (2026-05-12)** | Uses suggestion adapter via Dynamics. |
+| `pages/api/reviewer-finder/extract-summary.js` | `proposal_searches` (read), `reviewer_suggestions` (UPDATE) | **RETIRED W5** | Endpoint removed; UI caller in `pages/reviewer-finder.js` updated. |
+| ~~`pages/api/reviewer-finder/researchers.js`~~ | `researchers`, `researcher_keywords`, `reviewer_suggestions`, `grant_cycles` | **RETIRED 2026-05-12 (W6 step 1)** | Endpoint deleted; Database tab UI removed from `pages/reviewer-finder.js`. |
+| `pages/api/review-manager/render-emails.js` | `grant_cycles` | **SHIPPED W3 (2026-05-12)** | `loadCycleConfigs()` now reads Dataverse via `grant-cycles-dataverse`. |
+| `pages/api/review-manager/send-emails.js` | `grant_cycles` | **SHIPPED W3 (2026-05-12)** | Same `loadCycleConfigs()` path; also promotes recipient to CRM `contact`. |
+| `lib/services/database-service.js` | `researchers`, `publications`, `researcher_keywords`, `reviewer_suggestions` | **METHODS REMOVED (W5–W6)** | Reviewer-domain methods deleted; comments at lines 21-25 / 132-135 redirect to Dataverse adapters. File still SQL-touches `search_cache`, `user_profiles`, `user_preferences` (unrelated). |
+| `lib/services/maintenance-service.js` | `proposal_searches`, `grant_cycles`, `reviewer_suggestions` | **SHIPPED W5 (post-W5 cutover noted in source)** | `cleanupBlobs()` reads Dataverse `wmkf_appgrantcycle.wmkf_reviewtemplateurl` and `wmkf_appreviewersuggestion` blob URLs; PG `proposal_searches.full_proposal_blob_url` intentionally omitted (table is empty). |
 
 **Not in scope** (Postgres tables that stay permanently): `user_profiles`, `api_usage_log`, `system_alerts`, `health_check_history`, `maintenance_runs`, `dynamics_query_log`, plus the per-app stores listed in "Out of scope" above.
 
@@ -254,7 +256,7 @@ The reviewer-history surface for a contact is `wmkf_appreviewersuggestion` rows 
 
 **Status (verified 2026-05-07 via `scripts/audit-dataverse-state.js` + EntityDefinitions metadata probe):** the entity IS already deployed (10 custom attrs live), but **with 0 rows and a partial schema** — see [`docs/atlas/postgres-grant-cycles.md`](atlas/postgres-grant-cycles.md) and [`docs/atlas/dataverse-wmkf-apppublication-and-appgrantcycle.md`](atlas/dataverse-wmkf-apppublication-and-appgrantcycle.md). This work is NOT a fresh deploy of the schema-as-code; it's a **schema patch** to add fields the deployed entity is missing.
 
-The schema-as-code file `lib/dataverse/schema/wave2/wmkf_app_grant_cycle.json` defines 8 attributes (`wmkf_FiscalYearCode`, `wmkf_MeetingDate`, `wmkf_SummaryPages`, `wmkf_ReviewReturnDeadline`, `wmkf_ReviewTemplateUrl`, `wmkf_ReviewTemplateFilename`, `wmkf_AdditionalAttachments`, `wmkf_IsActive`) plus the primary name `wmkf_DisplayName`. **The schema-as-code is missing three fields the migration requires:** `wmkf_ShortCode`, `wmkf_ProgramName`, `wmkf_CustomFields`. These are also absent from the live deployment. The schema-as-code currently declares an alt-key only on `wmkf_fiscalyearcode`; **a second alt-key on `wmkf_shortcode` must also be added** to support cross-table joins from `wmkf_appreviewersuggestion.wmkf_grantcyclecode`.
+The schema-as-code file `lib/dataverse/schema/wave2/wmkf_app_grant_cycle.json` defines **11 attributes** (`wmkf_FiscalYearCode`, `wmkf_ShortCode`, `wmkf_ProgramName`, `wmkf_CustomFields`, `wmkf_MeetingDate`, `wmkf_SummaryPages`, `wmkf_ReviewReturnDeadline`, `wmkf_ReviewTemplateUrl`, `wmkf_ReviewTemplateFilename`, `wmkf_AdditionalAttachments`, `wmkf_IsActive`) plus the primary name `wmkf_DisplayName`. **Patched into the deployed entity 2026-05-12 (W3 preflight)**: `wmkf_ShortCode`, `wmkf_ProgramName`, `wmkf_CustomFields` — these were originally absent and are now present in both schema-as-code and prod. Both alt-keys declared (`wmkf_fiscalyearcode` and `wmkf_shortcode`); the latter supports cross-table joins from `wmkf_appreviewersuggestion.wmkf_grantcyclecode`.
 
 **Preflight (BLOCKER per Codex S147) — must run BEFORE the schema patch:**
 
@@ -586,7 +588,7 @@ Hard constraints (each blocks the step after it):
 2. **W3 preflight (BLOCKER per Codex S147).** Two prerequisites run before the schema patch:
    - **2a. Duplicate-domain audit.** Script enumerates Postgres `grant_cycles.short_code` (active + inactive) and Dataverse `wmkf_appreviewersuggestion.wmkf_grantcyclecode` distinct values; decide collapse strategy for any duplicate set before the alt-key is added.
    - **2b. Preference-shape migration.** Rewrite cycle preference storage to use `wmkf_shortcode` (string) instead of Postgres integer ID. Three consumer sites: `shared/config/reviewerFinderPreferences.js`, `shared/components/SettingsModal.js`, `pages/reviewer-finder.js:748-756`. Ships as its own commit so the preference layer is GUID/shortcode-safe before any backend swap.
-3. **Schema patch.** Patch `lib/dataverse/schema/wave2/wmkf_app_grant_cycle.json` to add the 3 missing fields (`wmkf_ShortCode`, `wmkf_ProgramName`, `wmkf_CustomFields`) AND a second alt-key entry for `wmkf_shortcode`. Re-run `apply-dataverse-schema.js`. Entity already exists in prod; this is additive. Verify both alt-keys present via EntityDefinitions probe.
+3. ~~**Schema patch.**~~ **SHIPPED 2026-05-12 (W3 preflight).** All three previously-missing fields (`wmkf_ShortCode`, `wmkf_ProgramName`, `wmkf_CustomFields`) and the second alt-key (`wmkf_shortcode`) are now defined in `lib/dataverse/schema/wave2/wmkf_app_grant_cycle.json` and deployed to prod. Cycle data uses these fields end-to-end.
 4. **`grant_cycles` data backfill.** Idempotent upsert keyed on `wmkf_shortcode` — dry-run first, prints create/update/skip per row, patches only null/empty fields by default, explicit `--overwrite` flag required for non-null existing Dataverse values. Only 13 rows.
 5. **`grant_cycles` migration + cutover.** Three-file scope (verified 2026-05-12 grep): `pages/api/reviewer-finder/grant-cycles.js`, `pages/api/review-manager/render-emails.js`, `pages/api/review-manager/send-emails.js`. Cutover method = Option B (hard cutover, see §"W3 cutover method"). Must complete **before email flows are migrated** — `generate-emails.js` reads cycle attachment settings indirectly through `grant-cycles.js`, so cycle data must be Dataverse-resident first. Postgres `grant_cycles` is the only Wave 2 table that actually migrates (the rest drain).
 6. **Reviewer-suggestions parity triage** (8-row delta). Per Codex 3b: before commit-mode backfill, decide each row's true status — genuine missed sync vs. legitimate Postgres-only artifact. Then commit-mode the genuine misses. Required before `generate-emails.js` and `my-proposals.js` cutover (lifecycle counts depend on full Dataverse state).
@@ -784,7 +786,7 @@ Every item below must have a check + date + owner before the relevant cutover st
 - Decline-reason fields + response-received-at on `wmkf_appreviewersuggestion`
 
 **Still pending from W1:**
-- `wmkf_appgrantcycle` schema **patch** (entity already exists in prod with 10 attrs live; 3 fields need adding: `wmkf_ShortCode`, `wmkf_ProgramName`, `wmkf_CustomFields`)
+- ~~`wmkf_appgrantcycle` schema **patch**~~ **SHIPPED 2026-05-12 (W3 preflight)** — 11 attrs live, both alt-keys present.
 - Anomaly-triage decisions on the 8 parity outliers
 
 ### Updated forward schedule

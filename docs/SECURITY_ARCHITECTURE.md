@@ -567,10 +567,10 @@
 | App access | `user_app_access` *(now Dataverse `wmkf_appuserappaccesses`)* | Medium — per-user app grants | Per-user |
 | System config | `system_settings` *(now Dataverse `wmkf_appsystemsettings`)* | Medium — model overrides, settings | Global |
 | API usage | `api_usage_log` | Medium — model, tokens, cost per request | Per-user |
-| Researcher data | `researchers`, `publications`, `researcher_keywords` | Low — public academic data | Shared/global |
-| Search results | `proposal_searches` | Medium — proposal metadata, blob URLs | Per-user |
-| Reviewer candidates | `reviewer_suggestions` | Medium — reviewer-proposal matches | Per-user |
-| Grant cycles | `grant_cycles` | Low — organizational metadata | Shared/global |
+| Researcher data | `researchers`, `publications`, `researcher_keywords` *(all Postgres drain-only post-W6 2026-05-12; live reviewer/researcher state is in Dataverse `wmkf_appresearcher` / `wmkf_potentialreviewer`)* | Low — public academic data | Shared/global |
+| Search results | `proposal_searches` *(Postgres drain-only; writer dead, `extract-summary` endpoint retired)* | Medium — proposal metadata, blob URLs | Per-user |
+| Reviewer candidates | `reviewer_suggestions` *(Postgres drain-only post-W3-W6; live reviewer-suggestion state is in Dataverse `wmkf_appreviewersuggestion`)* | Medium — reviewer-proposal matches | Per-user |
+| Grant cycles | `grant_cycles` *(Postgres drain-only post-W3 2026-05-12; live cycle state is in Dataverse `wmkf_appgrantcycle`)* | Low — organizational metadata | Shared/global |
 | Integrity data | `retractions` | Low — public Retraction Watch data | Shared/global |
 | Integrity results | `integrity_screenings`, `screening_dismissals` | Medium — screening outcomes | Per-user |
 | CRM access control | `dynamics_user_roles`, `dynamics_restrictions` | Medium — access policies | Per-user / global |
@@ -1345,12 +1345,12 @@ openssl rand -hex 32
 | `user_app_access` *(now Dataverse `wmkf_appuserappaccesses`)* | Medium | Per-user | ~100s | Per-user app grants (app_key + granted_by) |
 | `system_settings` *(now Dataverse `wmkf_appsystemsettings`)* | Medium | Global | ~10s | Model overrides, system configuration |
 | `api_usage_log` | Medium | Per-user | Growing | Model, tokens, cost, latency per API call |
-| `researchers` | Low | Shared | ~1000s | Public academic profiles |
-| `publications` | Low | Shared | ~5000s | Public paper metadata |
-| `researcher_keywords` | Low | Shared | Variable | Expertise areas for researchers |
+| `researchers` *(Postgres drain-only post-W6 2026-05-12)* | Low | Shared | ~1000s | Public academic profiles |
+| `publications` *(Postgres drain-only; writer dead)* | Low | Shared | ~5000s | Public paper metadata |
+| `researcher_keywords` *(Postgres drain-only; folded into Dataverse `wmkf_appresearcher.wmkf_keywords` for new rows)* | Low | Shared | Variable | Expertise areas for researchers |
 | `grant_cycles` *(Postgres drain-only post-W3 2026-05-12; Dataverse `wmkf_appgrantcycle` is source of truth, ~10 rows)* | Low | Shared | ~10s | Cycle names, dates, templates |
-| `proposal_searches` | Medium | Per-user | ~100s | Proposal metadata, blob URLs |
-| `reviewer_suggestions` | Medium | Per-user | ~1000s | Reviewer-proposal matches, outreach status |
+| `proposal_searches` *(Postgres drain-only; `extract-summary` endpoint retired)* | Medium | Per-user | ~100s | Proposal metadata, blob URLs |
+| `reviewer_suggestions` *(Postgres drain-only post-W3-W6; live state is Dataverse `wmkf_appreviewersuggestion`)* | Medium | Per-user | ~1000s | Reviewer-proposal matches, outreach status |
 | `search_cache` | Low | Shared | Variable | Cached literature search results (6-month expiry) |
 | `retractions` | Low | Shared | ~63,000 | Retraction Watch public data |
 | `integrity_screenings` | Medium | Per-user | ~100s | Screening results |

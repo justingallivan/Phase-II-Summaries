@@ -139,35 +139,9 @@ Reviewer Finder settings are stored per-user in the database when a profile is s
 
 ---
 
-## Database Tab
+## ~~Database Tab~~ (RETIRED 2026-05-12, W6 step 1)
 
-Browse and search all saved researchers:
-
-- Search by name, affiliation, or email
-- Filter by "Has Email", "Has Website", or expertise tags
-- Sort by name, affiliation, h-index, or last updated
-- Auto-generated tags from discovery (expertise areas, source database)
-- Pagination for large datasets
-
-### Add Researcher
-
-Manually add new researchers to database:
-- Basic info: Name, affiliation, department
-- Contact: Email, website, ORCID, Google Scholar ID
-- Metrics: h-index, i10-index, citations
-- Expertise keywords (comma-separated)
-- Notes field for conflicts, preferences, etc.
-- Optional: Associate with proposal via grant cycle selector
-
-### Detail Modal
-
-Click any row to view full researcher info:
-- Contact info with source (e.g., "from PubMed 2024")
-- Metrics: h-index, i10-index, total citations
-- Notes field (editable) for tracking conflicts/preferences
-- All expertise keywords grouped by source
-- Proposal associations with status and notes
-- **Associate with Proposal** - Link existing researcher to any proposal
+The Database tab and its Postgres-backed researcher CRUD (`pages/api/reviewer-finder/researchers.js` + the `researchers` / `researcher_keywords` Postgres tables) were retired in W6 of the Postgres→Dataverse migration. The UI is now a two-tab interface (Find Reviewers + My Candidates); saved-candidate state lives in Dataverse `wmkf_appresearcher` / `wmkf_potentialreviewer` / `wmkf_appreviewersuggestion`. An `add-candidate-manual` endpoint that replaces the in-place Add Researcher flow is spec'd as post-pilot work — see `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`.
 
 ---
 
@@ -225,7 +199,7 @@ The organization uses Microsoft Dynamics, making **Dynamics 365 Customer Insight
 
 ### Database Field Ready
 
-The `email_opened_at` field exists in the `reviewer_suggestions` table, reserved for this integration.
+Tracking-field equivalents (`wmkf_emailopenedat`, `wmkf_responsetype`, etc.) live on Dataverse `wmkf_appreviewersuggestion`, available for future webhook population. The legacy Postgres `reviewer_suggestions.email_opened_at` field is drain-only post-W3-W6.
 
 ### Limitations to Consider
 

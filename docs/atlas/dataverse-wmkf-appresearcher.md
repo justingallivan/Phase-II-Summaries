@@ -62,4 +62,4 @@ Postgres `researchers` (331 rows) is the historical pool; this entity (334 rows)
 
 ## Migration disposition
 
-Per `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`: this is the Wave 2 destination for the Postgres `researchers` bibliometric columns. Adapter is shipped; endpoint rewrites still pending (browse, edit, list).
+Per `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`: this is the Wave 2 destination for the Postgres `researchers` bibliometric columns. **Cutover status (W3-W6, 2026-05-12)**: adapter shipped; My Candidates edit/write paths use this entity; browse/list endpoint retired (Database tab removed — see "No standalone browse/list endpoint" note above). A post-pilot `add-candidate-manual` endpoint is the remaining future-work entry point for manual additions.
