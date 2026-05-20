@@ -163,12 +163,12 @@ A Vercel app page + API endpoint that:
 - Scoped to specific tables (not blanket write access) for least privilege
 
 ### What to build
-- Un-stub `updateRecord()` and `createRecord()` in `dynamics-service.js` (currently throw "Write operations are not yet enabled")
-- Add Dynamics write-back to existing endpoints:
-  - `pages/api/reviewer-finder/save-candidates.js` — reviewer data written to Dynamics
-  - `pages/api/review-manager/reviewers.js` — status changes reflected in Dynamics
-  - `pages/api/review-manager/send-emails.js` — email activity linked to Dynamics request
-- Behind feature flag until ready
+- ~~Un-stub `updateRecord()` and `createRecord()` in `dynamics-service.js`~~ **SHIPPED.** Both primitives are implemented in `lib/services/dynamics-service.js` (`createRecord` and `updateRecord` are live; they no longer throw). Subsequent endpoint integrations have also shipped (save-candidates writes Dataverse; reviewers.js is Dataverse-backed; send-emails creates email activities and lifecycle PATCHes via the adapter).
+- ~~Add Dynamics write-back to existing endpoints~~ **SHIPPED in W3-W6 (2026-05-12):**
+  - `pages/api/reviewer-finder/save-candidates.js` — writes to Dataverse via `potential-reviewer`, `researcher`, `reviewer-suggestion` adapters
+  - `pages/api/review-manager/reviewers.js` — Dataverse-backed (status changes via `suggestionAdapter.updateLifecycle`)
+  - `pages/api/review-manager/send-emails.js` — Dynamics email activity + Dataverse lifecycle PATCH via adapter
+- Behind feature flag until ready *(no longer relevant; the writes are unconditional in the cutover endpoints)*
 
 ### Key files
 - `lib/services/dynamics-service.js` — stubbed write methods, existing auth token flow works

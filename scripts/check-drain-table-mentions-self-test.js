@@ -133,12 +133,9 @@ function buildFixtures() {
       body: 'Cleanup of `reviewer_suggestions` is planned for next quarter.',
       expectFlagged: true,
     },
-    {
-      name: 'file-purpose marker exempts whole file',
-      file: 'neg_file_purpose.md',
-      body: '<!-- drain-table:file-purpose=atlas-state-page -->\n\nThis is an atlas page about `reviewer_suggestions`. It also describes `researchers` mappings.',
-      expectFlagged: false,
-    },
+    // File-purpose marker mechanism is exercised in a separate test (below)
+    // because the marker tag has a path constraint and the temp-dir path
+    // does not match any allowed tag's path pattern.
   ];
 }
 
@@ -174,13 +171,34 @@ function assertCleanBaseline() {
   if (status !== 0) throw new Error(`baseline gate must be clean before/after self-test, got status ${status}:\n${output}`);
 }
 
+// Verify the file-purpose marker constraint: a marker declared on a file
+// whose path is NOT in the tag's allowed-paths list must trigger a
+// configuration error (gate exits 2), not a silent bypass. Codex pass-6
+// flagged the unconstrained pre-fix mechanism as an unrestricted bypass;
+// this test binds the constraint.
+function assertFileMarkerConstraint() {
+  cleanup();
+  fs.mkdirSync(tempDir, { recursive: true });
+  const offending = path.join(tempDir, 'pos_marker_wrong_path.md');
+  fs.writeFileSync(offending, '<!-- drain-table:file-purpose=atlas-state-page -->\n\nNot actually an atlas path.\n');
+  const { status, output } = runGate();
+  cleanup();
+  if (status !== 2) {
+    throw new Error(`file-marker constraint should fail with exit 2 (configuration error) on a marker outside its allowed paths; got status ${status}:\n${output}`);
+  }
+  if (!/configuration error/i.test(output) || !/file-purpose=atlas-state-page/.test(output)) {
+    throw new Error(`expected configuration-error output mentioning file-purpose tag; got:\n${output}`);
+  }
+}
+
 function main() {
   cleanup();
   assertCleanBaseline();
   assertFixtures();
   cleanup();
+  assertFileMarkerConstraint();
   assertCleanBaseline();
-  console.log('drain-table-mentions self-test OK — positive/negative fixtures handled correctly.');
+  console.log('drain-table-mentions self-test OK — positive/negative fixtures handled correctly, and file-marker constraint enforced.');
 }
 
 try {

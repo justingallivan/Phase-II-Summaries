@@ -83,5 +83,5 @@ Already the live source of truth for reviewer identity. The 4,267 rows include v
 ## Open questions / gotchas
 
 - 4,267 rows is much larger than Postgres `researchers` (331). Per the migration plan: don't import researchers in bulk — engagement-history approach replaces the bulk-import pattern.
-- `wmkf_contact` lookup population unknown — should probe how many rows have a non-null contact link before any cleanup-cron rollout.
-- The "per-proposal slot vs. per-person canonical" distinction is contextual: the *table* is per-person (email is the dedupe key, `upsertByEmail` is idempotent), but `akoya_request.wmkf_potentialreviewer1..5` lookups treat individual rows as **per-proposal slot fills**. Both framings are correct; cleanup-cron acts on the per-person row when it has no per-proposal engagement.
+- `wmkf_contact` lookup population unknown — should probe how many rows have a non-null contact link before any drop operation runs.
+- The "per-proposal slot vs. per-person canonical" distinction is contextual: the *table* is per-person (email is the dedupe key, `upsertByEmail` is idempotent), but `akoya_request.wmkf_potentialreviewer1..5` lookups treat individual rows as **per-proposal slot fills**. Both framings are correct; the one-shot post-pilot DELETE acts on per-person rows that have no per-proposal engagement (the earlier cleanup-cron design was replaced — see "Engaged semantics" section above).

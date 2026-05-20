@@ -16,18 +16,38 @@
  * to converge on case-by-case fixes; this gate is the mechanical fan-in
  * (same architectural shape as check:fact-consistency / canonical-pointers).
  *
- * Detection: backticked table mention (`\`researchers\``, etc.) or the
- * shape "Postgres researchers". The gate flags only when no contextual
- * annotation is present on the same line — same-line keyword OR same-line
- * structured exemption marker. Annotation menu:
- *   - keywords: drain / drained / drain-only / historical / RETIRED /
- *     pre-cutover / post-W[3-6] / migrated / migration / snapshot /
- *     superseded / backfill / formerly / legacy / wmkf_app
- *   - structured marker: <!-- drain-table:ignore -->
+ * Detection (broadened S167 pass-5 per Codex, 7 shapes):
+ *   - `\`name\``, `'name'`, `"name"`     — quoted code identifier
+ *   - `Postgres name`                       — explicit Postgres prefix
+ *   - `name.column`                         — dotted column reference
+ *   - `name <db-noun>` (table/schema/row/...) — bare identifier + DB context
+ *   - `<verb> name` (from/into/reads from/writes to/...) — SQL-shape
  *
- * Files whose purpose IS to describe these tables (atlas/postgres-*.md,
- * migration plan, etc.) are allowlisted so the gate doesn't fight them.
- * Point-in-time docs are excluded by the same rules as check:fact-consistency.
+ * Exemption (any one passes):
+ *   - Same-line directional/historical keyword: drain / drained / drain-only /
+ *     historical / RETIRED / formerly / legacy / superseded / post-W[3-6] /
+ *     pre-cutover / "cutover (complete|shipped|done|finished)" / migrated /
+ *     Migrates / collapsed / moved / Replaced / deleted / dropped / removed /
+ *     reaped / backfilled / snapshot(s) / strikethrough (~~)
+ *   - Same-line structured marker:
+ *       <!-- drain-table:ignore [reason=<short-id>] -->
+ *   - Whole-file ALLOWLIST_FILES entry (script-side; for migration plans,
+ *     lessons-learned, migration-memory).
+ *   - File-purpose marker in first 30 lines (visible in-doc):
+ *       <!-- drain-table:file-purpose=<tag> -->
+ *     Tag must be in FILE_MARKER_TAG_PATHS and the file's path must match
+ *     one of that tag's allowed patterns; otherwise the gate errors at
+ *     startup (configuration error). Currently the only registered tag is
+ *     `atlas-state-page`, scoped to `docs/atlas/*.md` +
+ *     `docs/APPLICATION_STATE_ATLAS.md`.
+ *
+ * Tightened S167 pass-5 per Codex: dropped overly permissive same-line
+ * keywords (Dataverse alone, planned, future-work, "from Postgres", bare
+ * W[3-6], wmkf_app prefix, spec'd) — they could co-occur with stale
+ * current-state claims and falsely exempt them.
+ *
+ * Point-in-time docs (AUDIT_*, CODEX_HANDOFF_REPORT_*, etc.) are excluded
+ * by the same rules as check:fact-consistency.
  *
  * If you legitimately need to mention one of these tables in NEW prose
  * without a drain annotation, that's a sign the ground-truth claim has
@@ -144,22 +164,33 @@ const SAME_LINE_OK = new RegExp(
 const MARKER_RE = /<!--\s*drain-table:ignore(?:\s+reason=[\w-]+)?\s*-->/;
 
 // File-purpose marker. Placed in the first 30 lines of a doc, declares the
-// whole file as legitimately about the drained tables (atlas state pages,
-// migration plans, lessons-learned). Visible to readers (unlike a script-
-// side allowlist), requires deliberate authorship, and still allows the
-// per-file content to be reviewed for current accuracy.
-// Format: <!-- drain-table:file-purpose=<short-tag> -->
-//   atlas-state-page       — atlas/postgres-*.md, atlas/dataverse-*.md cross-references
-//   migration-plan         — REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md, similar
-//   lessons-learned        — CLAUDE_REMEDIATION_PLAN.md
-//   migration-memory       — .claude-memory/project_*migration*.md, etc.
-//   migration-contract     — W4_*.md
-const FILE_MARKER_RE = /<!--\s*drain-table:file-purpose=[\w-]+\s*-->/;
+// whole file as legitimately about the drained tables. Visible to readers
+// (unlike a script-side allowlist) and requires deliberate authorship.
+// Constrained S167 pass-6 per Codex: tags are a fixed allowlist, and each
+// tag has a path-pattern allowlist — a marker outside its allowed paths is
+// a configuration error, not a silent bypass. This prevents anyone from
+// sprinkling the marker onto an unrelated file to silence drift.
+const FILE_MARKER_RE = /<!--\s*drain-table:file-purpose=([\w-]+)\s*-->/;
 const FILE_MARKER_SCAN_LINES = 30;
 
-function fileHasPurposeMarker(text) {
+// Tag → list of path patterns (regex) where the tag is acceptable.
+const FILE_MARKER_TAG_PATHS = {
+  'atlas-state-page': [
+    /^docs\/atlas\/.+\.md$/,
+    /^docs\/APPLICATION_STATE_ATLAS\.md$/,
+  ],
+};
+
+function fileMarkerForText(text) {
   const head = text.split('\n').slice(0, FILE_MARKER_SCAN_LINES).join('\n');
-  return FILE_MARKER_RE.test(head);
+  const m = head.match(FILE_MARKER_RE);
+  return m ? m[1] : null;
+}
+
+function fileMarkerAcceptable(tag, rel) {
+  const patterns = FILE_MARKER_TAG_PATHS[tag];
+  if (!patterns) return false;
+  return patterns.some((p) => p.test(rel));
 }
 
 function hasPointInTimeFrontmatter(text) {
@@ -183,7 +214,15 @@ function collectFiles() {
     if (ALLOWLIST_FILES.has(rel)) return;
     const text = fs.readFileSync(full, 'utf8');
     if (hasPointInTimeFrontmatter(text)) return;
-    if (fileHasPurposeMarker(text)) return;
+    const markerTag = fileMarkerForText(text);
+    if (markerTag) {
+      if (!fileMarkerAcceptable(markerTag, rel)) {
+        throw new Error(
+          `drain-table-mentions configuration error: ${rel} declares file-purpose=${markerTag} but the path is not in that tag's allowed list. Either remove the marker or extend FILE_MARKER_TAG_PATHS with a deliberate justification.`,
+        );
+      }
+      return;
+    }
     out.push(full);
   };
 

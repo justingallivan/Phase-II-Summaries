@@ -39,7 +39,7 @@ The canonical reference for the live state of the application's data layer.
 |---|---:|---|---|
 | `wmkf_appresearcher` | 334 | active sidecar to potentialreviewers | [dataverse-wmkf-appresearcher.md](atlas/dataverse-wmkf-appresearcher.md) |
 | `wmkf_appreviewersuggestion` | 336 | active lifecycle ledger | [dataverse-wmkf-appreviewersuggestion.md](atlas/dataverse-wmkf-appreviewersuggestion.md) |
-| `wmkf_potentialreviewers` (vendor + ext.) | 4,267 | per-person scratch+history (drains via cleanup cron) | [dataverse-wmkf-potentialreviewers.md](atlas/dataverse-wmkf-potentialreviewers.md) |
+| `wmkf_potentialreviewers` (vendor + ext.) | 4,267 | per-person scratch+history (one-shot post-pilot DELETE plan replaces the earlier cleanup-cron design; no cron exists) | [dataverse-wmkf-potentialreviewers.md](atlas/dataverse-wmkf-potentialreviewers.md) |
 | `wmkf_apppublication` | 0 | deployed, no callers | [dataverse-wmkf-apppublication-and-appgrantcycle.md](atlas/dataverse-wmkf-apppublication-and-appgrantcycle.md) |
 | `wmkf_appgrantcycle` | 10 | Dataverse-primary post-W3 (2026-05-12); full 11-attr schema deployed; consumed by reviewer-finder/grant-cycles + review-manager render/send-emails + maintenance-service blob-cleanup | same page |
 | `wmkf_appproposalsearch` | n/a | NOT DEPLOYED (schema-as-code only) | same page |
