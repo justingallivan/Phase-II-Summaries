@@ -331,7 +331,7 @@ All within Connor's access — no external IT or vendor dependencies.
 | File | Role in This Plan |
 |------|-------------------|
 | `shared/config/prompts/*.js` | Prompt development (Phase 1) |
-| `lib/services/dynamics-service.js` | Dynamics read access (Phase 1), un-stub writes (Phase 2) |
+| `lib/services/dynamics-service.js` | Dynamics read access (Phase 1, shipped), write primitives `createRecord`/`updateRecord` shipped (Phase 2). |
 | `lib/services/graph-service.js` | SharePoint document access (Phase 1) |
 | `shared/config/baseConfig.js` | Cache patterns to reuse |
 | `pages/admin.js` | Batch evaluation UI (Phase 1), processing dashboard (Phase 5) |
