@@ -1079,7 +1079,7 @@ All new server-side outbound HTTP requests should use `safeFetch` from `lib/util
 
 **Finding:** Vercel Blob URLs are accessible to anyone who knows the URL. While URLs include a random suffix (making guessing impractical), they are stored in the database and could be exposed through application vulnerabilities.
 
-**Location:** `pages/api/upload-handler.js`, blob URLs stored in `proposal_searches` table
+**Location:** `pages/api/upload-handler.js`, blob URLs stored in `proposal_searches` table (historical; this table is now drain-only post-W3-W6 cutover) <!-- drain-table:ignore reason=historical-finding -->
 
 **Risk:** Proposal documents (potentially pre-decisional) could be accessed without authentication if URLs leak.
 
@@ -1165,10 +1165,10 @@ _(Historical as-of-finding paths. `evaluate-concepts.js` was later archived to `
 
 #### M7: Reviewer Suggestion Records Created with Wrong User Profile ID
 
-**Finding:** Two API endpoints created `reviewer_suggestions` records with incorrect `user_profile_id` values, making the records invisible to the user who created them:
+**Finding:** Two API endpoints created `reviewer_suggestions` records with incorrect `user_profile_id` values, making the records invisible to the user who created them: <!-- drain-table:ignore reason=historical-finding -->
 
 1. `save-candidates.js` accepted `userProfileId` from the request body. The ResearcherDetailModal's "Add to Proposal" flow did not send this field, resulting in `user_profile_id = NULL`. Since the my-candidates query filters on `user_profile_id = ${profileId}`, NULL records were invisible to all users.
-2. `researchers.js` `handleCreate` copied `user_profile_id` from an existing `reviewer_suggestions` record for the same proposal. If the existing record belonged to a different user, the new association was invisible to the user who created it.
+2. `researchers.js` `handleCreate` copied `user_profile_id` from an existing `reviewer_suggestions` record for the same proposal. If the existing record belonged to a different user, the new association was invisible to the user who created it. <!-- drain-table:ignore reason=historical-finding -->
 
 **Location:** `pages/api/reviewer-finder/save-candidates.js`, `pages/api/reviewer-finder/researchers.js`
 
@@ -1264,7 +1264,7 @@ _(Historical as-of-finding paths. `evaluate-concepts.js` was later archived to `
 
 #### L9: Legacy NULL User Profile Data Visibility — REMEDIATED
 
-**Finding:** `reviewer_suggestions` and `proposal_searches` rows with `user_profile_id = NULL` (created before the user profile system) are visible to all users via queries like `WHERE user_profile_id IS NULL OR user_profile_id = ${profileId}`.
+**Finding:** `reviewer_suggestions` and `proposal_searches` rows with `user_profile_id = NULL` (created before the user profile system) are visible to all users via queries like `WHERE user_profile_id IS NULL OR user_profile_id = ${profileId}`. <!-- drain-table:ignore reason=historical-finding -->
 
 **Location:** `pages/api/reviewer-finder/my-candidates.js`
 

@@ -38,7 +38,7 @@ export const GUIDE_SECTIONS = [
     sections: [
       {
         heading: 'Overview',
-        content: `The Reviewer Finder has three tabs: Find Reviewers (upload a proposal and discover candidates), My Candidates (manage saved reviewers and generate emails), and Database (browse all researchers across proposals).`,
+        content: `The Reviewer Finder has two tabs: Find Reviewers (upload a proposal and discover candidates) and My Candidates (manage saved reviewers and generate emails).`,
       },
       {
         heading: 'Finding Reviewers',

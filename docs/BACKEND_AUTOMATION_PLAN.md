@@ -182,20 +182,22 @@ A Vercel app page + API endpoint that:
 
 **Goal:** Move all operational data from Vercel Postgres to Dynamics so Dynamics is the single source of truth.
 
+> **Status banner (2026-05-19):** Reviewer-domain tables in the table below — `researchers`, `publications`, `reviewer_suggestions`, `proposal_searches`, `grant_cycles` — were migrated in W3–W6 (2026-05-12) and are now **drain-only** in Postgres; live state is in Dataverse (`wmkf_appresearcher`, `wmkf_appreviewersuggestion`, `wmkf_appgrantcycle`). See `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` for the migration log. The remaining rows below (`integrity_screenings`, `screening_dismissals`, `panel_reviews`, `expertise_roster`, `expertise_matches`) are still Postgres-only and not yet scoped for migration.
+
 ### Tables to migrate
 
-| Table | Records | Purpose |
-|-------|---------|---------|
-| `researchers` | Expert profiles | Shared pool of reviewer candidates |
-| `publications` | Linked to researchers | Publication history |
-| `reviewer_suggestions` | Per-user per-proposal | "My Candidates" saved reviewers |
-| `proposal_searches` | Per-user | Proposal analysis results |
-| `grant_cycles` | Shared | Grant cycle definitions |
-| `integrity_screenings` | Per-user | Screening history |
-| `screening_dismissals` | Per-user | False positive dismissals |
-| `panel_reviews` | Per-user | Virtual review panel results |
-| `expertise_roster` | Shared | Internal reviewer/consultant/board roster (38+ entries) |
-| `expertise_matches` | Per-user | AI proposal-to-reviewer matching history |
+| Table | Records | Purpose | Cutover status |
+|-------|---------|---------|----------------|
+| `researchers` | Expert profiles | Shared pool of reviewer candidates | drain-only post-W6 (2026-05-12); Dataverse `wmkf_appresearcher` is source of truth |
+| `publications` | Linked to researchers | Publication history | drain-only; writer dead |
+| `reviewer_suggestions` | Per-user per-proposal | "My Candidates" saved reviewers | drain-only post-W3-W6; Dataverse `wmkf_appreviewersuggestion` is source of truth |
+| `proposal_searches` | Per-user | Proposal analysis results | drain-only; `extract-summary` endpoint retired |
+| `grant_cycles` | Shared | Grant cycle definitions | drain-only post-W3 (2026-05-12); Dataverse `wmkf_appgrantcycle` is source of truth |
+| `integrity_screenings` | Per-user | Screening history | Postgres-only (not yet migrated) |
+| `screening_dismissals` | Per-user | False positive dismissals | Postgres-only (not yet migrated) |
+| `panel_reviews` | Per-user | Virtual review panel results | Postgres-only (not yet migrated) |
+| `expertise_roster` | Shared | Internal reviewer/consultant/board roster (38+ entries) | Postgres-only (not yet migrated) |
+| `expertise_matches` | Per-user | AI proposal-to-reviewer matching history | Postgres-only (not yet migrated) |
 
 ### What stays in Vercel Postgres
 System/infrastructure data that has no Dynamics equivalent:

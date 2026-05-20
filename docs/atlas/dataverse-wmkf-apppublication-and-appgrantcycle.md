@@ -18,9 +18,9 @@ Custom attrs (14, all confirmed deployed): `wmkf_apppublicationid` (PK), `wmkf_t
 
 **Live row count:** 10 (per 2026-05-14 audit in `docs/atlas/postgres-grant-cycles.md`)
 **Entity set:** `wmkf_appgrantcycles`
-**Schema-as-code:** `lib/dataverse/schema/wave2/wmkf_app_grant_cycle.json` (8 attrs)
+**Schema-as-code:** `lib/dataverse/schema/wave2/wmkf_app_grant_cycle.json` (11 attrs post-W3-preflight patch + 2 alt-keys: `wmkf_fiscalyearcode` and `wmkf_shortcode`)
 
-Deployed custom attrs (10): `wmkf_appgrantcycleid`, `wmkf_displayname` (primary), `wmkf_fiscalyearcode`, `wmkf_meetingdate`, `wmkf_summarypages`, `wmkf_reviewreturndeadline`, `wmkf_reviewtemplateurl`, `wmkf_reviewtemplatefilename`, `wmkf_additionalattachments`, `wmkf_isactive` (+ `wmkf_isactivename` virtual).
+Deployed custom attrs (11): `wmkf_appgrantcycleid`, `wmkf_displayname` (primary), `wmkf_fiscalyearcode`, `wmkf_shortcode`, `wmkf_programname`, `wmkf_customfields`, `wmkf_meetingdate`, `wmkf_summarypages`, `wmkf_reviewreturndeadline`, `wmkf_reviewtemplateurl`, `wmkf_reviewtemplatefilename`, `wmkf_additionalattachments`, `wmkf_isactive` (+ `wmkf_isactivename` virtual). The three middle fields (`wmkf_shortcode`, `wmkf_programname`, `wmkf_customfields`) were patched into the deployed entity 2026-05-12 (W3 preflight).
 
 **Schema-patch SHIPPED 2026-05-12 (W3 preflight):** the three fields originally flagged as missing (`wmkf_ShortCode`, `wmkf_ProgramName`, `wmkf_CustomFields`) are now in both schema-as-code and the deployed entity. Live evidence: `lib/services/grant-cycles-dataverse.js:75-99` selects all three on every read, and `:129` addresses rows by the `wmkf_shortcode` alt-key — the prod cycle endpoint has been calling these successfully since 2026-05-12. (Re-verify via `scripts/dynamics-schema-diff.js wmkf_appgrantcycle` if you need a metadata-level confirmation before any destructive Postgres action.)
 

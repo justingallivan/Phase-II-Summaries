@@ -23,12 +23,12 @@ The canonical reference for the live state of the application's data layer.
 
 | Table | Rows | Status | Page |
 |---|---:|---|---|
-| `researchers` | 331 | active | [postgres-researchers.md](atlas/postgres-researchers.md) |
-| `publications` | 0 | dead writer | [postgres-publications.md](atlas/postgres-publications.md) |
-| `researcher_keywords` | 1,028 | active | [postgres-other-reviewer-tables.md](atlas/postgres-other-reviewer-tables.md) |
-| `reviewer_suggestions` | 337 | mirror (~99% parity to Dataverse) | [postgres-reviewer-suggestions.md](atlas/postgres-reviewer-suggestions.md) |
-| `grant_cycles` | 13 | drain-only — Dataverse-primary post-W3 (2026-05-12); no app readers/writers | [postgres-grant-cycles.md](atlas/postgres-grant-cycles.md) |
-| `proposal_searches` | 0 | dead | [postgres-other-reviewer-tables.md](atlas/postgres-other-reviewer-tables.md) |
+| `researchers` | 331 | drain-only post-W6 (2026-05-12); Dataverse `wmkf_appresearcher` is source of truth | [postgres-researchers.md](atlas/postgres-researchers.md) |
+| `publications` | 0 | drain-only; writer dead | [postgres-publications.md](atlas/postgres-publications.md) |
+| `researcher_keywords` | 1,028 | drain-only post-W6; folded into Dataverse `wmkf_appresearcher.wmkf_keywords` | [postgres-other-reviewer-tables.md](atlas/postgres-other-reviewer-tables.md) |
+| `reviewer_suggestions` | 337 | drain-only post-W3-W6; Dataverse `wmkf_appreviewersuggestion` is source of truth | [postgres-reviewer-suggestions.md](atlas/postgres-reviewer-suggestions.md) |
+| `grant_cycles` | 13 | drain-only post-W3 (2026-05-12); Dataverse `wmkf_appgrantcycle` is source of truth (10 rows) | [postgres-grant-cycles.md](atlas/postgres-grant-cycles.md) |
+| `proposal_searches` | 0 | drain-only; writer dead, `extract-summary` endpoint retired | [postgres-other-reviewer-tables.md](atlas/postgres-other-reviewer-tables.md) |
 | `search_cache` | 0 | dead | [postgres-other-reviewer-tables.md](atlas/postgres-other-reviewer-tables.md) |
 
 ### Reviewer-finder domain (Dataverse)
@@ -39,7 +39,7 @@ The canonical reference for the live state of the application's data layer.
 | `wmkf_appreviewersuggestion` | 336 | active lifecycle ledger | [dataverse-wmkf-appreviewersuggestion.md](atlas/dataverse-wmkf-appreviewersuggestion.md) |
 | `wmkf_potentialreviewers` (vendor + ext.) | 4,267 | per-person scratch+history (drains via cleanup cron) | [dataverse-wmkf-potentialreviewers.md](atlas/dataverse-wmkf-potentialreviewers.md) |
 | `wmkf_apppublication` | 0 | deployed, no callers | [dataverse-wmkf-apppublication-and-appgrantcycle.md](atlas/dataverse-wmkf-apppublication-and-appgrantcycle.md) |
-| `wmkf_appgrantcycle` | 0 | deployed (partial schema), no callers | same page |
+| `wmkf_appgrantcycle` | 10 | Dataverse-primary post-W3 (2026-05-12); full 11-attr schema deployed; consumed by reviewer-finder/grant-cycles + review-manager render/send-emails + maintenance-service blob-cleanup | same page |
 | `wmkf_appproposalsearch` | n/a | NOT DEPLOYED (schema-as-code only) | same page |
 | `wmkf_app_z_publication_author` | n/a | NOT DEPLOYED | same page |
 | `wmkf_apprequestperson` | 5,561 | active junction (S139); awaiting Connor PA dual-write | [dataverse-wmkf-apprequestperson.md](atlas/dataverse-wmkf-apprequestperson.md) |
