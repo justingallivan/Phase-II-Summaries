@@ -53,6 +53,7 @@ function projectRequest(r) {
     meetingDate: r.wmkf_meetingdate || null,
     cycleCode: r.wmkf_meetingdate ? meetingDateToCycleCode(r.wmkf_meetingdate) : null,
     cycleLabel: r.wmkf_meetingdate ? cycleCodeToLabel(meetingDateToCycleCode(r.wmkf_meetingdate)) : null,
+    applicantId: r._akoya_applicantid_value || null,
     applicant: r._akoya_applicantid_value_formatted || null,
     projectLeader: r._wmkf_projectleader_value_formatted || null,
     grantProgram: r._wmkf_grantprogram_value_formatted || null,
@@ -110,11 +111,14 @@ async function handleGet(req, res, access) {
     }
 
     // Hydrate person + researcher rows for every distinct potentialreviewer ID
-    // referenced by the suggestions. One batched query each.
+    // referenced by the suggestions, plus AKA/name for the applicant accounts
+    // on the in-scope requests. One batched query each.
     const personIds = [...new Set(suggestions.map((s) => s._wmkf_potentialreviewer_value).filter(Boolean))];
-    const [personById, researcherByPerson] = await Promise.all([
+    const accountIds = [...new Set(Object.values(requestById).map((r) => r.applicantId).filter(Boolean))];
+    const [personById, researcherByPerson, akaByAccount] = await Promise.all([
       fetchPotentialReviewers(personIds),
       fetchResearchersByPerson(personIds),
+      fetchApplicantAkas(accountIds),
     ]);
 
     // Group by request
@@ -129,7 +133,13 @@ async function handleGet(req, res, access) {
           proposalTitle: request.title || `Request ${request.requestNumber || ''}`.trim(),
           proposalAbstract: request.abstract,
           proposalAuthors: request.projectLeader || request.applicant,
-          proposalInstitution: null, // not directly on akoya_request; intentionally unmapped here
+          // Institution: prefer the account's AKA (the human-friendly common
+          // name shown on the AkoyaGO org form — e.g. "Stanford University"
+          // vs the legal `name` "The Board of Trustees of the Leland Stanford
+          // Junior University"). Fall back to the formal name when AKA is
+          // blank. Read-only — edits belong on the account record in CRM.
+          proposalInstitution: (request.applicantId && akaByAccount[request.applicantId])
+            || request.applicant || null,
           requestNumber: request.requestNumber,
           programArea: request.programArea,
           // grantCycleCode: prefer suggestion-level wmkf_grantcyclecode
@@ -257,6 +267,25 @@ async function fetchPotentialReviewers(ids) {
       top: 500,
     });
     for (const p of records) out[p.wmkf_potentialreviewersid] = p;
+  }
+  return out;
+}
+
+async function fetchApplicantAkas(accountIds) {
+  if (!accountIds?.length) return {};
+  const out = {};
+  const CHUNK = 25;
+  for (let i = 0; i < accountIds.length; i += CHUNK) {
+    const chunk = accountIds.slice(i, i + CHUNK);
+    const orChain = chunk.map((id) => `accountid eq ${id}`).join(' or ');
+    const { records } = await DynamicsService.queryRecords('accounts', {
+      select: 'accountid,akoya_aka,name',
+      filter: orChain,
+      top: 500,
+    });
+    for (const a of records) {
+      if (a.akoya_aka) out[a.accountid] = a.akoya_aka;
+    }
   }
   return out;
 }
