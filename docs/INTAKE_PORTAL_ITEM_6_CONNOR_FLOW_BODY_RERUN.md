@@ -128,7 +128,8 @@ Estimates below based on Connor's tenant configuration (2026-05-20).
 
 **Q1: Estimated `wmkf_proposalbudgetline` modifications per day org-wide**
 
-300 applications × 20 budget lines = **6,000 child rows at scale.** Rate by phase:
+300 applications × 20 budget lines = **6,000 child rows at scale.** Rate by phase: <!-- fact-consistency:ignore fact=app-definition-count as-of=2026-05-20 -->  <!-- "300 applications" = grant proposals per cycle, not the 17 web-app definitions tracked in appRegistry.js -->
+
 
 - **Drain window (pre-submit):** creates spread over ~2-week submission window → ~30 apps/day × 20 lines = 600 drain-time creates/day. Each fires the flow and exits at the condition check. Worst case (all 300 submit on deadline day): 6,000 creates in one day.
 - **Post-submit staff edits:** rare — ~10–20 budget line edits/day during review. Each triggers a full recompute.
@@ -147,7 +148,7 @@ Power Apps per user (Connor Noda's account — all custom flows run under this c
 
 No concern at pilot scale.
 
-**Q4: Headroom at broader rollout (300 applications; Phase I — 134 of most-recent 200 `akoya_request` rows are Phase I Pending)**
+**Q4: Headroom at broader rollout (300 applications; Phase I — 134 of most-recent 200 `akoya_request` rows are Phase I Pending)** <!-- fact-consistency:ignore fact=app-definition-count as-of=2026-05-20 -->
 
 | Scenario | Action requests | % of 40K quota |
 |---|---|---|
