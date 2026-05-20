@@ -6,7 +6,7 @@ originSessionId: e2e4c03f-8046-4d90-a1fd-93c1bb8256d1
 ---
 Strategic notes per app (Justin 2026-04-25), affecting Session 111+ planning:
 
-- **Concept Evaluator** — **DEPRECATED.** Removed from `appRegistry.js` (residual deprecation comment at line 12 only). Page + API archived to `_archived/pages/concept-evaluator.js` and `_archived/pages/api/evaluate-concepts.js`. **Doc tail still open** — narrative docs (`docs/AI_PROMPTS_DETAILED.md`, `docs/SYSTEM_OVERVIEW.md`, `docs/PDF_EXPORT.md`, `docs/AI_PROMPTS_OVERVIEW.md`) still reference it.
+- **Concept Evaluator** — **DEPRECATED.** Removed from `appRegistry.js` (residual deprecation comment at line 12 only). Page + API archived to `_archived/pages/concept-evaluator.js` and `_archived/pages/api/evaluate-concepts.js`. **Doc tail reconciled S166** — `docs/SYSTEM_OVERVIEW.md`, `docs/AI_PROMPTS_DETAILED.md`, `docs/AI_PROMPTS_OVERVIEW.md`, and `docs/PDF_EXPORT.md` now carry retirement labels/banners; retained references are historical/reference only.
 
 - **Grant Reporting** — should grow a **PowerAutomate trigger**: PA fires when a grant report arrives in Dynamics → auto-runs the extraction → writes to Dynamics. The user-driven UI persists for review/edit. This makes Grant Reporting a **dual-caller** app (Pattern A in PROMPT_STORAGE_DESIGN). Prompt-row migration to `wmkf_ai_prompt` becomes part of this pattern, not standalone. Needs Executor extensions (multi-PATCH coalescing + native PDF input) before migration.
 

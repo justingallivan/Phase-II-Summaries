@@ -209,7 +209,10 @@ Located in `lib/services/`. Source files are authoritative; entries below descri
 - `app-access-service.js` / `dataverse-app-access-service.js` — Dataverse `wmkf_appuserappaccesses`. Wave 1 dispatch retained; default Dataverse.
 - `dataverse-prefs-service.js` — Dataverse `wmkf_appuserpreferences` adapter. Postgres `user_preferences` dropped 2026-05-12; default Dataverse.
 - `dataverse-identity-map.js`, `dynamics-identity-service.js` — `user_profiles` ↔ Dynamics `systemuser` bridge; reconciliation CLI at `scripts/reconcile-dynamics-identities.js`
-- `model-override-loader.js` — Per-app model overrides for `baseConfig.js`
+- `model-override-loader.js` / `model-resolver.js` — Per-app model overrides for `baseConfig.js` (loader caches DB-backed overrides; resolver computes the effective model per app at call time)
+- `grant-cycles-dataverse.js` — Dataverse `wmkf_appgrantcycle` read/write adapter. Replaced Postgres `grant_cycles` at W3 cutover (2026-05-12); consumed by Reviewer Finder + Review Manager (`render-emails`, `send-emails`) + `maintenance-service` blob cleanup.
+- `irs-bmf-service.js` — IRS Business Master File (501(c)(3)) lookup for EIN verification; used by `/api/irs/verify-ein` (PowerAutomate-callable via `IRS_VERIFY_SECRET`).
+- `dataverse-export/` (subdirectory) — Dataverse Bulk Export (Track B) services. Deterministic QuerySpec→FetchXML translation, paging, trust-bounded Excel emission. See `docs/DATAVERSE_POWER_TOOLS_TRACK_B_BUILD_PLAN.md`.
 
 Located in `lib/external/` (external-reviewer flow):
 - `token-lifecycle.js` — `mintAndStore` / `revoke` / `ensureToken` (idempotent) / `extendForPostSubmissionWindow` / `buildExternalUrl`
