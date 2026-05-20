@@ -1,5 +1,7 @@
 # Application State Atlas
 
+<!-- drain-table:file-purpose=atlas-state-page -->
+
 **Created:** 2026-05-07 (S137, Phase 1 of `docs/CLAUDE_REMEDIATION_PLAN.md`)
 **Probe scripts:** `scripts/audit-postgres-state.js`, `scripts/audit-dataverse-state.js`
 

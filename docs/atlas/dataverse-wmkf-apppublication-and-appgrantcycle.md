@@ -1,5 +1,7 @@
 # Atlas: `wmkf_apppublication`, `wmkf_appgrantcycle`, and undeployed Wave 2 entities
 
+<!-- drain-table:file-purpose=atlas-state-page -->
+
 **Last verified:** 2026-05-07 via `scripts/audit-dataverse-state.js` + EntityDefinitions metadata probe. **`wmkf_appgrantcycle` section re-verified 2026-05-19** post-W3 cutover (see that section); the other entities on this page (publication, proposalsearch, junction) retain the 2026-05-07 audit.
 
 ## `wmkf_apppublication` — DEPLOYED but EMPTY

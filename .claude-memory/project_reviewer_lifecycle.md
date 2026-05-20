@@ -41,7 +41,7 @@ Reviewer lifecycle has 8 stages. Current state: discovery is well-automated (Rev
 - Phase A (CRM send) is program-agnostic by design — no Research-specific assumptions
 
 **Timeline/deadline model:**
-- Grant cycles define default deadlines (already have `review_deadline` in `grant_cycles`)
+- Grant cycles define default deadlines (live source of truth is Dataverse `wmkf_appgrantcycle.wmkf_reviewreturndeadline` post-W3 cutover 2026-05-12; historical Postgres `grant_cycles.review_deadline` was 0% populated and is drain-only)
 - Per-reviewer extensions needed → `wmkf_appreviewersuggestion` should have its own `review_due_date` (defaults to cycle deadline, overridable)
 - Grant cycle calendar is pre-defined (Science programs + SoCal program)
 
@@ -50,7 +50,7 @@ Reviewer lifecycle has 8 stages. Current state: discovery is well-automated (Rev
 - **Program Coordinator (PC):** Administrative — sends materials, tracks deadlines, collects forms, files documents
 - **Other staff / management:** Need visibility into all proposals but don't typically act on others' assignments
 - Access model: **don't restrict, filter the default view** (mirrors AkoyaGO). Everyone can see everything; dashboards show "my proposals" by default.
-- Current `reviewer_suggestions.user_profile_id` is single-user scoped — needs cycle/proposal assignment with roles
+- Historical `reviewer_suggestions.user_profile_id` (Postgres, now drain-only) was single-user scoped; current Dataverse `wmkf_appreviewersuggestion` has the same single-user model (PD scope) — the cycle/proposal/role assignment expansion is still open as a design item but now operates against `wmkf_appreviewersuggestion`
 - Future: `cycle_assignments` table mapping user → cycle/proposal → role (director, coordinator)
 
 **Invitation management:**

@@ -1,6 +1,8 @@
-# Atlas: `publications` (Postgres)
+# Atlas: `publications` (Postgres — DRAIN-ONLY; writer dead)
 
-**Last verified:** 2026-05-07 via `scripts/audit-postgres-state.js`
+<!-- drain-table:file-purpose=atlas-state-page -->
+
+**Last verified:** 2026-05-07 via `scripts/audit-postgres-state.js`. **Drain-status re-verified 2026-05-19 (S167).** Zero live application readers/writers.
 **Live row count:** **0**
 
 ## Source of truth

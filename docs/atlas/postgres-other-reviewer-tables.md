@@ -1,6 +1,8 @@
-# Atlas: Reviewer-side Postgres tables (small / dead)
+# Atlas: Reviewer-side Postgres tables (small / DRAIN-ONLY)
 
-**Last verified:** 2026-05-07 via `scripts/audit-postgres-state.js`
+<!-- drain-table:file-purpose=atlas-state-page -->
+
+**Last verified:** 2026-05-07 via `scripts/audit-postgres-state.js`. **Drain-status re-verified 2026-05-19 (S167)** via code grep + Codex independent verification — none of these tables have live application readers/writers.
 
 Covers four Postgres tables in the reviewer-finder domain that don't warrant individual pages: `researcher_keywords`, `proposal_searches`, `search_cache`, and the placeholder `playing_with_neon`.
 

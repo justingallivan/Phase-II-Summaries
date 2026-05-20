@@ -1170,7 +1170,7 @@ _(Historical as-of-finding paths. `evaluate-concepts.js` was later archived to `
 1. `save-candidates.js` accepted `userProfileId` from the request body. The ResearcherDetailModal's "Add to Proposal" flow did not send this field, resulting in `user_profile_id = NULL`. Since the my-candidates query filters on `user_profile_id = ${profileId}`, NULL records were invisible to all users.
 2. `researchers.js` `handleCreate` copied `user_profile_id` from an existing `reviewer_suggestions` record for the same proposal. If the existing record belonged to a different user, the new association was invisible to the user who created it. <!-- drain-table:ignore reason=historical-finding -->
 
-**Location:** `pages/api/reviewer-finder/save-candidates.js`, `pages/api/reviewer-finder/researchers.js`
+**Location:** `pages/api/reviewer-finder/save-candidates.js`, `pages/api/reviewer-finder/researchers.js` (historical; the `researchers.js` endpoint was retired W6 2026-05-12) <!-- drain-table:ignore reason=historical-finding -->
 
 **Risk:** Data created by authenticated users was silently lost (invisible in their view). Additionally, `save-candidates.js` accepting `userProfileId` from the request body is the same class of vulnerability as M3 — a user could create records attributed to another user's profile.
 

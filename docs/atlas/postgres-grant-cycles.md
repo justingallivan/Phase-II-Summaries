@@ -1,4 +1,6 @@
-# Atlas: `grant_cycles` (Postgres)
+# Atlas: `grant_cycles` (Postgres — DRAIN-ONLY post-W3 2026-05-12)
+
+<!-- drain-table:file-purpose=atlas-state-page -->
 
 **Last verified:** 2026-05-14 via `scripts/audit-postgres-state.js` + `scripts/audit-dataverse-state.js`
 **Live row count:** 13 (Postgres, drain-only)

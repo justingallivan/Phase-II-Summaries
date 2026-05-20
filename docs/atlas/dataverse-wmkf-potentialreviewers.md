@@ -1,5 +1,7 @@
 # Atlas: `wmkf_potentialreviewers` (Dataverse, vendor entity + extensions)
 
+<!-- drain-table:file-purpose=atlas-state-page -->
+
 **Last verified:** 2026-05-07 via `scripts/audit-dataverse-state.js`
 **Live row count:** 4,267
 **Entity set:** `wmkf_potentialreviewerses` (note Dynamics-pluralized form)
@@ -70,13 +72,13 @@ Methods:
 | Dataverse `wmkf_appresearcher` | 1:1 sidecar holding bibliometric snapshots |
 | Vendor `akoya_requests.wmkf_potentialreviewer1..5` | Legacy per-proposal slots (not the canonical link — those are in `wmkf_appreviewersuggestion`) |
 
-## "Engaged" semantics + cleanup cron (locked S136) [ASSUMED — per `project_reviewer_postgres_to_dataverse_migration.md`]
+## "Engaged" semantics + one-shot post-pilot drop (locked S136; cleanup-cron approach replaced)
 
-Per the migration plan, this table is treated as **scratch + history** rather than canonical-person. A `wmkf_potentialreviewer` row becomes "engaged" (= history) when ANY of the 8 signals on its linked `wmkf_appreviewersuggestion` are populated (see that page). The Wave 2 cleanup cron drops un-engaged rows after `wmkf_meetingdate < today - 30 days` with cascade onto the `wmkf_appresearcher` sidecar. Permanent reviewer identity ultimately lives in `contact` via promotion (`wmkf_contact` lookup).
+Per the migration plan, this table is treated as **scratch + history** rather than canonical-person. A `wmkf_potentialreviewer` row becomes "engaged" (= history) when ANY of the 8 signals on its linked `wmkf_appreviewersuggestion` are populated (see that page). The earlier cleanup-cron plan was replaced (Codex-reviewed) with a **one-shot post-pilot DELETE script** matching the Wave 1 precedent: drops un-engaged rows where `wmkf_meetingdate < today - 30 days`, with cascade onto the `wmkf_appresearcher` sidecar. No cron exists or is planned. Permanent reviewer identity ultimately lives in `contact` via promotion (`wmkf_contact` lookup).
 
-## Migration disposition [ASSUMED — per migration plan]
+## Migration disposition (live source of truth for reviewer identity)
 
-Already the source of truth for identity. No data migration **into** this entity from Postgres yet — Wave 2 will drive that as part of researcher-pool retirement. The 4,267 rows are vendor-historical and will drain via cleanup cron + cycle close, not bulk-migrate.
+Already the live source of truth for reviewer identity. The 4,267 rows include vendor-historical and post-cutover writes; pre-cutover bulk import from Postgres `researchers` was replaced with an engagement-history approach (don't bulk-migrate). One-shot post-pilot drop (per the section above) is the cleanup vehicle.
 
 ## Open questions / gotchas
 

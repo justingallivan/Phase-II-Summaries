@@ -1,5 +1,7 @@
 # Atlas: `wmkf_appreviewersuggestion` (Dataverse)
 
+<!-- drain-table:file-purpose=atlas-state-page -->
+
 **Last verified:** 2026-05-09 (Stage 2a additions, see below) — prior verification 2026-05-07 via `scripts/audit-dataverse-state.js` + EntityDefinitions metadata probe
 **Live row count:** 336
 **Entity set:** `wmkf_appreviewersuggestions`
@@ -127,6 +129,6 @@ Postgres `reviewer_suggestions` (337 rows) is parity at ~97.6% per S136 probe (`
 - Token expiry is **event-driven**, not absolute — extension on submission, revocation on regenerate.
 - `wmkf_reviewbloburl` retains historical Vercel Blob URLs for legacy rows but the active write target is `wmkf_reviewsharepointfolder` (Vercel Blob retired 2026-05-03 via commit `2277d23`).
 
-## Migration disposition [ASSUMED — per migration plan]
+## Migration disposition (post-W3-W6 cutover 2026-05-12)
 
-In active backfill. See `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`. Pending: 4 Postgres rows missing `request_number` (orphans). ~~Review Manager `grant_cycles` Postgres dependency~~ **RESOLVED (verified 2026-05-18, S164):** Review Manager reads grant cycles from Dataverse via `lib/services/grant-cycles-dataverse`; no Postgres `grant_cycles` dependency remains in `pages/api/review-manager/*`.
+**Cutover complete.** This entity is the live source of truth for reviewer suggestions; Postgres `reviewer_suggestions` is drain-only with no live application readers/writers. The 4 historical orphan rows in Postgres (missing `request_number`) remain in the drain snapshot and will be handled at the post-pilot one-shot drop. ~~Review Manager `grant_cycles` Postgres dependency~~ **RESOLVED (verified 2026-05-18, S164):** Review Manager reads grant cycles from Dataverse via `lib/services/grant-cycles-dataverse`; no Postgres `grant_cycles` dependency remains in `pages/api/review-manager/*`. See `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md` for the migration log.

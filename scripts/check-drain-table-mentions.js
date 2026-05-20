@@ -58,76 +58,109 @@ const POINT_IN_TIME_BASENAMES = new Set([
 ]);
 const POINT_IN_TIME_PREFIXES = ['AUDIT_', 'CODEX_HANDOFF_REPORT_'];
 
-// Files whose purpose IS to describe the drained tables. Mentions inside
-// these files are the documentation's job; gate skips them entirely.
-// Add to this allowlist with deliberation — broadening it weakens the gate.
+// Files whose purpose IS describing the migration history end-to-end.
+// Allowlist is intentionally NARROW after Codex pass-5 review (S167):
+//   - Atlas state pages (atlas/postgres-*.md) are NOT allowlisted, because
+//     they need to stay current about drain status; per-line annotations
+//     are the only way to detect when a state-page contradicts itself.
+//   - Lifecycle/design memos are NOT allowlisted; their PG-shape claims
+//     are not migration history, they are design assumptions that need
+//     to be re-evaluated against current code.
+//   - Only migration plans, lessons-learned meta-docs, and memory entries
+//     specifically about the migration itself qualify.
+// Add to this allowlist with deliberation — broadening hides drift.
 const ALLOWLIST_FILES = new Set([
-  // Atlas pages for the drained Postgres tables — describing drain status
-  // is the page's whole purpose.
-  'docs/atlas/postgres-grant-cycles.md',
-  'docs/atlas/postgres-reviewer-suggestions.md',
-  'docs/atlas/postgres-researchers.md',
-  'docs/atlas/postgres-publications.md',
-  'docs/atlas/postgres-other-reviewer-tables.md',
   // Migration plans — describing the cutover history is the doc's purpose.
   'docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md',
   'docs/POSTGRES_TO_DATAVERSE_MIGRATION.md',
   'docs/REVIEWER_FINDER_DATAVERSE_CUTOVER_PLAN.md',
-  // Memory entries about the migration itself.
+  // Historical design sketch with top supersession banner.
+  'docs/REVIEWER_FINDER_FUTURE_ARCHITECTURE.md',
+  // Meta-doc cataloging past drift / lessons-learned — the PG mentions
+  // ARE the examples being corrected, not state claims.
+  'docs/CLAUDE_REMEDIATION_PLAN.md',
+  // Wave-4 migration contracts — PG↔DV parity reconciliation contracts.
+  'docs/W4_RECONCILE_CONTRACT.md',
+  'docs/W4_ANOMALY_TRIAGE.md',
+  // Memory entries SPECIFICALLY about the migration itself.
   '.claude-memory/project_reviewer_postgres_to_dataverse_migration.md',
   '.claude-memory/project_w6_table_drop_pending.md',
   '.claude-memory/project_reviewer_finder_dataverse_entry_path.md',
   '.claude-memory/project_reviewer_identity_fragmentation.md',
-  '.claude-memory/project_reviewer_history_data_quality.md',
   '.claude-memory/project_intake_portal_pilot_decisions_2026-05-06.md',
-  '.claude-memory/project_reviewer_lifecycle.md',
-  // Historical design sketch with top supersession banner — whole doc is
-  // pre-cutover context.
-  'docs/REVIEWER_FINDER_FUTURE_ARCHITECTURE.md',
-  // Meta-doc cataloging past drift / lessons-learned — references to PG
-  // tables ARE the examples being corrected, not assertions of state.
-  'docs/CLAUDE_REMEDIATION_PLAN.md',
-  // Wave-4 migration contracts — the doc's purpose is describing the PG↔DV
-  // parity reconciliation and the eventual drop.
-  'docs/W4_RECONCILE_CONTRACT.md',
-  'docs/W4_ANOMALY_TRIAGE.md',
 ]);
 
-// Detect the table reference. Two shapes:
-//   `<name>` — backticked code identifier
-//   Postgres <name> — explicit "Postgres X" phrasing
+// Detect the table reference. Six shapes (broadened S167 pass-5 per Codex):
+//   `<name>`              — backticked code identifier
+//   '<name>'              — single-quoted
+//   "<name>"              — double-quoted
+//   Postgres <name>       — explicit "Postgres X" phrasing
+//   <name>.<column>       — dotted column reference (LHS is exact match)
+//   <name> <db-noun>      — bare identifier + table/schema/row/pool/etc.
+//   <verb> <name>         — SQL-shape: "reads from X", "writes to X", etc.
 const TABLE_NAMES = DRAINED_TABLES.join('|');
-const TABLE_RE = new RegExp(`\`(${TABLE_NAMES})\`|\\bPostgres (${TABLE_NAMES})\\b`, 'g');
-
-// Same-line keywords/markers that exempt the mention as adequately
-// annotated. The intent is to catch stale prose like:
-//   "results land in `reviewer_suggestions`"   (flag)
-// but allow:
-//   "`reviewer_suggestions` is drain-only post-W6"  (pass)
-const SAME_LINE_OK = new RegExp(
+const DB_CONTEXT_SUFFIX = '(?:table|tables|schema|column|columns|row|rows|record|records|pool|set|entry|entries)';
+const SQL_VERB_PREFIX = '(?:from|into|joins?|inserts?\\s+into|updates?|deletes?\\s+from|reads?\\s+from|writes?\\s+to|stores?\\s+in|drops?|truncates?)';
+const TABLE_RE = new RegExp(
   [
-    // Cutover-history keywords
-    '\\b(drain|drained|drain-only|drained-only|historical|RETIRED|retired)\\b',
-    '\\b(pre-cutover|post-W[3-6]|cutover|migrated|migration|snapshot|snapshots)\\b',
-    '\\b(superseded|backfill(?:ed)?|formerly|legacy|future-work|planned)\\b',
-    '\\bspec\'d\\b',
-    // Dataverse signal — if the line names a Dataverse entity alongside the
-    // Postgres table, the migration context is implicit.
-    '\\bDataverse\\b',
-    'wmkf_app(?:researcher|potentialreviewer|reviewersuggestion|grantcycle|publication|proposalsearch|appuser)',
-    // Common verbs that signal the mention is about the cutover, not current state
-    '\\b(Replaced|replaced|deleted|dropped|removed|reaped|reaping|Migrates|migrates|collapsed|moved)\\b',
-    '\\bfrom\\s+Postgres\\b',
-    '\\b(W[3-6])\\b',
-    // Strikethrough markdown is an explicit "this is gone" signal
-    '~~',
+    `\`(${TABLE_NAMES})\``,
+    `'(${TABLE_NAMES})'`,
+    `"(${TABLE_NAMES})"`,
+    `\\bPostgres\\s+(${TABLE_NAMES})\\b`,
+    `\\b(${TABLE_NAMES})\\.\\w+`,
+    `\\b(${TABLE_NAMES})\\s+${DB_CONTEXT_SUFFIX}\\b`,
+    `${SQL_VERB_PREFIX}\\s+\`?(${TABLE_NAMES})\`?\\b`,
   ].join('|'),
-  'i'
+  'gi',
 );
 
-// Structured exemption marker. Same-line only. Optional `reason=` attr
-// for future analytics (not validated beyond presence).
+// Same-line keywords/markers that exempt the mention as adequately
+// annotated. Tightened S167 pass-5 per Codex: dropped overly permissive
+// terms (Dataverse, planned, future-work, from Postgres, bare W[3-6],
+// wmkf_app prefix, spec'd) because they can co-occur with stale
+// current-state claims like "reads from Postgres X before Dataverse
+// migration". Kept only DIRECTIONAL/HISTORICAL markers.
+const SAME_LINE_OK = new RegExp(
+  [
+    // Drain markers — the mention is explicitly labeled retired.
+    '\\b(drain|drained|drain-only|drained-only)\\b',
+    '\\bhistorical\\b',
+    '\\b(RETIRED|retired)\\b',
+    '\\b(formerly|legacy)\\b',
+    '\\b(superseded|superseding)\\b',
+    // Directional cutover-history (must include "post-" or be a past verb).
+    '\\bpost-W[3-6]\\b',
+    '\\bpre-cutover\\b',
+    '\\bcutover\\s+(complete|shipped|done|finished)\\b',
+    '\\b(migrated|Migrates|migrates|collapsed|moved|Replaced|replaced|deleted|dropped|removed|reaped|reaping|backfilled)\\b',
+    '\\b(snapshot|snapshots)\\b',
+    // Strikethrough markdown is an explicit "this is gone" signal.
+    '~~',
+  ].join('|'),
+);
+
+// Same-line structured exemption marker. Optional `reason=` attr (not
+// validated beyond presence; used as a hint for grep-driven audits).
 const MARKER_RE = /<!--\s*drain-table:ignore(?:\s+reason=[\w-]+)?\s*-->/;
+
+// File-purpose marker. Placed in the first 30 lines of a doc, declares the
+// whole file as legitimately about the drained tables (atlas state pages,
+// migration plans, lessons-learned). Visible to readers (unlike a script-
+// side allowlist), requires deliberate authorship, and still allows the
+// per-file content to be reviewed for current accuracy.
+// Format: <!-- drain-table:file-purpose=<short-tag> -->
+//   atlas-state-page       — atlas/postgres-*.md, atlas/dataverse-*.md cross-references
+//   migration-plan         — REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md, similar
+//   lessons-learned        — CLAUDE_REMEDIATION_PLAN.md
+//   migration-memory       — .claude-memory/project_*migration*.md, etc.
+//   migration-contract     — W4_*.md
+const FILE_MARKER_RE = /<!--\s*drain-table:file-purpose=[\w-]+\s*-->/;
+const FILE_MARKER_SCAN_LINES = 30;
+
+function fileHasPurposeMarker(text) {
+  const head = text.split('\n').slice(0, FILE_MARKER_SCAN_LINES).join('\n');
+  return FILE_MARKER_RE.test(head);
+}
 
 function hasPointInTimeFrontmatter(text) {
   const m = text.match(/^---\n([\s\S]*?)\n---/);
@@ -150,6 +183,7 @@ function collectFiles() {
     if (ALLOWLIST_FILES.has(rel)) return;
     const text = fs.readFileSync(full, 'utf8');
     if (hasPointInTimeFrontmatter(text)) return;
+    if (fileHasPurposeMarker(text)) return;
     out.push(full);
   };
 
@@ -180,7 +214,11 @@ function findTableMentions(line) {
   const out = [];
   let m;
   while ((m = TABLE_RE.exec(line)) !== null) {
-    out.push({ raw: m[0], name: m[1] || m[2], index: m.index });
+    // The regex has multiple alternations, each capturing the table name in
+    // its own group. Pick the first defined capture (skip m[0] which is the
+    // whole match).
+    const name = m.slice(1).find((g) => typeof g === 'string');
+    out.push({ raw: m[0], name, index: m.index });
   }
   return out;
 }

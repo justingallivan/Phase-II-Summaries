@@ -1,11 +1,13 @@
-# Atlas: `researchers` (Postgres)
+# Atlas: `researchers` (Postgres — DRAIN-ONLY)
 
-**Last verified:** 2026-05-07 via `scripts/audit-postgres-state.js`
-**Live row count:** 331
+<!-- drain-table:file-purpose=atlas-state-page -->
+
+**Last verified:** 2026-05-07 via `scripts/audit-postgres-state.js`. **Drain-status re-verified 2026-05-19 (S167)** via code grep + Codex independent verification.
+**Live row count:** 331 (drain-only; no live application readers or writers post-W6 cutover 2026-05-12)
 
 ## Source of truth
 
-Postgres-only **for now**. Wave 2 migrates the canonical identity to Dataverse `wmkf_potentialreviewers` + bibliometrics to `wmkf_appresearcher`. Until then, this is the de-facto researcher pool.
+**Drain-only post-W6 cutover (2026-05-12).** The canonical identity for reviewer candidates is Dataverse `wmkf_potentialreviewers` + bibliometrics on `wmkf_appresearcher`. The Postgres `researchers` table is retained as a historical snapshot pending the post-pilot drop (≥2026-07-01; requires `scripts/restore-postgres-drain-table-backup.js` to be built first — not yet built). Zero application code under `pages/api/`, `lib/services/`, `lib/dataverse/`, or `shared/` reads or writes this table; only `scripts/*` admin/migration tools touch it. The Database tab admin UI and `pages/api/reviewer-finder/researchers.js` endpoint that previously read this pool were retired W6 step 1.
 
 ## Schema (live, from `information_schema`)
 

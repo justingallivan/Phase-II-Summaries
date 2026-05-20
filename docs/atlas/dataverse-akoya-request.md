@@ -1,5 +1,7 @@
 # Atlas: `akoya_request` (Dataverse, vendor entity + WMKF extensions)
 
+<!-- drain-table:file-purpose=atlas-state-page -->
+
 **Last verified:** 2026-05-07 via `scripts/audit-dataverse-state.js`; discriminator/era distributions 2026-05-15 via `scripts/probe-akoya-request-discriminators.js`
 **Live row count:** **~25,561** (FetchXML aggregate, 2026-05-15). ⚠️ OData `/$count` returns **5,000** — Dataverse caps `$count` at 5,000; the "5,000" figure is the cap, not the total. Use FetchXML aggregate / RetrieveTotalRecordCount for the true count.
 **Entity set:** `akoya_requests`

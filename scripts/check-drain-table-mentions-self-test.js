@@ -96,6 +96,49 @@ function buildFixtures() {
       body: 'The `researcher_metrics_legacy` cache lives elsewhere.',
       expectFlagged: false,
     },
+    // S167 pass-5 regression guards — Codex flagged these gaps explicitly.
+    {
+      name: 'dotted column reference is flagged (was missed pre-tightening)',
+      file: 'pos_dotted.md',
+      body: 'Stale guard reads reviewer_suggestions.user_profile_id directly.',
+      expectFlagged: true,
+    },
+    {
+      name: 'single-quoted name is flagged',
+      file: 'pos_single_quote.md',
+      body: "Some old script queries 'reviewer_suggestions' for backfill diff.",
+      expectFlagged: true,
+    },
+    {
+      name: 'unbackticked db-context phrase is flagged',
+      file: 'pos_db_context.md',
+      body: 'The current reviewer_suggestions schema is what the planner consumes.',
+      expectFlagged: true,
+    },
+    {
+      name: 'SQL-shape phrasing is flagged',
+      file: 'pos_sql_shape.md',
+      body: 'The job reads from reviewer_suggestions every minute.',
+      expectFlagged: true,
+    },
+    {
+      name: 'stale "before Dataverse migration" no longer passes on Dataverse keyword alone',
+      file: 'pos_stale_dataverse.md',
+      body: 'Review Manager reads from Postgres `reviewer_suggestions` before Dataverse migration.',
+      expectFlagged: true,
+    },
+    {
+      name: 'bare "planned" no longer exempts',
+      file: 'pos_stale_planned.md',
+      body: 'Cleanup of `reviewer_suggestions` is planned for next quarter.',
+      expectFlagged: true,
+    },
+    {
+      name: 'file-purpose marker exempts whole file',
+      file: 'neg_file_purpose.md',
+      body: '<!-- drain-table:file-purpose=atlas-state-page -->\n\nThis is an atlas page about `reviewer_suggestions`. It also describes `researchers` mappings.',
+      expectFlagged: false,
+    },
   ];
 }
 

@@ -1,6 +1,6 @@
 ---
 name: Reviewer lifecycle — automate the manual tracking points
-description: The current reviewer_suggestions schema has many timestamp/status fields that are set manually; the long-term goal is to drive automated reminders, follow-ups, and status updates from these fields, so any new tracking should be designed for cron/PA consumption.
+description: Reviewer-recruitment lifecycle has timestamp/status fields that are set manually; long-term goal is automated reminders driven by these fields. Originally framed against the Postgres reviewer_suggestions schema; post-W3-W6 cutover the same fields live on Dataverse wmkf_appreviewersuggestion. Design discipline below still applies.
 type: project
 originSessionId: 223c47bb-55ef-4adb-bab2-c2616bfa5311
 ---

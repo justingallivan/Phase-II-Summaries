@@ -1,4 +1,6 @@
-# Atlas: `reviewer_suggestions` (Postgres)
+# Atlas: `reviewer_suggestions` (Postgres — DRAIN-ONLY post-W3-W6 2026-05-12)
+
+<!-- drain-table:file-purpose=atlas-state-page -->
 
 **Last verified:** schema/row-count 2026-05-07 via `scripts/audit-postgres-state.js` + `scripts/backfill-reviewer-suggestions-parity.js`; **read/write path lists re-derived 2026-05-18 (S164)** via full codebase grep + per-site SQL-verb classification (see "Read / write paths" below)
 **Live row count:** 337 (as of 2026-05-07; not re-probed S164 — S164 re-derived code paths only, not DB state)
@@ -63,11 +65,11 @@ Not a path: `scripts/seed-reviewer-finder-prompts.js` (comment only), `scripts/R
 | `review_status` (string) | `wmkf_reviewstatus` (picklist) |
 | `match_reason`, `relevance_score`, `sources`, `proposal_abstract`, `proposal_url`, `proposal_password`, `notes` | direct fields |
 
-## Migration disposition [ASSUMED — per `docs/REVIEWER_POSTGRES_TO_DATAVERSE_PLAN.md`]
+## Migration disposition (post-W3-W6 cutover 2026-05-12)
 
-- Backfill is **near-complete** (97.6% parity); remaining work is reconciling the ~2.4% delta + 4 orphans.
-- Postgres `reviewer_suggestions` retired post-cutover via cleanup cron (drains, doesn't migrate).
-- Cleanup cron predicate (locked S136): drops slot rows where `wmkf_meetingdate < today - 30 days` AND none of 8 engagement signals on the linked `wmkf_appreviewersuggestion` are populated: `wmkf_contact`, `wmkf_emailsentat`, `wmkf_responsetype`, `wmkf_selected`, `wmkf_externaltokenissued`, `wmkf_proposalfirstaccessed`, `wmkf_reviewsharepointfolder`, any review-form picklist (`wmkf_revieweraffiliation`, `wmkf_reviewerimpact`, `wmkf_reviewerrisk`, `wmkf_revieweroverallrating`).
+- **Cutover complete.** Postgres `reviewer_suggestions` is drain-only; live source of truth is Dataverse `wmkf_appreviewersuggestion` (W5 reader cutover 2026-05-12).
+- Backfill landed (was 97.6% parity at S136); residual delta and orphans handled at cutover.
+- **No cleanup cron exists** — the cleanup-cron plan was replaced post-Codex-review with a one-shot post-pilot DELETE script (see `.claude-memory/project_w6_table_drop_pending.md`). The locked predicate (S136) for that one-shot drop: rows where `wmkf_meetingdate < today - 30 days` AND none of 8 engagement signals on the linked `wmkf_appreviewersuggestion` are populated: `wmkf_contact`, `wmkf_emailsentat`, `wmkf_responsetype`, `wmkf_selected`, `wmkf_externaltokenissued`, `wmkf_proposalfirstaccessed`, `wmkf_reviewsharepointfolder`, any review-form picklist (`wmkf_revieweraffiliation`, `wmkf_reviewerimpact`, `wmkf_reviewerrisk`, `wmkf_revieweroverallrating`). One-shot drop is destructive-carryover-gated (≥2026-07-01; requires `scripts/restore-postgres-drain-table-backup.js` to be built first — not yet built).
 
 ## Open questions / gotchas
 
