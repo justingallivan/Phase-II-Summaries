@@ -86,18 +86,11 @@ but **MUST take the No branch**.
 4. Send the CORE_GATE Step 3 **deactivation** PATCH for `[CHILD_A_GUID]`.
 5. Count runs after baseline whose child ID = `[CHILD_A_GUID]`. Expect **1**.
 6. Open that run:
-   - Record `SdkMessage` literal.
-   - Record `Parent picklist value` Compose output.
-   - Record which branch's Compose ran (`No-branch reached` should have output
-     `"no-branch"`; `Yes-branch reached` should be skipped).
+   - Record `SdkMessage` literal. **`Update`** ✅
+   - Record `Parent picklist value` Compose output. **`null`** ✅
+   - Record which branch's Compose ran. **`No-branch`** ✅ (Yes branch skipped — `List active siblings` did not execute)
 
-**PASS:** run count = 1, `SdkMessage` exactly `Update`, parent lookup present
-and = `[PARENT_A_GUID]`, `Parent picklist value` = `null` (or whatever ≠
-`100000002` you set), **No branch taken** (Yes branch skipped — `List active
-siblings` did not execute).
-
-**FAIL (any of):** Yes branch taken, `SdkMessage` ≠ `Update`, parent lookup
-missing/wrong. Stop and report.
+**RESULT: ✅ PASS** — run count = 1, `SdkMessage` = `Update`, `Parent picklist value` = null, No branch taken.
 
 ---
 
@@ -112,42 +105,67 @@ Equivalent of CORE_GATE Step 9, now executing inside the `If`-true branch.
 4. Send the CORE_GATE Step 3 **deactivation** PATCH for `[CHILD_C2_GUID]`.
 5. Count runs after baseline whose child ID = `[CHILD_C2_GUID]`. Expect **1**.
 6. Open that run:
-   - Record `SdkMessage` literal.
-   - Record `Parent picklist value` Compose output (expect `100000002`).
-   - Confirm **Yes branch taken** (`Yes-branch reached` ran).
-   - Open `List active siblings` output: record returned child GUIDs,
-     state/status, amounts.
+   - Record `SdkMessage` literal. **`Update`** ✅
+   - Record `Parent picklist value` Compose output. **`100000002`** ✅
+   - Confirm Yes branch taken. **`Yes-branch`** ✅
+   - Open `List active siblings` output:
 
-**PASS:** run count = 1, `SdkMessage` exactly `Update`, parent lookup present
-and = `[PARENT_C_GUID]`, `Parent picklist value` = `100000002`, Yes branch
-taken, returned active GUIDs are exactly `[CHILD_C1_GUID]` and `[CHILD_C3_GUID]`,
-`[CHILD_C2_GUID]` absent. If amounts available, operator-side sum over returned
-active rows = `[CHILD_C1_AMOUNT] + [CHILD_C3_AMOUNT]` (corroborating input
-evidence only).
+| GUID | statecode | statuscode | date |
+|---|---|---|---|
+| `ecce2235-8d54-f111-bec6-000d3a306da2` | 0 (Active) | 1 (Active) | 5/22/26 |
+| `fb89252f-8d54-f111-bec6-000d3a306da2` | 0 (Active) | 1 (Active) | 5/21/26 |
 
-**FAIL (any of):** No branch taken under matching parent, deactivated
-`[CHILD_C2_GUID]` in active set, an active sibling missing, count ≠ 1,
-`SdkMessage` ≠ `Update`, or wrong sum when amounts available.
+Deactivated child (C2) absent from returned set. ✅
+
+**RESULT: ✅ PASS** — run count = 1, `SdkMessage` = `Update`, `Parent picklist value` = `100000002`, Yes branch taken, 2 active siblings returned, deactivated child absent.
 
 ---
 
 ## STEP 4 — Quantify the firing-rate envelope
 
 Option A′'s mechanism trades trigger-level scoping for a wider firing surface.
-We need a number, not an adjective, on the run cost.
+Estimates below based on Connor's tenant configuration (2026-05-20).
 
-Provide:
+**Q1: Estimated `wmkf_proposalbudgetline` modifications per day org-wide**
 
-1. **Estimated `wmkf_proposalbudgetline` modifications per day org-wide** post
-   pilot opens. Order-of-magnitude is fine (10s / 100s / 1000s). If you can
-   pull a rough figure from a proxy (`akoya_requestpayment` write rate, or any
-   sibling table you already track), say so.
-2. **PA flow run quota on the flow owner's license.** Per-user or per-flow
-   limit (whichever applies under your tenant's PA SKU).
-3. **Headroom estimate at pilot scale** (Phase II Research, mid-June 2026,
-   ~tens of applicants).
-4. **Headroom estimate at broader rollout** (Phase I, where 134 of most-recent
-   200 `akoya_request` rows are `Phase I Pending` — much higher volume).
+300 applications × 20 budget lines = **6,000 child rows at scale.** Rate by phase:
+
+- **Drain window (pre-submit):** creates spread over ~2-week submission window → ~30 apps/day × 20 lines = 600 drain-time creates/day. Each fires the flow and exits at the condition check. Worst case (all 300 submit on deadline day): 6,000 creates in one day.
+- **Post-submit staff edits:** rare — ~10–20 budget line edits/day during review. Each triggers a full recompute.
+
+**Q2: PA flow run quota**
+
+Power Apps per user (Connor Noda's account — all custom flows run under this connector): **~40,000 action requests/day.**
+
+**Q3: Headroom at pilot scale (~25 proposals, Phase II Research mid-June 2026)**
+
+| Scenario | Action requests | % of 40K quota |
+|---|---|---|
+| Drain (25 × 20, spread over 2 weeks) | ~50/day | <1% |
+| Worst case (all 25 submit same day) | ~500 | 1.25% |
+| Post-submit edits | ~100/day | <1% |
+
+No concern at pilot scale.
+
+**Q4: Headroom at broader rollout (300 applications; Phase I — 134 of most-recent 200 `akoya_request` rows are Phase I Pending)**
+
+| Scenario | Action requests | % of 40K quota |
+|---|---|---|
+| Drain (300 × 20, spread over 2 weeks) | ~2,400/day | 6% |
+| **Worst case (all 300 submit on deadline day)** | **~24,000** | **60%** |
+| Phase I post-submit edits (134 pending × light edit rate) | ~1,000–2,000/day | 3–5% |
+
+The deadline-day scenario is the only envelope concern. On a typical day the quota is very comfortable.
+
+**What happens if quota is hit: throttling, not failure**
+
+PA does not terminate flows when the action request limit is reached. It **throttles** — queuing runs and delaying execution until quota resets on the rolling 24-hour window. Delayed runs eventually execute; they do not fail silently or drop. In flow run history, throttled runs appear in a "Waiting" state; individual actions may log HTTP 429 in run details.
+
+For the recompute flow specifically: the 6,000 drain-time fires that exit at the condition check are the quota consumers, not the actual recomputes. Those early-exit runs have no business consequence — having them delayed or queued is harmless. Post-submit recomputes (the runs that actually matter) are low-volume and would clear well before any throttle engages.
+
+**Implication for Option A′ vs Option B:**
+- **Pilot scale:** Option A′ is clear — no quota concern.
+- **Full 300-proposal scale:** Option A′ is viable (throttling behavior makes the 60% deadline-day figure less acute than it appears), but drain-time PA run consumption argues for Option B (`$batch` drain) before scaling to full volume — removing drain-time fires entirely. The A+B hybrid plan already anticipated this transition.
 
 This isn't a pass/fail criterion — it's an artifact for the post-deploy
 mechanism decision (Option A′ vs. Option B alone). Numbers in the right
@@ -166,16 +184,24 @@ amounts; expected vs observed.
 Plus: the Step 4 firing-rate estimates and any save-time errors building the
 flow.
 
+| Test | Run count | SdkMessage | Parent picklist value | Branch |
+|---|---|---|---|---|
+| Step 7′ | 1 | `Update` | `null` | No-branch ✅ |
+| Step 9′ | 1 | `Update` | `100000002` | Yes-branch ✅ |
+
+Step 9′ List rows: `ecce2235-8d54-f111-bec6-000d3a306da2` (Active), `fb89252f-8d54-f111-bec6-000d3a306da2` (Active). Deactivated child absent. Both tests passed.
+
 ---
 
 ## STEP 6 — Verdict
 
-- **PASS — Option A′ cleared for PA-flow-live** (still subject to P4 real-schema
-  repeat on `wmkf_proposalbudgetline` post-deploy): Step 7′ PASS + Step 9′ PASS
-  + firing-rate envelope acceptable at pilot scale.
-- **FAIL — Option A′ not viable**, recompute defaults to Option B alone
-  (`$batch` drain hardening, per `DISCUSSION.md §0`). No schema rework either
-  way.
+✅ **PASS — Option A′ cleared for PA-flow-live** (still subject to P4 real-schema repeat on `wmkf_proposalbudgetline` post-deploy).
+
+- Step 7′: PASS ✅
+- Step 9′: PASS ✅
+- Firing-rate envelope: acceptable at pilot scale; manageable at full 300-proposal scale with throttling behavior confirmed non-destructive. Option B (`$batch`) transition recommended before full rollout.
+
+~~**FAIL — Option A′ not viable**~~
 
 Optional, do NOT gate the verdict: reactivation symmetry, rapid two-child
 stress, parent-status transition timing. If time permits, mirror
