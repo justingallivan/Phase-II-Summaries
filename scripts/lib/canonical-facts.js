@@ -154,6 +154,23 @@ function requireAppAccessLocalNames(ast) {
   return names;
 }
 
+function deriveApiRouteFileCount() {
+  // Mirror scripts/check-api-route-security-matrix.js exactly so the two
+  // gates agree on what counts as a "route file" — diverging here would
+  // create two truths about the same scalar.
+  const apiRoot = path.join(repoRoot, 'pages', 'api');
+  const out = [];
+  (function walkDir(dir) {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) walkDir(full);
+      else if (ent.name.endsWith('.js')) out.push(full);
+    }
+  })(apiRoot);
+  if (out.length === 0) failConfig('no route files found under pages/api');
+  return out.length;
+}
+
 function deriveRequireAppAccessEndpointCount() {
   let count = 0;
   for (const full of jsFilesUnder('pages/api')) {
@@ -255,6 +272,52 @@ const CANONICAL_FACTS = [
       '30 reviewer endpoints',
       '2026-05-19 endpoint audit',
       'J30 app cycle',
+    ],
+  },
+  {
+    id: 'api-route-file-count',
+    describe: 'pages/api route files (matches check:api-routes walker)',
+    derivePath: '`pages/api/**/*.js` → count of route files (same predicate `scripts/check-api-route-security-matrix.js` uses)',
+    derive: deriveApiRouteFileCount,
+    // Patterns are intentionally narrow. A bare "N routes" pattern would
+    // false-positive on unrelated counts in the repo ("3 routes" for a
+    // feature slice, "100 routes" as a verb, "77 routes" historical in
+    // the Atlas). The constrained phrasings below match the canonical
+    // restatement forms ("route file(s)", "N-route catalogue", "API
+    // routes") and nothing else. Codex review identified this; do not
+    // re-broaden without re-grepping the repo.
+    patterns: [
+      {
+        name: 'route file(s)',
+        find: matchFrom(/\b~?(\d+)\s+route\s+files?\b/gi),
+      },
+      {
+        name: 'route catalogue',
+        find: matchFrom(/\b~?(\d+)[-\s]route catalogue\b/gi),
+      },
+      {
+        name: 'API routes',
+        find: matchFrom(/\b~?(\d+)\s+API\s+routes?\b/gi),
+      },
+    ],
+    knownMissFixtures: [
+      '84 route files',
+      '~84 route files',
+      '84-route catalogue',
+      '84 API routes',
+    ],
+    knownNonMatches: [
+      // These would have matched a bare "routes" pattern but must NOT
+      // match the narrow set. Codex grep surfaced each one in live docs.
+      '3 routes',
+      '100 routes',
+      '77 routes',
+      '84 routes',
+      'S184 route',
+      'J84 route',
+      '2026-05-19 route audit',
+      '84 reviewer-route plans',
+      '84 routing rules',
     ],
   },
 ];

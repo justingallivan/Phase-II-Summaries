@@ -32,7 +32,7 @@ const POINT_IN_TIME_BASENAMES = new Set([
   'DOCS_GROUND_TRUTH_AUDIT_2026-05-19.md',
   'RECONCILIATION_REPORT.md',
 ]);
-const POINT_IN_TIME_PREFIXES = ['AUDIT_'];
+const POINT_IN_TIME_PREFIXES = ['AUDIT_', 'CODEX_HANDOFF_REPORT_'];
 
 function hasPointInTimeFrontmatter(text) {
   const m = text.match(/^---\n([\s\S]*?)\n---/);

@@ -1149,7 +1149,7 @@ All new server-side outbound HTTP requests should use `safeFetch` from `lib/util
 
 #### M6: Internal Error Messages Leaked to Clients
 
-**Finding:** ~19 catch blocks across 8 API routes returned `error.message` directly to clients without guarding behind `NODE_ENV === 'development'`. This included inner helper functions in evaluators, tool execution errors in Dynamics Explorer, email generation errors, re-thrown errors in document processors, and all service checks in the health endpoint. Leaked messages could expose database connection details, API error bodies, or stack-level information.
+**Finding:** ~19 catch blocks across 8 API endpoints returned `error.message` directly to clients without guarding behind `NODE_ENV === 'development'`. <!-- fact-consistency:ignore fact=requireappaccess-endpoint-count reason=historical --> This included inner helper functions in evaluators, tool execution errors in Dynamics Explorer, email generation errors, re-thrown errors in document processors, and all service checks in the health endpoint. Leaked messages could expose database connection details, API error bodies, or stack-level information.
 
 **Location:** `pages/api/evaluate-concepts.js`, `pages/api/evaluate-multi-perspective.js`, `pages/api/dynamics-explorer/chat.js`, `pages/api/reviewer-finder/generate-emails.js`, `pages/api/process.js`, `pages/api/process-phase-i.js`, `pages/api/process-phase-i-writeup.js`, `pages/api/health.js`
 

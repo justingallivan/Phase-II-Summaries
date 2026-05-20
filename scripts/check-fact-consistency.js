@@ -44,7 +44,7 @@ const POINT_IN_TIME_BASENAMES = new Set([
   'DOCS_GROUND_TRUTH_AUDIT_2026-05-19.md',
   'RECONCILIATION_REPORT.md',
 ]);
-const POINT_IN_TIME_PREFIXES = ['AUDIT_'];
+const POINT_IN_TIME_PREFIXES = ['AUDIT_', 'CODEX_HANDOFF_REPORT_'];
 // CANONICAL_COUNTS.md is the generated source of truth — its literals are checked
 // by drift assertion against the registry, not by the prose pattern matcher.
 const GENERATED_LITERAL_FILE = CANONICAL_COUNTS_REL;
